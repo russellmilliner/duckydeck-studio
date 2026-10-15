@@ -31,17 +31,38 @@ pub struct WindowChangeEvent {
     pub picked: bool,
 }
 
+fn default_tray_icon_mode() -> String {
+    "auto".to_string()
+}
+
+fn default_app_theme_mode() -> String {
+    "system".to_string()
+}
+
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedSwitcherConfig {
     pub enabled: bool,
     pub default_profile: Option<u8>,
     pub rules: Vec<AutoSwitchRule>,
+    #[serde(default = "default_tray_icon_mode")]
+    pub tray_icon_mode: String,
+    #[serde(default = "default_app_theme_mode")]
+    pub app_theme_mode: String,
+    #[serde(default = "default_true")]
+    pub close_to_tray: bool,
 }
 
 pub struct SwitcherState {
     pub enabled: bool,
     pub default_profile: Option<u8>,
     pub rules: Vec<AutoSwitchRule>,
+    pub tray_icon_mode: String,
+    pub app_theme_mode: String,
+    pub close_to_tray: bool,
     pub last_switched_profile: u8,
     pub picker_armed: bool,
     pub loaded_from_disk: bool,
@@ -50,10 +71,21 @@ pub struct SwitcherState {
 impl Default for SwitcherState {
     fn default() -> Self {
         if let Some(cfg) = Self::load_config_from_disk() {
+            let mode = match cfg.tray_icon_mode.as_str() {
+                "dark" | "light" | "auto" => cfg.tray_icon_mode,
+                _ => "auto".to_string(),
+            };
+            let theme = match cfg.app_theme_mode.as_str() {
+                "dark" | "light" | "system" => cfg.app_theme_mode,
+                _ => "system".to_string(),
+            };
             return Self {
                 enabled: cfg.enabled,
                 default_profile: cfg.default_profile,
                 rules: cfg.rules,
+                tray_icon_mode: mode,
+                app_theme_mode: theme,
+                close_to_tray: cfg.close_to_tray,
                 last_switched_profile: 0,
                 picker_armed: false,
                 loaded_from_disk: true,
@@ -83,6 +115,9 @@ impl Default for SwitcherState {
                     target_profile: 4,
                 },
             ],
+            tray_icon_mode: "auto".to_string(),
+            app_theme_mode: "system".to_string(),
+            close_to_tray: true,
             last_switched_profile: 0,
             picker_armed: false,
             loaded_from_disk: false,
@@ -116,11 +151,269 @@ impl SwitcherState {
             enabled: self.enabled,
             default_profile: self.default_profile,
             rules: self.rules.clone(),
+            tray_icon_mode: self.tray_icon_mode.clone(),
+            app_theme_mode: self.app_theme_mode.clone(),
+            close_to_tray: self.close_to_tray,
         };
         let json = serde_json::to_string_pretty(&payload)
             .map_err(|e| format!("Failed serializing KWin rules: {e}"))?;
         fs::write(&path, json).map_err(|e| format!("Failed writing {}: {e}", path.display()))
     }
+}
+
+pub fn resolve_app_icon_for_class(resource_class: &str) -> String {
+    let trimmed = resource_class.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    let short_lower = lower
+        .rsplit('.')
+        .next()
+        .unwrap_or(lower.as_str())
+        .to_string();
+
+    let mut search_dirs = Vec::new();
+    if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
+        search_dirs.push(PathBuf::from(xdg_data).join("applications"));
+    } else if let Ok(home) = std::env::var("HOME") {
+        search_dirs.push(PathBuf::from(&home).join(".local/share/applications"));
+        search_dirs.push(PathBuf::from(&home).join(".local/share/flatpak/exports/share/applications"));
+    }
+    search_dirs.push(PathBuf::from("/var/lib/flatpak/exports/share/applications"));
+    search_dirs.push(PathBuf::from("/usr/local/share/applications"));
+    search_dirs.push(PathBuf::from("/usr/share/applications"));
+
+    fn extract_icon_from_desktop(content: &str) -> Option<String> {
+        let mut in_entry = false;
+        for line in content.lines() {
+            let l = line.trim();
+            if l.starts_with('[') {
+                in_entry = l == "[Desktop Entry]";
+                continue;
+            }
+            if in_entry {
+                if let Some(icon) = l.strip_prefix("Icon=") {
+                    let val = icon.trim();
+                    if !val.is_empty() {
+                        return Some(val.to_string());
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    // 1. Direct desktop filename match
+    for dir in &search_dirs {
+        for cand in [
+            format!("{trimmed}.desktop"),
+            format!("{lower}.desktop"),
+            format!("org.kde.{short_lower}.desktop"),
+        ] {
+            let p = dir.join(&cand);
+            if p.is_file() {
+                if let Ok(content) = fs::read_to_string(&p) {
+                    if let Some(icon) = extract_icon_from_desktop(&content) {
+                        return icon;
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Scan desktop files for StartupWMClass, filename suffix, or Exec binary match
+    for dir in &search_dirs {
+        let Ok(entries) = fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(fname) = path.file_name().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            if !fname.ends_with(".desktop") {
+                continue;
+            }
+            let stem_lower = fname.trim_end_matches(".desktop").to_ascii_lowercase();
+            let stem_matches = stem_lower == lower
+                || stem_lower == short_lower
+                || stem_lower.ends_with(&format!(".{short_lower}"));
+
+            let Ok(content) = fs::read_to_string(&path) else {
+                continue;
+            };
+
+            if stem_matches {
+                if let Some(icon) = extract_icon_from_desktop(&content) {
+                    return icon;
+                }
+            }
+
+            let mut wm_match = false;
+            let mut exec_match = false;
+            let mut in_entry = false;
+            for line in content.lines() {
+                let l = line.trim();
+                if l.starts_with('[') {
+                    in_entry = l == "[Desktop Entry]";
+                    continue;
+                }
+                if !in_entry {
+                    continue;
+                }
+                if let Some(wm) = l.strip_prefix("StartupWMClass=") {
+                    let wm_l = wm.trim().to_ascii_lowercase();
+                    if wm_l == lower || wm_l == short_lower {
+                        wm_match = true;
+                        break;
+                    }
+                } else if let Some(exec) = l.strip_prefix("Exec=") {
+                    let first_tok = exec
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("")
+                        .trim_matches('"');
+                    let bin = std::path::Path::new(first_tok)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("")
+                        .to_ascii_lowercase();
+                    if !bin.is_empty() && (bin == lower || bin == short_lower) {
+                        exec_match = true;
+                    }
+                }
+            }
+
+            if wm_match || exec_match {
+                if let Some(icon) = extract_icon_from_desktop(&content) {
+                    return icon;
+                }
+            }
+        }
+    }
+
+    // 3. Fallback common icon names
+    match short_lower.as_str() {
+        "dolphin" => "system-file-manager".to_string(),
+        "konsole" | "alacritty" | "kitty" | "wezterm" => "utilities-terminal".to_string(),
+        "code" | "code-oss" | "codium" | "vscodium" => "com.visualstudio.code".to_string(),
+        "firefox" | "navigator" => "firefox".to_string(),
+        "chrome" | "google-chrome" => "google-chrome".to_string(),
+        "chromium" => "chromium".to_string(),
+        _ => short_lower,
+    }
+}
+
+pub fn autostart_desktop_path() -> PathBuf {
+    let base = std::env::var("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+            PathBuf::from(home).join(".config")
+        });
+    base.join("autostart")
+        .join("io.github.duckydeck.Studio.desktop")
+}
+
+pub fn is_kde_autostart_enabled() -> bool {
+    let path = autostart_desktop_path();
+    let Ok(content) = fs::read_to_string(&path) else {
+        return false;
+    };
+    for line in content.lines() {
+        let t = line.trim();
+        if t.eq_ignore_ascii_case("Hidden=true")
+            || t.eq_ignore_ascii_case("X-GNOME-Autostart-enabled=false")
+        {
+            return false;
+        }
+    }
+    true
+}
+
+pub fn sync_local_desktop_and_icon(use_light_on_dark_icon: bool) {
+    let data_home = std::env::var("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+            PathBuf::from(home).join(".local").join("share")
+        });
+
+    let icon_dir = data_home
+        .join("icons")
+        .join("hicolor")
+        .join("scalable")
+        .join("apps");
+    if fs::create_dir_all(&icon_dir).is_ok() {
+        let svg_content = if use_light_on_dark_icon {
+            include_str!("../qml/icons/tray-icon-dark.svg")
+        } else {
+            include_str!("../qml/icons/tray-icon-light.svg")
+        };
+        let _ = fs::write(icon_dir.join("io.github.duckydeck.Studio.svg"), svg_content);
+    }
+
+    let apps_dir = data_home.join("applications");
+    if fs::create_dir_all(&apps_dir).is_ok() {
+        let exe_path = std::env::current_exe()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| "duckydeck-studio".to_string());
+        let desktop_content = format!(
+            "[Desktop Entry]\n\
+             Type=Application\n\
+             Name=DuckyDeck Studio\n\
+             Comment=KDE Plasma 6 Configurator & Auto-Switcher for duckyPad Pro\n\
+             Exec=\"{exe_path}\"\n\
+             Icon=io.github.duckydeck.Studio\n\
+             Terminal=false\n\
+             Categories=Utility;HardwareSettings;Qt;KDE;\n\
+             StartupWMClass=io.github.duckydeck.Studio\n"
+        );
+        let _ = fs::write(
+            apps_dir.join("io.github.duckydeck.Studio.desktop"),
+            desktop_content,
+        );
+    }
+}
+
+pub fn set_kde_autostart_enabled(enabled: bool) -> Result<PathBuf, String> {
+    let path = autostart_desktop_path();
+    if enabled {
+        sync_local_desktop_and_icon(true);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed creating autostart directory: {e}"))?;
+        }
+        let exe_path = std::env::current_exe()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| "duckydeck-studio".to_string());
+        let desktop_entry = format!(
+            "[Desktop Entry]\n\
+             Type=Application\n\
+             Name=DuckyDeck Studio\n\
+             Comment=KDE Plasma 6 Configurator & Auto-Switcher for duckyPad Pro\n\
+             Exec=\"{exe_path}\" --minimized\n\
+             Icon=io.github.duckydeck.Studio\n\
+             Terminal=false\n\
+             Categories=Utility;HardwareSettings;Qt;KDE;\n\
+             StartupWMClass=io.github.duckydeck.Studio\n\
+             X-KDE-AutostartScript=false\n\
+             X-KDE-autostart-after=panel\n"
+        );
+        fs::write(&path, desktop_entry)
+            .map_err(|e| format!("Failed writing {}: {e}", path.display()))?;
+        Ok(path)
+    } else {
+        if path.exists() {
+            fs::remove_file(&path)
+                .map_err(|e| format!("Failed removing {}: {e}", path.display()))?;
+        }
+        Ok(path)
+    }
+}
+
+impl SwitcherState {
 
     /// When SD profiles are loaded for the first time and the user hasn't saved custom rules yet,
     /// automatically align default KWin rules with matching profile names on their duckyPad.
@@ -164,6 +457,33 @@ impl SwitcherState {
             self.rules = aligned;
         }
     }
+
+    pub fn match_profile_for_window(&self, resource_class: &str, caption: &str) -> Option<u8> {
+        let lower_class = resource_class.trim().to_lowercase();
+        if lower_class.is_empty() || lower_class == "none" {
+            return None;
+        }
+        let caption_lower = caption.to_lowercase();
+
+        for rule in &self.rules {
+            if !rule.enabled {
+                continue;
+            }
+            let rule_class = rule.resource_class.to_lowercase();
+            let class_matches = lower_class == rule_class || lower_class.contains(&rule_class);
+
+            let title_matches = match &rule.title_contains {
+                Some(sub) if !sub.trim().is_empty() => caption_lower.contains(&sub.to_lowercase()),
+                _ => true,
+            };
+
+            if class_matches && title_matches {
+                return Some(rule.target_profile);
+            }
+        }
+
+        self.default_profile
+    }
 }
 
 pub struct KWinBridgeService {
@@ -203,32 +523,7 @@ impl KWinBridgeService {
             }
 
             if state.enabled {
-                let caption_lower = caption.to_lowercase();
-
-                for rule in &state.rules {
-                    if !rule.enabled {
-                        continue;
-                    }
-                    let rule_class = rule.resource_class.to_lowercase();
-                    let class_matches =
-                        lower_class == rule_class || lower_class.contains(&rule_class);
-
-                    let title_matches = match &rule.title_contains {
-                        Some(sub) if !sub.trim().is_empty() => {
-                            caption_lower.contains(&sub.to_lowercase())
-                        }
-                        _ => true,
-                    };
-
-                    if class_matches && title_matches {
-                        matched_profile = Some(rule.target_profile);
-                        break;
-                    }
-                }
-
-                if matched_profile.is_none() {
-                    matched_profile = state.default_profile;
-                }
+                matched_profile = state.match_profile_for_window(&resource_class, &caption);
 
                 if let Some(target) = matched_profile {
                     if target != state.last_switched_profile {

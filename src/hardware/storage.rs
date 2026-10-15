@@ -9,6 +9,8 @@ pub const DUCKYPAD_VID: u16 = 0x0483;
 pub const PID_DUCKYPAD_PRO: u16 = 0xd11d;
 pub const PID_DUCKYPAD_2020: u16 = 0xd11c;
 
+pub const HID_REPORT_ID_OUT: u8 = 0x05;
+
 pub const HID_CMD_QUERY_INFO: u8 = 0x00;
 pub const HID_CMD_GOTO_PROFILE_BY_NUM: u8 = 0x01;
 pub const HID_CMD_SET_LED_SINGLE: u8 = 0x04;
@@ -36,7 +38,7 @@ pub fn read_all_pgvs(device: &HidDevice) -> Result<[i32; PGV_COUNT], String> {
 
     for (seq, &start_idx) in [0u8, 15u8, 30u8].iter().enumerate() {
         let mut tx = [0u8; 64];
-        tx[0] = 0x00;
+        tx[0] = HID_REPORT_ID_OUT;
         tx[1] = (seq as u8).wrapping_add(0x20);
         tx[2] = HID_CMD_DUMP_PGV;
         tx[3] = start_idx;
@@ -90,7 +92,7 @@ pub fn write_pgvs(device: &HidDevice, updates: &[(u8, i32)]) -> Result<(), Strin
 
     for (chunk_seq, chunk) in updates.chunks(12).enumerate() {
         let mut tx = [0u8; 64];
-        tx[0] = 0x00;
+        tx[0] = HID_REPORT_ID_OUT;
         tx[1] = (chunk_seq as u8).wrapping_add(0x40);
         tx[2] = HID_CMD_WRITE_PGV;
 
@@ -121,7 +123,7 @@ pub fn write_single_pgv(device: &HidDevice, pgv_index: u8, value: i32) -> Result
 
 pub fn goto_profile_by_name(device: &HidDevice, profile_name: &str) -> Result<(), String> {
     let mut tx = [0u8; 64];
-    tx[0] = 0x00;
+    tx[0] = HID_REPORT_ID_OUT;
     tx[1] = 0x55;
     tx[2] = HID_CMD_GOTO_PROFILE_BY_NAME;
 
@@ -132,6 +134,8 @@ pub fn goto_profile_by_name(device: &HidDevice, profile_name: &str) -> Result<()
     device
         .write(&tx)
         .map_err(|e| format!("Failed to switch to profile '{profile_name}': {e}"))?;
+    let mut rx = [0u8; 64];
+    let _ = device.read_timeout(&mut rx, 200);
     Ok(())
 }
 
@@ -296,6 +300,18 @@ impl DuckyProfile {
                     profile.ensure_slot(slot_idx).label_line1 = label1.to_string();
                 } else if let Some((slot_idx, label2)) = parse_indexed_directive(line, "x") {
                     profile.ensure_slot(slot_idx).label_line2 = label2.to_string();
+                } else if let Some(rest) = line.strip_prefix("ab ") {
+                    if let Ok(slot_idx) = rest.trim().parse::<usize>() {
+                        if (1..=MAX_INPUT_SLOTS).contains(&slot_idx) {
+                            profile.ensure_slot(slot_idx).allow_abort = true;
+                        }
+                    }
+                } else if let Some(rest) = line.strip_prefix("dr ") {
+                    if let Ok(slot_idx) = rest.trim().parse::<usize>() {
+                        if (1..=MAX_INPUT_SLOTS).contains(&slot_idx) {
+                            profile.ensure_slot(slot_idx).disable_autorepeat = true;
+                        }
+                    }
                 } else if let Some((slot_idx, val)) = parse_indexed_directive(line, "ab") {
                     profile.ensure_slot(slot_idx).allow_abort = val.trim() != "0";
                 } else if let Some((slot_idx, val)) = parse_indexed_directive(line, "dr") {
@@ -308,15 +324,46 @@ impl DuckyProfile {
 
         for slot_idx in 1..=MAX_INPUT_SLOTS {
             let press_path = dir_path.join(format!("key{slot_idx}.txt"));
+            let press_dsb_path = dir_path.join(format!("key{slot_idx}.dsb"));
             let release_path = dir_path.join(format!("key{slot_idx}-release.txt"));
+            let release_dsb_path = dir_path.join(format!("key{slot_idx}-release.dsb"));
 
             if press_path.exists() {
                 let script = fs::read_to_string(&press_path)?;
-                profile.ensure_slot(slot_idx).on_press_script = script;
+                let (allow_abort, disable_autorepeat) = {
+                    let slot = profile.ensure_slot(slot_idx);
+                    slot.on_press_script = script.clone();
+                    (slot.allow_abort, slot.disable_autorepeat)
+                };
+                // Auto-compile missing .dsb if keyN.txt exists without keyN.dsb
+                if !press_dsb_path.exists() && !script.trim().is_empty() {
+                    let compiled = crate::vm::compiler::compile_duckyscript_to_dsb(
+                        &script,
+                        allow_abort,
+                        disable_autorepeat,
+                    );
+                    if compiled.is_success {
+                        let _ = fs::write(&press_dsb_path, &compiled.bin_array);
+                    }
+                }
             }
             if release_path.exists() {
                 let script = fs::read_to_string(&release_path)?;
-                profile.ensure_slot(slot_idx).on_release_script = script;
+                let (allow_abort, disable_autorepeat) = {
+                    let slot = profile.ensure_slot(slot_idx);
+                    slot.on_release_script = script.clone();
+                    (slot.allow_abort, slot.disable_autorepeat)
+                };
+                if !release_dsb_path.exists() && !script.trim().is_empty() {
+                    let compiled = crate::vm::compiler::compile_duckyscript_to_dsb(
+                        &script,
+                        allow_abort,
+                        disable_autorepeat,
+                    );
+                    if compiled.is_success {
+                        let _ = fs::write(&release_dsb_path, &compiled.bin_array);
+                    }
+                }
             }
         }
 
@@ -360,10 +407,10 @@ impl DuckyProfile {
                 }
             }
             if slot.allow_abort {
-                cfg.push_str(&format!("ab{} 1\n", slot_idx));
+                cfg.push_str(&format!("ab {}\n", slot_idx));
             }
             if slot.disable_autorepeat {
-                cfg.push_str(&format!("dr{} 1\n", slot_idx));
+                cfg.push_str(&format!("dr {}\n", slot_idx));
             }
         }
 
@@ -378,19 +425,92 @@ impl DuckyProfile {
 
         for slot_idx in 1..=MAX_INPUT_SLOTS {
             let press_path = profile_dir.join(format!("key{slot_idx}.txt"));
+            let press_dsb_path = profile_dir.join(format!("key{slot_idx}.dsb"));
             let release_path = profile_dir.join(format!("key{slot_idx}-release.txt"));
+            let release_dsb_path = profile_dir.join(format!("key{slot_idx}-release.dsb"));
 
             if let Some(slot) = self.slots.get(&slot_idx) {
-                if !slot.on_press_script.trim().is_empty() {
+                let has_press = !slot.on_press_script.trim().is_empty();
+                let has_release = !slot.on_release_script.trim().is_empty();
+
+                if has_press {
+                    let compiled = crate::vm::compiler::compile_duckyscript_to_dsb(
+                        &slot.on_press_script,
+                        slot.allow_abort,
+                        slot.disable_autorepeat,
+                    );
+                    if !compiled.is_success {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!(
+                                "key{slot_idx}.txt compile error on line {}: {}",
+                                compiled.error_line_number_starting_from_1, compiled.error_comment
+                            ),
+                        ));
+                    }
                     fs::write(&press_path, &slot.on_press_script)?;
-                } else if press_path.exists() {
-                    let _ = fs::remove_file(&press_path);
+                    fs::write(&press_dsb_path, &compiled.bin_array)?;
+                } else if has_release {
+                    // When only On-Release script exists, write empty keyN.txt and 4-byte HALT keyN.dsb
+                    let compiled = crate::vm::compiler::compile_duckyscript_to_dsb(
+                        "",
+                        slot.allow_abort,
+                        slot.disable_autorepeat,
+                    );
+                    if !compiled.is_success {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            compiled.error_comment,
+                        ));
+                    }
+                    fs::write(&press_path, "")?;
+                    fs::write(&press_dsb_path, &compiled.bin_array)?;
+                } else {
+                    if press_path.exists() {
+                        let _ = fs::remove_file(&press_path);
+                    }
+                    if press_dsb_path.exists() {
+                        let _ = fs::remove_file(&press_dsb_path);
+                    }
                 }
 
-                if !slot.on_release_script.trim().is_empty() {
+                if has_release {
+                    let compiled = crate::vm::compiler::compile_duckyscript_to_dsb(
+                        &slot.on_release_script,
+                        slot.allow_abort,
+                        slot.disable_autorepeat,
+                    );
+                    if !compiled.is_success {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!(
+                                "key{slot_idx}-release.txt compile error on line {}: {}",
+                                compiled.error_line_number_starting_from_1, compiled.error_comment
+                            ),
+                        ));
+                    }
                     fs::write(&release_path, &slot.on_release_script)?;
-                } else if release_path.exists() {
+                    fs::write(&release_dsb_path, &compiled.bin_array)?;
+                } else {
+                    if release_path.exists() {
+                        let _ = fs::remove_file(&release_path);
+                    }
+                    if release_dsb_path.exists() {
+                        let _ = fs::remove_file(&release_dsb_path);
+                    }
+                }
+            } else {
+                if press_path.exists() {
+                    let _ = fs::remove_file(&press_path);
+                }
+                if press_dsb_path.exists() {
+                    let _ = fs::remove_file(&press_dsb_path);
+                }
+                if release_path.exists() {
                     let _ = fs::remove_file(&release_path);
+                }
+                if release_dsb_path.exists() {
+                    let _ = fs::remove_file(&release_dsb_path);
                 }
             }
         }

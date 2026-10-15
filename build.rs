@@ -5,6 +5,12 @@ fn main() {
         .qt_module("Network")
         .qt_module("Quick")
         .qt_module("QuickControls2")
+        .qt_module("Widgets")
+        .qt_module("Svg")
+        .cc_builder(|cc| {
+            cc.include("src/cpp");
+            cc.include("/usr/include/KF6/KColorScheme");
+        })
         .qml_module(QmlModule {
             uri: "io.github.duckydeck",
             version_major: 1,
@@ -18,7 +24,12 @@ fn main() {
                 "src/qml/AutoSwitchDrawer.qml",
                 "src/qml/AiArchitectModal.qml",
             ],
+            qrc_files: &[
+                "src/qml/icons/tray-icon-dark.svg",
+                "src/qml/icons/tray-icon-light.svg",
+            ],
             ..Default::default()
         })
         .build();
+    println!("cargo:rustc-link-lib=KF6ColorScheme");
 }

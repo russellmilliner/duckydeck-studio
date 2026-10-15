@@ -7,6 +7,7 @@ Kirigami.OverlayDrawer {
     id: pgvDrawer
     edge: Qt.RightEdge
     modal: true
+    handleVisible: false
     width: Math.min(parent.width * 0.85, 620)
     height: parent.height
 

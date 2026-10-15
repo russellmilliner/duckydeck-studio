@@ -2828,7 +2828,7 @@ impl CodegenCtx {
                         }
                     }
                 }
-                if s.len() == 1 && s.as_bytes()[0] <= 0xFF {
+                if s.len() == 1 {
                     self.emit_pushc(s.as_bytes()[0] as i64, comment);
                 } else {
                     return Err(format!("Unsupported Constant: {s}"));
@@ -3394,26 +3394,32 @@ pub fn compile_duckyscript_to_dsb(
     allow_abort: bool,
     disable_autorepeat: bool,
 ) -> CompileResult {
-    let mut final_lines = Vec::new();
+    let mut program_listing = Vec::new();
     if allow_abort {
-        final_lines.push("$_ALLOW_ABORT = 1".to_string());
+        program_listing.push(DsLine {
+            content: "$_ALLOW_ABORT = 1".to_string(),
+            orig_lnum_sf1: 1,
+            indent_level: 0,
+        });
     }
     if disable_autorepeat {
-        final_lines.push("$_DONT_REPEAT = 1".to_string());
+        program_listing.push(DsLine {
+            content: "$_DONT_REPEAT = 1".to_string(),
+            orig_lnum_sf1: 1,
+            indent_level: 0,
+        });
     }
-    for line in script_text.trim_start_matches([' ', '\t']).split('\n') {
-        final_lines.push(line.trim_end_matches('\r').to_string());
-    }
-
-    let program_listing: Vec<DsLine> = final_lines
-        .into_iter()
+    for (i, line) in script_text
+        .trim_start_matches([' ', '\t'])
+        .split('\n')
         .enumerate()
-        .map(|(i, content)| DsLine {
-            content,
+    {
+        program_listing.push(DsLine {
+            content: line.trim_end_matches('\r').to_string(),
             orig_lnum_sf1: (i + 1) as isize,
             indent_level: 0,
-        })
-        .collect();
+        });
+    }
 
     let stdlib_raw: Vec<DsLine> = default_stdlib_lines()
         .into_iter()
@@ -3675,3 +3681,120 @@ pub fn compile_duckyscript_to_dsb(
         bin_array,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::Path;
+
+    #[test]
+    fn test_empty_script_compiles_to_4_byte_halt() {
+        let res = compile_duckyscript_to_dsb("", false, false);
+        assert!(res.is_success);
+        assert_eq!(res.bin_array, vec![0xFF, 0x02, 0x00, 0x0B]);
+    }
+
+    #[test]
+    fn test_string_and_combo_script() {
+        let res = compile_duckyscript_to_dsb("STRING Hello\nCTRL SHIFT z\n", false, false);
+        assert!(res.is_success, "Err: {}", res.error_comment);
+        assert!(res.bin_array.starts_with(&[0xFF, 0x02, 0x00]));
+    }
+
+    #[test]
+    fn test_sd_card_dsb_parity() {
+        let sd_path = Path::new("/run/media/millinr/DP24_2874");
+        if !sd_path.is_dir() {
+            return;
+        }
+        let mut total = 0usize;
+        let mut matched = 0usize;
+        let mut mismatches = Vec::new();
+
+        for entry in fs::read_dir(sd_path).unwrap().flatten() {
+            let dir = entry.path();
+            if !dir.is_dir() {
+                continue;
+            }
+            let Some(fname) = dir.file_name().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            if !fname.starts_with("profile_") {
+                continue;
+            }
+
+            let mut ab_slots = HashSet::new();
+            let mut dr_slots = HashSet::new();
+            let cfg_path = dir.join("config.txt");
+            if let Ok(cfg) = fs::read_to_string(&cfg_path) {
+                for line in cfg.lines() {
+                    let t = line.trim();
+                    if let Some(rest) = t.strip_prefix("ab ") {
+                        if let Ok(idx) = rest.trim().parse::<usize>() {
+                            ab_slots.insert(idx);
+                        }
+                    } else if let Some(rest) = t.strip_prefix("dr ") {
+                        if let Ok(idx) = rest.trim().parse::<usize>() {
+                            dr_slots.insert(idx);
+                        }
+                    }
+                }
+            }
+
+            for slot in 1..=36 {
+                for is_rel in [false, true] {
+                    let txt_name = if is_rel {
+                        format!("key{slot}-release.txt")
+                    } else {
+                        format!("key{slot}.txt")
+                    };
+                    let dsb_name = if is_rel {
+                        format!("key{slot}-release.dsb")
+                    } else {
+                        format!("key{slot}.dsb")
+                    };
+                    let txt_path = dir.join(&txt_name);
+                    let dsb_path = dir.join(&dsb_name);
+                    if txt_path.exists() && dsb_path.exists() {
+                        total += 1;
+                        let script = fs::read_to_string(&txt_path).unwrap();
+                        let expected = fs::read(&dsb_path).unwrap();
+                        let res = compile_duckyscript_to_dsb(
+                            &script,
+                            ab_slots.contains(&slot),
+                            dr_slots.contains(&slot),
+                        );
+                        if res.is_success && res.bin_array == expected {
+                            matched += 1;
+                        } else {
+                            mismatches.push((
+                                format!("{fname}/{txt_name}"),
+                                res.is_success,
+                                res.error_comment,
+                                res.bin_array,
+                                expected,
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        println!("SD Card .dsb parity: {matched}/{total} matched");
+        for (path, ok, err, got, exp) in &mismatches {
+            println!(
+                "MISMATCH {path}: ok={ok} err='{err}'\n  got ({}) = {:02x?}\n  exp ({}) = {:02x?}",
+                got.len(),
+                &got[..got.len().min(48)],
+                exp.len(),
+                &exp[..exp.len().min(48)]
+            );
+        }
+        assert!(
+            mismatches.is_empty(),
+            "{} out of {total} .dsb files differed",
+            mismatches.len()
+        );
+    }
+}
+
