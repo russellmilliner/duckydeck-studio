@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.duckydeck.Studio</id>
+  <name>DuckyDeck Studio</name>
+  <summary>KDE Plasma 6 Configurator &amp; AI Macro Architect for duckyPad Pro</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.duckydeck">
+    <name>DuckyDeck Studio Contributors</name>
+  </developer>
+  <description>
+    <p>
+      DuckyDeck Studio is a modern Qt 6 and KDE Kirigami desktop application for programming the
+      duckyPad Pro (2024+) and original duckyPad (2020) mechanical macropads on Linux.
+    </p>
+    <ul>
+      <li>Interactive 4x5 RGB mechanical switch matrix, rotary encoders, and 32 expansion channels</li>
+      <li>Pixel-accurate 128x128 monochrome OLED display simulator</li>
+      <li>Live USB HID communication for profile switching, per-key RGB, RTC sync, and PGV (_GV0.._GV31) editing</li>
+      <li>Native KDE Plasma 6 Wayland active-window auto-switcher via KWin D-Bus scripting</li>
+      <li>AI Profile Architect grounded in local ~/.config/kglobalshortcutsrc KDE keybindings</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.duckydeck.Studio.desktop</launchable>
+  <provides>
+    <binary>duckydeck-studio</binary>
+    <!-- Hardware USB Modalias so KDE Discover auto-recommends when duckyPad Pro / 2020 is plugged in -->
+    <modalias>usb:v0483pD11Dd*</modalias>
+    <modalias>usb:v0483pD11Cd*</modalias>
+  </provides>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.0" date="2026-10-14" />
+  </releases>
+</component>

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=DuckyDeck Studio
+Comment=KDE Plasma 6 Configurator & AI Macro Architect for duckyPad Pro
+Exec=duckydeck-studio
+Icon=io.github.duckydeck.Studio
+Terminal=false
+Type=Application
+Categories=Utility;HardwareSettings;Qt;KDE;
+Keywords=duckyPad;macropad;duckyScript;mechanical;keyboard;macro;
+StartupWMClass=duckydeck-studio

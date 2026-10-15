@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE language>
+<language name="duckyScript 3"
+          version="1"
+          kateversion="5.79"
+          section="Scripts"
+          extensions="*.txt;*.ds;*.ducky"
+          mimetype="text/x-duckyscript3"
+          author="DuckyDeck Studio"
+          license="GPL-3.0-or-later">
+  <highlighting>
+    <list name="control_flow">
+      <item>IF</item>
+      <item>ELSE_IF</item>
+      <item>ELSE</item>
+      <item>END_IF</item>
+      <item>WHILE</item>
+      <item>END_WHILE</item>
+      <item>FUN</item>
+      <item>END_FUN</item>
+      <item>RETURN</item>
+      <item>BREAK</item>
+      <item>CONTINUE</item>
+      <item>HALT</item>
+      <item>REPEAT</item>
+    </list>
+
+    <list name="declarations">
+      <item>VAR</item>
+      <item>DEFINE</item>
+    </list>
+
+    <list name="commands">
+      <item>DELAY</item>
+      <item>DEFAULTDELAY</item>
+      <item>DEFAULTCHARDELAY</item>
+      <item>CHARJITTER</item>
+      <item>KEYDOWN</item>
+      <item>KEYUP</item>
+      <item>MOUSE_MOVE</item>
+      <item>MOUSE_SCROLL</item>
+      <item>LMOUSE</item>
+      <item>RMOUSE</item>
+      <item>MMOUSE</item>
+      <item>FMOUSE</item>
+      <item>BMOUSE</item>
+      <item>PREV_PROFILE</item>
+      <item>NEXT_PROFILE</item>
+      <item>GOTO_PROFILE</item>
+      <item>BCLR</item>
+      <item>EMUK</item>
+      <item>RANDINT</item>
+      <item>RANDCHR</item>
+      <item>PUTS</item>
+    </list>
+
+    <list name="oled_commands">
+      <item>OLED_CURSOR</item>
+      <item>OLED_CLEAR</item>
+      <item>OLED_CIRCLE</item>
+      <item>OLED_LINE</item>
+      <item>OLED_RECT</item>
+      <item>OLED_UPDATE</item>
+      <item>OLED_RESTORE</item>
+    </list>
+
+    <list name="rgb_commands">
+      <item>SWC_SET</item>
+      <item>SWC_FILL</item>
+      <item>SWC_RESET</item>
+    </list>
+
+    <list name="special_keys">
+      <item>CTRL</item>
+      <item>RCTRL</item>
+      <item>CONTROL</item>
+      <item>SHIFT</item>
+      <item>RSHIFT</item>
+      <item>ALT</item>
+      <item>RALT</item>
+      <item>WINDOWS</item>
+      <item>RWINDOWS</item>
+      <item>GUI</item>
+      <item>COMMAND</item>
+      <item>RCOMMAND</item>
+      <item>OPTION</item>
+      <item>ROPTION</item>
+      <item>ESC</item>
+      <item>ENTER</item>
+      <item>UP</item>
+      <item>DOWN</item>
+      <item>LEFT</item>
+      <item>RIGHT</item>
+      <item>SPACE</item>
+      <item>BACKSPACE</item>
+      <item>TAB</item>
+      <item>CAPSLOCK</item>
+      <item>PRINTSCREEN</item>
+      <item>SCROLLLOCK</item>
+      <item>PAUSE</item>
+      <item>INSERT</item>
+      <item>HOME</item>
+      <item>PAGEUP</item>
+      <item>PAGEDOWN</item>
+      <item>DELETE</item>
+      <item>END</item>
+      <item>MENU</item>
+      <item>POWER</item>
+      <item>NUMLOCK</item>
+      <item>MK_VOLUP</item>
+      <item>MK_VOLDOWN</item>
+      <item>MK_MUTE</item>
+      <item>MK_PREV</item>
+      <item>MK_NEXT</item>
+      <item>MK_PP</item>
+      <item>MK_STOP</item>
+      <item>KP_SLASH</item>
+      <item>KP_ASTERISK</item>
+      <item>KP_MINUS</item>
+      <item>KP_PLUS</item>
+      <item>KP_ENTER</item>
+      <item>KP_DOT</item>
+      <item>KP_EQUAL</item>
+      <item>KP_0</item><item>KP_1</item><item>KP_2</item><item>KP_3</item><item>KP_4</item>
+      <item>KP_5</item><item>KP_6</item><item>KP_7</item><item>KP_8</item><item>KP_9</item>
+      <item>F1</item><item>F2</item><item>F3</item><item>F4</item><item>F5</item><item>F6</item>
+      <item>F7</item><item>F8</item><item>F9</item><item>F10</item><item>F11</item><item>F12</item>
+      <item>F13</item><item>F14</item><item>F15</item><item>F16</item><item>F17</item><item>F18</item>
+      <item>F19</item><item>F20</item><item>F21</item><item>F22</item><item>F23</item><item>F24</item>
+      <item>TRUE</item>
+      <item>FALSE</item>
+    </list>
+
+    <contexts>
+      <context name="Normal" attribute="Normal Text" lineEndContext="#stay">
+        <Detect2Chars char="/" char1="/" attribute="Comment" context="SingleLineComment"/>
+        <WordDetect String="REM_BLOCK" attribute="Comment" context="BlockComment" beginRegion="RemBlock"/>
+        <WordDetect String="STRINGLN_BLOCK" attribute="Keyword" context="StringLnBlock" beginRegion="StrLnBlock"/>
+        <WordDetect String="STRING_BLOCK" attribute="Keyword" context="StringBlock" beginRegion="StrBlock"/>
+        <RegExpr String="\b(STRING|STRINGLN)\b" attribute="Keyword" context="LineRestString"/>
+        <RegExpr String="\b(OLED_PRINT|OLED_CPRINT)\b" attribute="OLED Command" context="LineRestString"/>
+        <RegExpr String="^\s*LOOP[0-9]+:" attribute="Label" context="#stay"/>
+        <keyword String="control_flow" attribute="Control Flow" context="#stay"/>
+        <keyword String="declarations" attribute="Declaration" context="#stay"/>
+        <keyword String="commands" attribute="Command" context="#stay"/>
+        <keyword String="oled_commands" attribute="OLED Command" context="#stay"/>
+        <keyword String="rgb_commands" attribute="RGB Command" context="#stay"/>
+        <keyword String="special_keys" attribute="Special Key" context="#stay"/>
+        <RegExpr String="\b_GV([0-9]|[12][0-9]|3[01])\b" attribute="PGV Variable" context="#stay"/>
+        <RegExpr String="\b_[A-Z0-9_]+\b" attribute="Reserved Variable" context="#stay"/>
+        <RegExpr String="\$[A-Za-z_][A-Za-z0-9_]*\b" attribute="Variable" context="#stay"/>
+        <RegExpr String="0[xX][0-9a-fA-F]+" attribute="Hex" context="#stay"/>
+        <Int attribute="Number" context="#stay"/>
+      </context>
+
+      <context name="SingleLineComment" attribute="Comment" lineEndContext="#pop"/>
+
+      <context name="BlockComment" attribute="Comment" lineEndContext="#stay">
+        <WordDetect String="END_REM" attribute="Comment" context="#pop" endRegion="RemBlock"/>
+      </context>
+
+      <context name="StringLnBlock" attribute="String" lineEndContext="#stay">
+        <WordDetect String="END_STRINGLN" attribute="Keyword" context="#pop" endRegion="StrLnBlock"/>
+        <RegExpr String="\$[A-Za-z_][A-Za-z0-9_]*\b" attribute="Variable" context="#stay"/>
+      </context>
+
+      <context name="StringBlock" attribute="String" lineEndContext="#stay">
+        <WordDetect String="END_STRING" attribute="Keyword" context="#pop" endRegion="StrBlock"/>
+        <RegExpr String="\$[A-Za-z_][A-Za-z0-9_]*\b" attribute="Variable" context="#stay"/>
+      </context>
+
+      <context name="LineRestString" attribute="String" lineEndContext="#pop">
+        <RegExpr String="%[0-9]*[dDuUxX]_[A-Za-z0-9_]+" attribute="Reserved Variable" context="#stay"/>
+        <RegExpr String="\b_GV([0-9]|[12][0-9]|3[01])\b" attribute="PGV Variable" context="#stay"/>
+        <RegExpr String="\$[A-Za-z_][A-Za-z0-9_]*\b" attribute="Variable" context="#stay"/>
+      </context>
+    </contexts>
+
+    <itemDatas>
+      <itemData name="Normal Text"       defStyleNum="dsNormal"/>
+      <itemData name="Control Flow"      defStyleNum="dsControlFlow" bold="true"/>
+      <itemData name="Declaration"       defStyleNum="dsKeyword" bold="true"/>
+      <itemData name="Keyword"           defStyleNum="dsKeyword"/>
+      <itemData name="Command"           defStyleNum="dsBuiltIn"/>
+      <itemData name="OLED Command"      defStyleNum="dsExtension" bold="true"/>
+      <itemData name="RGB Command"       defStyleNum="dsAttribute" bold="true"/>
+      <itemData name="Special Key"       defStyleNum="dsDataType"/>
+      <itemData name="PGV Variable"      defStyleNum="dsImport" bold="true"/>
+      <itemData name="Reserved Variable" defStyleNum="dsPreprocessor"/>
+      <itemData name="Variable"          defStyleNum="dsVariable"/>
+      <itemData name="Label"             defStyleNum="dsFunction" bold="true"/>
+      <itemData name="Number"            defStyleNum="dsDecVal"/>
+      <itemData name="Hex"               defStyleNum="dsBaseN"/>
+      <itemData name="String"            defStyleNum="dsString"/>
+      <itemData name="Comment"           defStyleNum="dsComment" italic="true"/>
+    </itemDatas>
+  </highlighting>
+</language>

@@ -1,0 +1,92 @@
+app-id: io.github.duckydeck.Studio
+runtime: org.kde.Platform
+runtime-version: '6.8'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.llvm18
+command: duckydeck-studio
+
+finish-args:
+  # 1. Wayland, X11 Fallback & GPU Acceleration
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+  # 2. USB HID Access (/dev/hidraw* requires --device=all in Flatpak)
+  - --device=all
+
+  # 3. Network Access (Cloud AI APIs & Local Ollama on localhost:11434)
+  - --share=network
+
+  # 4. SD Card Mass Storage Access (auto-mounted duckyPad Pro microSD)
+  - --filesystem=xdg-run/gvfs:ro
+  - --filesystem=/run/media:rw
+  - --filesystem=/media:rw
+
+  # 5. Read-Only Access to KDE Shortcut Configs for AI Context Scraping
+  - --filesystem=xdg-config/kglobalshortcutsrc:ro
+  - --filesystem=xdg-data/kxmlgui5:ro
+
+  # 6. KWin hook script in XDG_RUNTIME_DIR
+  - --filesystem=xdg-run/duckydeck-kwin6-hook.js:create
+
+  # 7. D-Bus Permissions (KWin Auto-Switch, Tray Icon, Keyring, Host Spawn)
+  - --talk-name=org.kde.KWin
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Flatpak
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm18/bin
+  env:
+    CARGO_HOME: /run/build/duckydeck-studio/cargo
+    LIBCLANG_PATH: /usr/lib/sdk/llvm18/lib
+    QMAKE: /usr/bin/qmake6
+    QT_VERSION_MAJOR: '6'
+
+modules:
+  - name: libusb
+    config-opts:
+      - --disable-static
+    cleanup:
+      - /include
+      - /lib/*.la
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/libusb/libusb/releases/download/v1.0.27/libusb-1.0.27.tar.bz2
+        sha256: ffaa41d741a8a3bee244ac8e54a72ea05bf2879663c098c82fc5757853441575
+
+  - name: hidapi
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/libusb/hidapi/archive/refs/tags/hidapi-0.14.0.tar.gz
+        sha256: a5714234abe6e1f53647dd8cba7d69f65f71c558b7ef96ed218864ff9405b2fb
+
+  - name: duckydeck-studio
+    buildsystem: simple
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      - install -Dm755 ./target/release/duckydeck-studio -t /app/bin/
+      - install -Dm644 ./data/io.github.duckydeck.Studio.desktop -t /app/share/applications/
+      - install -Dm644 ./data/io.github.duckydeck.Studio.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 ./data/icons/io.github.duckydeck.Studio.svg -t /app/share/icons/hicolor/scalable/apps/
+      - install -Dm644 ./data/udev/70-duckypad.rules -t /app/share/udev/rules.d/
+      - install -Dm755 ./data/udev/install-udev-rules.sh -t /app/bin/
+      - install -Dm644 ./data/syntax/duckyscript3.xml -t /app/share/org.kde.syntax-highlighting/syntax/
+    sources:
+      - type: dir
+        path: .
+      - cargo-sources.json

@@ -1,0 +1,50 @@
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls as QQC2
+import org.kde.kirigami as Kirigami
+
+Kirigami.Dialog {
+    id: aiDialog
+    title: qsTr("AI Profile Architect & Shortcut Scraper")
+    preferredWidth: 560
+    standardButtons: Kirigami.Dialog.Ok | Kirigami.Dialog.Cancel
+
+    property var controller: null
+
+    onAccepted: {
+        if (controller) {
+            controller.generateAiMacro(appInput.text, promptInput.text)
+        }
+    }
+
+    ColumnLayout {
+        spacing: Kirigami.Units.largeSpacing
+        width: parent.width
+
+        Kirigami.FormLayout {
+            Layout.fillWidth: true
+
+            QQC2.TextField {
+                id: appInput
+                Kirigami.FormData.label: qsTr("Target Application / Game:")
+                text: "Kdenlive"
+                placeholderText: qsTr("e.g., Blender, Kdenlive, Helldivers 2, FreeCAD")
+            }
+
+            QQC2.CheckBox {
+                id: scrapeToggle
+                Kirigami.FormData.label: qsTr("Grounding:")
+                checked: true
+                text: qsTr("Scrape ~/.config/kglobalshortcutsrc for local KDE keybindings")
+            }
+
+            QQC2.TextArea {
+                id: promptInput
+                Kirigami.FormData.label: qsTr("Macro / Layout Goal:")
+                Layout.fillWidth: true
+                implicitHeight: 90
+                text: "Create a timeline razor cut & ripple delete macro with OLED HUD confirmation."
+            }
+        }
+    }
+}
