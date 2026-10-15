@@ -15,6 +15,7 @@ fn main() {
                 "src/qml/UdevBanner.qml",
                 "src/qml/HardwareCanvas.qml",
                 "src/qml/PgvInspectorDrawer.qml",
+                "src/qml/AutoSwitchDrawer.qml",
                 "src/qml/AiArchitectModal.qml",
             ],
             ..Default::default()

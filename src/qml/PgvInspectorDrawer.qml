@@ -119,6 +119,11 @@ Kirigami.OverlayDrawer {
                 text: qsTr("Write Dirty (%1)").arg(pgvDrawer.dirtyCount)
                 onClicked: pgvDrawer.commitDirtyToDevice()
             }
+
+            QQC2.Button {
+                text: qsTr("✕ Close")
+                onClicked: pgvDrawer.close()
+            }
         }
 
         Kirigami.SearchField {
@@ -159,9 +164,13 @@ Kirigami.OverlayDrawer {
                     width: pgvListView.width - 12
                     height: matchesSearch ? 44 : 0
                     radius: 6
-                    color: dirty ? "#2b2418" : (idx % 2 === 0 ? "#1b1f27" : "#151820")
+                    color: dirty
+                        ? Kirigami.Theme.neutralBackgroundColor
+                        : (idx % 2 === 0 ? Kirigami.Theme.backgroundColor : Kirigami.Theme.alternateBackgroundColor)
                     border.width: dirty ? 1.5 : 1
-                    border.color: dirty ? "#f59e0b" : "#2c323f"
+                    border.color: dirty
+                        ? Kirigami.Theme.neutralTextColor
+                        : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
 
                     RowLayout {
                         anchors.fill: parent
@@ -174,7 +183,7 @@ Kirigami.OverlayDrawer {
                             text: rowCard.name
                             font.family: "monospace"
                             font.bold: true
-                            color: rowCard.dirty ? "#fbbf24" : "#38bdf8"
+                            color: rowCard.dirty ? Kirigami.Theme.neutralTextColor : Kirigami.Theme.highlightColor
                         }
 
                         QQC2.TextField {

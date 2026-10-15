@@ -6,9 +6,8 @@ import org.kde.kirigami as Kirigami
 
 Item {
     id: canvasRoot
-    implicitWidth: 476
+    implicitWidth: 520
     implicitHeight: 450
-    width: 476
     clip: true
 
     property var controller: null
@@ -17,35 +16,173 @@ Item {
     property bool showExpansion: false
     property bool oledScriptMode: false
 
+    property string enc1CcwLabel: "Size -"
+    property string enc1CwLabel: "Size +"
+    property string enc1PushLabel: "Invert"
+    property string enc2CcwLabel: "Zoom -"
+    property string enc2CwLabel: "Zoom +"
+    property string enc2PushLabel: "Frame"
+
     signal slotSelected(int slotNumber, string slotTitle, color slotColor)
+
+    property var profileLabels: []
+    property var profileNumbers: []
+    property var expansionLabels: ({})
 
     property ListModel keyModel: ListModel {
         Component.onCompleted: {
-            const defaults = [
-                { slot: 1,  l1: "Front", l2: "View",   r: 0,   g: 170, b: 255, hasRel: false, hasLoop: false },
-                { slot: 2,  l1: "Side",  l2: "View",   r: 0,   g: 170, b: 255, hasRel: false, hasLoop: false },
-                { slot: 3,  l1: "Top",   l2: "View",   r: 0,   g: 170, b: 255, hasRel: false, hasLoop: false },
-                { slot: 4,  l1: "Wire",  l2: "Frame",  r: 0,   g: 220, b: 200, hasRel: true,  hasLoop: false },
-                { slot: 5,  l1: "Grab",  l2: "Brush",  r: 40,  g: 220, b: 100, hasRel: false, hasLoop: false },
-                { slot: 6,  l1: "Clay",  l2: "Strips", r: 40,  g: 220, b: 100, hasRel: false, hasLoop: false },
-                { slot: 7,  l1: "Crease",l2: "Tool",   r: 40,  g: 220, b: 100, hasRel: false, hasLoop: false },
-                { slot: 8,  l1: "Smooth",l2: "Hold",   r: 40,  g: 220, b: 100, hasRel: true,  hasLoop: false },
-                { slot: 9,  l1: "Draw",  l2: "Sharp",  r: 40,  g: 220, b: 100, hasRel: false, hasLoop: false },
-                { slot: 10, l1: "Inflat",l2: "Brush",  r: 40,  g: 220, b: 100, hasRel: false, hasLoop: false },
-                { slot: 11, l1: "Pinch", l2: "Edge",   r: 40,  g: 220, b: 100, hasRel: false, hasLoop: false },
-                { slot: 12, l1: "Mask",  l2: "Lasso",  r: 255, g: 180, b: 0,   hasRel: false, hasLoop: false },
-                { slot: 13, l1: "DynTop",l2: "Toggle", r: 255, g: 140, b: 0,   hasRel: false, hasLoop: false },
-                { slot: 14, l1: "Voxel", l2: "Remesh", r: 255, g: 140, b: 0,   hasRel: false, hasLoop: false },
-                { slot: 15, l1: "Invert",l2: "Mask",   r: 255, g: 180, b: 0,   hasRel: false, hasLoop: false },
-                { slot: 16, l1: "Clear", l2: "Mask",   r: 255, g: 180, b: 0,   hasRel: false, hasLoop: false },
-                { slot: 17, l1: "Undo",  l2: "Step",   r: 255, g: 60,  b: 60,  hasRel: false, hasLoop: false },
-                { slot: 18, l1: "Redo",  l2: "Step",   r: 255, g: 60,  b: 60,  hasRel: false, hasLoop: false },
-                { slot: 19, l1: "Auto",  l2: "Click",  r: 180, g: 80,  b: 255, hasRel: false, hasLoop: true  },
-                { slot: 20, l1: "Save",  l2: "Incr+",  r: 180, g: 80,  b: 255, hasRel: false, hasLoop: false }
-            ]
-            for (let i = 0; i < defaults.length; ++i) {
-                append(defaults[i])
+            for (let i = 1; i <= 20; ++i) {
+                append({
+                    slot: i,
+                    l1: "",
+                    l2: "",
+                    r: 0,
+                    g: 170,
+                    b: 255,
+                    hasRel: false,
+                    hasLoop: false
+                })
             }
+            canvasRoot.syncProfilesFromController()
+            canvasRoot.syncSlotsFromController()
+        }
+    }
+
+    onControllerChanged: {
+        syncProfilesFromController()
+        syncSlotsFromController()
+    }
+
+    Connections {
+        target: canvasRoot.controller
+        function onActiveProfileSlotsJsonChanged() {
+            canvasRoot.syncSlotsFromController()
+        }
+        function onProfilesJsonChanged() {
+            canvasRoot.syncProfilesFromController()
+        }
+        function onActiveProfileChanged() {
+            canvasRoot.syncActiveProfileSelection()
+            oledSimulator.requestPaint()
+        }
+        function onActiveProfileNameChanged() {
+            oledSimulator.requestPaint()
+        }
+    }
+
+    function syncActiveProfileSelection() {
+        if (!controller || !profileNumbers || profileNumbers.length === 0) return
+        const idx = profileNumbers.indexOf(controller.activeProfile)
+        if (idx >= 0 && profileCombo.currentIndex !== idx) {
+            profileCombo.currentIndex = idx
+        }
+    }
+
+    function syncProfilesFromController() {
+        if (!controller || !controller.profilesJson) return
+        try {
+            const arr = JSON.parse(controller.profilesJson)
+            if (!Array.isArray(arr)) return
+            const labels = []
+            const nums = []
+            let activeIdx = 0
+            for (let i = 0; i < arr.length; ++i) {
+                const p = arr[i]
+                nums.push(p.number)
+                labels.push("P" + p.number + ": " + p.name)
+                if (p.number === controller.activeProfile) {
+                    activeIdx = i
+                }
+            }
+            canvasRoot.profileNumbers = nums
+            canvasRoot.profileLabels = labels
+            profileCombo.currentIndex = activeIdx
+        } catch (e) {}
+    }
+
+    function formatEncoderLabel(item, fallback) {
+        const l1 = (item.l1 || "").trim()
+        const l2 = (item.l2 || "").trim()
+        const combined = (l1 + (l2.length > 0 ? " " + l2 : "")).trim()
+        return combined.length > 0 ? combined : fallback
+    }
+
+    function syncSlotsFromController() {
+        if (!controller || !controller.activeProfileSlotsJson || keyModel.count < 20) return
+        try {
+            const arr = JSON.parse(controller.activeProfileSlotsJson)
+            if (!Array.isArray(arr)) return
+            const expMap = {}
+            for (let i = 0; i < arr.length; ++i) {
+                const item = arr[i]
+                const s = item.slot
+                if (s >= 1 && s <= 20) {
+                    keyModel.setProperty(s - 1, "l1", item.l1 || "")
+                    keyModel.setProperty(s - 1, "l2", item.l2 || "")
+                    keyModel.setProperty(s - 1, "r", item.r !== undefined ? item.r : 0)
+                    keyModel.setProperty(s - 1, "g", item.g !== undefined ? item.g : 170)
+                    keyModel.setProperty(s - 1, "b", item.b !== undefined ? item.b : 255)
+                    keyModel.setProperty(s - 1, "hasRel", !!item.hasRel)
+                    keyModel.setProperty(s - 1, "hasLoop", !!item.hasLoop)
+                } else if (s === 21) {
+                    canvasRoot.enc1CcwLabel = formatEncoderLabel(item, "CCW")
+                } else if (s === 22) {
+                    canvasRoot.enc1CwLabel = formatEncoderLabel(item, "CW")
+                } else if (s === 23) {
+                    canvasRoot.enc1PushLabel = formatEncoderLabel(item, "Push")
+                } else if (s === 24) {
+                    canvasRoot.enc2CcwLabel = formatEncoderLabel(item, "CCW")
+                } else if (s === 25) {
+                    canvasRoot.enc2CwLabel = formatEncoderLabel(item, "CW")
+                } else if (s === 26) {
+                    canvasRoot.enc2PushLabel = formatEncoderLabel(item, "Push")
+                } else if (s >= 27 && s <= 58) {
+                    const lbl = ((item.l1 || "") + (item.l2 ? " " + item.l2 : "")).trim()
+                    if (lbl.length > 0 || item.hasScript) {
+                        expMap[s] = lbl.length > 0 ? lbl : "Active"
+                    }
+                }
+            }
+            canvasRoot.expansionLabels = expMap
+            oledSimulator.requestPaint()
+        } catch (e) {}
+    }
+
+    function slotColorFor(slotNumber) {
+        if (slotNumber >= 1 && slotNumber <= 20 && keyModel.count >= slotNumber) {
+            const item = keyModel.get(slotNumber - 1)
+            return Qt.rgba(item.r / 255.0, item.g / 255.0, item.b / 255.0, 1.0)
+        }
+        return Kirigami.Theme.highlightColor
+    }
+
+    function slotTitleFor(slotNumber) {
+        if (slotNumber >= 1 && slotNumber <= 20 && keyModel.count >= slotNumber) {
+            const item = keyModel.get(slotNumber - 1)
+            const label = ((item.l1 || "") + " " + (item.l2 || "")).trim()
+            return label.length > 0
+                ? ("Key " + slotNumber + " (" + label + ")")
+                : ("Key " + slotNumber + " (Unassigned)")
+        } else if (slotNumber === 21) {
+            return "Encoder 1 CCW — " + canvasRoot.enc1CcwLabel + " (Slot 21)"
+        } else if (slotNumber === 22) {
+            return "Encoder 1 CW — " + canvasRoot.enc1CwLabel + " (Slot 22)"
+        } else if (slotNumber === 23) {
+            return "Encoder 1 Push — " + canvasRoot.enc1PushLabel + " (Slot 23)"
+        } else if (slotNumber === 24) {
+            return "Encoder 2 CCW — " + canvasRoot.enc2CcwLabel + " (Slot 24)"
+        } else if (slotNumber === 25) {
+            return "Encoder 2 CW — " + canvasRoot.enc2CwLabel + " (Slot 25)"
+        } else if (slotNumber === 26) {
+            return "Encoder 2 Push — " + canvasRoot.enc2PushLabel + " (Slot 26)"
+        } else {
+            const idx = slotNumber - 27
+            const modNum = Math.floor(idx / 8) + 1
+            const chNum = (idx % 8) + 1
+            const expLbl = canvasRoot.expansionLabels[slotNumber] || ""
+            return expLbl.length > 0
+                ? ("Expansion M" + modNum + "·C" + chNum + " (" + expLbl + " • Slot " + slotNumber + ")")
+                : ("Expansion M" + modNum + "·C" + chNum + " (Slot " + slotNumber + ")")
         }
     }
 
@@ -79,9 +216,31 @@ Item {
         spacing: Kirigami.Units.smallSpacing
 
         RowLayout {
-            Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: 456
+            Layout.fillWidth: true
             spacing: 4
+
+            QQC2.ComboBox {
+                id: profileCombo
+                Layout.preferredWidth: 185
+                Layout.fillWidth: true
+                Layout.maximumWidth: 230
+                model: canvasRoot.profileLabels
+                onActivated: (index) => {
+                    if (index >= 0 && index < canvasRoot.profileNumbers.length && canvasRoot.controller) {
+                        const profNum = canvasRoot.profileNumbers[index]
+                        canvasRoot.controller.selectProfile(profNum)
+                        canvasRoot.slotSelected(
+                            canvasRoot.selectedSlot,
+                            canvasRoot.slotTitleFor(canvasRoot.selectedSlot),
+                            canvasRoot.slotColorFor(canvasRoot.selectedSlot)
+                        )
+                    }
+                }
+                QQC2.ToolTip.visible: hovered
+                QQC2.ToolTip.text: canvasRoot.controller && canvasRoot.controller.sdMountPath.length > 0
+                    ? qsTr("SD Path: %1 (%2 profiles)").arg(canvasRoot.controller.sdMountPath).arg(canvasRoot.profileNumbers.length)
+                    : qsTr("Active Profile (Load SD Card to view all SD profiles)")
+            }
 
             QQC2.ButtonGroup { id: modeGroup }
 
@@ -118,7 +277,7 @@ Item {
                 enabled: canvasRoot.selectedSlot >= 1 && canvasRoot.selectedSlot <= 20
                 onClicked: rgbPickerDialog.open()
                 QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: qsTr("Set custom ARGB LED color for Key %1 (SWC_SET)").arg(canvasRoot.selectedSlot)
+                QQC2.ToolTip.text: qsTr("Set custom ARGB LED color for Key %1 (SWCOLOR)").arg(canvasRoot.selectedSlot)
             }
 
             QQC2.ToolButton {
@@ -138,31 +297,40 @@ Item {
 
         Rectangle {
             id: pcbChassis
-            width: 456
-            height: 396
-            Layout.preferredWidth: 456
-            Layout.preferredHeight: 396
-            Layout.alignment: Qt.AlignHCenter
-            Layout.fillWidth: false
+            Kirigami.Theme.colorSet: Kirigami.Theme.View
+            Kirigami.Theme.inherit: false
+            readonly property color frameBorderColor: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+            readonly property real uiScale: Math.max(
+                0.85,
+                Math.min(
+                    (pcbChassis.width - 32) / 430.0,
+                    (pcbChassis.height - 32) / 360.0
+                )
+            )
+
+            Layout.fillWidth: true
             Layout.fillHeight: true
-            radius: 14
-            color: "#181b22"
-            border.color: "#2a313d"
-            border.width: 2
+            radius: 12
+            color: Kirigami.Theme.alternateBackgroundColor
+            border.color: pcbChassis.frameBorderColor
+            border.width: 1
             clip: true
 
             Rectangle {
                 anchors.fill: parent
                 anchors.margins: 5
-                radius: 11
+                radius: 10
                 color: "transparent"
-                border.color: "#18ffffff"
+                border.color: pcbChassis.frameBorderColor
+                opacity: 0.5
                 border.width: 1
             }
 
             Row {
                 anchors.centerIn: parent
                 spacing: 12
+                scale: pcbChassis.uiScale
+                transformOrigin: Item.Center
                 visible: !canvasRoot.showExpansion
 
                 Grid {
@@ -194,9 +362,11 @@ Item {
                             Rectangle {
                                 anchors.fill: parent
                                 radius: 8
-                                color: "#0f1115"
+                                color: Kirigami.Theme.backgroundColor
                                 border.width: keycapItem.isSelected ? 2 : 1
-                                border.color: keycapItem.isSelected ? "#38bdf8" : "#2a313d"
+                                border.color: keycapItem.isSelected
+                                    ? Kirigami.Theme.highlightColor
+                                    : pcbChassis.frameBorderColor
 
                                 Rectangle {
                                     anchors.top: parent.top
@@ -213,22 +383,15 @@ Item {
                                     anchors.margins: 5
                                     anchors.topMargin: 9
                                     radius: 6
-                                    gradient: Gradient {
-                                        GradientStop {
-                                            position: 0.0
-                                            color: keyMouse.pressed
-                                                ? Qt.darker(keycapItem.ledColor, 2.2)
-                                                : (keycapItem.isSelected ? "#223045" : "#242832")
-                                        }
-                                        GradientStop {
-                                            position: 1.0
-                                            color: keycapItem.isSelected ? "#16202f" : "#191c23"
-                                        }
-                                    }
+                                    color: keyMouse.pressed
+                                        ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(keycapItem.ledColor.r, keycapItem.ledColor.g, keycapItem.ledColor.b, 0.35))
+                                        : (keycapItem.isSelected
+                                            ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.18))
+                                            : Kirigami.Theme.alternateBackgroundColor)
                                     border.width: 1
                                     border.color: keycapItem.isSelected
-                                        ? "#38bdf8"
-                                        : Qt.rgba(r / 255.0, g / 255.0, b / 255.0, 0.45)
+                                        ? Kirigami.Theme.highlightColor
+                                        : Qt.rgba(r / 255.0, g / 255.0, b / 255.0, 0.5)
 
                                     QQC2.Label {
                                         anchors.top: parent.top
@@ -237,7 +400,7 @@ Item {
                                         text: keycapItem.slot
                                         font.pixelSize: 9
                                         font.bold: true
-                                        color: "#cbd5e1"
+                                        color: Kirigami.Theme.disabledTextColor
                                     }
 
                                     Row {
@@ -251,14 +414,14 @@ Item {
                                             text: "↑"
                                             font.pixelSize: 10
                                             font.bold: true
-                                            color: "#38bdf8"
+                                            color: Kirigami.Theme.highlightColor
                                         }
                                         QQC2.Label {
                                             visible: keycapItem.hasLoop
                                             text: "∞"
                                             font.pixelSize: 11
                                             font.bold: true
-                                            color: "#c084fc"
+                                            color: Kirigami.Theme.neutralTextColor
                                         }
                                     }
 
@@ -272,14 +435,14 @@ Item {
                                             text: keycapItem.l1
                                             font.pixelSize: 12
                                             font.bold: true
-                                            color: "#ffffff"
+                                            color: Kirigami.Theme.textColor
                                         }
                                         QQC2.Label {
                                             anchors.horizontalCenter: parent.horizontalCenter
                                             text: keycapItem.l2
                                             font.pixelSize: 10
                                             font.weight: Font.Medium
-                                            color: "#93c5fd"
+                                            color: Kirigami.Theme.disabledTextColor
                                         }
                                     }
                                 }
@@ -294,20 +457,13 @@ Item {
                                     canvasRoot.selectedSlot = keycapItem.slot
                                     canvasRoot.slotSelected(
                                         keycapItem.slot,
-                                        "Key " + keycapItem.slot + " (" + keycapItem.l1 + " " + keycapItem.l2 + ")",
+                                        canvasRoot.slotTitleFor(keycapItem.slot),
                                         keycapItem.ledColor
                                     )
                                     oledSimulator.requestPaint()
 
                                     if (mouse.button === Qt.RightButton) {
                                         rgbPickerDialog.open()
-                                    } else if (canvasRoot.controller) {
-                                        canvasRoot.controller.setKeyRgb(
-                                            keycapItem.slot - 1,
-                                            keycapItem.r,
-                                            keycapItem.g,
-                                            keycapItem.b
-                                        )
                                     }
                                 }
                             }
@@ -325,13 +481,13 @@ Item {
                         ccwSlot: 21
                         cwSlot: 22
                         pushSlot: 23
-                        ccwLabel: "Size -"
-                        cwLabel: "Size +"
-                        pushLabel: "Invert"
+                        ccwLabel: canvasRoot.enc1CcwLabel
+                        cwLabel: canvasRoot.enc1CwLabel
+                        pushLabel: canvasRoot.enc1PushLabel
                         selectedSlot: canvasRoot.selectedSlot
                         onActionTriggered: (slot, desc) => {
                             canvasRoot.selectedSlot = slot
-                            canvasRoot.slotSelected(slot, desc, "#38bdf8")
+                            canvasRoot.slotSelected(slot, canvasRoot.slotTitleFor(slot), Kirigami.Theme.highlightColor)
                             oledSimulator.requestPaint()
                         }
                     }
@@ -341,13 +497,13 @@ Item {
                         ccwSlot: 24
                         cwSlot: 25
                         pushSlot: 26
-                        ccwLabel: "Zoom -"
-                        cwLabel: "Zoom +"
-                        pushLabel: "Frame"
+                        ccwLabel: canvasRoot.enc2CcwLabel
+                        cwLabel: canvasRoot.enc2CwLabel
+                        pushLabel: canvasRoot.enc2PushLabel
                         selectedSlot: canvasRoot.selectedSlot
                         onActionTriggered: (slot, desc) => {
                             canvasRoot.selectedSlot = slot
-                            canvasRoot.slotSelected(slot, desc, "#38bdf8")
+                            canvasRoot.slotSelected(slot, canvasRoot.slotTitleFor(slot), Kirigami.Theme.highlightColor)
                             oledSimulator.requestPaint()
                         }
                     }
@@ -357,9 +513,9 @@ Item {
                         width: 134
                         height: 134
                         radius: 8
-                        color: "#050505"
-                        border.color: "#334155"
-                        border.width: 1.5
+                        color: "#000000" // Keep OLED simulator true black
+                        border.color: pcbChassis.frameBorderColor
+                        border.width: 2
 
                         Canvas {
                             id: oledSimulator
@@ -380,7 +536,10 @@ Item {
                                     ctx.fillStyle = "#020617"
                                     ctx.font = "bold 9px sans-serif"
                                     const profNum = canvasRoot.controller ? canvasRoot.controller.activeProfile : 1
-                                    ctx.fillText("P" + profNum + ": Blender Sculpt", 3, 10)
+                                    const profName = (canvasRoot.controller && canvasRoot.controller.activeProfileName)
+                                        ? canvasRoot.controller.activeProfileName
+                                        : "Default"
+                                    ctx.fillText("P" + profNum + ": " + profName.slice(0, 16), 3, 10)
 
                                     const cellW = 32
                                     const cellH = 23
@@ -446,9 +605,19 @@ Item {
                             font.pixelSize: 10
                             onClicked: {
                                 if (canvasRoot.controller) {
-                                    const next = Math.max(1, canvasRoot.controller.activeProfile - 1)
-                                    canvasRoot.controller.switchProfile(next)
-                                    oledSimulator.requestPaint()
+                                    if (canvasRoot.profileNumbers.length > 1 && profileCombo.currentIndex > 0) {
+                                        profileCombo.currentIndex -= 1
+                                        const profNum = canvasRoot.profileNumbers[profileCombo.currentIndex]
+                                        canvasRoot.controller.selectProfile(profNum)
+                                    } else {
+                                        const next = Math.max(1, canvasRoot.controller.activeProfile - 1)
+                                        canvasRoot.controller.selectProfile(next)
+                                    }
+                                    canvasRoot.slotSelected(
+                                        canvasRoot.selectedSlot,
+                                        canvasRoot.slotTitleFor(canvasRoot.selectedSlot),
+                                        canvasRoot.slotColorFor(canvasRoot.selectedSlot)
+                                    )
                                 }
                             }
                         }
@@ -460,9 +629,19 @@ Item {
                             font.pixelSize: 10
                             onClicked: {
                                 if (canvasRoot.controller) {
-                                    const next = Math.min(64, canvasRoot.controller.activeProfile + 1)
-                                    canvasRoot.controller.switchProfile(next)
-                                    oledSimulator.requestPaint()
+                                    if (canvasRoot.profileNumbers.length > 1 && profileCombo.currentIndex + 1 < canvasRoot.profileNumbers.length) {
+                                        profileCombo.currentIndex += 1
+                                        const profNum = canvasRoot.profileNumbers[profileCombo.currentIndex]
+                                        canvasRoot.controller.selectProfile(profNum)
+                                    } else {
+                                        const next = Math.min(64, canvasRoot.controller.activeProfile + 1)
+                                        canvasRoot.controller.selectProfile(next)
+                                    }
+                                    canvasRoot.slotSelected(
+                                        canvasRoot.selectedSlot,
+                                        canvasRoot.slotTitleFor(canvasRoot.selectedSlot),
+                                        canvasRoot.slotColorFor(canvasRoot.selectedSlot)
+                                    )
                                 }
                             }
                         }
@@ -480,7 +659,7 @@ Item {
                     text: qsTr("Expansion Modules (4 Modules × 8 Channels)")
                     font.bold: true
                     font.pixelSize: 12
-                    color: "#e2e8f0"
+                    color: Kirigami.Theme.textColor
                 }
 
                 GridLayout {
@@ -498,13 +677,18 @@ Item {
                             readonly property int moduleNum: Math.floor(index / 8) + 1
                             readonly property int chanNum: (index % 8) + 1
                             readonly property bool isSel: canvasRoot.selectedSlot === slotNum
+                            readonly property string expLabel: canvasRoot.expansionLabels[slotNum] || ""
 
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             radius: 6
-                            color: isSel ? "#1e3a5f" : "#1e222b"
-                            border.width: isSel ? 2 : 1
-                            border.color: isSel ? "#38bdf8" : "#334155"
+                            color: isSel
+                                ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.2))
+                                : Kirigami.Theme.backgroundColor
+                            border.width: isSel || expLabel.length > 0 ? 2 : 1
+                            border.color: isSel
+                                ? Kirigami.Theme.highlightColor
+                                : (expLabel.length > 0 ? Qt.alpha(Kirigami.Theme.highlightColor, 0.55) : pcbChassis.frameBorderColor)
 
                             Column {
                                 anchors.centerIn: parent
@@ -512,16 +696,18 @@ Item {
 
                                 QQC2.Label {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    text: "M" + moduleNum + "·C" + chanNum
+                                    text: expLabel.length > 0
+                                        ? ("M" + moduleNum + "·C" + chanNum + ": " + expLabel)
+                                        : ("M" + moduleNum + "·C" + chanNum)
                                     font.bold: true
                                     font.pixelSize: 10
-                                    color: "#f8fafc"
+                                    color: Kirigami.Theme.textColor
                                 }
                                 QQC2.Label {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     text: "Slot " + slotNum
                                     font.pixelSize: 9
-                                    color: "#94a3b8"
+                                    color: Kirigami.Theme.disabledTextColor
                                 }
                             }
 
@@ -531,8 +717,8 @@ Item {
                                     canvasRoot.selectedSlot = slotNum
                                     canvasRoot.slotSelected(
                                         slotNum,
-                                        "Expansion Module " + moduleNum + " Channel " + chanNum + " (Slot " + slotNum + ")",
-                                        "#38bdf8"
+                                        canvasRoot.slotTitleFor(slotNum),
+                                        Kirigami.Theme.highlightColor
                                     )
                                 }
                             }
@@ -557,6 +743,7 @@ Item {
         property string pushLabel: "Push"
         property int selectedSlot: 1
         property real visualAngle: 0
+        readonly property color frameBorderColor: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
 
         signal actionTriggered(int slot, string description)
 
@@ -569,7 +756,7 @@ Item {
                 text: encRoot.encoderTitle
                 font.pixelSize: 11
                 font.bold: true
-                color: "#f1f5f9"
+                color: Kirigami.Theme.textColor
             }
 
             Row {
@@ -580,9 +767,13 @@ Item {
                     width: 35
                     height: 48
                     radius: 6
-                    color: encRoot.selectedSlot === encRoot.ccwSlot ? "#1e3a5f" : "#1f242d"
+                    color: encRoot.selectedSlot === encRoot.ccwSlot
+                        ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.2))
+                        : Kirigami.Theme.backgroundColor
                     border.width: encRoot.selectedSlot === encRoot.ccwSlot ? 2 : 1
-                    border.color: encRoot.selectedSlot === encRoot.ccwSlot ? "#38bdf8" : "#334155"
+                    border.color: encRoot.selectedSlot === encRoot.ccwSlot
+                        ? Kirigami.Theme.highlightColor
+                        : encRoot.frameBorderColor
 
                     Column {
                         anchors.centerIn: parent
@@ -591,14 +782,14 @@ Item {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "⟲"
                             font.pixelSize: 16
-                            color: "#38bdf8"
+                            color: Kirigami.Theme.highlightColor
                         }
                         QQC2.Label {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: encRoot.ccwLabel
                             font.pixelSize: 9
                             font.bold: true
-                            color: "#f1f5f9"
+                            color: Kirigami.Theme.textColor
                         }
                     }
 
@@ -619,9 +810,13 @@ Item {
                     width: 48
                     height: 48
                     radius: 24
-                    color: encRoot.selectedSlot === encRoot.pushSlot ? "#1e3a5f" : "#262b36"
+                    color: encRoot.selectedSlot === encRoot.pushSlot
+                        ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.2))
+                        : Kirigami.Theme.backgroundColor
                     border.width: encRoot.selectedSlot === encRoot.pushSlot ? 2 : 1.5
-                    border.color: encRoot.selectedSlot === encRoot.pushSlot ? "#38bdf8" : "#64748b"
+                    border.color: encRoot.selectedSlot === encRoot.pushSlot
+                        ? Kirigami.Theme.highlightColor
+                        : encRoot.frameBorderColor
 
                     Item {
                         anchors.fill: parent
@@ -635,7 +830,7 @@ Item {
                             width: 3
                             height: 7
                             radius: 1.5
-                            color: "#38bdf8"
+                            color: Kirigami.Theme.highlightColor
                         }
                     }
 
@@ -647,14 +842,14 @@ Item {
                             text: "PUSH"
                             font.pixelSize: 8
                             font.bold: true
-                            color: "#94a3b8"
+                            color: Kirigami.Theme.disabledTextColor
                         }
                         QQC2.Label {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: encRoot.pushLabel
                             font.pixelSize: 9
                             font.bold: true
-                            color: "#ffffff"
+                            color: Kirigami.Theme.textColor
                         }
                     }
 
@@ -688,9 +883,13 @@ Item {
                     width: 35
                     height: 48
                     radius: 6
-                    color: encRoot.selectedSlot === encRoot.cwSlot ? "#1e3a5f" : "#1f242d"
+                    color: encRoot.selectedSlot === encRoot.cwSlot
+                        ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.2))
+                        : Kirigami.Theme.backgroundColor
                     border.width: encRoot.selectedSlot === encRoot.cwSlot ? 2 : 1
-                    border.color: encRoot.selectedSlot === encRoot.cwSlot ? "#38bdf8" : "#334155"
+                    border.color: encRoot.selectedSlot === encRoot.cwSlot
+                        ? Kirigami.Theme.highlightColor
+                        : encRoot.frameBorderColor
 
                     Column {
                         anchors.centerIn: parent
@@ -699,14 +898,14 @@ Item {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "⟳"
                             font.pixelSize: 16
-                            color: "#38bdf8"
+                            color: Kirigami.Theme.highlightColor
                         }
                         QQC2.Label {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: encRoot.cwLabel
                             font.pixelSize: 9
                             font.bold: true
-                            color: "#f1f5f9"
+                            color: Kirigami.Theme.textColor
                         }
                     }
 

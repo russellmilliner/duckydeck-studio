@@ -166,6 +166,7 @@ impl Default for DuckyKeySlot {
 pub struct DuckyProfile {
     pub number: u8,
     pub name: String,
+    pub folder_name_override: Option<String>,
     pub bg_color: [u8; 3],
     pub keydown_color: Option<[u8; 3]>,
     pub dim_unused_keys: bool,
@@ -178,6 +179,7 @@ impl Default for DuckyProfile {
         Self {
             number: 1,
             name: "Default".to_string(),
+            folder_name_override: None,
             bg_color: [16, 48, 96],
             keydown_color: Some([255, 255, 255]),
             dim_unused_keys: true,
@@ -187,15 +189,47 @@ impl Default for DuckyProfile {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct DuckySdConfig {
+    pub last_profile: Option<u8>,
+    pub fw_ver: Option<String>,
+    pub serial_number: Option<String>,
+}
+
+pub fn read_dpp_config(sd_root: &Path) -> Option<DuckySdConfig> {
+    let content = fs::read_to_string(sd_root.join("dpp_config.txt")).ok()?;
+    let mut cfg = DuckySdConfig::default();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("last_profile ") {
+            cfg.last_profile = rest.trim().parse::<u8>().ok();
+        } else if let Some(rest) = trimmed.strip_prefix("fw_ver ") {
+            let v = rest.trim();
+            if !v.is_empty() {
+                cfg.fw_ver = Some(v.to_string());
+            }
+        } else if let Some(rest) = trimmed.strip_prefix("serial_number ") {
+            let s = rest.trim();
+            if !s.is_empty() {
+                cfg.serial_number = Some(s.to_string());
+            }
+        }
+    }
+    Some(cfg)
+}
+
 impl DuckyProfile {
     pub fn folder_name(&self) -> String {
+        if let Some(ref existing) = self.folder_name_override {
+            return existing.clone();
+        }
         let sanitized: String = self
             .name
             .chars()
             .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-' || *c == ' ')
-            .take(16)
+            .take(24)
             .collect();
-        format!("profile{}_{}", self.number, sanitized.trim())
+        format!("profile_{}", sanitized.trim())
     }
 
     pub fn load_from_dir(dir_path: &Path) -> io::Result<Self> {
@@ -207,13 +241,23 @@ impl DuckyProfile {
         let (number, name) = parse_profile_folder_name(folder_str).ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("Directory '{folder_str}' does not match 'profile<N>_<Name>'"),
+                format!("Directory '{folder_str}' does not match 'profile_<Name>' or 'profile<N>_<Name>'"),
             )
         })?;
+
+        Self::load_from_dir_with_meta(dir_path, number.unwrap_or(1), name)
+    }
+
+    pub fn load_from_dir_with_meta(dir_path: &Path, number: u8, name: String) -> io::Result<Self> {
+        let folder_name_override = dir_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_string());
 
         let mut profile = DuckyProfile {
             number,
             name,
+            folder_name_override,
             keydown_color: None,
             ..Default::default()
         };
@@ -286,55 +330,46 @@ impl DuckyProfile {
         let mut cfg = String::with_capacity(1024);
         for (&slot_idx, slot) in &self.slots {
             if !slot.label_line1.is_empty() {
-                cfg.push_str(&format!("z{} {}
-", slot_idx, slot.label_line1));
+                cfg.push_str(&format!("z{} {}\n", slot_idx, slot.label_line1));
             }
             if !slot.label_line2.is_empty() {
-                cfg.push_str(&format!("x{} {}
-", slot_idx, slot.label_line2));
+                cfg.push_str(&format!("x{} {}\n", slot_idx, slot.label_line2));
             }
         }
 
         cfg.push_str(&format!(
-            "BG_COLOR {} {} {}
-",
+            "BG_COLOR {} {} {}\n",
             self.bg_color[0], self.bg_color[1], self.bg_color[2]
         ));
 
         if let Some(kd) = self.keydown_color {
-            cfg.push_str(&format!("KEYDOWN_COLOR {} {} {}
-", kd[0], kd[1], kd[2]));
+            cfg.push_str(&format!("KEYDOWN_COLOR {} {} {}\n", kd[0], kd[1], kd[2]));
         }
 
         if !self.dim_unused_keys {
-            cfg.push_str("DIM_UNUSED_KEYS 0
-");
+            cfg.push_str("DIM_UNUSED_KEYS 0\n");
         }
 
         for (&slot_idx, slot) in &self.slots {
             if slot_idx <= ONBOARD_KEY_COUNT {
                 if let Some(rgb) = slot.custom_rgb {
                     cfg.push_str(&format!(
-                        "SWCOLOR_{} {} {} {}
-",
+                        "SWCOLOR_{} {} {} {}\n",
                         slot_idx, rgb[0], rgb[1], rgb[2]
                     ));
                 }
             }
             if slot.allow_abort {
-                cfg.push_str(&format!("ab{} 1
-", slot_idx));
+                cfg.push_str(&format!("ab{} 1\n", slot_idx));
             }
             if slot.disable_autorepeat {
-                cfg.push_str(&format!("dr{} 1
-", slot_idx));
+                cfg.push_str(&format!("dr{} 1\n", slot_idx));
             }
         }
 
         for extra in &self.preserved_config_lines {
             cfg.push_str(extra);
-            cfg.push_str("
-");
+            cfg.push('\n');
         }
 
         let mut config_file = fs::File::create(profile_dir.join("config.txt"))?;
@@ -363,7 +398,7 @@ impl DuckyProfile {
         Ok(profile_dir)
     }
 
-    fn ensure_slot(&mut self, slot_idx: usize) -> &mut DuckyKeySlot {
+    pub fn ensure_slot(&mut self, slot_idx: usize) -> &mut DuckyKeySlot {
         self.slots.entry(slot_idx).or_insert_with(|| DuckyKeySlot {
             slot: slot_idx,
             ..Default::default()
@@ -397,28 +432,109 @@ pub fn find_mounted_duckypad_sd() -> Option<PathBuf> {
 
 pub fn load_all_sd_profiles(sd_root: &Path) -> io::Result<Vec<DuckyProfile>> {
     let mut profiles = Vec::new();
-    for entry in fs::read_dir(sd_root)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            if let Ok(profile) = DuckyProfile::load_from_dir(&path) {
+    let mut loaded_dirs = std::collections::HashSet::new();
+
+    // 1. First, check duckyPad Pro's `profile_info.txt` (maps `<number> <ProfileName>` -> `profile_<ProfileName>`)
+    let profile_info_path = sd_root.join("profile_info.txt");
+    if profile_info_path.exists() {
+        if let Ok(info_content) = fs::read_to_string(&profile_info_path) {
+            for raw_line in info_content.lines() {
+                let line = raw_line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                if let Some((num_str, prof_name)) = line.split_once(char::is_whitespace) {
+                    if let Ok(number) = num_str.trim().parse::<u8>() {
+                        let name = prof_name.trim().to_string();
+                        let candidate_dpp = sd_root.join(format!("profile_{name}"));
+                        let candidate_legacy = sd_root.join(format!("profile{number}_{name}"));
+                        let target_dir = if candidate_dpp.is_dir() {
+                            Some(candidate_dpp)
+                        } else if candidate_legacy.is_dir() {
+                            Some(candidate_legacy)
+                        } else {
+                            None
+                        };
+
+                        if let Some(dir_path) = target_dir {
+                            if let Ok(profile) =
+                                DuckyProfile::load_from_dir_with_meta(&dir_path, number, name)
+                            {
+                                if let Some(fname) = dir_path.file_name().and_then(|s| s.to_str()) {
+                                    loaded_dirs.insert(fname.to_string());
+                                }
+                                profiles.push(profile);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Also scan directory entries for any legacy `profile<N>_<Name>` or unlisted `profile_<Name>` folders
+    let mut next_auto_num = profiles
+        .iter()
+        .map(|p| p.number)
+        .max()
+        .unwrap_or(0)
+        .saturating_add(1);
+
+    let mut extra_dirs: Vec<PathBuf> = fs::read_dir(sd_root)?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect();
+    extra_dirs.sort();
+
+    for path in extra_dirs {
+        let Some(fname) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if loaded_dirs.contains(fname) {
+            continue;
+        }
+        if let Some((maybe_num, name)) = parse_profile_folder_name(fname) {
+            let num = maybe_num.unwrap_or_else(|| {
+                let n = next_auto_num.clamp(1, 64);
+                next_auto_num = next_auto_num.saturating_add(1);
+                n
+            });
+            if let Ok(profile) = DuckyProfile::load_from_dir_with_meta(&path, num, name) {
+                loaded_dirs.insert(fname.to_string());
                 profiles.push(profile);
             }
         }
     }
+
     profiles.sort_by_key(|p| p.number);
     Ok(profiles)
 }
 
+pub fn save_profile_order_to_sd(sd_root: &Path, profiles: &[DuckyProfile]) -> io::Result<()> {
+    let profile_info_path = sd_root.join("profile_info.txt");
+    let mut content = String::new();
+    for prof in profiles {
+        content.push_str(&format!("{} {}\n", prof.number, prof.name));
+    }
+    fs::write(profile_info_path, content)
+}
+
 fn is_duckypad_sd_root(dir: &Path) -> bool {
-    if dir.join("dp_stats.txt").exists() || dir.join("keymaps").is_dir() {
+    if dir.join("dpp_config.txt").exists()
+        || dir.join("profile_info.txt").exists()
+        || dir.join("dp_stats.txt").exists()
+        || dir.join("keymaps").is_dir()
+    {
         return true;
     }
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
-            if let Some(name) = entry.file_name().to_str() {
-                if parse_profile_folder_name(name).is_some() {
-                    return true;
+            if entry.path().is_dir() {
+                if let Some(name) = entry.file_name().to_str() {
+                    if parse_profile_folder_name(name).is_some() {
+                        return true;
+                    }
                 }
             }
         }
@@ -426,12 +542,19 @@ fn is_duckypad_sd_root(dir: &Path) -> bool {
     false
 }
 
-fn parse_profile_folder_name(folder: &str) -> Option<(u8, String)> {
+fn parse_profile_folder_name(folder: &str) -> Option<(Option<u8>, String)> {
+    // Support both duckyPad Pro `profile_<Name>` and duckyPad (2020) `profile<N>_<Name>`
+    if let Some(name_str) = folder.strip_prefix("profile_") {
+        let trimmed = name_str.trim();
+        if !trimmed.is_empty() {
+            return Some((None, trimmed.to_string()));
+        }
+    }
     let rest = folder.strip_prefix("profile")?;
     let (num_str, name_str) = rest.split_once('_')?;
     let number: u8 = num_str.parse().ok()?;
     if (1..=64).contains(&number) {
-        Some((number, name_str.to_string()))
+        Some((Some(number), name_str.to_string()))
     } else {
         None
     }
