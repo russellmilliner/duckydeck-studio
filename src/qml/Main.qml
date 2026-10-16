@@ -1823,6 +1823,7 @@ Kirigami.ApplicationWindow {
                         || deviceController.inspectorTextScale !== 100
                         || deviceController.editorTextScale !== 100
                         || deviceController.statusBarTextScale !== 100
+                        || deviceController.eventLogTextScale !== 100
                     onClicked: deviceController.resetAllTextScales()
                 }
             }
@@ -1933,6 +1934,13 @@ Kirigami.ApplicationWindow {
                                 areaTitle: qsTr("Bottom Status Bar")
                                 areaDescription: qsTr("Connection status pill, Firmware/SN badge, SD Sync badge, SD path, and live status message")
                                 scaleValue: deviceController.statusBarTextScale
+                            }
+
+                            AreaTextScaleRow {
+                                areaKey: "eventlog"
+                                areaTitle: qsTr("System Event Log")
+                                areaDescription: qsTr("Event log viewer timestamps, level/category badges, filter controls, and diagnostic messages")
+                                scaleValue: deviceController.eventLogTextScale
                             }
                         }
                     }
@@ -2373,7 +2381,7 @@ Kirigami.ApplicationWindow {
                         QQC2.Label {
                             text: qsTr("📋 System Event Log")
                             font.bold: true
-                            font.pixelSize: 15
+                            font.pixelSize: Math.round(15 * root.eventLogScale)
                             color: Kirigami.Theme.textColor
                         }
 
@@ -2383,7 +2391,7 @@ Kirigami.ApplicationWindow {
                             border.color: Qt.alpha(Kirigami.Theme.highlightColor, 0.5)
                             border.width: 1
                             implicitWidth: logCountBadgeLbl.implicitWidth + 12
-                            implicitHeight: 22
+                            implicitHeight: Math.round(22 * root.eventLogScale)
 
                             QQC2.Label {
                                 id: logCountBadgeLbl
@@ -2393,7 +2401,7 @@ Kirigami.ApplicationWindow {
                                     .arg(deviceController.eventLogCount)
                                 font.family: "monospace"
                                 font.bold: true
-                                font.pixelSize: 11
+                                font.pixelSize: Math.round(11 * root.eventLogScale)
                                 color: Kirigami.Theme.highlightColor
                             }
                         }
@@ -2403,7 +2411,8 @@ Kirigami.ApplicationWindow {
                         QQC2.Button {
                             icon.name: "view-refresh"
                             text: qsTr("Refresh")
-                            implicitHeight: 26
+                            implicitHeight: Math.round(26 * root.eventLogScale)
+                            font.pixelSize: Math.round(11 * root.eventLogScale)
                             onClicked: {
                                 deviceController.refreshEventLog()
                                 root.refreshEventLogModel()
@@ -2415,7 +2424,7 @@ Kirigami.ApplicationWindow {
                         Layout.fillWidth: true
                         text: qsTr("Log file: %1").arg(deviceController.logFilePath)
                         font.family: "monospace"
-                        font.pixelSize: 11
+                        font.pixelSize: Math.round(11 * root.eventLogScale)
                         color: Kirigami.Theme.disabledTextColor
                         elide: Text.ElideMiddle
                     }
@@ -2430,7 +2439,8 @@ Kirigami.ApplicationWindow {
                 QQC2.TextField {
                     id: eventLogSearchField
                     Layout.fillWidth: true
-                    implicitHeight: 30
+                    implicitHeight: Math.round(30 * root.eventLogScale)
+                    font.pixelSize: Math.round(12 * root.eventLogScale)
                     selectByMouse: true
                     placeholderText: qsTr("🔍 Filter events by keyword, timestamp, profile, window class, or error...")
                     text: root.eventLogSearchText
@@ -2443,8 +2453,8 @@ Kirigami.ApplicationWindow {
                 QQC2.ToolButton {
                     visible: eventLogSearchField.text.length > 0
                     text: "✕"
-                    implicitWidth: 28
-                    implicitHeight: 28
+                    implicitWidth: Math.round(28 * root.eventLogScale)
+                    implicitHeight: Math.round(28 * root.eventLogScale)
                     onClicked: {
                         eventLogSearchField.text = ""
                         root.eventLogSearchText = ""
@@ -2454,7 +2464,7 @@ Kirigami.ApplicationWindow {
 
                 QQC2.Label {
                     text: qsTr("Level:")
-                    font.pixelSize: 11
+                    font.pixelSize: Math.round(11 * root.eventLogScale)
                     color: Kirigami.Theme.disabledTextColor
                 }
 
@@ -2468,8 +2478,8 @@ Kirigami.ApplicationWindow {
                         checkable: true
                         checked: isSel
                         highlighted: isSel
-                        implicitHeight: 26
-                        font.pixelSize: 11
+                        implicitHeight: Math.round(26 * root.eventLogScale)
+                        font.pixelSize: Math.round(11 * root.eventLogScale)
                         font.bold: isSel
                         onClicked: {
                             root.eventLogLevelFilter = modelData
@@ -2486,7 +2496,7 @@ Kirigami.ApplicationWindow {
 
                 QQC2.Label {
                     text: qsTr("Category:")
-                    font.pixelSize: 11
+                    font.pixelSize: Math.round(11 * root.eventLogScale)
                     color: Kirigami.Theme.disabledTextColor
                 }
 
@@ -2500,8 +2510,8 @@ Kirigami.ApplicationWindow {
                         checkable: true
                         checked: isSelCat
                         highlighted: isSelCat
-                        implicitHeight: 24
-                        font.pixelSize: 10
+                        implicitHeight: Math.round(24 * root.eventLogScale)
+                        font.pixelSize: Math.round(10 * root.eventLogScale)
                         font.bold: isSelCat
                         onClicked: {
                             root.eventLogCategoryFilter = modelData
@@ -2543,7 +2553,7 @@ Kirigami.ApplicationWindow {
                             required property string message
 
                             width: eventLogListView.width - 8
-                            implicitHeight: Math.max(28, logRowLayout.implicitHeight + 8)
+                            implicitHeight: Math.max(Math.round(28 * root.eventLogScale), logRowLayout.implicitHeight + 8)
                             radius: 4
                             color: logRowMouse.containsMouse
                                 ? Qt.alpha(Kirigami.Theme.highlightColor, 0.14)
@@ -2567,9 +2577,9 @@ Kirigami.ApplicationWindow {
                                 QQC2.Label {
                                     text: logRow.timestamp
                                     font.family: "monospace"
-                                    font.pixelSize: 11
+                                    font.pixelSize: Math.round(11 * root.eventLogScale)
                                     color: Kirigami.Theme.disabledTextColor
-                                    Layout.preferredWidth: 165
+                                    Layout.preferredWidth: Math.round(165 * root.eventLogScale)
                                 }
 
                                 Rectangle {
@@ -2577,15 +2587,15 @@ Kirigami.ApplicationWindow {
                                     color: Qt.alpha(root.levelColorForLog(logRow.level), 0.18)
                                     border.color: Qt.alpha(root.levelColorForLog(logRow.level), 0.55)
                                     border.width: 1
-                                    Layout.preferredWidth: 48
-                                    implicitHeight: 18
+                                    Layout.preferredWidth: Math.round(48 * root.eventLogScale)
+                                    implicitHeight: Math.round(18 * root.eventLogScale)
 
                                     QQC2.Label {
                                         anchors.centerIn: parent
                                         text: logRow.level
                                         font.family: "monospace"
                                         font.bold: true
-                                        font.pixelSize: 9
+                                        font.pixelSize: Math.round(9 * root.eventLogScale)
                                         color: root.levelColorForLog(logRow.level)
                                     }
                                 }
@@ -2595,15 +2605,15 @@ Kirigami.ApplicationWindow {
                                     color: Qt.alpha(root.categoryColorForLog(logRow.category), 0.18)
                                     border.color: Qt.alpha(root.categoryColorForLog(logRow.category), 0.55)
                                     border.width: 1
-                                    Layout.preferredWidth: 78
-                                    implicitHeight: 18
+                                    Layout.preferredWidth: Math.round(78 * root.eventLogScale)
+                                    implicitHeight: Math.round(18 * root.eventLogScale)
 
                                     QQC2.Label {
                                         anchors.centerIn: parent
                                         text: logRow.category
                                         font.family: "monospace"
                                         font.bold: true
-                                        font.pixelSize: 9
+                                        font.pixelSize: Math.round(9 * root.eventLogScale)
                                         color: root.categoryColorForLog(logRow.category)
                                     }
                                 }
@@ -2611,7 +2621,7 @@ Kirigami.ApplicationWindow {
                                 QQC2.Label {
                                     text: logRow.message
                                     font.family: "monospace"
-                                    font.pixelSize: 11
+                                    font.pixelSize: Math.round(11 * root.eventLogScale)
                                     color: logRow.level === "ERROR"
                                         ? Kirigami.Theme.negativeTextColor
                                         : Kirigami.Theme.textColor
@@ -2647,6 +2657,7 @@ Kirigami.ApplicationWindow {
                 QQC2.Button {
                     icon.name: "edit-copy"
                     text: qsTr("Copy Log to Clipboard")
+                    font.pixelSize: Math.round(11 * root.eventLogScale)
                     onClicked: {
                         const txt = deviceController.formatEventLogText(
                             root.eventLogCategoryFilter,
@@ -2660,12 +2671,14 @@ Kirigami.ApplicationWindow {
                 QQC2.Button {
                     icon.name: "document-export"
                     text: qsTr("Export Log (.log)...")
+                    font.pixelSize: Math.round(11 * root.eventLogScale)
                     onClicked: exportEventLogFileDialog.open()
                 }
 
                 QQC2.Button {
                     icon.name: "edit-clear-history"
                     text: qsTr("Clear Log")
+                    font.pixelSize: Math.round(11 * root.eventLogScale)
                     onClicked: {
                         deviceController.clearEventLog()
                         root.refreshEventLogModel()
@@ -2676,6 +2689,7 @@ Kirigami.ApplicationWindow {
 
                 QQC2.Button {
                     text: qsTr("Close")
+                    font.pixelSize: Math.round(11 * root.eventLogScale)
                     onClicked: eventLogDialog.close()
                 }
             }
