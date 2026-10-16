@@ -107,6 +107,417 @@ Kirigami.ApplicationWindow {
     readonly property var webApiMethods: ["POST", "GET", "PUT", "PATCH", "DELETE"]
     readonly property var webApiFkeys: ["F13", "F14", "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23", "F24"]
 
+    // DuckyScript 3 Autocomplete & Command Reference state
+    property bool showCommandReference: false
+    property string commandRefSearchText: ""
+    property string commandRefCategory: "All"
+    readonly property var commandRefCategories: [
+        "All",
+        "Text & Keys",
+        "Flow & Loops",
+        "OLED & RGB",
+        "Variables & Math",
+        "Profiles & System"
+    ]
+    property bool autocompleteEnabled: true
+    property bool autocompleteVisible: false
+    property int autocompleteIndex: 0
+    property int autocompleteTokenStart: 0
+    property int autocompleteTokenEnd: 0
+    property string autocompletePrefix: ""
+    property bool insertingCompletion: false
+
+    ListModel {
+        id: autocompleteModel
+    }
+    ListModel {
+        id: commandReferenceModel
+    }
+
+    readonly property var duckyScriptCatalog: [
+        // Text & Keys
+        { token: "STRING", category: "Text & Keys", badge: "CMD", syntax: "STRING <text>", insertText: "STRING ", summary: "Type literal text without pressing Enter at the end (supports $var interpolation)." },
+        { token: "STRINGLN", category: "Text & Keys", badge: "CMD", syntax: "STRINGLN <text>", insertText: "STRINGLN ", summary: "Type literal text followed by an automatic Enter keystroke." },
+        { token: "STRING_BLOCK", category: "Text & Keys", badge: "CMD", syntax: "STRING_BLOCK ... END_STRING", insertText: "STRING_BLOCK\n\nEND_STRING", summary: "Multi-line literal text block typed without trailing Enter on each line." },
+        { token: "END_STRING", category: "Text & Keys", badge: "CMD", syntax: "END_STRING", insertText: "END_STRING", summary: "Closes a STRING_BLOCK block." },
+        { token: "STRINGLN_BLOCK", category: "Text & Keys", badge: "CMD", syntax: "STRINGLN_BLOCK ... END_STRINGLN", insertText: "STRINGLN_BLOCK\n\nEND_STRINGLN", summary: "Multi-line literal text block where each line is followed by Enter." },
+        { token: "END_STRINGLN", category: "Text & Keys", badge: "CMD", syntax: "END_STRINGLN", insertText: "END_STRINGLN", summary: "Closes a STRINGLN_BLOCK block." },
+        { token: "REM", category: "Text & Keys", badge: "CMD", syntax: "REM <comment>", insertText: "REM ", summary: "Single-line comment ignored by the compiler (or use //)." },
+        { token: "REM_BLOCK", category: "Text & Keys", badge: "CMD", syntax: "REM_BLOCK ... END_REM", insertText: "REM_BLOCK\n\nEND_REM", summary: "Multi-line comment block ignored by the compiler." },
+        { token: "END_REM", category: "Text & Keys", badge: "CMD", syntax: "END_REM", insertText: "END_REM", summary: "Closes a REM_BLOCK multi-line comment." },
+        { token: "KEYDOWN", category: "Text & Keys", badge: "KEY", syntax: "KEYDOWN <key>", insertText: "KEYDOWN ", summary: "Hold down a key or modifier until KEYUP is called." },
+        { token: "KEYUP", category: "Text & Keys", badge: "KEY", syntax: "KEYUP <key>", insertText: "KEYUP ", summary: "Release a key previously held with KEYDOWN." },
+        { token: "INJECT_MOD", category: "Text & Keys", badge: "KEY", syntax: "INJECT_MOD <modifier>", insertText: "INJECT_MOD ", summary: "Inject a standalone modifier key press compatibility wrapper." },
+        { token: "CTRL", category: "Text & Keys", badge: "KEY", syntax: "CTRL <key>", insertText: "CTRL ", summary: "Left Control modifier key (can be combined up to 6 keys, e.g. CTRL SHIFT c)." },
+        { token: "RCTRL", category: "Text & Keys", badge: "KEY", syntax: "RCTRL <key>", insertText: "RCTRL ", summary: "Right Control modifier key." },
+        { token: "SHIFT", category: "Text & Keys", badge: "KEY", syntax: "SHIFT <key>", insertText: "SHIFT ", summary: "Left Shift modifier key." },
+        { token: "RSHIFT", category: "Text & Keys", badge: "KEY", syntax: "RSHIFT <key>", insertText: "RSHIFT ", summary: "Right Shift modifier key." },
+        { token: "ALT", category: "Text & Keys", badge: "KEY", syntax: "ALT <key>", insertText: "ALT ", summary: "Left Alt / Option modifier key." },
+        { token: "RALT", category: "Text & Keys", badge: "KEY", syntax: "RALT <key>", insertText: "RALT ", summary: "Right Alt / AltGr modifier key." },
+        { token: "GUI", category: "Text & Keys", badge: "KEY", syntax: "GUI <key>", insertText: "GUI ", summary: "Left Super / Windows / Command modifier key (aliases: WINDOWS, COMMAND)." },
+        { token: "WINDOWS", category: "Text & Keys", badge: "KEY", syntax: "WINDOWS <key>", insertText: "WINDOWS ", summary: "Alias for GUI (Super / Windows / Meta key)." },
+        { token: "COMMAND", category: "Text & Keys", badge: "KEY", syntax: "COMMAND <key>", insertText: "COMMAND ", summary: "Alias for GUI (macOS Command / Super key)." },
+        { token: "ENTER", category: "Text & Keys", badge: "KEY", syntax: "ENTER", insertText: "ENTER", summary: "Press the Return / Enter key." },
+        { token: "ESC", category: "Text & Keys", badge: "KEY", syntax: "ESC", insertText: "ESC", summary: "Press the Escape key (alias: ESCAPE)." },
+        { token: "BACKSPACE", category: "Text & Keys", badge: "KEY", syntax: "BACKSPACE", insertText: "BACKSPACE", summary: "Press the Backspace key." },
+        { token: "TAB", category: "Text & Keys", badge: "KEY", syntax: "TAB", insertText: "TAB", summary: "Press the Tab key." },
+        { token: "SPACE", category: "Text & Keys", badge: "KEY", syntax: "SPACE", insertText: "SPACE", summary: "Press the Spacebar." },
+        { token: "DELETE", category: "Text & Keys", badge: "KEY", syntax: "DELETE", insertText: "DELETE", summary: "Press the forward Delete key." },
+        { token: "INSERT", category: "Text & Keys", badge: "KEY", syntax: "INSERT", insertText: "INSERT", summary: "Press the Insert key." },
+        { token: "HOME", category: "Text & Keys", badge: "KEY", syntax: "HOME", insertText: "HOME", summary: "Press the Home key." },
+        { token: "END", category: "Text & Keys", badge: "KEY", syntax: "END", insertText: "END", summary: "Press the End key." },
+        { token: "PAGEUP", category: "Text & Keys", badge: "KEY", syntax: "PAGEUP", insertText: "PAGEUP", summary: "Press the Page Up key." },
+        { token: "PAGEDOWN", category: "Text & Keys", badge: "KEY", syntax: "PAGEDOWN", insertText: "PAGEDOWN", summary: "Press the Page Down key." },
+        { token: "UP", category: "Text & Keys", badge: "KEY", syntax: "UP", insertText: "UP", summary: "Press the Up Arrow key (alias: UPARROW)." },
+        { token: "DOWN", category: "Text & Keys", badge: "KEY", syntax: "DOWN", insertText: "DOWN", summary: "Press the Down Arrow key (alias: DOWNARROW)." },
+        { token: "LEFT", category: "Text & Keys", badge: "KEY", syntax: "LEFT", insertText: "LEFT", summary: "Press the Left Arrow key (alias: LEFTARROW)." },
+        { token: "RIGHT", category: "Text & Keys", badge: "KEY", syntax: "RIGHT", insertText: "RIGHT", summary: "Press the Right Arrow key (alias: RIGHTARROW)." },
+        { token: "PRINTSCREEN", category: "Text & Keys", badge: "KEY", syntax: "PRINTSCREEN", insertText: "PRINTSCREEN", summary: "Press the Print Screen / SysRq key." },
+        { token: "CAPSLOCK", category: "Text & Keys", badge: "KEY", syntax: "CAPSLOCK", insertText: "CAPSLOCK", summary: "Press the Caps Lock key." },
+        { token: "NUMLOCK", category: "Text & Keys", badge: "KEY", syntax: "NUMLOCK", insertText: "NUMLOCK", summary: "Press the Num Lock key." },
+        { token: "SCROLLLOCK", category: "Text & Keys", badge: "KEY", syntax: "SCROLLLOCK", insertText: "SCROLLLOCK", summary: "Press the Scroll Lock key." },
+        { token: "PAUSE", category: "Text & Keys", badge: "KEY", syntax: "PAUSE", insertText: "PAUSE", summary: "Press the Pause / Break key." },
+        { token: "MENU", category: "Text & Keys", badge: "KEY", syntax: "MENU", insertText: "MENU", summary: "Press the Application / Context Menu key (alias: APP)." },
+        { token: "F1", category: "Text & Keys", badge: "KEY", syntax: "F1 .. F24", insertText: "F1", summary: "Function keys F1 through F24 (F13–F24 great for conflict-free shortcuts)." },
+        { token: "F13", category: "Text & Keys", badge: "KEY", syntax: "F13 .. F24", insertText: "F13", summary: "Extended Function key F13 (F13–F24 supported)." },
+        { token: "MK_VOLUP", category: "Text & Keys", badge: "KEY", syntax: "MK_VOLUP", insertText: "MK_VOLUP", summary: "Media key: Volume Up." },
+        { token: "MK_VOLDOWN", category: "Text & Keys", badge: "KEY", syntax: "MK_VOLDOWN", insertText: "MK_VOLDOWN", summary: "Media key: Volume Down." },
+        { token: "MK_MUTE", category: "Text & Keys", badge: "KEY", syntax: "MK_MUTE", insertText: "MK_MUTE", summary: "Media key: Mute Audio." },
+        { token: "MK_PP", category: "Text & Keys", badge: "KEY", syntax: "MK_PP", insertText: "MK_PP", summary: "Media key: Play / Pause." },
+        { token: "MK_NEXT", category: "Text & Keys", badge: "KEY", syntax: "MK_NEXT", insertText: "MK_NEXT", summary: "Media key: Next Track." },
+        { token: "MK_PREV", category: "Text & Keys", badge: "KEY", syntax: "MK_PREV", insertText: "MK_PREV", summary: "Media key: Previous Track." },
+        { token: "MK_STOP", category: "Text & Keys", badge: "KEY", syntax: "MK_STOP", insertText: "MK_STOP", summary: "Media key: Stop Playback." },
+        { token: "MOUSE_MOVE", category: "Text & Keys", badge: "KEY", syntax: "MOUSE_MOVE <dx> <dy>", insertText: "MOUSE_MOVE 0 0", summary: "Move cursor relatively by dx (-127..127) and dy (-127..127) pixels." },
+        { token: "MOUSE_SCROLL", category: "Text & Keys", badge: "KEY", syntax: "MOUSE_SCROLL <h> <v>", insertText: "MOUSE_SCROLL 0 1", summary: "Scroll mouse wheel horizontally (h) and vertically (v)." },
+        { token: "MOUSE_WHEEL", category: "Text & Keys", badge: "KEY", syntax: "MOUSE_WHEEL <v>", insertText: "MOUSE_WHEEL 1", summary: "Scroll vertical mouse wheel (positive = up, negative = down)." },
+        { token: "LMOUSE", category: "Text & Keys", badge: "KEY", syntax: "LMOUSE", insertText: "LMOUSE", summary: "Click Left Mouse Button (also works with KEYDOWN/KEYUP)." },
+        { token: "RMOUSE", category: "Text & Keys", badge: "KEY", syntax: "RMOUSE", insertText: "RMOUSE", summary: "Click Right Mouse Button." },
+        { token: "MMOUSE", category: "Text & Keys", badge: "KEY", syntax: "MMOUSE", insertText: "MMOUSE", summary: "Click Middle Mouse Button." },
+        { token: "BMOUSE", category: "Text & Keys", badge: "KEY", syntax: "BMOUSE", insertText: "BMOUSE", summary: "Click Mouse Back Button." },
+        { token: "FMOUSE", category: "Text & Keys", badge: "KEY", syntax: "FMOUSE", insertText: "FMOUSE", summary: "Click Mouse Forward Button." },
+
+        // Flow & Loops
+        { token: "DELAY", category: "Flow & Loops", badge: "FLOW", syntax: "DELAY <ms>", insertText: "DELAY 100", summary: "Pause script execution for <ms> milliseconds." },
+        { token: "DEFAULTDELAY", category: "Flow & Loops", badge: "FLOW", syntax: "DEFAULTDELAY <ms>", insertText: "DEFAULTDELAY 20", summary: "Set delay (ms) automatically inserted before every subsequent command." },
+        { token: "DEFAULTCHARDELAY", category: "Flow & Loops", badge: "FLOW", syntax: "DEFAULTCHARDELAY <ms>", insertText: "DEFAULTCHARDELAY 20", summary: "Set delay (ms) between each character typed by STRING/STRINGLN." },
+        { token: "CHARJITTER", category: "Flow & Loops", badge: "FLOW", syntax: "CHARJITTER <ms>", insertText: "CHARJITTER 5", summary: "Add random jitter (0..ms) to character typing delay." },
+        { token: "IF", category: "Flow & Loops", badge: "FLOW", syntax: "IF <cond> ... END_IF", insertText: "IF $_READKEY == 0\n    \nEND_IF", summary: "Conditional execution block (supports ==, !=, <, <=, >, >=, &&, ||, !)." },
+        { token: "ELSE IF", category: "Flow & Loops", badge: "FLOW", syntax: "ELSE IF <cond>", insertText: "ELSE IF ", summary: "Secondary branch inside an IF ... END_IF block." },
+        { token: "ELSE", category: "Flow & Loops", badge: "FLOW", syntax: "ELSE", insertText: "ELSE", summary: "Fallback branch inside an IF ... END_IF block." },
+        { token: "END_IF", category: "Flow & Loops", badge: "FLOW", syntax: "END_IF", insertText: "END_IF", summary: "Closes an IF conditional block." },
+        { token: "WHILE", category: "Flow & Loops", badge: "FLOW", syntax: "WHILE <cond> ... END_WHILE", insertText: "WHILE 1\n    \nEND_WHILE", summary: "Loop while condition evaluates to non-zero." },
+        { token: "END_WHILE", category: "Flow & Loops", badge: "FLOW", syntax: "END_WHILE", insertText: "END_WHILE", summary: "Closes a WHILE loop." },
+        { token: "LBREAK", category: "Flow & Loops", badge: "FLOW", syntax: "LBREAK", insertText: "LBREAK", summary: "Break out of the innermost WHILE loop immediately." },
+        { token: "CONTINUE", category: "Flow & Loops", badge: "FLOW", syntax: "CONTINUE", insertText: "CONTINUE", summary: "Skip to the next iteration of the innermost WHILE loop." },
+        { token: "LOOP0:", category: "Flow & Loops", badge: "FLOW", syntax: "LOOP0: .. LOOP9:", insertText: "LOOP0:\n    \nLOOP1:\n    ", summary: "Cyclic step label: each press of the key advances to the next LOOP<n>: block." },
+        { token: "REPEAT", category: "Flow & Loops", badge: "FLOW", syntax: "REPEAT <count>", insertText: "REPEAT 1", summary: "Repeat the previous line <count> additional times." },
+        { token: "FUN", category: "Flow & Loops", badge: "FLOW", syntax: "FUN <name>(<args>) ... END_FUN", insertText: "FUN my_func(arg1)\n    RETURN 0\nEND_FUN", summary: "Define a reusable function with optional arguments and RETURN value." },
+        { token: "END_FUN", category: "Flow & Loops", badge: "FLOW", syntax: "END_FUN", insertText: "END_FUN", summary: "Closes a FUN function definition." },
+        { token: "RETURN", category: "Flow & Loops", badge: "FLOW", syntax: "RETURN [expr]", insertText: "RETURN ", summary: "Return from the current function (optionally returning a value)." },
+        { token: "HALT", category: "Flow & Loops", badge: "FLOW", syntax: "HALT", insertText: "HALT", summary: "Immediately stop script execution." },
+        { token: "PASS", category: "Flow & Loops", badge: "FLOW", syntax: "PASS", insertText: "PASS", summary: "No-operation placeholder statement." },
+
+        // OLED & RGB
+        { token: "OLED_CLEAR", category: "OLED & RGB", badge: "OLED", syntax: "OLED_CLEAR", insertText: "OLED_CLEAR", summary: "Clear the OLED display framebuffer (call OLED_UPDATE to render)." },
+        { token: "OLED_UPDATE", category: "OLED & RGB", badge: "OLED", syntax: "OLED_UPDATE", insertText: "OLED_UPDATE", summary: "Push the OLED framebuffer to the physical screen." },
+        { token: "OLED_RESTORE", category: "OLED & RGB", badge: "OLED", syntax: "OLED_RESTORE", insertText: "OLED_RESTORE", summary: "Restore the default profile/key grid view on the OLED screen." },
+        { token: "OLED_CURSOR", category: "OLED & RGB", badge: "OLED", syntax: "OLED_CURSOR <x> <y>", insertText: "OLED_CURSOR 0 0", summary: "Move the OLED text cursor to pixel coordinates (x: 0..127, y: 0..63)." },
+        { token: "OLED_PRINT", category: "OLED & RGB", badge: "OLED", syntax: "OLED_PRINT <text>", insertText: "OLED_PRINT ", summary: "Print left-aligned text at the current OLED cursor position (supports $var)." },
+        { token: "OLED_CPRINT", category: "OLED & RGB", badge: "OLED", syntax: "OLED_CPRINT <text>", insertText: "OLED_CPRINT ", summary: "Print horizontally centered text on the OLED screen." },
+        { token: "OLED_LPRINT", category: "OLED & RGB", badge: "OLED", syntax: "OLED_LPRINT <text>", insertText: "OLED_LPRINT ", summary: "Print text at the current OLED cursor with automatic line wrapping." },
+        { token: "OLED_LINE", category: "OLED & RGB", badge: "OLED", syntax: "OLED_LINE <x1> <y1> <x2> <y2>", insertText: "OLED_LINE 0 0 127 63", summary: "Draw a line on the OLED framebuffer between (x1,y1) and (x2,y2)." },
+        { token: "OLED_RECT", category: "OLED & RGB", badge: "OLED", syntax: "OLED_RECT <x1> <y1> <x2> <y2> <opt>", insertText: "OLED_RECT 0 0 127 63 1", summary: "Draw a rectangle on the OLED (opt: 0=clear, 1=outline, 2=filled)." },
+        { token: "OLED_CIRCLE", category: "OLED & RGB", badge: "OLED", syntax: "OLED_CIRCLE <x> <y> <radius> <opt>", insertText: "OLED_CIRCLE 64 32 16 1", summary: "Draw a circle on the OLED (opt: 0=clear, 1=outline, 2=filled)." },
+        { token: "SWCOLOR", category: "OLED & RGB", badge: "LED", syntax: "SWCOLOR <r> <g> <b>", insertText: "SWCOLOR 0 170 255", summary: "Set the current key's RGB LED color (0..255 per channel)." },
+        { token: "SWC_SET", category: "OLED & RGB", badge: "LED", syntax: "SWC_SET <key> <r> <g> <b>", insertText: "SWC_SET $_THIS_KEYID 0 255 128", summary: "Set RGB LED color of a specific key (0 = current key, 1..20 = key slot)." },
+        { token: "SWC_FILL", category: "OLED & RGB", badge: "LED", syntax: "SWC_FILL <r> <g> <b>", insertText: "SWC_FILL 0 170 255", summary: "Fill all key RGB LEDs with the specified (r, g, b) color." },
+        { token: "SWC_RESET", category: "OLED & RGB", badge: "LED", syntax: "SWC_RESET <key>", insertText: "SWC_RESET 0", summary: "Reset key RGB LED(s) back to profile default colors (0 = all keys, 1..20 = slot)." },
+
+        // Variables & Math
+        { token: "VAR", category: "Variables & Math", badge: "VAR", syntax: "VAR $<name> = <expr>", insertText: "VAR $count = 0", summary: "Declare and initialize a 32-bit user variable ($ is optional)." },
+        { token: "DEFINE", category: "Variables & Math", badge: "VAR", syntax: "DEFINE <NAME> <replacement>", insertText: "DEFINE MY_DELAY 50", summary: "Define a compile-time text replacement macro." },
+        { token: "DPDSSTDLIB", category: "Variables & Math", badge: "FUNC", syntax: "DPDSSTDLIB", insertText: "DPDSSTDLIB", summary: "Import the standard library functions: WAITKEY(k), MEMSET(a,v,n), ABS(n), MIN(a,b), MAX(a,b)." },
+        { token: "RANDINT", category: "Variables & Math", badge: "FUNC", syntax: "RANDINT(<min>, <max>)", insertText: "RANDINT(1, 100)", summary: "Return a random signed integer between min and max (inclusive)." },
+        { token: "RANDUINT", category: "Variables & Math", badge: "FUNC", syntax: "RANDUINT(<min>, <max>)", insertText: "RANDUINT(0, 100)", summary: "Return a random unsigned integer between min and max (inclusive)." },
+        { token: "RANDCHR", category: "Variables & Math", badge: "FUNC", syntax: "RANDCHR(<bitmask>)", insertText: "RANDCHR(0x103)", summary: "Type/print a random character (or use RANDOM_LETTER, RANDOM_NUMBER, RANDOM_CHAR)." },
+        { token: "RANDOM_LETTER", category: "Variables & Math", badge: "FUNC", syntax: "RANDOM_LETTER", insertText: "RANDOM_LETTER", summary: "Type a random uppercase or lowercase ASCII letter." },
+        { token: "RANDOM_NUMBER", category: "Variables & Math", badge: "FUNC", syntax: "RANDOM_NUMBER", insertText: "RANDOM_NUMBER", summary: "Type a random digit (0–9)." },
+        { token: "RANDOM_CHAR", category: "Variables & Math", badge: "FUNC", syntax: "RANDOM_CHAR", insertText: "RANDOM_CHAR", summary: "Type a random printable ASCII character." },
+        { token: "WAITKEY", category: "Variables & Math", badge: "FUNC", syntax: "WAITKEY(<key_id>)", insertText: "WAITKEY(1)", summary: "Block until the specified key_id (1..20) is pressed (requires DPDSSTDLIB)." },
+        { token: "ABS", category: "Variables & Math", badge: "FUNC", syntax: "ABS(<n>)", insertText: "ABS(", summary: "Return absolute value of n (requires DPDSSTDLIB)." },
+        { token: "MIN", category: "Variables & Math", badge: "FUNC", syntax: "MIN(<a>, <b>)", insertText: "MIN(", summary: "Return the smaller of a and b (requires DPDSSTDLIB)." },
+        { token: "MAX", category: "Variables & Math", badge: "FUNC", syntax: "MAX(<a>, <b>)", insertText: "MAX(", summary: "Return the larger of a and b (requires DPDSSTDLIB)." },
+        { token: "$_GV0", category: "Variables & Math", badge: "VAR", syntax: "$_GV0 .. $_GV31", insertText: "$_GV0 = 0", summary: "Persistent Global Variable (0..31) shared across profiles and saved to SD/flash." },
+        { token: "$_DEFAULTDELAY", category: "Variables & Math", badge: "VAR", syntax: "$_DEFAULTDELAY", insertText: "$_DEFAULTDELAY = 20", summary: "Read/write the default delay (ms) between commands." },
+        { token: "$_DEFAULTCHARDELAY", category: "Variables & Math", badge: "VAR", syntax: "$_DEFAULTCHARDELAY", insertText: "$_DEFAULTCHARDELAY = 20", summary: "Read/write the delay (ms) between typed characters." },
+        { token: "$_CHARJITTER", category: "Variables & Math", badge: "VAR", syntax: "$_CHARJITTER", insertText: "$_CHARJITTER = 5", summary: "Read/write random character delay jitter (ms)." },
+        { token: "$_TIME_MS", category: "Variables & Math", badge: "VAR", syntax: "$_TIME_MS", insertText: "$_TIME_MS", summary: "Milliseconds elapsed since duckyPad booted." },
+        { token: "$_TIME_S", category: "Variables & Math", badge: "VAR", syntax: "$_TIME_S", insertText: "$_TIME_S", summary: "Seconds elapsed since duckyPad booted." },
+        { token: "$_READKEY", category: "Variables & Math", badge: "VAR", syntax: "$_READKEY", insertText: "$_READKEY", summary: "Non-blocking read of currently pressed key ID (0 if none)." },
+        { token: "$_BLOCKING_READKEY", category: "Variables & Math", badge: "VAR", syntax: "$_BLOCKING_READKEY", insertText: "$_BLOCKING_READKEY", summary: "Wait for any key press and return its key ID." },
+        { token: "$_THIS_KEYID", category: "Variables & Math", badge: "VAR", syntax: "$_THIS_KEYID", insertText: "$_THIS_KEYID", summary: "Key slot ID (1..20) that triggered the currently running script." },
+        { token: "$_KEYPRESS_COUNT", category: "Variables & Math", badge: "VAR", syntax: "$_KEYPRESS_COUNT", insertText: "$_KEYPRESS_COUNT", summary: "Number of times this key has been pressed." },
+        { token: "$_ALLOW_ABORT", category: "Variables & Math", badge: "VAR", syntax: "$_ALLOW_ABORT = 1", insertText: "$_ALLOW_ABORT = 1", summary: "Set to 1 to allow pressing any key to abort the running script." },
+        { token: "$_DONT_REPEAT", category: "Variables & Math", badge: "VAR", syntax: "$_DONT_REPEAT = 1", insertText: "$_DONT_REPEAT = 1", summary: "Set to 1 to disable auto-repeat when holding down the key." },
+        { token: "$_SW_BITFIELD", category: "Variables & Math", badge: "VAR", syntax: "$_SW_BITFIELD", insertText: "$_SW_BITFIELD", summary: "Bitmask of all currently pressed physical switches on the duckyPad." },
+        { token: "$_KBLED_BITFIELD", category: "Variables & Math", badge: "VAR", syntax: "$_KBLED_BITFIELD", insertText: "$_KBLED_BITFIELD", summary: "Host keyboard LED state bitmask (NumLock=1, CapsLock=2, ScrollLock=4)." },
+        { token: "_IS_NUMLOCK_ON", category: "Variables & Math", badge: "VAR", syntax: "_IS_NUMLOCK_ON", insertText: "_IS_NUMLOCK_ON", summary: "Evaluates to 1 if host Num Lock LED is on, 0 otherwise." },
+        { token: "_IS_CAPSLOCK_ON", category: "Variables & Math", badge: "VAR", syntax: "_IS_CAPSLOCK_ON", insertText: "_IS_CAPSLOCK_ON", summary: "Evaluates to 1 if host Caps Lock LED is on, 0 otherwise." },
+        { token: "_IS_SCROLLLOCK_ON", category: "Variables & Math", badge: "VAR", syntax: "_IS_SCROLLLOCK_ON", insertText: "_IS_SCROLLLOCK_ON", summary: "Evaluates to 1 if host Scroll Lock LED is on, 0 otherwise." },
+        { token: "$_RTC_HOUR", category: "Variables & Math", badge: "VAR", syntax: "$_RTC_YEAR / $_RTC_MONTH / $_RTC_DAY / $_RTC_HOUR / $_RTC_MINUTE / $_RTC_SECOND", insertText: "$_RTC_HOUR", summary: "Real-Time Clock fields synced from DuckyDeck Studio (also $_RTC_IS_VALID, $_RTC_WDAY)." },
+
+        // Profiles & System
+        { token: "GOTO_PROFILE", category: "Profiles & System", badge: "PROF", syntax: "GOTO_PROFILE <name_or_num>", insertText: "GOTO_PROFILE ", summary: "Switch immediately to a profile by number or exact name." },
+        { token: "NEXT_PROFILE", category: "Profiles & System", badge: "PROF", syntax: "NEXT_PROFILE", insertText: "NEXT_PROFILE", summary: "Switch to the next profile in sequence." },
+        { token: "PREV_PROFILE", category: "Profiles & System", badge: "PROF", syntax: "PREV_PROFILE", insertText: "PREV_PROFILE", summary: "Switch to the previous profile in sequence." },
+        { token: "SKIP_PROFILE", category: "Profiles & System", badge: "PROF", syntax: "SKIP_PROFILE <offset>", insertText: "SKIP_PROFILE 1", summary: "Jump forward/backward by <offset> profiles." },
+        { token: "DP_SLEEP", category: "Profiles & System", badge: "PROF", syntax: "DP_SLEEP", insertText: "DP_SLEEP", summary: "Turn off OLED and RGB LEDs and enter low-power sleep mode." },
+        { token: "BCLR", category: "Profiles & System", badge: "PROF", syntax: "BCLR", insertText: "BCLR", summary: "Clear the internal key press queue buffer." },
+        { token: "HIDTX", category: "Profiles & System", badge: "PROF", syntax: "HIDTX <addr>", insertText: "HIDTX ", summary: "Transmit raw USB HID buffer from memory address <addr>." },
+        { token: "PEEK8", category: "Profiles & System", badge: "FUNC", syntax: "PEEK8(<addr>) / PEEK16 / PEEK32", insertText: "PEEK8(", summary: "Read signed/unsigned 8, 16, or 32-bit value from VM memory address." },
+        { token: "POKE8", category: "Profiles & System", badge: "FUNC", syntax: "POKE8(<addr>, <val>) / POKE16 / POKE32", insertText: "POKE8(", summary: "Write 8, 16, or 32-bit value to VM memory address." }
+    ]
+
+    function badgeColorForType(badge) {
+        if (badge === "CMD") return "#38bdf8"
+        if (badge === "KEY") return "#a78bfa"
+        if (badge === "FLOW") return "#f59e0b"
+        if (badge === "OLED") return "#2dd4bf"
+        if (badge === "LED") return "#f472b6"
+        if (badge === "VAR") return "#4ade80"
+        if (badge === "FUNC") return "#60a5fa"
+        if (badge === "PROF") return "#fb923c"
+        return "#94a3b8"
+    }
+
+    function refreshCommandReferenceModel() {
+        commandReferenceModel.clear()
+        const query = (root.commandRefSearchText || "").trim().toLowerCase()
+        const cat = root.commandRefCategory || "All"
+        for (let i = 0; i < root.duckyScriptCatalog.length; ++i) {
+            const item = root.duckyScriptCatalog[i]
+            if (cat !== "All" && item.category !== cat) {
+                continue
+            }
+            if (query.length > 0) {
+                const hay = (item.token + " " + item.syntax + " " + item.summary + " " + item.badge).toLowerCase()
+                if (hay.indexOf(query) === -1) {
+                    continue
+                }
+            }
+            commandReferenceModel.append(item)
+        }
+    }
+
+    function collectDynamicScriptSymbols(scriptText) {
+        const extra = []
+        const seen = {}
+        if (!scriptText) return extra
+        const lines = scriptText.split("\n")
+        for (let i = 0; i < lines.length; ++i) {
+            const trimmed = lines[i].trim()
+            if (trimmed.indexOf("VAR ") === 0) {
+                const eqIdx = trimmed.indexOf("=")
+                if (eqIdx > 4) {
+                    let rawName = trimmed.slice(4, eqIdx).trim()
+                    if (rawName.length > 0) {
+                        const withDollar = rawName.charAt(0) === "$" ? rawName : ("$" + rawName)
+                        if (!seen[withDollar]) {
+                            seen[withDollar] = true
+                            extra.push({
+                                token: withDollar,
+                                category: "Variables & Math",
+                                badge: "USER",
+                                syntax: withDollar,
+                                insertText: withDollar,
+                                summary: "User variable declared in this script (line " + (i + 1) + ")."
+                            })
+                        }
+                    }
+                }
+            } else if (trimmed.indexOf("DEFINE ") === 0) {
+                const rest = trimmed.slice(7).trim()
+                const sp = rest.indexOf(" ")
+                const defName = (sp > 0 ? rest.slice(0, sp) : rest).trim()
+                if (defName.length > 0 && !seen[defName]) {
+                    seen[defName] = true
+                    extra.push({
+                        token: defName,
+                        category: "Variables & Math",
+                        badge: "USER",
+                        syntax: "DEFINE " + defName,
+                        insertText: defName,
+                        summary: "User DEFINE macro declared in this script (line " + (i + 1) + ")."
+                    })
+                }
+            } else if (trimmed.indexOf("FUN ") === 0) {
+                const rest = trimmed.slice(4).trim()
+                const paren = rest.indexOf("(")
+                const fnName = (paren > 0 ? rest.slice(0, paren) : rest).trim()
+                if (fnName.length > 0 && !seen[fnName]) {
+                    seen[fnName] = true
+                    extra.push({
+                        token: fnName,
+                        category: "Flow & Loops",
+                        badge: "USER",
+                        syntax: rest,
+                        insertText: fnName + "()",
+                        summary: "User function defined in this script (line " + (i + 1) + ")."
+                    })
+                }
+            }
+        }
+        return extra
+    }
+
+    function updateAutocompleteSuggestions(forcePopup) {
+        if (root.loadingSlotData || root.insertingCompletion || (!root.autocompleteEnabled && !forcePopup)) {
+            root.autocompleteVisible = false
+            return
+        }
+        const text = scriptEditor.text || ""
+        const cursor = scriptEditor.cursorPosition
+        if (cursor < 0 || cursor > text.length) {
+            root.autocompleteVisible = false
+            return
+        }
+
+        // Find start of current line and start of current token
+        let lineStart = cursor
+        while (lineStart > 0 && text.charAt(lineStart - 1) !== "\n") {
+            lineStart--
+        }
+        const lineBeforeCursor = text.slice(lineStart, cursor)
+        const trimmedLine = lineBeforeCursor.trimStart()
+
+        // Suppress automatic popup inside literal text/comment lines unless typing a $variable or forcing via Ctrl+Space
+        const firstSpaceIdx = trimmedLine.indexOf(" ")
+        const firstWord = firstSpaceIdx >= 0 ? trimmedLine.slice(0, firstSpaceIdx) : ""
+        const inLiteralOrComment = (
+            trimmedLine.indexOf("//") === 0 ||
+            firstWord === "REM" ||
+            firstWord === "STRING" ||
+            firstWord === "STRINGLN" ||
+            firstWord === "OLED_PRINT" ||
+            firstWord === "OLED_CPRINT" ||
+            firstWord === "OLED_LPRINT"
+        )
+
+        let tokStart = cursor
+        while (tokStart > lineStart) {
+            const ch = text.charAt(tokStart - 1)
+            if ((ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9") || ch === "_" || ch === "$") {
+                tokStart--
+            } else {
+                break
+            }
+        }
+        let tokEnd = cursor
+        while (tokEnd < text.length) {
+            const ch = text.charAt(tokEnd)
+            if ((ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9") || ch === "_" || ch === ":") {
+                tokEnd++
+            } else {
+                break
+            }
+        }
+
+        const prefix = text.slice(tokStart, cursor)
+        if (!forcePopup) {
+            if (prefix.length < 1) {
+                root.autocompleteVisible = false
+                return
+            }
+            if (inLiteralOrComment && prefix.charAt(0) !== "$" && prefix.charAt(0) !== "_") {
+                root.autocompleteVisible = false
+                return
+            }
+        }
+
+        const normPrefix = prefix.toUpperCase()
+        const normNoDollar = normPrefix.indexOf("$") === 0 ? normPrefix.slice(1) : normPrefix
+        const prefixMatches = []
+        const substringMatches = []
+
+        const dynamicSyms = root.collectDynamicScriptSymbols(text)
+        const combined = dynamicSyms.concat(root.duckyScriptCatalog)
+
+        // Also include $_GV0..$_GV31 when user types $_GV or _GV
+        if (normNoDollar.indexOf("_GV") === 0) {
+            for (let g = 1; g <= 31; ++g) {
+                const gvTok = "$_GV" + g
+                combined.push({
+                    token: gvTok,
+                    category: "Variables & Math",
+                    badge: "VAR",
+                    syntax: gvTok,
+                    insertText: gvTok,
+                    summary: "Persistent Global Variable #" + g + " (shared across profiles)."
+                })
+            }
+        }
+
+        for (let i = 0; i < combined.length; ++i) {
+            const entry = combined[i]
+            const tokUpper = entry.token.toUpperCase()
+            const tokNoDollar = tokUpper.indexOf("$") === 0 ? tokUpper.slice(1) : tokUpper
+            if (normPrefix.length === 0) {
+                prefixMatches.push(entry)
+            } else if (tokUpper === normPrefix || tokNoDollar === normNoDollar) {
+                // If user already typed the exact full token and didn't press Ctrl+Space, don't keep showing single identical match
+                if (forcePopup) {
+                    prefixMatches.push(entry)
+                }
+            } else if (tokUpper.indexOf(normPrefix) === 0 || (normNoDollar.length > 0 && tokNoDollar.indexOf(normNoDollar) === 0)) {
+                prefixMatches.push(entry)
+            } else if (normPrefix.length >= 2 && (tokUpper.indexOf(normPrefix) > 0 || tokNoDollar.indexOf(normNoDollar) > 0)) {
+                substringMatches.push(entry)
+            }
+        }
+
+        const results = prefixMatches.concat(substringMatches).slice(0, 10)
+        autocompleteModel.clear()
+        for (let j = 0; j < results.length; ++j) {
+            autocompleteModel.append(results[j])
+        }
+
+        root.autocompleteTokenStart = tokStart
+        root.autocompleteTokenEnd = tokEnd
+        root.autocompletePrefix = prefix
+        root.autocompleteIndex = 0
+        root.autocompleteVisible = autocompleteModel.count > 0
+    }
+
+    function applyAutocompleteSelection(idx) {
+        if (idx < 0 || idx >= autocompleteModel.count) return
+        const item = autocompleteModel.get(idx)
+        if (!item) return
+        const replacement = item.insertText || item.token
+        const start = root.autocompleteTokenStart
+        const end = root.autocompleteTokenEnd
+        root.insertingCompletion = true
+        scriptEditor.remove(start, end)
+        scriptEditor.insert(start, replacement)
+        scriptEditor.cursorPosition = start + replacement.length
+        root.insertingCompletion = false
+        root.autocompleteVisible = false
+        scriptEditor.forceActiveFocus()
+    }
+
+    function insertCommandFromReference(snippetText) {
+        if (!snippetText) return
+        const text = scriptEditor.text || ""
+        const cur = scriptEditor.cursorPosition
+        const needsLeadingNewline = cur > 0 && text.charAt(cur - 1) !== "\n" && text.charAt(cur - 1) !== " "
+        const needsTrailingNewline = snippetText.slice(-1) !== " " && snippetText.slice(-1) !== "(" && snippetText.slice(-1) !== "\n"
+        const toInsert = (needsLeadingNewline ? "\n" : "") + snippetText + (needsTrailingNewline ? "\n" : "")
+        root.insertingCompletion = true
+        scriptEditor.insert(cur, toInsert)
+        root.insertingCompletion = false
+        root.autocompleteVisible = false
+        scriptEditor.forceActiveFocus()
+    }
+
     ListModel {
         id: sidebarProfileModel
     }
@@ -518,6 +929,7 @@ Kirigami.ApplicationWindow {
     Component.onCompleted: {
         root.isDarkSystemTheme = Kirigami.Theme.backgroundColor.hslLightness < 0.5
         deviceController.notifySystemDarkTheme(root.isDarkSystemTheme)
+        root.refreshCommandReferenceModel()
         deviceController.refreshDevice()
         root.syncSidebarProfilesFromController()
         hardwareCanvas.syncProfilesFromController()
@@ -3610,6 +4022,24 @@ Kirigami.ApplicationWindow {
                                 QQC2.ToolTip.text: qsTr("Configure an HTTP / Webhook API request triggered by pressing this key (without typing into the active window)")
                             }
 
+                            QQC2.Button {
+                                id: cmdRefToggleBtn
+                                checkable: true
+                                checked: root.showCommandReference
+                                text: qsTr("📖 Reference")
+                                implicitHeight: Math.round(26 * root.inspectorScale)
+                                font.pixelSize: Math.round(11 * root.inspectorScale)
+                                font.bold: root.showCommandReference
+                                onClicked: {
+                                    root.showCommandReference = checked
+                                    if (checked && commandReferenceListView.count === 0) {
+                                        root.refreshCommandReferenceModel()
+                                    }
+                                }
+                                QQC2.ToolTip.visible: hovered
+                                QQC2.ToolTip.text: qsTr("Toggle interactive duckyScript 3 Command Reference & Snippet Browser")
+                            }
+
                             Item { Layout.fillWidth: true }
 
                             QQC2.Button {
@@ -3868,7 +4298,209 @@ Kirigami.ApplicationWindow {
                             }
                         }
 
-                        // Code Editor Area with Synchronized Line Number Gutter
+                        // Collapsible DuckyScript 3 Command Reference & Snippet Browser
+                        Rectangle {
+                            id: commandReferenceCard
+                            visible: root.showCommandReference
+                            Layout.fillWidth: true
+                            implicitHeight: visible ? Math.round(220 * root.inspectorScale) : 0
+                            radius: Kirigami.Units.smallSpacing
+                            color: Kirigami.Theme.alternateBackgroundColor
+                            border.color: Qt.alpha(Kirigami.Theme.highlightColor, 0.45)
+                            border.width: 1
+                            clip: true
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 8
+                                spacing: 6
+
+                                // Search & Autocomplete Toggle Row
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    QQC2.TextField {
+                                        id: commandRefSearchField
+                                        Layout.fillWidth: true
+                                        implicitHeight: Math.round(26 * root.inspectorScale)
+                                        font.pixelSize: Math.round(11 * root.inspectorScale)
+                                        selectByMouse: true
+                                        placeholderText: qsTr("🔍 Filter duckyScript 3 commands, keys, $_VARS, OLED, RGB...")
+                                        text: root.commandRefSearchText
+                                        onTextEdited: {
+                                            root.commandRefSearchText = text
+                                            root.refreshCommandReferenceModel()
+                                        }
+                                    }
+
+                                    QQC2.ToolButton {
+                                        visible: commandRefSearchField.text.length > 0
+                                        text: "✕"
+                                        implicitWidth: Math.round(24 * root.inspectorScale)
+                                        implicitHeight: Math.round(24 * root.inspectorScale)
+                                        onClicked: {
+                                            commandRefSearchField.text = ""
+                                            root.commandRefSearchText = ""
+                                            root.refreshCommandReferenceModel()
+                                        }
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Clear search filter")
+                                    }
+
+                                    QQC2.CheckBox {
+                                        id: autocompleteToggleCheck
+                                        checked: root.autocompleteEnabled
+                                        text: qsTr("⚡ Live Autocomplete")
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
+                                        onToggled: {
+                                            root.autocompleteEnabled = checked
+                                            if (!checked) {
+                                                root.autocompleteVisible = false
+                                            }
+                                        }
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Show inline duckyScript 3 suggestions while typing (or press Ctrl+Space anytime)")
+                                    }
+                                }
+
+                                // Category Filter Pills Row
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 4
+
+                                    Repeater {
+                                        model: root.commandRefCategories
+
+                                        delegate: QQC2.Button {
+                                            required property string modelData
+                                            readonly property bool isSelectedCat: root.commandRefCategory === modelData
+                                            text: modelData
+                                            checkable: true
+                                            checked: isSelectedCat
+                                            highlighted: isSelectedCat
+                                            implicitHeight: Math.round(22 * root.inspectorScale)
+                                            font.pixelSize: Math.round(10 * root.inspectorScale)
+                                            font.bold: isSelectedCat
+                                            onClicked: {
+                                                root.commandRefCategory = modelData
+                                                root.refreshCommandReferenceModel()
+                                            }
+                                        }
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    QQC2.Label {
+                                        text: qsTr("%1 items • Click to insert").arg(commandReferenceListView.count)
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
+                                        color: Kirigami.Theme.disabledTextColor
+                                    }
+                                }
+
+                                // Scrollable Command Reference List
+                                QQC2.ScrollView {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    clip: true
+
+                                    ListView {
+                                        id: commandReferenceListView
+                                        model: commandReferenceModel
+                                        spacing: 3
+                                        boundsBehavior: Flickable.StopAtBounds
+
+                                        delegate: Rectangle {
+                                            id: refRow
+                                            required property int index
+                                            required property string token
+                                            required property string category
+                                            required property string badge
+                                            required property string syntax
+                                            required property string insertText
+                                            required property string summary
+
+                                            width: commandReferenceListView.width - 6
+                                            implicitHeight: Math.max(Math.round(30 * root.inspectorScale), refRowLayout.implicitHeight + 8)
+                                            radius: 4
+                                            color: refRowMouse.containsMouse
+                                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.16)
+                                                : Qt.alpha(Kirigami.Theme.backgroundColor, 0.65)
+                                            border.color: refRowMouse.containsMouse
+                                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.5)
+                                                : Qt.alpha(Kirigami.Theme.textColor, 0.08)
+                                            border.width: 1
+
+                                            RowLayout {
+                                                id: refRowLayout
+                                                anchors.fill: parent
+                                                anchors.leftMargin: 6
+                                                anchors.rightMargin: 6
+                                                spacing: 8
+
+                                                Rectangle {
+                                                    radius: 3
+                                                    color: Qt.alpha(root.badgeColorForType(refRow.badge), 0.2)
+                                                    border.color: Qt.alpha(root.badgeColorForType(refRow.badge), 0.6)
+                                                    border.width: 1
+                                                    Layout.preferredWidth: Math.round(42 * root.inspectorScale)
+                                                    implicitHeight: Math.round(18 * root.inspectorScale)
+
+                                                    QQC2.Label {
+                                                        anchors.centerIn: parent
+                                                        text: refRow.badge
+                                                        font.family: "monospace"
+                                                        font.bold: true
+                                                        font.pixelSize: Math.round(9 * root.inspectorScale)
+                                                        color: root.badgeColorForType(refRow.badge)
+                                                    }
+                                                }
+
+                                                QQC2.Label {
+                                                    text: refRow.syntax
+                                                    font.family: "monospace"
+                                                    font.bold: true
+                                                    font.pixelSize: Math.round(11 * root.inspectorScale)
+                                                    color: Kirigami.Theme.textColor
+                                                    Layout.preferredWidth: Math.round(185 * root.inspectorScale)
+                                                    elide: Text.ElideRight
+                                                }
+
+                                                QQC2.Label {
+                                                    text: refRow.summary
+                                                    font.pixelSize: Math.round(10 * root.inspectorScale)
+                                                    color: Kirigami.Theme.disabledTextColor
+                                                    Layout.fillWidth: true
+                                                    elide: Text.ElideRight
+                                                }
+
+                                                QQC2.Label {
+                                                    visible: refRowMouse.containsMouse
+                                                    text: qsTr("+ Insert")
+                                                    font.bold: true
+                                                    font.pixelSize: Math.round(10 * root.inspectorScale)
+                                                    color: Kirigami.Theme.highlightColor
+                                                }
+                                            }
+
+                                            MouseArea {
+                                                id: refRowMouse
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: root.insertCommandFromReference(refRow.insertText)
+                                            }
+
+                                            QQC2.ToolTip.visible: refRowMouse.containsMouse
+                                            QQC2.ToolTip.delay: 400
+                                            QQC2.ToolTip.text: refRow.syntax + " — " + refRow.summary + "\n" + qsTr("Click to insert at cursor")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Code Editor Area with Synchronized Line Number Gutter & Live Autocomplete Popup
                         Rectangle {
                             id: editorContainer
                             Layout.fillWidth: true
@@ -3909,6 +4541,52 @@ Kirigami.ApplicationWindow {
                                                 root.pressScriptBuffer = text
                                             }
                                             root.updateCompilerStatus()
+                                            if (activeFocus && !root.insertingCompletion) {
+                                                root.updateAutocompleteSuggestions(false)
+                                            }
+                                        }
+                                    }
+                                    onCursorPositionChanged: {
+                                        if (root.autocompleteVisible && !root.insertingCompletion) {
+                                            if (cursorPosition < root.autocompleteTokenStart || cursorPosition > root.autocompleteTokenEnd + 1) {
+                                                root.autocompleteVisible = false
+                                            }
+                                        }
+                                    }
+                                    onActiveFocusChanged: {
+                                        if (!activeFocus) {
+                                            root.autocompleteVisible = false
+                                        }
+                                    }
+                                    Keys.onPressed: (event) => {
+                                        if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_Space) {
+                                            root.updateAutocompleteSuggestions(true)
+                                            event.accepted = true
+                                            return
+                                        }
+                                        if (root.autocompleteVisible && autocompleteListView.count > 0) {
+                                            if (event.key === Qt.Key_Down) {
+                                                root.autocompleteIndex = (root.autocompleteIndex + 1) % autocompleteListView.count
+                                                autocompleteListView.positionViewAtIndex(root.autocompleteIndex, ListView.Contain)
+                                                event.accepted = true
+                                                return
+                                            }
+                                            if (event.key === Qt.Key_Up) {
+                                                root.autocompleteIndex = (root.autocompleteIndex - 1 + autocompleteListView.count) % autocompleteListView.count
+                                                autocompleteListView.positionViewAtIndex(root.autocompleteIndex, ListView.Contain)
+                                                event.accepted = true
+                                                return
+                                            }
+                                            if (event.key === Qt.Key_Tab || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                                                root.applyAutocompleteSelection(root.autocompleteIndex)
+                                                event.accepted = true
+                                                return
+                                            }
+                                            if (event.key === Qt.Key_Escape) {
+                                                root.autocompleteVisible = false
+                                                event.accepted = true
+                                                return
+                                            }
                                         }
                                     }
 
@@ -3964,6 +4642,155 @@ Kirigami.ApplicationWindow {
                                         theme: Kirigami.Theme.backgroundColor.hslLightness < 0.5
                                             ? KSyntax.Repository.defaultTheme(KSyntax.Repository.DarkTheme)
                                             : KSyntax.Repository.defaultTheme(KSyntax.Repository.LightTheme)
+                                    }
+                                }
+                            }
+
+                            // Floating DuckyScript 3 Autocomplete Popup
+                            Rectangle {
+                                id: autocompletePopup
+                                visible: root.autocompleteVisible && autocompleteListView.count > 0
+                                z: 25
+                                readonly property real scrollX: (scriptScrollView.contentItem && scriptScrollView.contentItem.contentX)
+                                    ? scriptScrollView.contentItem.contentX
+                                    : 0
+                                readonly property real scrollY: (scriptScrollView.contentItem && scriptScrollView.contentItem.contentY)
+                                    ? scriptScrollView.contentItem.contentY
+                                    : 0
+                                readonly property real rowH: Math.round(26 * root.inspectorScale)
+                                readonly property real footerH: Math.round(20 * root.inspectorScale)
+                                readonly property real popupH: Math.min(autocompleteListView.count, 7) * rowH + footerH + 8
+                                readonly property real cursorBottomY: scriptEditor.cursorRectangle.y - scrollY + scriptEditor.cursorRectangle.height + 6
+                                readonly property real cursorTopY: scriptEditor.cursorRectangle.y - scrollY - popupH - 4
+
+                                x: Math.max(
+                                    lineGutter.width + 6,
+                                    Math.min(
+                                        scriptEditor.cursorRectangle.x - scrollX,
+                                        editorContainer.width - width - 6
+                                    )
+                                )
+                                y: (cursorBottomY + popupH <= editorContainer.height - 4 || cursorTopY < 4)
+                                    ? Math.max(4, Math.min(cursorBottomY, editorContainer.height - popupH - 4))
+                                    : cursorTopY
+                                width: Math.min(
+                                    Math.max(360, Math.round(460 * root.inspectorScale)),
+                                    editorContainer.width - lineGutter.width - 12
+                                )
+                                height: popupH
+                                radius: 6
+                                color: Kirigami.Theme.backgroundColor
+                                border.color: Qt.alpha(Kirigami.Theme.highlightColor, 0.7)
+                                border.width: 1
+
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 4
+                                    spacing: 2
+
+                                    ListView {
+                                        id: autocompleteListView
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        clip: true
+                                        model: autocompleteModel
+                                        currentIndex: root.autocompleteIndex
+                                        boundsBehavior: Flickable.StopAtBounds
+
+                                        delegate: Rectangle {
+                                            id: acDelegate
+                                            required property int index
+                                            required property string token
+                                            required property string badge
+                                            required property string syntax
+                                            required property string insertText
+                                            required property string summary
+
+                                            readonly property bool isSelected: index === root.autocompleteIndex
+                                            width: autocompleteListView.width
+                                            height: autocompletePopup.rowH
+                                            radius: 4
+                                            color: isSelected
+                                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.25)
+                                                : (acMouse.containsMouse
+                                                    ? Qt.alpha(Kirigami.Theme.highlightColor, 0.12)
+                                                    : "transparent")
+
+                                            RowLayout {
+                                                anchors.fill: parent
+                                                anchors.leftMargin: 6
+                                                anchors.rightMargin: 6
+                                                spacing: 6
+
+                                                Rectangle {
+                                                    radius: 3
+                                                    color: Qt.alpha(root.badgeColorForType(acDelegate.badge), 0.2)
+                                                    border.color: Qt.alpha(root.badgeColorForType(acDelegate.badge), 0.6)
+                                                    border.width: 1
+                                                    Layout.preferredWidth: Math.round(38 * root.inspectorScale)
+                                                    implicitHeight: Math.round(16 * root.inspectorScale)
+
+                                                    QQC2.Label {
+                                                        anchors.centerIn: parent
+                                                        text: acDelegate.badge
+                                                        font.family: "monospace"
+                                                        font.bold: true
+                                                        font.pixelSize: Math.round(8 * root.inspectorScale)
+                                                        color: root.badgeColorForType(acDelegate.badge)
+                                                    }
+                                                }
+
+                                                QQC2.Label {
+                                                    text: acDelegate.syntax
+                                                    font.family: "monospace"
+                                                    font.bold: true
+                                                    font.pixelSize: Math.round(11 * root.inspectorScale)
+                                                    color: acDelegate.isSelected
+                                                        ? Kirigami.Theme.highlightColor
+                                                        : Kirigami.Theme.textColor
+                                                    Layout.preferredWidth: Math.round(150 * root.inspectorScale)
+                                                    elide: Text.ElideRight
+                                                }
+
+                                                QQC2.Label {
+                                                    text: acDelegate.summary
+                                                    font.pixelSize: Math.round(10 * root.inspectorScale)
+                                                    color: Kirigami.Theme.disabledTextColor
+                                                    Layout.fillWidth: true
+                                                    elide: Text.ElideRight
+                                                }
+                                            }
+
+                                            MouseArea {
+                                                id: acMouse
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onEntered: root.autocompleteIndex = acDelegate.index
+                                                onClicked: root.applyAutocompleteSelection(acDelegate.index)
+                                            }
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        height: 1
+                                        color: Qt.alpha(Kirigami.Theme.textColor, 0.1)
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: autocompletePopup.footerH - 3
+                                        spacing: 6
+
+                                        QQC2.Label {
+                                            Layout.leftMargin: 4
+                                            text: qsTr("↑↓ Navigate  •  Tab / Enter Insert  •  Esc Dismiss  •  Ctrl+Space Trigger")
+                                            font.pixelSize: Math.round(9 * root.inspectorScale)
+                                            color: Kirigami.Theme.disabledTextColor
+                                            elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                        }
                                     }
                                 }
                             }
