@@ -1725,16 +1725,6 @@ Kirigami.ApplicationWindow {
             onTriggered: importProfileFolderDialog.open()
         }
 
-        QQC2.MenuItem {
-            icon.name: "color-picker"
-            text: qsTr("Change Active Profile Default Button Color...")
-            onTriggered: root.openProfileDefaultColorPicker(
-                deviceController.activeProfile,
-                deviceController.activeProfileName,
-                deviceController.activeProfileBgColor
-            )
-        }
-
         QQC2.MenuSeparator {}
 
         QQC2.MenuItem {
