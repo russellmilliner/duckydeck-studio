@@ -52,6 +52,18 @@ fn sanitize_xdg_env() {
         }
         env::set_var("XDG_DATA_DIRS", parts.join(":"));
     }
+
+    let quiet_rules = "union.*=false;qt.core.qobject.connect=false";
+    match env::var("QT_LOGGING_RULES") {
+        Ok(existing) if !existing.trim().is_empty() => {
+            if !existing.contains("union.*=false") {
+                env::set_var("QT_LOGGING_RULES", format!("{existing};{quiet_rules}"));
+            }
+        }
+        _ => {
+            env::set_var("QT_LOGGING_RULES", quiet_rules);
+        }
+    }
 }
 
 fn main() {

@@ -11,9 +11,16 @@ Kirigami.ApplicationWindow {
     id: root
     objectName: "duckydeckMainWindow"
     title: qsTr("DuckyDeck Studio v%1 — %2").arg(deviceController.appVersion).arg(deviceController.modelName)
+    readonly property int currentScreenWidth: (root.screen && root.screen.width > 0)
+        ? root.screen.width
+        : (Screen.width > 0 ? Screen.width : 1920)
+    readonly property int maxCenterColumnWidth: Math.max(
+        460,
+        Math.round(root.currentScreenWidth * 0.30)
+    )
     readonly property int compactWindowWidth: Math.max(
         profilesSidebar.QQC2.SplitView.preferredWidth
-            + hardwareCanvas.requiredWidthForFullHeight
+            + Math.min(hardwareCanvas.requiredWidthForFullHeight, root.maxCenterColumnWidth)
             + Kirigami.Units.largeSpacing * 2
             + 20,
         connRow.implicitWidth
@@ -23,9 +30,12 @@ Kirigami.ApplicationWindow {
             + Kirigami.Units.largeSpacing * 2
             + 180
     )
-    readonly property int expandedWindowWidth: Math.max(
-        1700,
-        compactWindowWidth + inspectorCard.minContentWidth + 8
+    readonly property int expandedWindowWidth: Math.min(
+        Math.max(1280, Math.round(root.currentScreenWidth * 0.96)),
+        Math.max(
+            1520,
+            compactWindowWidth + inspectorCard.minContentWidth + 8
+        )
     )
     readonly property int requiredWindowWidth: root.hasSelectedSlot
         ? root.expandedWindowWidth
@@ -98,6 +108,21 @@ Kirigami.ApplicationWindow {
     property string releaseScriptBuffer: ""
     property bool loadingSlotData: false
 
+    // Snapshot of slot state when first selected so Revert can undo auto-saved edits
+    property int slotSnapshotSlotNumber: 0
+    property int slotSnapshotProfileNumber: 0
+    property string slotSnapshotL1: ""
+    property string slotSnapshotL2: ""
+    property bool slotSnapshotAbort: false
+    property bool slotSnapshotNoRepeat: false
+    property string slotSnapshotPressScript: ""
+    property string slotSnapshotReleaseScript: ""
+    property string slotSnapshotColor: "#00aaff"
+
+    // Mutually exclusive inspector workspace mode: "code" | "app_launch" | "web_api"
+    property string inspectorMode: "code"
+    property bool showScriptPreviewInBuilder: true
+
     property string profileFilterText: ""
     property int totalProfileCount: 1
     property int totalRuleCount: 0
@@ -110,6 +135,15 @@ Kirigami.ApplicationWindow {
     property string compileErrorMsg: ""
 
     property bool showWebApiBuilder: false
+    onShowWebApiBuilderChanged: {
+        if (showWebApiBuilder) {
+            if (showAppLaunchBuilder) showAppLaunchBuilder = false
+            if (showCommandReference) showCommandReference = false
+            if (inspectorMode !== "web_api") inspectorMode = "web_api"
+        } else if (inspectorMode === "web_api" && !showAppLaunchBuilder) {
+            inspectorMode = "code"
+        }
+    }
     property bool syncingWebApiScript: false
     property bool webApiEnabled: false
     readonly property var webApiMethods: ["POST", "GET", "PUT", "PATCH", "DELETE"]
@@ -117,6 +151,15 @@ Kirigami.ApplicationWindow {
 
     // Application Launch Builder state
     property bool showAppLaunchBuilder: false
+    onShowAppLaunchBuilderChanged: {
+        if (showAppLaunchBuilder) {
+            if (showWebApiBuilder) showWebApiBuilder = false
+            if (showCommandReference) showCommandReference = false
+            if (inspectorMode !== "app_launch") inspectorMode = "app_launch"
+        } else if (inspectorMode === "app_launch" && !showWebApiBuilder) {
+            inspectorMode = "code"
+        }
+    }
     property bool syncingAppLaunchScript: false
     property bool appLaunchEnabled: false
     property string appLaunchAppName: ""
@@ -1000,11 +1043,75 @@ Kirigami.ApplicationWindow {
         hardwareCanvas.selectedSlot = 0
     }
 
+    function captureSlotSnapshot() {
+        if (!root.hasSelectedSlot) return
+        root.slotSnapshotSlotNumber = root.selectedSlotNumber
+        root.slotSnapshotProfileNumber = deviceController ? deviceController.activeProfile : 1
+        root.slotSnapshotL1 = label1Input.text
+        root.slotSnapshotL2 = label2Input.text
+        root.slotSnapshotAbort = allowAbortCheck.checked
+        root.slotSnapshotNoRepeat = disableRepeatCheck.checked
+        root.slotSnapshotPressScript = root.pressScriptBuffer
+        root.slotSnapshotReleaseScript = root.releaseScriptBuffer
+        root.slotSnapshotColor = String(root.selectedSlotColor)
+    }
+
+    function revertSlotToSnapshot() {
+        if (!root.hasSelectedSlot) return
+        root.loadingSlotData = true
+        label1Input.text = root.slotSnapshotL1
+        label2Input.text = root.slotSnapshotL2
+        allowAbortCheck.checked = root.slotSnapshotAbort
+        disableRepeatCheck.checked = root.slotSnapshotNoRepeat
+        root.pressScriptBuffer = root.slotSnapshotPressScript
+        root.releaseScriptBuffer = root.slotSnapshotReleaseScript
+        scriptEditor.text = root.editingReleaseScript ? root.releaseScriptBuffer : root.pressScriptBuffer
+        root.showWebApiBuilder = false
+        root.showAppLaunchBuilder = false
+        root.inspectorMode = "code"
+        root.loadWebApiBuilderFromScript(scriptEditor.text)
+        root.loadAppLaunchBuilderFromScript(scriptEditor.text)
+        root.loadingSlotData = false
+        root.updateCompilerStatus()
+        root.saveCurrentSlotToController()
+        hardwareCanvas.syncSlotsFromController()
+    }
+
+    function clearSelectedSlotNow() {
+        if (!root.hasSelectedSlot) return
+        root.loadingSlotData = true
+        label1Input.text = ""
+        label2Input.text = ""
+        allowAbortCheck.checked = false
+        disableRepeatCheck.checked = false
+        root.pressScriptBuffer = ""
+        root.releaseScriptBuffer = ""
+        scriptEditor.text = ""
+        root.showWebApiBuilder = false
+        root.showAppLaunchBuilder = false
+        root.inspectorMode = "code"
+        root.loadWebApiBuilderFromScript("")
+        root.loadAppLaunchBuilderFromScript("")
+        root.loadingSlotData = false
+        root.updateCompilerStatus()
+        if (root.selectedSlotNumber >= 1 && root.selectedSlotNumber <= 20) {
+            deviceController.clearKeyColor(root.selectedSlotNumber)
+        }
+        root.saveCurrentSlotToController()
+        hardwareCanvas.syncSlotsFromController()
+        root.selectedSlotColor = hardwareCanvas.slotColorFor(root.selectedSlotNumber)
+        root.selectedSlotTitle = hardwareCanvas.slotTitleFor(root.selectedSlotNumber)
+    }
+
     function loadSlotFromController(slotNumber, slotTitle, slotColor) {
         if (slotNumber <= 0 || slotNumber > 58) {
             root.selectedSlotNumber = 0
             return
         }
+        const isDifferentSlotOrProfile = (
+            root.slotSnapshotSlotNumber !== slotNumber ||
+            root.slotSnapshotProfileNumber !== (deviceController ? deviceController.activeProfile : 1)
+        )
         root.loadingSlotData = true
         root.selectedSlotNumber = slotNumber
         root.selectedSlotTitle = slotTitle
@@ -1027,8 +1134,14 @@ Kirigami.ApplicationWindow {
         root.pressScriptBuffer = deviceController.getSlotScript(slotNumber, false)
         root.releaseScriptBuffer = deviceController.getSlotScript(slotNumber, true)
         scriptEditor.text = root.editingReleaseScript ? root.releaseScriptBuffer : root.pressScriptBuffer
+        root.showWebApiBuilder = false
+        root.showAppLaunchBuilder = false
+        root.inspectorMode = "code"
         root.loadWebApiBuilderFromScript(scriptEditor.text)
         root.loadAppLaunchBuilderFromScript(scriptEditor.text)
+        if (isDifferentSlotOrProfile) {
+            root.captureSlotSnapshot()
+        }
         root.loadingSlotData = false
         root.updateCompilerStatus()
     }
@@ -3096,7 +3209,9 @@ Kirigami.ApplicationWindow {
         QQC2.MenuItem {
             icon.name: "document-save"
             text: qsTr("⬆ Sync (Write) Changes to duckyPad SD")
-            enabled: !deviceController.sdSyncBusy && (deviceController.connected || deviceController.sdMountPath.length > 0)
+            enabled: !deviceController.sdSyncBusy
+                && (deviceController.profileSyncState !== "synced" || inspectorCard.hasRevertibleChanges)
+                && (deviceController.connected || deviceController.sdMountPath.length > 0)
             onTriggered: root.triggerSyncToDeviceSd()
         }
 
@@ -3148,7 +3263,9 @@ Kirigami.ApplicationWindow {
             text: deviceController.profileSyncState === "unsynced"
                 ? qsTr("⬆ Sync Changes to duckyPad SD (Unsynced)")
                 : qsTr("Sync Profiles to duckyPad SD")
-            enabled: !deviceController.sdSyncBusy && (deviceController.connected || deviceController.sdMountPath.length > 0)
+            enabled: !deviceController.sdSyncBusy
+                && (deviceController.profileSyncState !== "synced" || inspectorCard.hasRevertibleChanges)
+                && (deviceController.connected || deviceController.sdMountPath.length > 0)
             onTriggered: root.triggerSyncToDeviceSd()
         }
 
@@ -4325,8 +4442,10 @@ Kirigami.ApplicationWindow {
                 QQC2.Button {
                     icon.name: "document-save"
                     text: qsTr("⬆ Sync Changes to duckyPad SD Now")
-                    enabled: !deviceController.sdSyncBusy && (deviceController.connected || deviceController.sdMountPath.length > 0)
-                    highlighted: deviceController.profileSyncState !== "synced"
+                    enabled: !deviceController.sdSyncBusy
+                        && (deviceController.profileSyncState !== "synced" || inspectorCard.hasRevertibleChanges)
+                        && (deviceController.connected || deviceController.sdMountPath.length > 0)
+                    highlighted: deviceController.profileSyncState !== "synced" || inspectorCard.hasRevertibleChanges
                     onClicked: {
                         unsyncedChangesDialog.close()
                         root.triggerSyncToDeviceSd()
@@ -4754,8 +4873,10 @@ Kirigami.ApplicationWindow {
                 QQC2.Button {
                     icon.name: "document-save"
                     text: qsTr("⬆ Sync to duckyPad SD")
-                    enabled: !deviceController.sdSyncBusy && (deviceController.connected || deviceController.sdMountPath.length > 0)
-                    highlighted: deviceController.profileSyncState !== "synced"
+                    enabled: !deviceController.sdSyncBusy
+                        && (deviceController.profileSyncState !== "synced" || inspectorCard.hasRevertibleChanges)
+                        && (deviceController.connected || deviceController.sdMountPath.length > 0)
+                    highlighted: deviceController.profileSyncState !== "synced" || inspectorCard.hasRevertibleChanges
                     onClicked: {
                         root.flushPendingSlotEditsIfModified()
                         deviceController.syncProfilesToDeviceSd()
@@ -4881,22 +5002,6 @@ Kirigami.ApplicationWindow {
                             color: Kirigami.Theme.textColor
                         }
                     }
-                }
-
-                QQC2.Button {
-                    icon.name: "color-picker"
-                    text: qsTr("Default Color")
-                    implicitHeight: 28
-                    font.pixelSize: 11
-                    onClicked: root.openProfileDefaultColorPicker(
-                        deviceController.activeProfile,
-                        deviceController.activeProfileName,
-                        deviceController.activeProfileBgColor
-                    )
-                    QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: qsTr("Change Default Button Color (BG_COLOR) for Profile #%1 (%2)")
-                        .arg(deviceController.activeProfile)
-                        .arg(deviceController.activeProfileName)
                 }
 
                 Item { Layout.fillWidth: true }
@@ -5647,8 +5752,9 @@ Kirigami.ApplicationWindow {
                 // Column 2: Interactive Hardware Canvas
                 HardwareCanvas {
                     id: hardwareCanvas
-                    QQC2.SplitView.preferredWidth: requiredWidthForFullHeight
-                    QQC2.SplitView.minimumWidth: requiredWidthForFullHeight
+                    QQC2.SplitView.preferredWidth: Math.min(requiredWidthForFullHeight, root.maxCenterColumnWidth)
+                    QQC2.SplitView.minimumWidth: Math.min(440, root.maxCenterColumnWidth)
+                    QQC2.SplitView.maximumWidth: root.maxCenterColumnWidth
                     QQC2.SplitView.fillWidth: !root.hasSelectedSlot
                     QQC2.SplitView.fillHeight: true
                     controller: deviceController
@@ -5693,12 +5799,26 @@ Kirigami.ApplicationWindow {
                     visible: root.hasSelectedSlot
                     Kirigami.Theme.colorSet: Kirigami.Theme.View
                     Kirigami.Theme.inherit: false
+                    readonly property bool isMechanicalKey: root.selectedSlotNumber >= 1 && root.selectedSlotNumber <= 20
+                    readonly property bool isRotaryEncoder: root.selectedSlotNumber >= 21 && root.selectedSlotNumber <= 26
+                    readonly property bool hasRevertibleChanges: (
+                        root.hasSelectedSlot && (
+                            label1Input.text !== root.slotSnapshotL1 ||
+                            label2Input.text !== root.slotSnapshotL2 ||
+                            allowAbortCheck.checked !== root.slotSnapshotAbort ||
+                            disableRepeatCheck.checked !== root.slotSnapshotNoRepeat ||
+                            root.pressScriptBuffer !== root.slotSnapshotPressScript ||
+                            root.releaseScriptBuffer !== root.slotSnapshotReleaseScript ||
+                            String(root.selectedSlotColor) !== root.slotSnapshotColor
+                        )
+                    )
                     readonly property int minContentWidth: Math.max(
-                        560,
+                        480,
                         Math.ceil(Math.max(
-                            inspectorHeaderRow.implicitWidth,
-                            inspectorLabelsRow.implicitWidth,
-                            inspectorTabsRow.implicitWidth,
+                            inspectorHeaderRow.implicitWidth + 20,
+                            inspectorLabelsRow.implicitWidth + 20,
+                            inspectorPhaseRow.implicitWidth + 16,
+                            inspectorTabsRow.implicitWidth + 16,
                             inspectorFooterRow.implicitWidth
                         )) + Kirigami.Units.mediumSpacing * 2 + 12
                     )
@@ -5711,134 +5831,409 @@ Kirigami.ApplicationWindow {
                     border.width: 1
                     clip: true
 
+                    Timer {
+                        id: liveSlotAutoSaveTimer
+                        interval: 350
+                        repeat: false
+                        onTriggered: {
+                            if (root.hasSelectedSlot && !root.loadingSlotData && root.compileOk) {
+                                root.saveCurrentSlotToController()
+                                hardwareCanvas.syncSlotsFromController()
+                                root.selectedSlotTitle = hardwareCanvas.slotTitleFor(root.selectedSlotNumber)
+                            }
+                        }
+                    }
+
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: Kirigami.Units.mediumSpacing
-                        spacing: Kirigami.Units.smallSpacing
+                        spacing: 6
 
-                        // Inspector Header
-                        RowLayout {
-                            id: inspectorHeaderRow
+                        // =========================================================================
+                        // ZONE 1: Identity & Key Appearance Card (Header + Live OLED Labels + Color)
+                        // =========================================================================
+                        Rectangle {
                             Layout.fillWidth: true
-                            spacing: 8
-
-                            Rectangle {
-                                width: Math.round(28 * root.inspectorScale)
-                                height: Math.round(28 * root.inspectorScale)
-                                radius: 6
-                                color: Kirigami.Theme.alternateBackgroundColor
-                                border.color: root.selectedSlotColor
-                                border.width: 2
-
-                                QQC2.Label {
-                                    anchors.centerIn: parent
-                                    text: root.selectedSlotNumber
-                                    font.bold: true
-                                    font.pixelSize: Math.round(11 * root.inspectorScale)
-                                    color: Kirigami.Theme.textColor
-                                }
-                            }
+                            implicitHeight: zone1Col.implicitHeight + 16
+                            radius: 6
+                            color: Kirigami.Theme.alternateBackgroundColor
+                            border.color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                            border.width: 1
 
                             ColumnLayout {
-                                spacing: 1
-                                Layout.fillWidth: true
-                                Layout.minimumWidth: 60
+                                id: zone1Col
+                                anchors.fill: parent
+                                anchors.margins: 8
+                                spacing: 6
 
-                                QQC2.Label {
-                                    id: inspectorTitle
-                                    font.weight: Font.DemiBold
-                                    font.pixelSize: Math.round(15 * root.inspectorScale)
-                                    text: qsTr("%1 — duckyScript 3").arg(root.selectedSlotTitle)
-                                    color: Kirigami.Theme.textColor
+                                // Row 1A: Interactive Keycap Badge, Slot Title, Slot Type Pill, Key Color Swatch & Close
+                                RowLayout {
+                                    id: inspectorHeaderRow
                                     Layout.fillWidth: true
-                                    elide: Text.ElideRight
+                                    spacing: 8
+
+                                    // Interactive Mini Keycap Badge (click to pick key color on slots 1..20)
+                                    Rectangle {
+                                        width: Math.round(34 * root.inspectorScale)
+                                        height: Math.round(34 * root.inspectorScale)
+                                        radius: 6
+                                        color: inspectorBadgeSwatchMouse.containsMouse && inspectorCard.isMechanicalKey
+                                            ? Qt.lighter(Kirigami.Theme.backgroundColor, 1.2)
+                                            : Kirigami.Theme.backgroundColor
+                                        border.color: root.selectedSlotColor
+                                        border.width: 2
+
+                                        // Mini top LED bar matching physical keycap
+                                        Rectangle {
+                                            anchors.top: parent.top
+                                            anchors.topMargin: 3
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            width: parent.width - 10
+                                            height: 3
+                                            radius: 1.5
+                                            color: root.selectedSlotColor
+                                        }
+
+                                        QQC2.Label {
+                                            anchors.centerIn: parent
+                                            anchors.verticalCenterOffset: 2
+                                            text: root.selectedSlotNumber
+                                            font.bold: true
+                                            font.pixelSize: Math.round(12 * root.inspectorScale)
+                                            color: Kirigami.Theme.textColor
+                                        }
+
+                                        MouseArea {
+                                            id: inspectorBadgeSwatchMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            enabled: inspectorCard.isMechanicalKey
+                                            cursorShape: inspectorCard.isMechanicalKey ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                            onClicked: root.openKeyColorPicker(root.selectedSlotNumber, root.selectedSlotColor)
+                                        }
+
+                                        QQC2.ToolTip.visible: inspectorBadgeSwatchMouse.containsMouse && inspectorCard.isMechanicalKey
+                                        QQC2.ToolTip.text: qsTr("Click to change Key %1 RGB Color (%2)")
+                                            .arg(root.selectedSlotNumber)
+                                            .arg(root.selectedSlotColor)
+                                    }
+
+                                    ColumnLayout {
+                                        spacing: 2
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 80
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 6
+
+                                            QQC2.Label {
+                                                id: inspectorTitle
+                                                font.weight: Font.Bold
+                                                font.pixelSize: Math.round(14 * root.inspectorScale)
+                                                text: root.selectedSlotTitle
+                                                color: Kirigami.Theme.textColor
+                                                elide: Text.ElideRight
+                                                Layout.fillWidth: true
+                                            }
+                                        }
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 6
+
+                                            // Slot Type Badge (MECHANICAL KEY / ROTARY ENCODER / EXPANSION)
+                                            Rectangle {
+                                                radius: 3
+                                                color: inspectorCard.isMechanicalKey
+                                                    ? Qt.alpha("#38bdf8", 0.16)
+                                                    : (inspectorCard.isRotaryEncoder ? Qt.alpha("#a78bfa", 0.16) : Qt.alpha("#f59e0b", 0.16))
+                                                border.color: inspectorCard.isMechanicalKey
+                                                    ? Qt.alpha("#38bdf8", 0.5)
+                                                    : (inspectorCard.isRotaryEncoder ? Qt.alpha("#a78bfa", 0.5) : Qt.alpha("#f59e0b", 0.5))
+                                                border.width: 1
+                                                implicitWidth: slotTypeBadgeLbl.implicitWidth + 10
+                                                implicitHeight: Math.round(16 * root.inspectorScale)
+
+                                                QQC2.Label {
+                                                    id: slotTypeBadgeLbl
+                                                    anchors.centerIn: parent
+                                                    text: inspectorCard.isMechanicalKey
+                                                        ? qsTr("KEY %1").arg(root.selectedSlotNumber)
+                                                        : (inspectorCard.isRotaryEncoder
+                                                            ? qsTr("ENCODER")
+                                                            : qsTr("EXPANSION CH %1").arg(root.selectedSlotNumber - 26))
+                                                    font.family: "monospace"
+                                                    font.bold: true
+                                                    font.pixelSize: Math.round(9 * root.inspectorScale)
+                                                    color: inspectorCard.isMechanicalKey
+                                                        ? "#38bdf8"
+                                                        : (inspectorCard.isRotaryEncoder ? "#a78bfa" : "#f59e0b")
+                                                }
+                                            }
+
+                                            QQC2.Label {
+                                                text: qsTr("Profile #%1 (%2)")
+                                                    .arg(deviceController.activeProfile)
+                                                    .arg(deviceController.activeProfileName)
+                                                font.pixelSize: Math.round(10 * root.inspectorScale)
+                                                color: Kirigami.Theme.disabledTextColor
+                                                elide: Text.ElideRight
+                                                Layout.fillWidth: true
+                                            }
+                                        }
+                                    }
+
+                                    // Interactive Key RGB Color Swatch Button (Slots 1..20)
+                                    Rectangle {
+                                        visible: inspectorCard.isMechanicalKey
+                                        radius: 5
+                                        color: keyColorPillMouse.containsMouse
+                                            ? Qt.lighter(Kirigami.Theme.backgroundColor, 1.25)
+                                            : Kirigami.Theme.backgroundColor
+                                        border.color: keyColorPillMouse.containsMouse
+                                            ? root.selectedSlotColor
+                                            : Qt.alpha(Kirigami.Theme.textColor, 0.25)
+                                        border.width: 1
+                                        implicitWidth: keyColorPillRow.implicitWidth + 14
+                                        implicitHeight: Math.round(28 * root.inspectorScale)
+
+                                        RowLayout {
+                                            id: keyColorPillRow
+                                            anchors.centerIn: parent
+                                            spacing: 6
+
+                                            Rectangle {
+                                                width: Math.round(12 * root.inspectorScale)
+                                                height: Math.round(12 * root.inspectorScale)
+                                                radius: 3
+                                                color: root.selectedSlotColor
+                                                border.color: "#ffffff44"
+                                                border.width: 1
+                                            }
+
+                                            QQC2.Label {
+                                                text: qsTr("Key Color")
+                                                font.bold: true
+                                                font.pixelSize: Math.round(10 * root.inspectorScale)
+                                                color: Kirigami.Theme.textColor
+                                            }
+
+                                            QQC2.Label {
+                                                text: String(root.selectedSlotColor).toUpperCase()
+                                                font.family: "monospace"
+                                                font.pixelSize: Math.round(10 * root.inspectorScale)
+                                                color: Kirigami.Theme.disabledTextColor
+                                            }
+                                        }
+
+                                        MouseArea {
+                                            id: keyColorPillMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.openKeyColorPicker(root.selectedSlotNumber, root.selectedSlotColor)
+                                        }
+
+                                        QQC2.ToolTip.visible: keyColorPillMouse.containsMouse
+                                        QQC2.ToolTip.text: qsTr("Set Key %1 Color (SWCOLOR) or pick from Saved & Used Palettes").arg(root.selectedSlotNumber)
+                                    }
+
+                                    QQC2.ToolButton {
+                                        text: "✕"
+                                        implicitWidth: Math.round(28 * root.inspectorScale)
+                                        implicitHeight: Math.round(28 * root.inspectorScale)
+                                        font.pixelSize: Math.round(12 * root.inspectorScale)
+                                        onClicked: root.clearSlotSelection()
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Close Key Inspector (or click the selected key again)")
+                                    }
                                 }
 
-                                QQC2.Label {
-                                    text: deviceController.sdMountPath.length > 0
-                                        ? qsTr("Profile #%1 (%2) • SD: %3")
-                                            .arg(deviceController.activeProfile)
-                                            .arg(deviceController.activeProfileName)
-                                            .arg(deviceController.sdMountPath)
-                                        : (deviceController.connected
-                                            ? qsTr("Profile #%1 (%2) • %3 (SN: %4)")
-                                                .arg(deviceController.activeProfile)
-                                                .arg(deviceController.activeProfileName)
-                                                .arg(deviceController.modelName)
-                                                .arg(deviceController.serialNumber)
-                                            : qsTr("RGB LED: %1 • Target Slot: %2 (Disconnected)")
-                                                .arg(root.selectedSlotColor)
-                                                .arg(root.selectedSlotNumber))
-                                    font.pixelSize: Math.round(11 * root.inspectorScale)
-                                    color: Kirigami.Theme.disabledTextColor
+                                Rectangle {
                                     Layout.fillWidth: true
-                                    elide: Text.ElideMiddle
+                                    height: 1
+                                    color: Qt.alpha(Kirigami.Theme.textColor, 0.08)
                                 }
-                            }
 
-                            QQC2.Button {
-                                text: qsTr("✨ AI")
-                                implicitHeight: Math.round(28 * root.inspectorScale)
-                                font.pixelSize: Math.round(11 * root.inspectorScale)
-                                onClicked: aiModal.open()
-                                QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: qsTr("Open AI Macro Architect")
-                            }
+                                // Row 1B: OLED Key Labels (Line 1 & Line 2 with 7-char indicators) + Clear Slot Action
+                                RowLayout {
+                                    id: inspectorLabelsRow
+                                    Layout.fillWidth: true
+                                    spacing: 8
 
-                            QQC2.ToolButton {
-                                text: "✕"
-                                implicitWidth: Math.round(28 * root.inspectorScale)
-                                implicitHeight: Math.round(28 * root.inspectorScale)
-                                font.pixelSize: Math.round(12 * root.inspectorScale)
-                                onClicked: root.clearSlotSelection()
-                                QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: qsTr("Close Key Editor (or click the selected key again)")
+                                    QQC2.Label {
+                                        text: inspectorCard.isMechanicalKey ? qsTr("OLED Line 1:") : qsTr("OLED Label:")
+                                        font.bold: true
+                                        font.pixelSize: Math.round(11 * root.inspectorScale)
+                                        color: Kirigami.Theme.disabledTextColor
+                                    }
+
+                                    RowLayout {
+                                        spacing: 4
+                                        QQC2.TextField {
+                                            id: label1Input
+                                            Layout.preferredWidth: Math.round(92 * root.inspectorScale)
+                                            Layout.minimumWidth: 68
+                                            implicitHeight: Math.round(26 * root.inspectorScale)
+                                            maximumLength: 7
+                                            placeholderText: qsTr("Top (7ch)")
+                                            selectByMouse: true
+                                            font.family: "monospace"
+                                            font.pixelSize: Math.round(11 * root.inspectorScale)
+                                            onTextEdited: liveSlotAutoSaveTimer.restart()
+                                        }
+                                        QQC2.Label {
+                                            text: qsTr("%1/7").arg(label1Input.text.length)
+                                            font.family: "monospace"
+                                            font.pixelSize: Math.round(9 * root.inspectorScale)
+                                            color: label1Input.text.length >= 7
+                                                ? Kirigami.Theme.neutralTextColor
+                                                : Kirigami.Theme.disabledTextColor
+                                        }
+                                    }
+
+                                    QQC2.Label {
+                                        visible: inspectorCard.isMechanicalKey
+                                        text: qsTr("Line 2:")
+                                        font.bold: true
+                                        font.pixelSize: Math.round(11 * root.inspectorScale)
+                                        color: Kirigami.Theme.disabledTextColor
+                                    }
+
+                                    RowLayout {
+                                        visible: inspectorCard.isMechanicalKey
+                                        spacing: 4
+                                        QQC2.TextField {
+                                            id: label2Input
+                                            Layout.preferredWidth: Math.round(92 * root.inspectorScale)
+                                            Layout.minimumWidth: 68
+                                            implicitHeight: Math.round(26 * root.inspectorScale)
+                                            maximumLength: 7
+                                            placeholderText: qsTr("Bot (7ch)")
+                                            selectByMouse: true
+                                            font.family: "monospace"
+                                            font.pixelSize: Math.round(11 * root.inspectorScale)
+                                            onTextEdited: liveSlotAutoSaveTimer.restart()
+                                        }
+                                        QQC2.Label {
+                                            text: qsTr("%1/7").arg(label2Input.text.length)
+                                            font.family: "monospace"
+                                            font.pixelSize: Math.round(9 * root.inspectorScale)
+                                            color: label2Input.text.length >= 7
+                                                ? Kirigami.Theme.neutralTextColor
+                                                : Kirigami.Theme.disabledTextColor
+                                        }
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    QQC2.Button {
+                                        icon.name: "edit-clear"
+                                        text: qsTr("Clear Key")
+                                        implicitHeight: Math.round(24 * root.inspectorScale)
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
+                                        onClicked: root.clearSelectedSlotNow()
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Clear labels, scripts, and custom RGB color on Slot %1").arg(root.selectedSlotNumber)
+                                    }
+                                }
                             }
                         }
 
-                        // Key Label & Flags Row (config.txt zN, xN, ab N, dr N)
+                        // =========================================================================
+                        // ZONE 2: Event Phase Selector (On Press vs On Release) & Hardware Flags
+                        // =========================================================================
                         RowLayout {
-                            id: inspectorLabelsRow
+                            id: inspectorPhaseRow
                             Layout.fillWidth: true
                             spacing: 6
 
-                            QQC2.Label {
-                                text: qsTr("L1:")
-                                font.pixelSize: Math.round(11 * root.inspectorScale)
-                                color: Kirigami.Theme.disabledTextColor
+                            QQC2.ButtonGroup { id: scriptPhaseGroup }
+
+                            Rectangle {
+                                radius: 5
+                                color: Kirigami.Theme.alternateBackgroundColor
+                                border.color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                                border.width: 1
+                                implicitWidth: phaseButtonsRow.implicitWidth + 6
+                                implicitHeight: Math.round(28 * root.inspectorScale)
+
+                                RowLayout {
+                                    id: phaseButtonsRow
+                                    anchors.centerIn: parent
+                                    spacing: 2
+
+                                    QQC2.ToolButton {
+                                        QQC2.ButtonGroup.group: scriptPhaseGroup
+                                        checkable: true
+                                        checked: !root.editingReleaseScript
+                                        text: root.pressScriptBuffer.trim().length > 0
+                                            ? qsTr("⬇ On Press (key%1 ●)").arg(root.selectedSlotNumber)
+                                            : qsTr("⬇ On Press (key%1)").arg(root.selectedSlotNumber)
+                                        font.pixelSize: Math.round(11 * root.inspectorScale)
+                                        font.bold: !root.editingReleaseScript
+                                        implicitHeight: Math.round(24 * root.inspectorScale)
+                                        onClicked: {
+                                            if (root.editingReleaseScript) {
+                                                root.releaseScriptBuffer = scriptEditor.text
+                                                root.editingReleaseScript = false
+                                                root.loadingSlotData = true
+                                                scriptEditor.text = root.pressScriptBuffer
+                                                root.showWebApiBuilder = false
+                                                root.showAppLaunchBuilder = false
+                                                root.inspectorMode = "code"
+                                                root.loadWebApiBuilderFromScript(scriptEditor.text)
+                                                root.loadAppLaunchBuilderFromScript(scriptEditor.text)
+                                                root.loadingSlotData = false
+                                                root.updateCompilerStatus()
+                                            }
+                                        }
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Edit script executed when Slot %1 is pressed down (key%1.txt)").arg(root.selectedSlotNumber)
+                                    }
+
+                                    QQC2.ToolButton {
+                                        QQC2.ButtonGroup.group: scriptPhaseGroup
+                                        checkable: true
+                                        checked: root.editingReleaseScript
+                                        text: root.releaseScriptBuffer.trim().length > 0
+                                            ? qsTr("⬆ On Release (key%1-rel ●)").arg(root.selectedSlotNumber)
+                                            : qsTr("⬆ On Release (key%1-rel)").arg(root.selectedSlotNumber)
+                                        font.pixelSize: Math.round(11 * root.inspectorScale)
+                                        font.bold: root.editingReleaseScript
+                                        implicitHeight: Math.round(24 * root.inspectorScale)
+                                        onClicked: {
+                                            if (!root.editingReleaseScript) {
+                                                root.pressScriptBuffer = scriptEditor.text
+                                                root.editingReleaseScript = true
+                                                root.loadingSlotData = true
+                                                scriptEditor.text = root.releaseScriptBuffer
+                                                root.showWebApiBuilder = false
+                                                root.showAppLaunchBuilder = false
+                                                root.inspectorMode = "code"
+                                                root.loadWebApiBuilderFromScript(scriptEditor.text)
+                                                root.loadAppLaunchBuilderFromScript(scriptEditor.text)
+                                                root.loadingSlotData = false
+                                                root.updateCompilerStatus()
+                                            }
+                                        }
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Edit script executed when Slot %1 is released (key%1-release.txt)").arg(root.selectedSlotNumber)
+                                    }
+                                }
                             }
 
-                            QQC2.TextField {
-                                id: label1Input
-                                Layout.preferredWidth: Math.round(72 * root.inspectorScale)
-                                Layout.minimumWidth: 52
-                                maximumLength: 7
-                                placeholderText: qsTr("Line 1")
-                                selectByMouse: true
-                                font.pixelSize: Math.round(11 * root.inspectorScale)
-                            }
-
-                            QQC2.Label {
-                                text: qsTr("L2:")
-                                font.pixelSize: Math.round(11 * root.inspectorScale)
-                                color: Kirigami.Theme.disabledTextColor
-                            }
-
-                            QQC2.TextField {
-                                id: label2Input
-                                Layout.preferredWidth: Math.round(72 * root.inspectorScale)
-                                Layout.minimumWidth: 52
-                                maximumLength: 7
-                                placeholderText: qsTr("Line 2")
-                                selectByMouse: true
-                                font.pixelSize: Math.round(11 * root.inspectorScale)
-                            }
+                            Item { Layout.fillWidth: true }
 
                             QQC2.CheckBox {
                                 id: allowAbortCheck
                                 text: qsTr("Allow Abort")
                                 font.pixelSize: Math.round(11 * root.inspectorScale)
-                                onToggled: root.updateCompilerStatus()
+                                onToggled: {
+                                    root.updateCompilerStatus()
+                                    liveSlotAutoSaveTimer.restart()
+                                }
                                 QQC2.ToolTip.visible: hovered
                                 QQC2.ToolTip.text: qsTr("Allow any key press to abort this script early (ab %1 / $_ALLOW_ABORT = 1)").arg(root.selectedSlotNumber)
                             }
@@ -5847,115 +6242,69 @@ Kirigami.ApplicationWindow {
                                 id: disableRepeatCheck
                                 text: qsTr("No Repeat")
                                 font.pixelSize: Math.round(11 * root.inspectorScale)
-                                onToggled: root.updateCompilerStatus()
+                                onToggled: {
+                                    root.updateCompilerStatus()
+                                    liveSlotAutoSaveTimer.restart()
+                                }
                                 QQC2.ToolTip.visible: hovered
                                 QQC2.ToolTip.text: qsTr("Disable auto-repeat while key is held down (dr %1 / $_DONT_REPEAT = 1)").arg(root.selectedSlotNumber)
                             }
-
-                            Item { Layout.fillWidth: true }
-
-                            QQC2.Button {
-                                icon.name: "color-picker"
-                                text: qsTr("Key Color")
-                                enabled: root.selectedSlotNumber >= 1 && root.selectedSlotNumber <= 20
-                                implicitHeight: Math.round(24 * root.inspectorScale)
-                                font.pixelSize: Math.round(10 * root.inspectorScale)
-                                onClicked: root.openKeyColorPicker(root.selectedSlotNumber, root.selectedSlotColor)
-                                QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: qsTr("Set Key %1 Color").arg(root.selectedSlotNumber)
-                            }
-
-                            QQC2.Button {
-                                icon.name: "color-picker"
-                                text: qsTr("Default Color")
-                                implicitHeight: Math.round(24 * root.inspectorScale)
-                                font.pixelSize: Math.round(10 * root.inspectorScale)
-                                onClicked: root.openProfileDefaultColorPicker(
-                                    deviceController.activeProfile,
-                                    deviceController.activeProfileName,
-                                    deviceController.activeProfileBgColor
-                                )
-                                QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: qsTr("Change Default Button Color (BG_COLOR) for Profile #%1 (%2)")
-                                    .arg(deviceController.activeProfile)
-                                    .arg(deviceController.activeProfileName)
-                            }
                         }
 
-                        // Script Mode Tabs (keyN.txt vs keyN-release.txt) + Web API Builder Toggle + Snippet Quick Insert Bar
+                        // =========================================================================
+                        // ZONE 3: Mutually Exclusive Action Mode Selector (Code / Launch App / Web API / AI)
+                        // =========================================================================
                         RowLayout {
                             id: inspectorTabsRow
                             Layout.fillWidth: true
-                            spacing: 4
+                            spacing: 6
 
-                            QQC2.ButtonGroup { id: scriptPhaseGroup }
-
-                            QQC2.ToolButton {
-                                QQC2.ButtonGroup.group: scriptPhaseGroup
+                            QQC2.Button {
+                                id: codeModeBtn
                                 checkable: true
-                                checked: !root.editingReleaseScript
-                                text: qsTr("▾ On Press (key%1)").arg(root.selectedSlotNumber)
+                                checked: root.inspectorMode === "code"
+                                highlighted: root.inspectorMode === "code"
+                                text: qsTr("📜 DuckyScript IDE")
+                                implicitHeight: Math.round(28 * root.inspectorScale)
                                 font.pixelSize: Math.round(11 * root.inspectorScale)
-                                font.bold: !root.editingReleaseScript
-                                implicitHeight: Math.round(26 * root.inspectorScale)
+                                font.bold: root.inspectorMode === "code"
                                 onClicked: {
-                                    if (root.editingReleaseScript) {
-                                        root.releaseScriptBuffer = scriptEditor.text
-                                        root.editingReleaseScript = false
-                                        root.loadingSlotData = true
-                                        scriptEditor.text = root.pressScriptBuffer
-                                        root.loadWebApiBuilderFromScript(scriptEditor.text)
-                                        root.loadAppLaunchBuilderFromScript(scriptEditor.text)
-                                        root.loadingSlotData = false
-                                        root.updateCompilerStatus()
-                                    }
+                                    root.showAppLaunchBuilder = false
+                                    root.showWebApiBuilder = false
+                                    root.inspectorMode = "code"
                                 }
-                            }
-
-                            QQC2.ToolButton {
-                                QQC2.ButtonGroup.group: scriptPhaseGroup
-                                checkable: true
-                                checked: root.editingReleaseScript
-                                text: root.releaseScriptBuffer.trim().length > 0
-                                    ? qsTr("▴ On Release (key%1-rel ●)").arg(root.selectedSlotNumber)
-                                    : qsTr("▴ On Release (key%1-rel)").arg(root.selectedSlotNumber)
-                                font.pixelSize: Math.round(11 * root.inspectorScale)
-                                font.bold: root.editingReleaseScript
-                                implicitHeight: Math.round(26 * root.inspectorScale)
-                                onClicked: {
-                                    if (!root.editingReleaseScript) {
-                                        root.pressScriptBuffer = scriptEditor.text
-                                        root.editingReleaseScript = true
-                                        root.loadingSlotData = true
-                                        scriptEditor.text = root.releaseScriptBuffer
-                                        root.loadWebApiBuilderFromScript(scriptEditor.text)
-                                        root.loadAppLaunchBuilderFromScript(scriptEditor.text)
-                                        root.loadingSlotData = false
-                                        root.updateCompilerStatus()
-                                    }
-                                }
+                                QQC2.ToolTip.visible: hovered
+                                QQC2.ToolTip.text: qsTr("Full-height DuckyScript 3 editor with syntax highlighting, autocomplete & command reference")
                             }
 
                             QQC2.Button {
                                 id: appLaunchToggleBtn
                                 checkable: true
-                                checked: root.showAppLaunchBuilder
-                                highlighted: root.appLaunchEnabled
+                                checked: root.inspectorMode === "app_launch"
+                                highlighted: root.inspectorMode === "app_launch" || root.appLaunchEnabled
                                 text: root.appLaunchEnabled
                                     ? qsTr("🚀 Launch App ●")
                                     : qsTr("🚀 Launch App")
-                                implicitHeight: Math.round(26 * root.inspectorScale)
+                                implicitHeight: Math.round(28 * root.inspectorScale)
                                 font.pixelSize: Math.round(11 * root.inspectorScale)
-                                font.bold: root.appLaunchEnabled
+                                font.bold: root.inspectorMode === "app_launch" || root.appLaunchEnabled
                                 onClicked: {
-                                    root.showAppLaunchBuilder = checked
-                                    if (checked && !root.appLaunchEnabled && scriptEditor.text.trim().length === 0) {
-                                        appLaunchEnabledCheck.checked = true
-                                        if (appLaunchOledField.text.trim().length === 0) {
-                                            const lbl = (label1Input.text.trim() + " " + label2Input.text.trim()).trim()
-                                            appLaunchOledField.text = lbl.length > 0 ? ("Run: " + lbl) : ("App Key " + root.selectedSlotNumber)
+                                    if (root.inspectorMode === "app_launch") {
+                                        root.showAppLaunchBuilder = false
+                                        root.inspectorMode = "code"
+                                    } else {
+                                        root.showWebApiBuilder = false
+                                        root.showCommandReference = false
+                                        root.showAppLaunchBuilder = true
+                                        root.inspectorMode = "app_launch"
+                                        if (!root.appLaunchEnabled && scriptEditor.text.trim().length === 0) {
+                                            appLaunchEnabledCheck.checked = true
+                                            if (appLaunchOledField.text.trim().length === 0) {
+                                                const lbl = (label1Input.text.trim() + " " + label2Input.text.trim()).trim()
+                                                appLaunchOledField.text = lbl.length > 0 ? ("Run: " + lbl) : ("App Key " + root.selectedSlotNumber)
+                                            }
+                                            root.syncAppLaunchBuilderToScript()
                                         }
-                                        root.syncAppLaunchBuilderToScript()
                                     }
                                 }
                                 QQC2.ToolTip.visible: hovered
@@ -5965,68 +6314,46 @@ Kirigami.ApplicationWindow {
                             QQC2.Button {
                                 id: webApiToggleBtn
                                 checkable: true
-                                checked: root.showWebApiBuilder
-                                highlighted: root.webApiEnabled
+                                checked: root.inspectorMode === "web_api"
+                                highlighted: root.inspectorMode === "web_api" || root.webApiEnabled
                                 text: root.webApiEnabled
                                     ? qsTr("🌐 Web API ●")
                                     : qsTr("🌐 Web API")
-                                implicitHeight: Math.round(26 * root.inspectorScale)
+                                implicitHeight: Math.round(28 * root.inspectorScale)
                                 font.pixelSize: Math.round(11 * root.inspectorScale)
-                                font.bold: root.webApiEnabled
+                                font.bold: root.inspectorMode === "web_api" || root.webApiEnabled
                                 onClicked: {
-                                    root.showWebApiBuilder = checked
-                                    if (checked && !root.webApiEnabled && scriptEditor.text.trim().length === 0) {
-                                        webApiEnabledCheck.checked = true
-                                        if (webApiOledField.text.trim().length === 0) {
-                                            const lbl = (label1Input.text.trim() + " " + label2Input.text.trim()).trim()
-                                            webApiOledField.text = lbl.length > 0 ? ("API: " + lbl) : ("API Key " + root.selectedSlotNumber)
+                                    if (root.inspectorMode === "web_api") {
+                                        root.showWebApiBuilder = false
+                                        root.inspectorMode = "code"
+                                    } else {
+                                        root.showAppLaunchBuilder = false
+                                        root.showCommandReference = false
+                                        root.showWebApiBuilder = true
+                                        root.inspectorMode = "web_api"
+                                        if (!root.webApiEnabled && scriptEditor.text.trim().length === 0) {
+                                            webApiEnabledCheck.checked = true
+                                            if (webApiOledField.text.trim().length === 0) {
+                                                const lbl = (label1Input.text.trim() + " " + label2Input.text.trim()).trim()
+                                                webApiOledField.text = lbl.length > 0 ? ("API: " + lbl) : ("API Key " + root.selectedSlotNumber)
+                                            }
+                                            root.syncWebApiBuilderToScript()
                                         }
-                                        root.syncWebApiBuilderToScript()
                                     }
                                 }
                                 QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: qsTr("Configure an HTTP / Webhook API request triggered by pressing this key (without typing into the active window)")
-                            }
-
-                            QQC2.Button {
-                                id: cmdRefToggleBtn
-                                checkable: true
-                                checked: root.showCommandReference
-                                text: qsTr("📖 Reference")
-                                implicitHeight: Math.round(26 * root.inspectorScale)
-                                font.pixelSize: Math.round(11 * root.inspectorScale)
-                                font.bold: root.showCommandReference
-                                onClicked: {
-                                    root.showCommandReference = checked
-                                    if (checked && commandReferenceListView.count === 0) {
-                                        root.refreshCommandReferenceModel()
-                                    }
-                                }
-                                QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: qsTr("Toggle interactive duckyScript 3 Command Reference & Snippet Browser")
+                                QQC2.ToolTip.text: qsTr("Configure an HTTP / Webhook API request triggered by pressing this key")
                             }
 
                             Item { Layout.fillWidth: true }
 
                             QQC2.Button {
-                                text: "+DELAY"
-                                implicitHeight: Math.round(24 * root.inspectorScale)
-                                font.pixelSize: Math.round(10 * root.inspectorScale)
-                                onClicked: scriptEditor.insert(scriptEditor.cursorPosition, "DELAY 100\n")
-                            }
-
-                            QQC2.Button {
-                                text: "+STRING"
-                                implicitHeight: Math.round(24 * root.inspectorScale)
-                                font.pixelSize: Math.round(10 * root.inspectorScale)
-                                onClicked: scriptEditor.insert(scriptEditor.cursorPosition, "STRING Hello World\n")
-                            }
-
-                            QQC2.Button {
-                                text: "+OLED"
-                                implicitHeight: Math.round(24 * root.inspectorScale)
-                                font.pixelSize: Math.round(10 * root.inspectorScale)
-                                onClicked: scriptEditor.insert(scriptEditor.cursorPosition, "OLED_CLEAR\nOLED_CPRINT Active\nOLED_UPDATE\n")
+                                text: qsTr("✨ AI Architect")
+                                implicitHeight: Math.round(28 * root.inspectorScale)
+                                font.pixelSize: Math.round(11 * root.inspectorScale)
+                                onClicked: aiModal.open()
+                                QQC2.ToolTip.visible: hovered
+                                QQC2.ToolTip.text: qsTr("Generate DuckyScript 3 macros from natural language using AI Macro Architect")
                             }
                         }
 
@@ -6772,11 +7099,17 @@ Kirigami.ApplicationWindow {
                             }
                         }
 
-                        // Code Editor Area with Synchronized Line Number Gutter & Live Autocomplete Popup
+                        // =========================================================================
+                        // ZONE 4: Code Editor Area with Dedicated IDE Header Toolbar,
+                        //         Synchronized Line-Number Gutter & Live Autocomplete Popup
+                        // =========================================================================
                         Rectangle {
                             id: editorContainer
+                            readonly property bool editorExpanded: root.inspectorMode === "code" || root.showScriptPreviewInBuilder
                             Layout.fillWidth: true
-                            Layout.fillHeight: true
+                            Layout.fillHeight: editorExpanded
+                            Layout.preferredHeight: editorExpanded ? -1 : (editorHeaderStrip.height + 2)
+                            Layout.minimumHeight: editorExpanded ? Math.round(135 * root.inspectorScale) : (editorHeaderStrip.height + 2)
                             radius: Kirigami.Units.smallSpacing
                             color: Kirigami.Theme.alternateBackgroundColor
                             border.color: root.compileOk
@@ -6785,9 +7118,159 @@ Kirigami.ApplicationWindow {
                             border.width: 1
                             clip: true
 
+                            // Dedicated IDE Header Toolbar
+                            Rectangle {
+                                id: editorHeaderStrip
+                                anchors.top: parent.top
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                height: Math.round(30 * root.inspectorScale)
+                                z: 5
+                                color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.85)
+
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    height: 1
+                                    color: Qt.alpha(Kirigami.Theme.textColor, 0.12)
+                                }
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 8
+                                    anchors.rightMargin: 6
+                                    spacing: 4
+
+                                    // Collapse / Expand toggle when inside a visual builder
+                                    QQC2.ToolButton {
+                                        visible: root.inspectorMode !== "code"
+                                        text: root.showScriptPreviewInBuilder ? qsTr("▾ Script") : qsTr("▸ Script")
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
+                                        font.bold: true
+                                        implicitHeight: Math.round(22 * root.inspectorScale)
+                                        onClicked: root.showScriptPreviewInBuilder = !root.showScriptPreviewInBuilder
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Show or hide the live generated DuckyScript 3 source preview while using a visual builder")
+                                    }
+
+                                    // Active script filename + line count badge
+                                    Rectangle {
+                                        radius: 3
+                                        color: Qt.alpha(Kirigami.Theme.highlightColor, 0.14)
+                                        border.color: Qt.alpha(Kirigami.Theme.highlightColor, 0.38)
+                                        border.width: 1
+                                        implicitWidth: fileBadgeRow.implicitWidth + 10
+                                        implicitHeight: Math.round(20 * root.inspectorScale)
+
+                                        RowLayout {
+                                            id: fileBadgeRow
+                                            anchors.centerIn: parent
+                                            spacing: 5
+
+                                            QQC2.Label {
+                                                text: root.editingReleaseScript
+                                                    ? ("key" + root.selectedSlotNumber + "-release.txt")
+                                                    : ("key" + root.selectedSlotNumber + ".txt")
+                                                font.family: "monospace"
+                                                font.bold: true
+                                                font.pixelSize: Math.round(10 * root.inspectorScale)
+                                                color: Kirigami.Theme.highlightColor
+                                            }
+
+                                            QQC2.Label {
+                                                text: qsTr("• %1 ln").arg(Math.max(1, scriptEditor.lineCount))
+                                                font.family: "monospace"
+                                                font.pixelSize: Math.round(9 * root.inspectorScale)
+                                                color: Kirigami.Theme.disabledTextColor
+                                            }
+                                        }
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    // Quick Snippet Insertion Buttons
+                                    QQC2.ToolButton {
+                                        visible: editorContainer.editorExpanded
+                                        text: qsTr("+DELAY")
+                                        font.family: "monospace"
+                                        font.pixelSize: Math.round(9 * root.inspectorScale)
+                                        font.bold: true
+                                        implicitHeight: Math.round(22 * root.inspectorScale)
+                                        onClicked: root.insertCommandFromReference("DELAY 100")
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Insert DELAY 100 (pause 100ms)")
+                                    }
+
+                                    QQC2.ToolButton {
+                                        visible: editorContainer.editorExpanded
+                                        text: qsTr("+STRING")
+                                        font.family: "monospace"
+                                        font.pixelSize: Math.round(9 * root.inspectorScale)
+                                        font.bold: true
+                                        implicitHeight: Math.round(22 * root.inspectorScale)
+                                        onClicked: root.insertCommandFromReference("STRINGLN ")
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Insert STRINGLN command")
+                                    }
+
+                                    QQC2.ToolButton {
+                                        visible: editorContainer.editorExpanded
+                                        text: qsTr("+OLED")
+                                        font.family: "monospace"
+                                        font.pixelSize: Math.round(9 * root.inspectorScale)
+                                        font.bold: true
+                                        implicitHeight: Math.round(22 * root.inspectorScale)
+                                        onClicked: root.insertCommandFromReference("OLED_CLEAR\nOLED_CURSOR 10 24\nOLED_PRINT Hello!\nOLED_UPDATE")
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Insert OLED screen drawing block")
+                                    }
+
+                                    QQC2.ToolButton {
+                                        visible: editorContainer.editorExpanded
+                                        text: qsTr("⚡")
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
+                                        implicitHeight: Math.round(22 * root.inspectorScale)
+                                        onClicked: {
+                                            scriptEditor.forceActiveFocus()
+                                            root.updateAutocompleteSuggestions(true)
+                                        }
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Trigger DuckyScript 3 Autocomplete (Ctrl+Space)")
+                                    }
+
+                                    // Integrated Command Reference Toggle
+                                    QQC2.Button {
+                                        text: qsTr("📖 Reference")
+                                        checkable: true
+                                        checked: root.showCommandReference
+                                        highlighted: root.showCommandReference
+                                        implicitHeight: Math.round(22 * root.inspectorScale)
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
+                                        font.bold: root.showCommandReference
+                                        onClicked: {
+                                            root.showCommandReference = !root.showCommandReference
+                                            if (root.showCommandReference) {
+                                                if (!editorContainer.editorExpanded) {
+                                                    root.showScriptPreviewInBuilder = true
+                                                }
+                                                root.rebuildCommandReferenceModel()
+                                                commandReferenceSearchField.forceActiveFocus()
+                                            }
+                                        }
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Toggle interactive DuckyScript 3 Command Reference browser")
+                                    }
+                                }
+                            }
+
                             QQC2.ScrollView {
                                 id: scriptScrollView
-                                anchors.fill: parent
+                                visible: editorContainer.editorExpanded
+                                anchors.top: editorHeaderStrip.bottom
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
                                 anchors.margins: 2
                                 clip: true
 
@@ -6816,6 +7299,7 @@ Kirigami.ApplicationWindow {
                                             if (activeFocus && !root.insertingCompletion) {
                                                 root.updateAutocompleteSuggestions(false)
                                             }
+                                            liveSlotAutoSaveTimer.restart()
                                         }
                                     }
                                     onCursorPositionChanged: {
@@ -6921,8 +7405,9 @@ Kirigami.ApplicationWindow {
                             // Floating DuckyScript 3 Autocomplete Popup
                             Rectangle {
                                 id: autocompletePopup
-                                visible: root.autocompleteVisible && autocompleteListView.count > 0
+                                visible: editorContainer.editorExpanded && root.autocompleteVisible && autocompleteListView.count > 0
                                 z: 25
+                                readonly property real headerOffset: editorHeaderStrip.height
                                 readonly property real scrollX: (scriptScrollView.contentItem && scriptScrollView.contentItem.contentX)
                                     ? scriptScrollView.contentItem.contentX
                                     : 0
@@ -6932,8 +7417,8 @@ Kirigami.ApplicationWindow {
                                 readonly property real rowH: Math.round(26 * root.inspectorScale)
                                 readonly property real footerH: Math.round(20 * root.inspectorScale)
                                 readonly property real popupH: Math.min(autocompleteListView.count, 7) * rowH + footerH + 8
-                                readonly property real cursorBottomY: scriptEditor.cursorRectangle.y - scrollY + scriptEditor.cursorRectangle.height + 6
-                                readonly property real cursorTopY: scriptEditor.cursorRectangle.y - scrollY - popupH - 4
+                                readonly property real cursorBottomY: headerOffset + scriptEditor.cursorRectangle.y - scrollY + scriptEditor.cursorRectangle.height + 6
+                                readonly property real cursorTopY: headerOffset + scriptEditor.cursorRectangle.y - scrollY - popupH - 4
 
                                 x: Math.max(
                                     lineGutter.width + 6,
@@ -6942,8 +7427,8 @@ Kirigami.ApplicationWindow {
                                         editorContainer.width - width - 6
                                     )
                                 )
-                                y: (cursorBottomY + popupH <= editorContainer.height - 4 || cursorTopY < 4)
-                                    ? Math.max(4, Math.min(cursorBottomY, editorContainer.height - popupH - 4))
+                                y: (cursorBottomY + popupH <= editorContainer.height - 4 || cursorTopY < headerOffset + 4)
+                                    ? Math.max(headerOffset + 4, Math.min(cursorBottomY, editorContainer.height - popupH - 4))
                                     : cursorTopY
                                 width: Math.min(
                                     Math.max(360, Math.round(460 * root.inspectorScale)),
@@ -7068,7 +7553,9 @@ Kirigami.ApplicationWindow {
                             }
                         }
 
-                        // Inspector Footer Bar with Live DSVM v2 .dsb Bytecode Status
+                        // =========================================================================
+                        // ZONE 5: Inspector Footer Bar — Live DSVM v2 Status, Snapshot Revert & Save
+                        // =========================================================================
                         RowLayout {
                             id: inspectorFooterRow
                             Layout.fillWidth: true
@@ -7091,54 +7578,112 @@ Kirigami.ApplicationWindow {
                                 Layout.minimumWidth: 60
                                 implicitHeight: Math.round(28 * root.inspectorScale)
 
-                                QQC2.Label {
+                                RowLayout {
                                     anchors.fill: parent
                                     anchors.leftMargin: 8
                                     anchors.rightMargin: 8
-                                    verticalAlignment: Text.AlignVCenter
-                                    elide: Text.ElideRight
-                                    font.family: "monospace"
-                                    font.pixelSize: Math.round(11 * root.inspectorScale)
-                                    color: !root.compileOk
-                                        ? Kirigami.Theme.negativeTextColor
-                                        : (root.compileEmpty
-                                            ? Kirigami.Theme.disabledTextColor
-                                            : Kirigami.Theme.positiveTextColor)
-                                    text: {
-                                        const baseName = root.editingReleaseScript
-                                            ? ("key" + root.selectedSlotNumber + "-release")
-                                            : ("key" + root.selectedSlotNumber)
-                                        if (!root.compileOk) {
-                                            return qsTr("⚠ Line %1: %2").arg(root.compileErrorLine).arg(root.compileErrorMsg)
+                                    spacing: 6
+
+                                    QQC2.Label {
+                                        Layout.fillWidth: true
+                                        verticalAlignment: Text.AlignVCenter
+                                        elide: Text.ElideRight
+                                        font.family: "monospace"
+                                        font.pixelSize: Math.round(11 * root.inspectorScale)
+                                        color: !root.compileOk
+                                            ? Kirigami.Theme.negativeTextColor
+                                            : (root.compileEmpty
+                                                ? Kirigami.Theme.disabledTextColor
+                                                : Kirigami.Theme.positiveTextColor)
+                                        text: {
+                                            const baseName = root.editingReleaseScript
+                                                ? ("key" + root.selectedSlotNumber + "-release")
+                                                : ("key" + root.selectedSlotNumber)
+                                            if (!root.compileOk) {
+                                                return qsTr("⚠ Line %1: %2").arg(root.compileErrorLine).arg(root.compileErrorMsg)
+                                            }
+                                            if (root.compileEmpty) {
+                                                return qsTr("%1.txt — Empty script (0 B)").arg(baseName)
+                                            }
+                                            return qsTr("✓ DSVM v2: %1 B (%2.dsb)").arg(root.compileByteCount).arg(baseName)
                                         }
-                                        if (root.compileEmpty) {
-                                            return qsTr("%1.txt — Empty script (0 B)").arg(baseName)
+                                    }
+
+                                    Rectangle {
+                                        visible: inspectorCard.hasRevertibleChanges
+                                        radius: 3
+                                        color: Qt.alpha(Kirigami.Theme.neutralTextColor, 0.18)
+                                        border.color: Qt.alpha(Kirigami.Theme.neutralTextColor, 0.5)
+                                        border.width: 1
+                                        implicitWidth: modifiedBadgeLabel.implicitWidth + 8
+                                        implicitHeight: Math.round(18 * root.inspectorScale)
+
+                                        QQC2.Label {
+                                            id: modifiedBadgeLabel
+                                            anchors.centerIn: parent
+                                            text: qsTr("● Edited")
+                                            font.bold: true
+                                            font.pixelSize: Math.round(9 * root.inspectorScale)
+                                            color: Kirigami.Theme.neutralTextColor
                                         }
-                                        return qsTr("✓ DSVM v2: %1 B (%2.dsb)").arg(root.compileByteCount).arg(baseName)
                                     }
                                 }
                             }
 
                             QQC2.Button {
                                 text: qsTr("↺ Revert")
+                                enabled: inspectorCard.hasRevertibleChanges
                                 implicitHeight: Math.round(28 * root.inspectorScale)
                                 font.pixelSize: Math.round(11 * root.inspectorScale)
-                                onClicked: root.loadSlotFromController(
-                                    root.selectedSlotNumber,
-                                    root.selectedSlotTitle,
-                                    root.selectedSlotColor
-                                )
+                                onClicked: {
+                                    liveSlotAutoSaveTimer.stop()
+                                    root.revertSlotToSnapshot()
+                                }
+                                QQC2.ToolTip.visible: hovered
+                                QQC2.ToolTip.text: inspectorCard.hasRevertibleChanges
+                                    ? qsTr("Restore Key %1 labels, color, flags, and scripts to their state when this key was selected").arg(root.selectedSlotNumber)
+                                    : qsTr("No changes made to Key %1 since it was selected").arg(root.selectedSlotNumber)
                             }
 
                             QQC2.Button {
                                 text: deviceController.sdMountPath.length > 0
-                                    ? qsTr("💾 Save Key %1 to SD").arg(root.selectedSlotNumber)
-                                    : qsTr("💾 Save Key %1").arg(root.selectedSlotNumber)
+                                    ? qsTr("✓ Apply Key %1 (SD)").arg(root.selectedSlotNumber)
+                                    : qsTr("✓ Apply Key %1").arg(root.selectedSlotNumber)
+                                enabled: inspectorCard.hasRevertibleChanges
                                 implicitHeight: Math.round(28 * root.inspectorScale)
                                 font.pixelSize: Math.round(11 * root.inspectorScale)
                                 font.bold: true
-                                highlighted: true
-                                onClicked: root.saveCurrentSlotToController()
+                                highlighted: inspectorCard.hasRevertibleChanges
+                                onClicked: {
+                                    liveSlotAutoSaveTimer.stop()
+                                    root.saveCurrentSlotToController()
+                                    root.captureSlotSnapshot()
+                                }
+                                QQC2.ToolTip.visible: hovered
+                                QQC2.ToolTip.text: inspectorCard.hasRevertibleChanges
+                                    ? qsTr("Compile Key %1 DSVM v2 bytecode and commit this key's current state as the new baseline").arg(root.selectedSlotNumber)
+                                    : qsTr("No uncommitted changes on Key %1").arg(root.selectedSlotNumber)
+                            }
+
+                            QQC2.Button {
+                                text: qsTr("⬆ Sync SD")
+                                enabled: !deviceController.sdSyncBusy
+                                    && (deviceController.profileSyncState !== "synced" || inspectorCard.hasRevertibleChanges)
+                                    && (deviceController.connected || deviceController.sdMountPath.length > 0)
+                                implicitHeight: Math.round(28 * root.inspectorScale)
+                                font.pixelSize: Math.round(11 * root.inspectorScale)
+                                font.bold: true
+                                highlighted: deviceController.profileSyncState !== "synced"
+                                onClicked: {
+                                    liveSlotAutoSaveTimer.stop()
+                                    root.saveCurrentSlotToController()
+                                    root.captureSlotSnapshot()
+                                    root.openUnsyncedChangesDialog()
+                                }
+                                QQC2.ToolTip.visible: hovered
+                                QQC2.ToolTip.text: (deviceController.profileSyncState !== "synced" || inspectorCard.hasRevertibleChanges)
+                                    ? qsTr("Review and push unsynced local profile and bytecode changes to the duckyPad SD card")
+                                    : qsTr("All profiles and keys are already synced with the duckyPad SD card")
                             }
                         }
                     }

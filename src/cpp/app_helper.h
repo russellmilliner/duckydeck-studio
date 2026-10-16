@@ -12,6 +12,7 @@
 #include <QGuiApplication>
 #include <QIcon>
 #include <QImage>
+#include <QLoggingCategory>
 #include <QMenu>
 #include <QMetaObject>
 #include <QModelIndex>
@@ -437,6 +438,7 @@ inline void duckydeck_apply_app_theme(const QString& themeMode) {
 }
 
 inline int duckydeck_run_app(bool start_minimized) {
+    QLoggingCategory::setFilterRules(QStringLiteral("union.*=false\nqt.core.qobject.connect=false"));
     if (!std::getenv("QT_QUICK_CONTROLS_STYLE")) {
         qputenv("QT_QUICK_CONTROLS_STYLE", "org.kde.desktop");
     }

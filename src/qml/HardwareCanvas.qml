@@ -427,56 +427,6 @@ Item {
 
             Item { Layout.fillWidth: true }
 
-            RowLayout {
-                spacing: 4
-
-                Rectangle {
-                    width: 14
-                    height: 14
-                    radius: 7
-                    color: canvasRoot.controller && canvasRoot.controller.activeProfileBgColor.length > 0
-                        ? canvasRoot.controller.activeProfileBgColor
-                        : "#00aaff"
-                    border.width: 1
-                    border.color: Qt.alpha(Kirigami.Theme.textColor, 0.55)
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            if (canvasRoot.controller) {
-                                canvasRoot.profileDefaultColorPickerRequested(
-                                    canvasRoot.controller.activeProfile,
-                                    canvasRoot.controller.activeProfileName,
-                                    canvasRoot.controller.activeProfileBgColor
-                                )
-                            }
-                        }
-                    }
-                }
-
-                QQC2.ToolButton {
-                    id: profileBgBtn
-                    icon.name: "color-picker"
-                    text: qsTr("Default Color")
-                    display: QQC2.AbstractButton.TextBesideIcon
-                    enabled: canvasRoot.controller !== null
-                    onClicked: {
-                        if (canvasRoot.controller) {
-                            canvasRoot.profileDefaultColorPickerRequested(
-                                canvasRoot.controller.activeProfile,
-                                canvasRoot.controller.activeProfileName,
-                                canvasRoot.controller.activeProfileBgColor
-                            )
-                        }
-                    }
-                    QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: canvasRoot.controller
-                        ? qsTr("Change Default Button Color (BG_COLOR) for Profile #%1 (%2)").arg(canvasRoot.controller.activeProfile).arg(canvasRoot.controller.activeProfileName)
-                        : qsTr("Change Profile Default Button Color (BG_COLOR)")
-                }
-            }
-
             QQC2.ToolButton {
                 checkable: true
                 checked: canvasRoot.oledScriptMode
@@ -498,7 +448,7 @@ Item {
             Kirigami.Theme.inherit: false
             readonly property color frameBorderColor: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
             readonly property real uiScale: Math.max(
-                0.85,
+                0.70,
                 Math.min(
                     (pcbChassis.width - 20) / 430.0,
                     (pcbChassis.height - 20) / 354.0
