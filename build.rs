@@ -31,5 +31,6 @@ fn main() {
             ..Default::default()
         })
         .build();
+    println!("cargo:rerun-if-changed=src/cpp/app_helper.h");
     println!("cargo:rustc-link-lib=KF6ColorScheme");
 }

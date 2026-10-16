@@ -20,6 +20,11 @@ pub mod qobject {
         fn duckydeck_quit_app();
         fn duckydeck_apply_app_theme(theme_mode: &QString);
         fn duckydeck_run_app(start_minimized: bool) -> i32;
+        fn duckydeck_capture_composite_frame(
+            output_path: &QString,
+            banner_title: &QString,
+            banner_subtitle: &QString,
+        ) -> bool;
     }
 
     #[auto_cxx_name]
@@ -470,6 +475,17 @@ pub mod qobject {
 
         #[qinvokable]
         fn remove_palette_color(self: Pin<&mut DeviceController>, hex_color: QString);
+
+        #[qinvokable]
+        fn is_demo_showcase_mode(self: &DeviceController) -> bool;
+
+        #[qinvokable]
+        fn capture_showcase_frame(
+            self: &DeviceController,
+            output_path: QString,
+            banner_title: QString,
+            banner_subtitle: QString,
+        ) -> bool;
     }
 
     impl cxx_qt::Threading for DeviceController {}
@@ -512,6 +528,10 @@ use crate::kwin::auto_switcher::{
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const APP_AUTHOR: &str = "Russell Milliner";
 pub const APP_GITHUB_URL: &str = "https://github.com/russellmilliner/duckydeck-studio";
+
+pub fn is_demo_showcase_env() -> bool {
+    std::env::var("DUCKYDECK_DEMO_SHOWCASE").as_deref() == Ok("1")
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemLogEntry {
@@ -562,6 +582,10 @@ pub fn record_system_event(level: &str, category: &str, message: impl AsRef<str>
             let drain_count = guard.len() - 1000;
             guard.drain(0..drain_count);
         }
+    }
+
+    if is_demo_showcase_env() {
+        return;
     }
 
     let log_path = get_system_log_file_path();
@@ -758,6 +782,10 @@ pub struct DeviceControllerRust {
 
 impl Default for DeviceControllerRust {
     fn default() -> Self {
+        if is_demo_showcase_env() {
+            return Self::create_showcase_instance();
+        }
+
         let mounted_sd = find_mounted_duckypad_sd();
         let connected_info = query_connected_duckypad_info().ok();
 
@@ -1085,6 +1113,551 @@ impl DeviceControllerRust {
         profile
     }
 
+    pub fn create_showcase_profiles_and_rules() -> (Vec<DuckyProfile>, Vec<AutoSwitchRule>) {
+        fn build_profile(
+            number: u8,
+            name: &str,
+            bg_color: [u8; 3],
+            slots: &[(usize, &str, &str, [u8; 3], &str, &str)],
+        ) -> DuckyProfile {
+            let mut p = DuckyProfile {
+                number,
+                name: name.to_string(),
+                folder_name_override: Some(format!("profile_{}", name.replace(' ', "_"))),
+                bg_color,
+                keydown_color: Some([255, 255, 255]),
+                dim_unused_keys: true,
+                ..Default::default()
+            };
+            for &(slot_idx, l1, l2, rgb, press, release) in slots {
+                p.slots.insert(
+                    slot_idx,
+                    DuckyKeySlot {
+                        slot: slot_idx,
+                        label_line1: l1.to_string(),
+                        label_line2: l2.to_string(),
+                        custom_rgb: Some(rgb),
+                        allow_abort: press.contains("WHILE"),
+                        disable_autorepeat: false,
+                        on_press_script: press.to_string(),
+                        on_release_script: release.to_string(),
+                    },
+                );
+            }
+            p
+        }
+
+        // 1. Dolphin File Manager
+        let dolphin = build_profile(
+            1,
+            "Dolphin",
+            [0, 170, 255],
+            &[
+                (1, "New", "Tab", [0, 190, 255], "DEFAULTDELAY 20\nOLED_CLEAR\nOLED_CPRINT New Dolphin Tab\nOLED_UPDATE\nCONTROL t\n", ""),
+                (2, "Split", "View", [0, 190, 255], "DEFAULTDELAY 20\nF3\n", ""),
+                (3, "Term", "Panel", [16, 185, 129], "DEFAULTDELAY 20\nF4\n", ""),
+                (4, "Hidden", "Files", [56, 189, 248], "DEFAULTDELAY 20\nCONTROL h\n", ""),
+                (5, "Copy", "Path", [250, 204, 21], "DEFAULTDELAY 20\nCONTROL ALT c\n", ""),
+                (6, "Filter", "Bar", [56, 189, 248], "DEFAULTDELAY 20\nCONTROL i\n", ""),
+                (7, "Search", "Files", [56, 189, 248], "DEFAULTDELAY 20\nCONTROL f\n", ""),
+                (8, "New", "Folder", [34, 197, 94], "DEFAULTDELAY 20\nF10\n", ""),
+                (9, "Rename", "Item", [249, 115, 22], "DEFAULTDELAY 20\nF2\n", ""),
+                (10, "Props", "Dialog", [168, 85, 247], "DEFAULTDELAY 20\nALT RETURN\n", ""),
+                (11, "Back", "Dir", [99, 102, 241], "DEFAULTDELAY 20\nALT LEFT\n", ""),
+                (12, "Up", "Folder", [99, 102, 241], "DEFAULTDELAY 20\nALT UP\n", ""),
+                (13, "Fwd", "Dir", [99, 102, 241], "DEFAULTDELAY 20\nALT RIGHT\n", ""),
+                (14, "Home", "Folder", [99, 102, 241], "DEFAULTDELAY 20\nALT HOME\n", ""),
+                (15, "Move", "Trash", [239, 68, 68], "DEFAULTDELAY 20\nDELETE\n", ""),
+                (16, "Open", "Konsole", [16, 185, 129], "DEFAULTDELAY 20\nSHIFT F4\n", ""),
+                (17, "Select", "All", [14, 165, 233], "DEFAULTDELAY 20\nCONTROL a\n", ""),
+                (18, "Invert", "Select", [14, 165, 233], "DEFAULTDELAY 20\nCONTROL SHIFT a\n", ""),
+                (19, "Preview", "Pane", [168, 85, 247], "DEFAULTDELAY 20\nF12\n", ""),
+                (20, "Close", "Tab", [239, 68, 68], "DEFAULTDELAY 20\nCONTROL w\n", ""),
+                (21, "Icon -", "", [56, 189, 248], "CONTROL MINUS\n", ""),
+                (22, "Icon +", "", [56, 189, 248], "CONTROL EQUAL\n", ""),
+                (23, "Reset", "", [56, 189, 248], "CONTROL 0\n", ""),
+                (24, "Tab <", "", [56, 189, 248], "CONTROL PAGEUP\n", ""),
+                (25, "Tab >", "", [56, 189, 248], "CONTROL PAGEDOWN\n", ""),
+                (26, "Reload", "", [56, 189, 248], "F5\n", ""),
+            ],
+        );
+
+        // 2. Google Chrome
+        let chrome = build_profile(
+            2,
+            "Google Chrome",
+            [66, 133, 244],
+            &[
+                (1, "New", "Tab", [66, 133, 244], "DEFAULTDELAY 20\nOLED_CLEAR\nOLED_CPRINT Chrome: New Tab\nOLED_UPDATE\nCONTROL t\n", ""),
+                (2, "Reopen", "Closed", [52, 168, 83], "DEFAULTDELAY 20\nCONTROL SHIFT t\n", ""),
+                (3, "Close", "Tab", [234, 67, 53], "DEFAULTDELAY 20\nCONTROL w\n", ""),
+                (4, "Incog", "Window", [168, 85, 247], "DEFAULTDELAY 20\nCONTROL SHIFT n\n", ""),
+                (5, "Dev", "Tools", [251, 188, 5], "DEFAULTDELAY 20\nCONTROL SHIFT i\n", ""),
+                (6, "Address", "Bar", [66, 133, 244], "DEFAULTDELAY 20\nCONTROL l\n", ""),
+                (7, "Find", "Page", [56, 189, 248], "DEFAULTDELAY 20\nCONTROL f\n", ""),
+                (8, "Book", "Mark", [251, 188, 5], "DEFAULTDELAY 20\nCONTROL d\n", ""),
+                (9, "History", "List", [99, 102, 241], "DEFAULTDELAY 20\nCONTROL h\n", ""),
+                (10, "Down", "Loads", [52, 168, 83], "DEFAULTDELAY 20\nCONTROL j\n", ""),
+                (11, "Hard", "Reload", [249, 115, 22], "DEFAULTDELAY 20\nCONTROL SHIFT r\n", ""),
+                (12, "Mute", "Tab", [234, 67, 53], "DEFAULTDELAY 20\nALT m\n", ""),
+                (13, "Back", "Page", [66, 133, 244], "DEFAULTDELAY 20\nALT LEFT\n", ""),
+                (14, "Next", "Page", [66, 133, 244], "DEFAULTDELAY 20\nALT RIGHT\n", ""),
+                (15, "Tab", "Search", [56, 189, 248], "DEFAULTDELAY 20\nCONTROL SHIFT a\n", ""),
+                (16, "Source", "View", [168, 85, 247], "DEFAULTDELAY 20\nCONTROL u\n", ""),
+                (17, "Full", "Screen", [52, 168, 83], "DEFAULTDELAY 20\nF11\n", ""),
+                (18, "Clear", "Data", [234, 67, 53], "DEFAULTDELAY 20\nCONTROL SHIFT DELETE\n", ""),
+                (19, "Task", "Mgr", [251, 188, 5], "DEFAULTDELAY 20\nSHIFT ESCAPE\n", ""),
+                (20, "Print", "PDF", [14, 165, 233], "DEFAULTDELAY 20\nCONTROL p\n", ""),
+                (21, "Tab <", "", [66, 133, 244], "CONTROL SHIFT TAB\n", ""),
+                (22, "Tab >", "", [66, 133, 244], "CONTROL TAB\n", ""),
+                (23, "Reload", "", [66, 133, 244], "F5\n", ""),
+                (24, "Zoom -", "", [52, 168, 83], "CONTROL MINUS\n", ""),
+                (25, "Zoom +", "", [52, 168, 83], "CONTROL EQUAL\n", ""),
+                (26, "100%", "", [52, 168, 83], "CONTROL 0\n", ""),
+            ],
+        );
+
+        // 3. VS Code
+        let vscode = build_profile(
+            3,
+            "VS Code",
+            [0, 122, 204],
+            &[
+                (1, "Cmd", "Palette", [0, 152, 255], "DEFAULTDELAY 20\nOLED_CLEAR\nOLED_CPRINT Command Palette\nOLED_UPDATE\nCONTROL SHIFT p\n", ""),
+                (2, "Quick", "Open", [0, 152, 255], "DEFAULTDELAY 20\nCONTROL p\n", ""),
+                (3, "Toggle", "Term", [16, 185, 129], "DEFAULTDELAY 20\nCONTROL GRAVE\n", ""),
+                (4, "Build", "Task", [249, 115, 22], "DEFAULTDELAY 20\nCONTROL SHIFT b\n", ""),
+                (5, "Format", "Code", [52, 211, 153], "DEFAULTDELAY 20\nCONTROL SHIFT i\n", ""),
+                (6, "Go To", "Def", [56, 189, 248], "DEFAULTDELAY 20\nF12\n", ""),
+                (7, "Rename", "Symbol", [250, 204, 21], "DEFAULTDELAY 20\nF2\n", ""),
+                (8, "Search", "All", [56, 189, 248], "DEFAULTDELAY 20\nCONTROL SHIFT f\n", ""),
+                (9, "Source", "Git", [249, 115, 22], "DEFAULTDELAY 20\nCONTROL SHIFT g\n", ""),
+                (10, "Debug", "Start", [34, 197, 94], "DEFAULTDELAY 20\nF5\n", ""),
+                (11, "Step", "Over", [56, 189, 248], "DEFAULTDELAY 20\nF10\n", ""),
+                (12, "Step", "Into", [56, 189, 248], "DEFAULTDELAY 20\nF11\n", ""),
+                (13, "Break", "Point", [239, 68, 68], "DEFAULTDELAY 20\nF9\n", ""),
+                (14, "Split", "Editor", [168, 85, 247], "DEFAULTDELAY 20\nCONTROL BACKSLASH\n", ""),
+                (15, "Side", "Bar", [99, 102, 241], "DEFAULTDELAY 20\nCONTROL b\n", ""),
+                (16, "Zen", "Mode", [168, 85, 247], "DEFAULTDELAY 20\nCONTROL k\nDELAY 40\nSTRING z\n", ""),
+                (17, "Comment", "Line", [34, 197, 94], "DEFAULTDELAY 20\nCONTROL SLASH\n", ""),
+                (18, "Multi", "Cursor", [250, 204, 21], "DEFAULTDELAY 20\nCONTROL d\n", ""),
+                (19, "Problem", "Panel", [239, 68, 68], "DEFAULTDELAY 20\nCONTROL SHIFT m\n", ""),
+                (20, "Save", "All", [34, 197, 94], "DEFAULTDELAY 20\nCONTROL ALT s\n", ""),
+                (21, "Font -", "", [0, 122, 204], "CONTROL MINUS\n", ""),
+                (22, "Font +", "", [0, 122, 204], "CONTROL EQUAL\n", ""),
+                (23, "Reset", "", [0, 122, 204], "CONTROL NUMPAD0\n", ""),
+                (24, "Edit <", "", [0, 122, 204], "CONTROL PAGEUP\n", ""),
+                (25, "Edit >", "", [0, 122, 204], "CONTROL PAGEDOWN\n", ""),
+                (26, "Fold", "", [0, 122, 204], "CONTROL SHIFT [\n", ""),
+            ],
+        );
+
+        // 4. OBS Studio (with Web API triggers)
+        let obs_slot17 = apply_web_api_config_to_script(
+            "",
+            &WebApiConfig {
+                enabled: true,
+                method: "POST".to_string(),
+                url: "http://homeassistant.local:8123/api/services/light/toggle".to_string(),
+                headers: "Authorization: Bearer eyJhbGciOiJIUzI1NiIs...\nContent-Type: application/json".to_string(),
+                body: "{\"entity_id\": \"light.studio_key_light\"}".to_string(),
+                oled_text: "Key Light API".to_string(),
+                led_feedback: true,
+                trigger_mode: "pgv".to_string(),
+                fkey: "F17".to_string(),
+            },
+            4,
+            17,
+            false,
+        );
+        let obs_slot18 = apply_web_api_config_to_script(
+            "",
+            &WebApiConfig {
+                enabled: true,
+                method: "POST".to_string(),
+                url: "http://homeassistant.local:8123/api/services/switch/turn_on".to_string(),
+                headers: "Authorization: Bearer eyJhbGciOiJIUzI1NiIs...\nContent-Type: application/json".to_string(),
+                body: "{\"entity_id\": \"switch.on_air_lamp\"}".to_string(),
+                oled_text: "On-Air Lamp ON".to_string(),
+                led_feedback: true,
+                trigger_mode: "pgv".to_string(),
+                fkey: "F18".to_string(),
+            },
+            4,
+            18,
+            false,
+        );
+        let obs = build_profile(
+            4,
+            "OBS Studio",
+            [139, 92, 246],
+            &[
+                (1, "Scene", "Main", [56, 189, 248], "DEFAULTDELAY 20\nOLED_CLEAR\nOLED_CPRINT Scene: Main Cam\nOLED_UPDATE\nF13\n", ""),
+                (2, "Scene", "Screen", [56, 189, 248], "DEFAULTDELAY 20\nF14\n", ""),
+                (3, "Scene", "Pip", [56, 189, 248], "DEFAULTDELAY 20\nF15\n", ""),
+                (4, "Scene", "BRB", [250, 204, 21], "DEFAULTDELAY 20\nF16\n", ""),
+                (5, "Record", "Toggle", [239, 68, 68], "DEFAULTDELAY 20\nCONTROL SHIFT r\n", ""),
+                (6, "Pause", "Rec", [249, 115, 22], "DEFAULTDELAY 20\nCONTROL SHIFT p\n", ""),
+                (7, "Stream", "Live", [168, 85, 247], "DEFAULTDELAY 20\nCONTROL SHIFT s\n", ""),
+                (8, "Replay", "Buffer", [34, 197, 94], "DEFAULTDELAY 20\nCONTROL SHIFT b\n", ""),
+                (9, "Mic", "Mute", [239, 68, 68], "DEFAULTDELAY 20\nCONTROL SHIFT m\n", ""),
+                (10, "Desktop", "Mute", [249, 115, 22], "DEFAULTDELAY 20\nCONTROL SHIFT d\n", ""),
+                (11, "Studio", "Mode", [139, 92, 246], "DEFAULTDELAY 20\nCONTROL SHIFT t\n", ""),
+                (12, "Cut", "Trans", [56, 189, 248], "DEFAULTDELAY 20\nCONTROL SHIFT c\n", ""),
+                (13, "Fade", "Trans", [56, 189, 248], "DEFAULTDELAY 20\nCONTROL SHIFT f\n", ""),
+                (14, "Snap", "Shot", [34, 197, 94], "DEFAULTDELAY 20\nF17\n", ""),
+                (15, "Virtual", "Cam", [14, 165, 233], "DEFAULTDELAY 20\nCONTROL SHIFT v\n", ""),
+                (16, "Stats", "Dock", [99, 102, 241], "DEFAULTDELAY 20\nCONTROL SHIFT i\n", ""),
+                (17, "Key", "Light", [250, 204, 21], &obs_slot17, ""),
+                (18, "On Air", "Lamp", [239, 68, 68], &obs_slot18, ""),
+                (19, "Stream", "Marker", [34, 197, 94], "DEFAULTDELAY 20\nF18\n", ""),
+                (20, "Panic", "Mute", [239, 68, 68], "DEFAULTDELAY 20\nF19\n", ""),
+                (21, "Mic -", "", [139, 92, 246], "F20\n", ""),
+                (22, "Mic +", "", [139, 92, 246], "F21\n", ""),
+                (23, "Mute", "", [239, 68, 68], "CONTROL SHIFT m\n", ""),
+                (24, "Desk -", "", [139, 92, 246], "F22\n", ""),
+                (25, "Desk +", "", [139, 92, 246], "F23\n", ""),
+                (26, "Mute", "", [249, 115, 22], "CONTROL SHIFT d\n", ""),
+            ],
+        );
+
+        // 5. Konsole Terminal
+        let konsole = build_profile(
+            5,
+            "Konsole",
+            [16, 185, 129],
+            &[
+                (1, "New", "Tab", [16, 185, 129], "DEFAULTDELAY 20\nCONTROL SHIFT t\n", ""),
+                (2, "Split", "L / R", [56, 189, 248], "DEFAULTDELAY 20\nCONTROL (\n", ""),
+                (3, "Split", "T / B", [56, 189, 248], "DEFAULTDELAY 20\nCONTROL )\n", ""),
+                (4, "Clear", "Screen", [14, 165, 233], "DEFAULTDELAY 20\nCONTROL l\n", ""),
+                (5, "Git", "Status", [249, 115, 22], "DEFAULTDELAY 20\nSTRINGLN git status -sb\n", ""),
+                (6, "Git", "Log", [249, 115, 22], "DEFAULTDELAY 20\nSTRINGLN git log --oneline -n 15\n", ""),
+                (7, "Cargo", "Build", [250, 204, 21], "DEFAULTDELAY 20\nSTRINGLN cargo build --release\n", ""),
+                (8, "Cargo", "Test", [34, 197, 94], "DEFAULTDELAY 20\nSTRINGLN cargo test\n", ""),
+                (9, "Docker", "PS", [56, 189, 248], "DEFAULTDELAY 20\nSTRINGLN docker ps\n", ""),
+                (10, "System", "Btop", [168, 85, 247], "DEFAULTDELAY 20\nSTRINGLN btop\n", ""),
+                (11, "Journal", "Follow", [250, 204, 21], "DEFAULTDELAY 20\nSTRINGLN journalctl -f -n 40\n", ""),
+                (12, "Hist", "Search", [16, 185, 129], "DEFAULTDELAY 20\nCONTROL r\n", ""),
+                (13, "Copy", "Text", [56, 189, 248], "DEFAULTDELAY 20\nCONTROL SHIFT c\n", ""),
+                (14, "Paste", "Clip", [56, 189, 248], "DEFAULTDELAY 20\nCONTROL SHIFT v\n", ""),
+                (15, "Find", "Output", [99, 102, 241], "DEFAULTDELAY 20\nCONTROL SHIFT f\n", ""),
+                (16, "Cancel", "SIGINT", [239, 68, 68], "DEFAULTDELAY 20\nCONTROL c\n", ""),
+                (21, "Tab <", "", [16, 185, 129], "SHIFT LEFT\n", ""),
+                (22, "Tab >", "", [16, 185, 129], "SHIFT RIGHT\n", ""),
+                (23, "New", "", [16, 185, 129], "CONTROL SHIFT t\n", ""),
+                (24, "Font -", "", [16, 185, 129], "CONTROL MINUS\n", ""),
+                (25, "Font +", "", [16, 185, 129], "CONTROL PLUS\n", ""),
+                (26, "100%", "", [16, 185, 129], "CONTROL ALT 0\n", ""),
+            ],
+        );
+
+        // 6. Blender 3D
+        let mut blender = Self::create_default_demo_profile();
+        blender.number = 6;
+        blender.name = "Blender 3D".to_string();
+        blender.folder_name_override = Some("profile_Blender_3D".to_string());
+        blender.bg_color = [249, 115, 22];
+
+        // 7. Spotify & Media
+        let spotify = build_profile(
+            7,
+            "Spotify",
+            [30, 215, 96],
+            &[
+                (1, "Play", "Pause", [30, 215, 96], "DEFAULTDELAY 20\nMK_PLAYPAUSE\n", ""),
+                (2, "Prev", "Track", [56, 189, 248], "DEFAULTDELAY 20\nMK_PREV\n", ""),
+                (3, "Next", "Track", [56, 189, 248], "DEFAULTDELAY 20\nMK_NEXT\n", ""),
+                (4, "Stop", "Audio", [239, 68, 68], "DEFAULTDELAY 20\nMK_STOP\n", ""),
+                (5, "Mute", "Audio", [249, 115, 22], "DEFAULTDELAY 20\nMK_MUTE\n", ""),
+                (6, "Like", "Song", [236, 72, 153], "DEFAULTDELAY 20\nALT SHIFT b\n", ""),
+                (7, "Shuffle", "Queue", [30, 215, 96], "DEFAULTDELAY 20\nCONTROL s\n", ""),
+                (8, "Repeat", "Track", [30, 215, 96], "DEFAULTDELAY 20\nCONTROL r\n", ""),
+                (9, "Search", "Music", [56, 189, 248], "DEFAULTDELAY 20\nCONTROL l\n", ""),
+                (10, "Queue", "Panel", [168, 85, 247], "DEFAULTDELAY 20\nALT SHIFT q\n", ""),
+                (11, "Lyrics", "View", [250, 204, 21], "DEFAULTDELAY 20\nALT SHIFT l\n", ""),
+                (12, "Now", "Playing", [30, 215, 96], "DEFAULTDELAY 20\nALT SHIFT j\n", ""),
+                (21, "Vol -", "", [30, 215, 96], "MK_VOLDOWN\n", ""),
+                (22, "Vol +", "", [30, 215, 96], "MK_VOLUP\n", ""),
+                (23, "Mute", "", [239, 68, 68], "MK_MUTE\n", ""),
+                (24, "Back", "", [56, 189, 248], "SHIFT LEFT\n", ""),
+                (25, "Fwd", "", [56, 189, 248], "SHIFT RIGHT\n", ""),
+                (26, "Play", "", [30, 215, 96], "MK_PLAYPAUSE\n", ""),
+            ],
+        );
+
+        // 8. App Launcher (with @DUCKYDECK_APP_LAUNCH triggers)
+        let make_app_script = |slot_num: usize, name: &str, desktop_id: &str, cmd: &str, args: &str, oled: &str| {
+            apply_app_launch_config_to_script(
+                "",
+                &AppLaunchConfig {
+                    enabled: true,
+                    app_name: name.to_string(),
+                    desktop_id: desktop_id.to_string(),
+                    command: cmd.to_string(),
+                    args: args.to_string(),
+                    working_dir: "/home/demo/Projects".to_string(),
+                    run_in_terminal: false,
+                    oled_text: oled.to_string(),
+                    led_feedback: true,
+                    trigger_mode: "pgv".to_string(),
+                    fkey: format!("F{}", 12 + slot_num.min(12)),
+                },
+                8,
+                slot_num,
+                false,
+            )
+        };
+        let app1 = make_app_script(1, "Dolphin", "org.kde.dolphin.desktop", "dolphin", "~/Projects", "Run: Dolphin");
+        let app2 = make_app_script(2, "Google Chrome", "google-chrome.desktop", "google-chrome-stable", "https://www.duckypad.com", "Run: Chrome");
+        let app3 = make_app_script(3, "Visual Studio Code", "code.desktop", "code", "~/Projects/duckydeck", "Run: VS Code");
+        let app4 = make_app_script(4, "OBS Studio", "com.obsproject.Studio.desktop", "obs", "", "Run: OBS Studio");
+        let app5 = make_app_script(5, "Konsole", "org.kde.konsole.desktop", "konsole", "", "Run: Konsole");
+        let app6 = make_app_script(6, "Blender", "blender.desktop", "blender", "", "Run: Blender");
+        let app7 = make_app_script(7, "Spotify", "spotify.desktop", "spotify", "", "Run: Spotify");
+        let app8 = make_app_script(8, "GIMP", "gimp.desktop", "gimp", "", "Run: GIMP");
+
+        let app_launcher = build_profile(
+            8,
+            "App Launcher",
+            [236, 72, 153],
+            &[
+                (1, "Dolphin", "Files", [0, 170, 255], &app1, ""),
+                (2, "Google", "Chrome", [66, 133, 244], &app2, ""),
+                (3, "VS", "Code", [0, 122, 204], &app3, ""),
+                (4, "OBS", "Studio", [139, 92, 246], &app4, ""),
+                (5, "Konsole", "Term", [16, 185, 129], &app5, ""),
+                (6, "Blender", "3D", [249, 115, 22], &app6, ""),
+                (7, "Spotify", "Music", [30, 215, 96], &app7, ""),
+                (8, "GIMP", "Image", [250, 204, 21], &app8, ""),
+            ],
+        );
+
+        let profiles = vec![
+            dolphin,
+            chrome,
+            vscode,
+            obs,
+            konsole,
+            blender,
+            spotify,
+            app_launcher,
+        ];
+
+        let rules = vec![
+            AutoSwitchRule {
+                enabled: true,
+                resource_class: "org.kde.dolphin".to_string(),
+                title_contains: None,
+                favicon_url: None,
+                target_profile: 1,
+            },
+            AutoSwitchRule {
+                enabled: true,
+                resource_class: "google-chrome".to_string(),
+                title_contains: None,
+                favicon_url: None,
+                target_profile: 2,
+            },
+            AutoSwitchRule {
+                enabled: true,
+                resource_class: "code".to_string(),
+                title_contains: None,
+                favicon_url: None,
+                target_profile: 3,
+            },
+            AutoSwitchRule {
+                enabled: true,
+                resource_class: "com.obsproject.Studio".to_string(),
+                title_contains: None,
+                favicon_url: None,
+                target_profile: 4,
+            },
+            AutoSwitchRule {
+                enabled: true,
+                resource_class: "org.kde.konsole".to_string(),
+                title_contains: None,
+                favicon_url: None,
+                target_profile: 5,
+            },
+            AutoSwitchRule {
+                enabled: true,
+                resource_class: "blender".to_string(),
+                title_contains: None,
+                favicon_url: None,
+                target_profile: 6,
+            },
+            AutoSwitchRule {
+                enabled: true,
+                resource_class: "spotify".to_string(),
+                title_contains: None,
+                favicon_url: None,
+                target_profile: 7,
+            },
+        ];
+
+        (profiles, rules)
+    }
+
+    pub fn create_showcase_instance() -> Self {
+        let (profiles, rules) = Self::create_showcase_profiles_and_rules();
+        let saved_colors = crate::kwin::auto_switcher::default_saved_colors();
+        let switcher = SwitcherState {
+            enabled: true,
+            paused_for_editing: false,
+            default_profile: Some(8),
+            rules: rules.clone(),
+            tray_icon_mode: "auto".to_string(),
+            app_theme_mode: "dark".to_string(),
+            close_to_tray: true,
+            ui_text_scale: 100,
+            sidebar_text_scale: 100,
+            canvas_text_scale: 100,
+            inspector_text_scale: 100,
+            editor_text_scale: 100,
+            status_bar_text_scale: 100,
+            event_log_text_scale: 100,
+            saved_colors: saved_colors.clone(),
+            last_switched_profile: 1,
+            picker_armed: false,
+            loaded_from_disk: true,
+        };
+
+        if let Ok(mut guard) = system_event_log_store().lock() {
+            guard.clear();
+        }
+        record_system_event(
+            "INFO",
+            "SYSTEM",
+            format!("DuckyDeck Studio v{} started (KDE Plasma 6 Wayland)", APP_VERSION),
+        );
+        record_system_event(
+            "INFO",
+            "DEVICE",
+            "Connected to duckyPad Pro (FW v2.3.1, SN DP24-8F4A1C9E) — 8 profile(s) loaded",
+        );
+        record_system_event(
+            "INFO",
+            "AUTOSWITCH",
+            "KWin Wayland D-Bus Auto-Switcher active (7 application rules loaded, fallback=#8 App Launcher)",
+        );
+        record_system_event(
+            "INFO",
+            "AUTOSWITCH",
+            "Window focus matched rule 'org.kde.dolphin' → switched hardware to Profile #1 (Dolphin)",
+        );
+        record_system_event(
+            "INFO",
+            "WEB_API",
+            "Web API PGV[31] listener armed for Profile #4 (OBS Studio): Slots 17 & 18 ready",
+        );
+        record_system_event(
+            "INFO",
+            "APP_LAUNCH",
+            "Application Launcher PGV[31] listener armed for Profile #8 (App Launcher): 8 desktop apps ready",
+        );
+
+        let rules_json = Self::serialize_rules(&rules, &profiles);
+        let profiles_json = Self::serialize_profiles_summary(&profiles, &rules);
+        let active_prof_obj = profiles.first().unwrap();
+        let slots_json = Self::serialize_profile_slots(active_prof_obj);
+        let saved_colors_json =
+            serde_json::to_string(&saved_colors).unwrap_or_else(|_| "[]".to_string());
+        let used_colors_json = Self::collect_used_colors_json(&profiles);
+        let (init_log_json, init_log_count) = serialize_system_event_log_json();
+
+        let demo_apps = json!([
+            {"name": "Dolphin", "exec": "dolphin", "icon": "system-file-manager", "desktopId": "org.kde.dolphin.desktop", "comment": "KDE File Manager"},
+            {"name": "Google Chrome", "exec": "google-chrome-stable", "icon": "google-chrome", "desktopId": "google-chrome.desktop", "comment": "Access the Internet"},
+            {"name": "Visual Studio Code", "exec": "code", "icon": "visual-studio-code", "desktopId": "code.desktop", "comment": "Code Editing. Redefined."},
+            {"name": "OBS Studio", "exec": "obs", "icon": "com.obsproject.Studio", "desktopId": "com.obsproject.Studio.desktop", "comment": "Live Streaming and Screen Recorder"},
+            {"name": "Konsole", "exec": "konsole", "icon": "utilities-terminal", "desktopId": "org.kde.konsole.desktop", "comment": "KDE Terminal Emulator"},
+            {"name": "Blender", "exec": "blender", "icon": "blender", "desktopId": "blender.desktop", "comment": "3D modeling, animation, rendering and post-production"}
+        ]);
+
+        Self {
+            connected: true,
+            udev_rule_missing: false,
+            model_name: QString::from("duckyPad Pro"),
+            firmware_version: QString::from("2.3.1"),
+            serial_number: QString::from("DP24-8F4A1C9E"),
+            active_profile: 1,
+            active_profile_name: QString::from("Dolphin"),
+            sd_mount_path: QString::from("/run/media/ducky/DUCKYPAD"),
+            profiles_json: QString::from(&profiles_json),
+            active_profile_slots_json: QString::from(&slots_json),
+            status_message: QString::from(
+                "Connected to duckyPad Pro (FW v2.3.1) — 8 profile(s) synced & verified",
+            ),
+            ai_busy: false,
+            generated_script_preview: QString::from(
+                "// Slot 1: New Tab\nDEFAULTDELAY 20\nOLED_CLEAR\nOLED_CPRINT New Dolphin Tab\nOLED_UPDATE\nCONTROL t\n",
+            ),
+            auto_switch_enabled: true,
+            default_fallback_profile: 8,
+            active_window_class: QString::from("org.kde.dolphin"),
+            active_window_title: QString::from("Projects — Dolphin"),
+            window_picker_armed: false,
+            last_picked_window_class: QString::from("google-chrome"),
+            last_picked_window_title: QString::from("duckyPad Pro Documentation"),
+            auto_switch_rules_json: QString::from(&rules_json),
+            autostart_enabled: true,
+            tray_icon_mode: QString::from("auto"),
+            app_theme_mode: QString::from("dark"),
+            close_to_tray: true,
+            system_dark_theme: true,
+            latest_firmware_version: QString::from("2.3.1"),
+            firmware_update_available: false,
+            firmware_check_busy: false,
+            firmware_update_url: QString::from(
+                "https://dekuNukem.github.io/duckyPad-Pro/doc/fw_update.html",
+            ),
+            firmware_check_summary: QString::from("Firmware v2.3.1 is up to date"),
+            profile_sync_state: QString::from("synced"),
+            profile_sync_detail: QString::from(
+                "All 8 profiles verified in sync with duckyPad Pro microSD [hash #8f4a1c9e]",
+            ),
+            sd_sync_busy: false,
+            sd_sync_progress: 100,
+            sd_sync_step: QString::from("Ready"),
+            sd_sync_log: QString::from(""),
+            sd_sync_result_state: QString::from("idle"),
+            sd_sync_result_summary: QString::from(""),
+            web_api_test_busy: false,
+            web_api_last_ok: true,
+            web_api_last_result: QString::from("HTTP 200 OK (18 ms) — light.studio_key_light toggled"),
+            app_launch_last_ok: true,
+            app_launch_last_result: QString::from("Launched Dolphin (PID 48210)"),
+            installed_apps_json: QString::from(&demo_apps.to_string()),
+            ui_text_scale: 100,
+            sidebar_text_scale: 100,
+            canvas_text_scale: 100,
+            inspector_text_scale: 100,
+            editor_text_scale: 100,
+            status_bar_text_scale: 100,
+            event_log_text_scale: 100,
+            active_profile_bg_color: QString::from("#00aaff"),
+            unsynced_changes_json: QString::from("[]"),
+            has_copied_slot: false,
+            copied_slot_summary: QString::from(""),
+            app_version: QString::from(APP_VERSION),
+            app_author: QString::from(APP_AUTHOR),
+            app_github_url: QString::from(APP_GITHUB_URL),
+            log_file_path: QString::from("/home/demo/.local/share/duckydeck-studio/duckydeck.log"),
+            event_log_json: QString::from(&init_log_json),
+            event_log_count: init_log_count,
+            saved_colors_json: QString::from(&saved_colors_json),
+            used_colors_json: QString::from(&used_colors_json),
+            copied_key_slot: None,
+            firmware_download_url: String::new(),
+            sd_root_path: None,
+            profiles,
+            switcher_state: Arc::new(Mutex::new(switcher)),
+            kwin_listener_started: true,
+            picker_bind_to_active_profile: false,
+        }
+    }
+
     pub fn serialize_profiles_summary(
         profiles: &[DuckyProfile],
         rules: &[AutoSwitchRule],
@@ -1306,19 +1879,29 @@ impl qobject::DeviceController {
             let profiles_json =
                 DeviceControllerRust::serialize_profiles_summary(&rust.profiles, &rules_vec);
             let rules_json = DeviceControllerRust::serialize_rules(&rules_vec, &rust.profiles);
-            let (sync_state, sync_detail) = check_profile_sync_status(
-                &serial_str,
-                &rust.profiles,
-                rust.sd_root_path.as_deref(),
-                connected,
-                active_num,
-            );
-            let unsynced_json = compute_unsynced_changes_json(
-                &serial_str,
-                &rust.profiles,
-                rust.sd_root_path.as_deref(),
-                &sync_state,
-            );
+            let (sync_state, sync_detail, unsynced_json) = if is_demo_showcase_env() {
+                (
+                    "synced".to_string(),
+                    "All 8 profiles verified in sync with duckyPad Pro microSD [hash #8f4a1c9e]"
+                        .to_string(),
+                    "[]".to_string(),
+                )
+            } else {
+                let (s_state, s_detail) = check_profile_sync_status(
+                    &serial_str,
+                    &rust.profiles,
+                    rust.sd_root_path.as_deref(),
+                    connected,
+                    active_num,
+                );
+                let u_json = compute_unsynced_changes_json(
+                    &serial_str,
+                    &rust.profiles,
+                    rust.sd_root_path.as_deref(),
+                    &s_state,
+                );
+                (s_state, s_detail, u_json)
+            };
             if let Some(prof) = rust
                 .profiles
                 .iter()
@@ -1794,6 +2377,11 @@ impl qobject::DeviceController {
     }
 
     pub fn refresh_device(mut self: Pin<&mut Self>) {
+        if is_demo_showcase_env() {
+            self.as_mut().sync_active_profile_state();
+            self.as_mut().sync_tray_state();
+            return;
+        }
         if Self::has_permission_denied_hidraw() {
             self.as_mut().set_connected(false);
             self.as_mut().set_udev_rule_missing(true);
@@ -1922,10 +2510,28 @@ impl qobject::DeviceController {
     pub fn select_profile(mut self: Pin<&mut Self>, profile_number: i32) -> bool {
         let clamped = profile_number.clamp(1, 64);
         self.as_mut().set_active_profile(clamped);
+        if is_demo_showcase_env() {
+            let bound_cls = self
+                .rust()
+                .switcher_state
+                .lock()
+                .ok()
+                .and_then(|sw| {
+                    sw.rules
+                        .iter()
+                        .find(|r| r.enabled && r.target_profile == clamped as u8)
+                        .map(|r| r.resource_class.clone())
+                })
+                .unwrap_or_else(|| "org.kde.plasmashell".to_string());
+            self.as_mut()
+                .set_active_window_class(QString::from(&bound_cls));
+        }
         self.as_mut().sync_active_profile_state();
 
-        // Also switch on hardware if connected over USB HID
-        let _ = crate::kwin::auto_switcher::send_hid_switch_profile(clamped as u8);
+        if !is_demo_showcase_env() {
+            // Also switch on hardware if connected over USB HID
+            let _ = crate::kwin::auto_switcher::send_hid_switch_profile(clamped as u8);
+        }
 
         {
             let rust = self.as_mut().rust_mut().get_mut();
@@ -5674,4 +6280,18 @@ impl qobject::DeviceController {
         }
         self.as_mut().refresh_color_palettes();
     }
+
+    pub fn is_demo_showcase_mode(&self) -> bool {
+        is_demo_showcase_env()
+    }
+
+    pub fn capture_showcase_frame(
+        &self,
+        output_path: QString,
+        banner_title: QString,
+        banner_subtitle: QString,
+    ) -> bool {
+        qobject::duckydeck_capture_composite_frame(&output_path, &banner_title, &banner_subtitle)
+    }
 }
+

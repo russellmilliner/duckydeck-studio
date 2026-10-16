@@ -5,15 +5,22 @@
 #include <QActionGroup>
 #include <QApplication>
 #include <QCoreApplication>
+#include <QCursor>
+#include <QDir>
+#include <QFileInfo>
+#include <QFont>
 #include <QGuiApplication>
 #include <QIcon>
+#include <QImage>
 #include <QMenu>
 #include <QMetaObject>
 #include <QModelIndex>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPixmap>
 #include <QPointer>
 #include <QQmlApplicationEngine>
+#include <QQuickWindow>
 #include <QString>
 #include <QSvgRenderer>
 #include <QSystemTrayIcon>
@@ -433,6 +440,11 @@ inline int duckydeck_run_app(bool start_minimized) {
     if (!std::getenv("QT_QUICK_CONTROLS_STYLE")) {
         qputenv("QT_QUICK_CONTROLS_STYLE", "org.kde.desktop");
     }
+    if (std::getenv("DUCKYDECK_DEMO_SHOWCASE") && std::string(std::getenv("DUCKYDECK_DEMO_SHOWCASE")) == "1") {
+        qputenv("QT_QPA_PLATFORM", "xcb");
+        qputenv("QT_SCALE_FACTOR", "1");
+        qputenv("QT_AUTO_SCREEN_SCALE_FACTOR", "0");
+    }
 
     static int argc = 1;
     static char arg0[] = "duckydeck-studio";
@@ -458,6 +470,9 @@ inline int duckydeck_run_app(bool start_minimized) {
             duckydeck::main_window_ref() = win;
             duckydeck::ensure_window_hooks(win);
             win->setIcon(initialIcon);
+            if (qEnvironmentVariable("DUCKYDECK_DEMO_SHOWCASE") == QStringLiteral("1")) {
+                win->resize(1920, 1080);
+            }
             if (start_minimized) {
                 win->hide();
             }
@@ -466,4 +481,147 @@ inline int duckydeck_run_app(bool start_minimized) {
 
     return app.exec();
 }
+
+inline bool duckydeck_capture_composite_frame(
+    const QString& outputPath,
+    const QString& bannerTitle,
+    const QString& bannerSubtitle
+) {
+    QCursor::setPos(2, 2);
+    QWindow* rawMain = duckydeck::find_main_window();
+    QQuickWindow* mainWin = qobject_cast<QQuickWindow*>(rawMain);
+    if (!mainWin) {
+        return false;
+    }
+
+    QImage mainImg = mainWin->grabWindow();
+    if (mainImg.isNull()) {
+        return false;
+    }
+
+    QImage canvas(1920, 1080, QImage::Format_ARGB32_Premultiplied);
+    canvas.fill(QColor(18, 21, 29));
+
+    QPainter p(&canvas);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    p.setRenderHint(QPainter::TextAntialiasing, true);
+
+    QImage scaledMain = mainImg.scaled(1920, 1080, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    p.drawImage(0, 0, scaledMain);
+
+    const double scaleX = 1920.0 / std::max(1, mainWin->width());
+    const double scaleY = 1080.0 / std::max(1, mainWin->height());
+    const double uniformScale = std::min(scaleX, scaleY);
+
+    const auto windows = QGuiApplication::topLevelWindows();
+    for (QWindow* w : windows) {
+        if (!w || w == mainWin || !w->isVisible()) {
+            continue;
+        }
+        QQuickWindow* subWin = qobject_cast<QQuickWindow*>(w);
+        if (!subWin) {
+            continue;
+        }
+        QImage subImg = subWin->grabWindow();
+        if (subImg.isNull()) {
+            continue;
+        }
+
+        // Dim background slightly to emphasize modal/dialog window
+        p.fillRect(0, 0, 1920, 1080, QColor(8, 10, 16, 130));
+
+        const int targetW = std::min(1820, static_cast<int>(subWin->width() * uniformScale));
+        const int targetH = std::min(980, static_cast<int>(subWin->height() * uniformScale));
+        const int titleBarH = 34;
+        const int totalH = targetH + titleBarH;
+        const int posX = (1920 - targetW) / 2;
+        const int posY = std::max(24, (1080 - totalH) / 2 - 16);
+
+        // Drop shadow
+        for (int s = 18; s >= 2; s -= 4) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(0, 0, 0, 22));
+            p.drawRoundedRect(QRectF(posX - s, posY - s + 6, targetW + s * 2, totalH + s * 2), 12, 12);
+        }
+
+        // Window frame & titlebar
+        QPainterPath framePath;
+        framePath.addRoundedRect(QRectF(posX, posY, targetW, totalH), 9, 9);
+        p.save();
+        p.setClipPath(framePath);
+
+        p.fillRect(QRect(posX, posY, targetW, titleBarH), QColor(30, 35, 48));
+        p.setPen(QColor(56, 189, 248, 120));
+        p.drawLine(posX, posY + titleBarH - 1, posX + targetW, posY + titleBarH - 1);
+
+        QFont titleFont = p.font();
+        titleFont.setPixelSize(14);
+        titleFont.setBold(true);
+        p.setFont(titleFont);
+        p.setPen(QColor(238, 242, 248));
+        p.drawText(
+            QRect(posX + 14, posY, targetW - 28, titleBarH),
+            Qt::AlignVCenter | Qt::AlignLeft,
+            subWin->title()
+        );
+
+        QImage scaledSub = subImg.scaled(targetW, targetH, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        p.drawImage(posX, posY + titleBarH, scaledSub);
+        p.restore();
+
+        // Outer border
+        p.setPen(QPen(QColor(61, 174, 233, 180), 1.5));
+        p.setBrush(Qt::NoBrush);
+        p.drawRoundedRect(QRectF(posX, posY, targetW, totalH), 9, 9);
+    }
+
+    if (!bannerTitle.isEmpty()) {
+        const int pillW = 1040;
+        const int pillH = bannerSubtitle.isEmpty() ? 52 : 76;
+        const int pillX = (1920 - pillW) / 2;
+        const int pillY = 1080 - pillH - 36;
+
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0, 0, 0, 110));
+        p.drawRoundedRect(QRectF(pillX - 4, pillY + 4, pillW + 8, pillH), 14, 14);
+
+        p.setPen(QPen(QColor(56, 189, 248, 210), 2.0));
+        p.setBrush(QColor(20, 24, 34, 238));
+        p.drawRoundedRect(QRectF(pillX, pillY, pillW, pillH), 12, 12);
+
+        QFont fTitle = p.font();
+        fTitle.setPixelSize(20);
+        fTitle.setBold(true);
+        p.setFont(fTitle);
+        p.setPen(QColor(56, 189, 248));
+        p.drawText(
+            QRect(pillX + 24, pillY + 8, pillW - 48, 28),
+            Qt::AlignHCenter | Qt::AlignVCenter,
+            bannerTitle
+        );
+
+        if (!bannerSubtitle.isEmpty()) {
+            QFont fSub = p.font();
+            fSub.setPixelSize(15);
+            fSub.setBold(false);
+            p.setFont(fSub);
+            p.setPen(QColor(226, 232, 240));
+            p.drawText(
+                QRect(pillX + 24, pillY + 38, pillW - 48, 26),
+                Qt::AlignHCenter | Qt::AlignVCenter,
+                bannerSubtitle
+            );
+        }
+    }
+
+    p.end();
+
+    QFileInfo fi(outputPath);
+    if (!fi.dir().exists()) {
+        QDir().mkpath(fi.dir().absolutePath());
+    }
+    return canvas.save(outputPath, "PNG");
+}
+
 

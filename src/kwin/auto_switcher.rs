@@ -213,6 +213,9 @@ impl SwitcherState {
     }
 
     pub fn save_to_disk(&self) -> Result<(), String> {
+        if std::env::var("DUCKYDECK_DEMO_SHOWCASE").as_deref() == Ok("1") {
+            return Ok(());
+        }
         let path = Self::config_file_path();
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("Failed creating config dir: {e}"))?;

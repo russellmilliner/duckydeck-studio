@@ -832,7 +832,7 @@ Item {
                                     }
                                 }
 
-                                QQC2.ToolTip.visible: keyMouse.containsMouse && !didDrag && !slotContextMenu.visible
+                                QQC2.ToolTip.visible: keyMouse.containsMouse && !didDrag && !slotContextMenu.visible && !(deviceController && deviceController.isDemoShowcaseMode())
                                 QQC2.ToolTip.delay: 650
                                 QQC2.ToolTip.text: qsTr("Key %1 • Click to edit (click again to close editor) • Drag to swap (Shift+Drag to shift) • Right-click for Copy/Paste").arg(keycapItem.slot)
                             }

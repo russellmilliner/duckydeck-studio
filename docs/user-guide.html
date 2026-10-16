@@ -427,6 +427,57 @@
       color: var(--text-primary);
     }
 
+    .screenshot-frame {
+      margin: 18px 0 24px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--bg-secondary);
+      box-shadow: var(--shadow);
+    }
+
+    .screenshot-frame img,
+    .screenshot-frame video {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .screenshot-caption {
+      padding: 10px 16px;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      background: var(--bg-tertiary);
+      border-top: 1px solid var(--border);
+    }
+
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      gap: 20px;
+      margin: 18px 0;
+    }
+
+    .ext-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg-tertiary);
+      color: var(--accent) !important;
+      border: 1px solid var(--accent);
+      font-weight: 700;
+      font-size: 0.85rem;
+      padding: 8px 13px;
+      border-radius: 8px;
+      text-decoration: none;
+      transition: transform 0.12s ease, background 0.15s ease;
+    }
+
+    .ext-btn:hover {
+      background: var(--accent-soft);
+      transform: translateY(-1px);
+    }
+
     @media (max-width: 900px) {
       .sidebar {
         position: static;
@@ -439,6 +490,9 @@
       .main-content {
         margin-left: 0;
         padding: 24px 20px;
+      }
+      .gallery-grid {
+        grid-template-columns: 1fr;
       }
     }
   </style>
@@ -480,6 +534,7 @@
     <nav class="nav-scroll" id="navLinks">
       <div class="nav-group-title">Getting Started</div>
       <a class="nav-link" href="#overview">🏠 Overview &amp; Supported Hardware</a>
+      <a class="nav-link" href="#showcase">🎬 Video Tour &amp; Screenshots</a>
       <a class="nav-link" href="#installation">📦 Installation &amp; USB Permissions</a>
       <a class="nav-link" href="#workspace">🖥️ 3-Column Workspace Tour</a>
 
@@ -497,15 +552,22 @@
       <a class="nav-link" href="#pgv">🔢 Global Variables (_GV0.._GV31)</a>
       <a class="nav-link" href="#ai">✨ AI Macro Architect</a>
 
-      <div class="nav-group-title">Diagnostics &amp; Customization</div>
+      <div class="nav-group-title">Diagnostics &amp; Community</div>
       <a class="nav-link" href="#eventlog">📋 System Event Log</a>
       <a class="nav-link" href="#settings">⚙️ UI Text Scaling &amp; System Tray</a>
       <a class="nav-link" href="#troubleshooting">🛠️ Troubleshooting &amp; FAQ</a>
+      <a class="nav-link" href="#credits">🙏 Credits &amp; Official duckyPad Links</a>
     </nav>
 
     <div class="sidebar-footer">
       <a class="kofi-btn" href="https://ko-fi.com/russellmilliner" target="_blank" rel="noopener noreferrer">
         ☕ Buy Me a Coffee on Ko-fi
+      </a>
+      <a class="ext-btn" href="https://www.duckypad.com" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
+        🦆 Official duckyPad Site
+      </a>
+      <a class="ext-btn" href="https://www.tindie.com/stores/dekunukem/" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
+        🛒 dekuNukem Tindie Store
       </a>
       <button class="theme-btn" onclick="toggleTheme()">🌗 Toggle Dark / Light Theme</button>
     </div>
@@ -536,15 +598,30 @@
           </svg>
           <span>DuckyDeck Studio — User Guide</span>
         </h1>
-        <a class="kofi-btn" href="https://ko-fi.com/russellmilliner" target="_blank" rel="noopener noreferrer">
-          ☕ Support Russell Milliner on Ko-fi
-        </a>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;">
+          <a class="ext-btn" href="https://www.duckypad.com" target="_blank" rel="noopener noreferrer">
+            🦆 Official duckyPad Site
+          </a>
+          <a class="ext-btn" href="https://www.tindie.com/stores/dekunukem/" target="_blank" rel="noopener noreferrer">
+            🛒 dekuNukem Tindie Store
+          </a>
+          <a class="kofi-btn" href="https://ko-fi.com/russellmilliner" target="_blank" rel="noopener noreferrer">
+            ☕ Support Russell Milliner on Ko-fi
+          </a>
+        </div>
       </div>
       <p>
         <strong>DuckyDeck Studio</strong> is a native Linux configurator, <strong>DSVM v2 bytecode compiler</strong>,
         <strong>Wayland Auto-Switcher</strong>, and <strong>AI Macro Architect</strong> for the
         <strong>duckyPad Pro (2024)</strong> and <strong>duckyPad (2020)</strong>, crafted with Rust, CXX-Qt, and KDE Plasma 6 Kirigami.
       </p>
+      <div class="callout success" style="margin-top: 16px;">
+        <div class="callout-title">🙏 Special Thanks to dekuNukem</div>
+        A huge thank you to <strong><a href="https://github.com/dekuNukem" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">dekuNukem</a></strong> for designing, engineering, and open-sourcing the incredible
+        <strong><a href="https://www.duckypad.com" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">duckyPad &amp; duckyPad Pro</a></strong> hardware and DuckyScript 3 ecosystem!
+        Get your own duckyPad Pro and accessories from
+        <strong><a href="https://www.tindie.com/stores/dekunukem/" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">dekuNukem's Official Tindie Store</a></strong>.
+      </div>
       <div class="badge-row">
         <span class="pill accent">duckyPad Pro (0x0483:0xd11d)</span>
         <span class="pill accent">duckyPad 2020 (0x0483:0xd11c)</span>
@@ -554,6 +631,44 @@
         <span class="pill">App Launcher &amp; Web API Triggers</span>
       </div>
     </div>
+
+    <!-- Video Tour & Screenshots -->
+    <section id="showcase">
+      <h2>🎬 Video Tour &amp; Application Screenshots</h2>
+      <p>
+        Watch the full 1080p walkthrough of <strong>DuckyDeck Studio</strong> in action across profiles for
+        <strong>Dolphin</strong>, <strong>Google Chrome</strong>, <strong>VS Code</strong>, <strong>OBS Studio</strong>,
+        <strong>KDE Konsole</strong>, <strong>Blender 3D</strong>, <strong>Spotify</strong>, and the <strong>Desktop App Launcher</strong>:
+      </p>
+      <div class="screenshot-frame">
+        <video controls preload="metadata" poster="screenshots/01-dolphin-overview.png">
+          <source src="duckydeck-studio-demo.mp4" type="video/mp4" />
+          Your browser does not support HTML5 video. View <a href="duckydeck-studio-demo.mp4">duckydeck-studio-demo.mp4</a> directly.
+        </video>
+        <div class="screenshot-caption">
+          🎥 <strong>DuckyDeck Studio Demo Video (1080p MP4)</strong> — Showcasing profile editing, custom RGB palettes, Web API triggers, App Launcher, Wayland Auto-Switcher, and System Event Log.
+        </div>
+      </div>
+
+      <div class="gallery-grid">
+        <div class="screenshot-frame" style="margin:0;">
+          <a href="screenshots/01-dolphin-overview.png" target="_blank"><img src="screenshots/01-dolphin-overview.png" alt="Dolphin File Manager Profile Overview" loading="lazy" /></a>
+          <div class="screenshot-caption"><strong>1. Dolphin File Manager Profile</strong> — 20 RGB keys, Dual Rotary Encoders, 128×128 OLED preview &amp; live DSVM v2 compiler.</div>
+        </div>
+        <div class="screenshot-frame" style="margin:0;">
+          <a href="screenshots/02-google-chrome.png" target="_blank"><img src="screenshots/02-google-chrome.png" alt="Google Chrome Profile" loading="lazy" /></a>
+          <div class="screenshot-caption"><strong>2. Google Chrome Profile</strong> — Browser tab management, navigation, zoom encoders &amp; DevTools shortcuts.</div>
+        </div>
+        <div class="screenshot-frame" style="margin:0;">
+          <a href="screenshots/03-vscode-ide.png" target="_blank"><img src="screenshots/03-vscode-ide.png" alt="VS Code IDE Profile" loading="lazy" /></a>
+          <div class="screenshot-caption"><strong>3. Visual Studio Code Profile</strong> — Command Palette, build tasks, debugger stepping &amp; Git shortcuts.</div>
+        </div>
+        <div class="screenshot-frame" style="margin:0;">
+          <a href="screenshots/07-blender-3d.png" target="_blank"><img src="screenshots/07-blender-3d.png" alt="Blender 3D Profile" loading="lazy" /></a>
+          <div class="screenshot-caption"><strong>4. Blender 3D Profile</strong> — Viewport navigation, sculpting brushes, render keys &amp; DuckyScript 3 loops.</div>
+        </div>
+      </div>
+    </section>
 
     <!-- 1. Installation & Permissions -->
     <section id="installation">
@@ -710,6 +825,10 @@
           </ul>
         </div>
       </div>
+      <div class="screenshot-frame">
+        <a href="screenshots/04-color-picker-palette.png" target="_blank"><img src="screenshots/04-color-picker-palette.png" alt="Color Picker with Saved and Used Palettes" loading="lazy" /></a>
+        <div class="screenshot-caption">🎨 <strong>Set Key Color Dialog</strong> — Interactive 2D HSV picker, RGB/Hex controls, persistent <strong>Saved Colors</strong> palette, and automatic <strong>Used Colors in Profiles &amp; Keys</strong> palette.</div>
+      </div>
     </section>
 
     <!-- 6. microSD Sync -->
@@ -737,6 +856,16 @@
         <li><strong>On Press vs. On Release Tabs:</strong> Every key and slot supports both an <strong>On Press (`keyN.txt`)</strong> script and an <strong>On Release (`keyN-release.txt`)</strong> script.</li>
         <li><strong>📖 Command Reference Drawer:</strong> Click <strong>📖 Reference</strong> in the script toolbar to browse and insert all duckyScript 3 commands (`STRING`, `STRINGLN`, `DELAY`, `KEYDOWN`, `KEYUP`, `SWCC`, `SWCF`, `SWCR`, `OLED_PRINT`, `OLED_LINE`, `OLED_RECT`, `OLED_CIRCLE`, `OLED_UPDATE`, `IF/ELSE/END_IF`, `WHILE/END_WHILE`, `FUNCTION/END_FUNCTION`, `GOTO_PROFILE`, `_GV0.._GV31`, etc.).</li>
       </ul>
+      <div class="gallery-grid">
+        <div class="screenshot-frame" style="margin:0;">
+          <a href="screenshots/06-konsole-terminal.png" target="_blank"><img src="screenshots/06-konsole-terminal.png" alt="KDE Konsole Terminal Macros" loading="lazy" /></a>
+          <div class="screenshot-caption"><strong>KDE Konsole Profile</strong> — Terminal automation with `STRINGLN` commands and live `.dsb` bytecode verification.</div>
+        </div>
+        <div class="screenshot-frame" style="margin:0;">
+          <a href="screenshots/08-spotify-media.png" target="_blank"><img src="screenshots/08-spotify-media.png" alt="Spotify Media Profile" loading="lazy" /></a>
+          <div class="screenshot-caption"><strong>Spotify Media Profile</strong> — Hardware media keys (`MK_PLAYPAUSE`, `MK_NEXT`, `MK_VOLUP`) and rotary encoders.</div>
+        </div>
+      </div>
     </section>
 
     <!-- 8. Launch Application Builder -->
@@ -747,16 +876,20 @@
       </p>
       <ol>
         <li>Select a key (1–20) to open the Right Inspector and click the <strong>🚀 Launch App</strong> button in the editor toolbar.</li>
-        <li>Check <strong>Enable App Launch on this key</strong>.</li>
-        <li>Click <strong>🔍 Choose Installed App...</strong> to search all installed desktop applications (`.desktop` entries from `/usr/share/applications`, Flatpak exports, and `~/.local/share/applications`) with icons, descriptions, and categories—or type any custom command and arguments.</li>
+        <li>Check <strong>Launch Application on Key Press</strong>.</li>
+        <li>Click <strong>📦 Pick Installed App...</strong> to search all installed desktop applications (`.desktop` entries from `/usr/share/applications`, Flatpak exports, and `~/.local/share/applications`) with icons, descriptions, and categories—or type any custom command and arguments.</li>
         <li>Choose the <strong>Trigger Mode</strong>:
           <ul>
-            <li><strong>Instant USB HID via `_GV19` (Default — No Keyboard Shortcut Needed):</strong> Pressing the key on the duckyPad writes a unique slot token to `_GV19`. DuckyDeck Studio's background HID listener detects the change within ~180ms and spawns the application directly on your Linux desktop!</li>
+            <li><strong>Silent Host Launch (`_GV31`) (Default — No Keyboard Shortcut Needed):</strong> Pressing the key on the duckyPad writes a unique profile+slot token to `_GV31`. DuckyDeck Studio's background HID listener detects the change and spawns the application directly on your Linux desktop!</li>
             <li><strong>F13–F24 Global Hotkey (`evdev`):</strong> Emits `F13`–`F24` over USB HID keyboard and triggers the launch via DuckyDeck Studio's background `evdev` listener.</li>
           </ul>
         </li>
         <li>Click <strong>▶ Test Launch</strong> anytime to test the command immediately and inspect the result in the <strong>System Event Log (`APP_LAUNCH`)</strong>.</li>
       </ol>
+      <div class="screenshot-frame">
+        <a href="screenshots/09-app-launcher.png" target="_blank"><img src="screenshots/09-app-launcher.png" alt="Launch Application Builder" loading="lazy" /></a>
+        <div class="screenshot-caption">🚀 <strong>Launch Application Builder</strong> — Configure desktop apps (Dolphin, Google Chrome, VS Code, OBS Studio, Konsole, Blender, Spotify, GIMP) with <code>APP</code> keycap badges and instant USB HID host launching.</div>
+      </div>
     </section>
 
     <!-- 9. Web API / Webhook Builder -->
@@ -767,10 +900,14 @@
       </p>
       <ol>
         <li>Select a key and click <strong>🌐 Web API</strong> in the inspector toolbar.</li>
-        <li>Check <strong>Enable Web API Call on this key</strong> and configure the HTTP Method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`), URL, custom headers (`Header: Value` per line), and request body (JSON/text).</li>
-        <li>Select <strong>HID PGV (`_GV18`)</strong> (zero keyboard interference, works on all profiles and keys) or <strong>F13–F24 Hotkey</strong>.</li>
-        <li>Click <strong>▶ Test Call</strong> to fire the HTTP request immediately and view status codes, latency, and errors in the <strong>System Event Log (`WEB_API`)</strong>.</li>
+        <li>Check <strong>Trigger Web API on Key Press</strong> and configure the HTTP Method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`), URL, custom headers (`Header: Value` per line), and request body (JSON/text).</li>
+        <li>Select <strong>Silent Hardware PGV (`_GV31`)</strong> (zero keyboard interference, works on all profiles and keys) or <strong>F13–F24 Hotkey</strong>.</li>
+        <li>Click <strong>⚡ Test API Call</strong> to fire the HTTP request immediately and view status codes, latency, and errors in the <strong>System Event Log (`WEB_API`)</strong>.</li>
       </ol>
+      <div class="screenshot-frame">
+        <a href="screenshots/05-obs-studio-web-api.png" target="_blank"><img src="screenshots/05-obs-studio-web-api.png" alt="Web API Builder in OBS Studio Profile" loading="lazy" /></a>
+        <div class="screenshot-caption">🌐 <strong>Web API / Webhook Builder</strong> — Triggering a Home Assistant Studio Key Light REST webhook from Key 17 of the OBS Studio profile with RGB LED status feedback.</div>
+      </div>
     </section>
 
     <!-- 10. Wayland Auto-Switcher -->
@@ -784,6 +921,10 @@
         <li><strong>Browser Tab Title Matching:</strong> When picking a web browser (Zen Browser, Firefox, Chrome, Brave, Vivaldi, etc.), DuckyDeck Studio automatically strips the browser suffix so your rule matches the specific web app or tab title (e.g. `Miniflux`, `GitHub`, `YouTube`), or you can use `*browser*` to match all web browsers.</li>
         <li><strong>Automatic Pause While Editing:</strong> Whenever the Right Key Inspector is open, the Auto-Switcher automatically pauses (`AUTO-SWITCHER (PAUSED)`) so switching to a browser or terminal to copy a URL or command won't yank the active profile away from the key you're editing!</li>
       </ul>
+      <div class="screenshot-frame">
+        <a href="screenshots/10-wayland-auto-switcher.png" target="_blank"><img src="screenshots/10-wayland-auto-switcher.png" alt="KWin Wayland Auto-Switcher Rules Dialog" loading="lazy" /></a>
+        <div class="screenshot-caption">🪟 <strong>KWin Wayland Auto-Switcher Rules</strong> — Map window classes and titles (Dolphin, Google Chrome, VS Code, OBS Studio, Konsole, Blender, Spotify) to hardware profiles with 1-click Window Picking.</div>
+      </div>
     </section>
 
     <!-- 11. Global Variables (_GV0.._GV31) -->
@@ -793,8 +934,8 @@
         Open <strong>Variables (`_GV`)...</strong> from the `☰` menu to inspect and live-edit all 32 32-bit non-volatile Persistent Global Variables (`_GV0` through `_GV31`) over USB HID commands `0x18` (read) and `0x19` (write) in Signed Decimal, Unsigned Decimal, or Hexadecimal format.
       </p>
       <div class="callout warn">
-        <div class="callout-title">Reserved Bridge PGVs (`_GV18` &amp; `_GV19`)</div>
-        DuckyDeck Studio uses <code>_GV18</code> for instant Web API triggers and <code>_GV19</code> for instant Application Launch triggers when using the default USB HID PGV trigger mode.
+        <div class="callout-title">Reserved Bridge PGV (`_GV31`)</div>
+        DuckyDeck Studio uses <code>_GV31</code> for instant Web API triggers (`0x444B...`) and instant Application Launch triggers (`0x444B08...`) when using the default Silent Hardware PGV trigger mode.
       </div>
     </section>
 
@@ -824,8 +965,12 @@
         <li><code>SYSTEM</code> — Startup, configuration persistence, and UI events</li>
       </ul>
       <p>
-        Logs are also persisted on disk at <code>~/.local/share/duckydeck-studio/logs/system_events.log</code> and can be filtered, copied, or exported to a `.log` file.
+        Logs are also persisted on disk at <code>~/.local/share/duckydeck-studio/duckydeck.log</code> and can be filtered, copied, or exported to a `.log` file.
       </p>
+      <div class="screenshot-frame">
+        <a href="screenshots/11-system-event-log.png" target="_blank"><img src="screenshots/11-system-event-log.png" alt="System Event Log Dialog" loading="lazy" /></a>
+        <div class="screenshot-caption">📋 <strong>System Event Log</strong> — Live diagnostic log with category &amp; severity pills, keyword search, clipboard copy, and `.log` file export.</div>
+      </div>
     </section>
 
     <!-- 14. Settings, Text Scaling & System Tray -->
@@ -853,7 +998,7 @@
         <h4>❓ My Web API or Launch App key didn't trigger on the duckyPad</h4>
         <p>
           1. Check the bottom status bar—if it says <strong>⚠ Unsynced Changes</strong>, click <strong>⬆ Sync to SD</strong> so the compiled `.dsb` bytecode is written to the duckyPad's microSD card.<br/>
-          2. Open <strong>☰ → System Event Log</strong> and filter by <code>WEB_API</code> or <code>APP_LAUNCH</code> to see the exact trigger event (`_GV18` / `_GV19` or `F13–F24`) and any HTTP or process errors.
+          2. Open <strong>☰ → System Event Log</strong> and filter by <code>WEB_API</code> or <code>APP_LAUNCH</code> to see the exact trigger event (`_GV31` or `F13–F24`) and any HTTP or process errors.
         </p>
       </div>
       <div class="card">
@@ -861,6 +1006,40 @@
         <p>
           Check if the Right Key Inspector is currently open—Auto-Switcher intentionally pauses (`⏸ Paused (Editing Key N)`) while you are editing a key so your active profile doesn't jump away while you switch windows. Close the key editor (`✕`) to resume automatic switching.
         </p>
+      </div>
+    </section>
+
+    <!-- 16. Credits & Official duckyPad Links -->
+    <section id="credits">
+      <h2>🙏 16. Special Thanks to dekuNukem &amp; Official duckyPad Links</h2>
+      <div class="callout success">
+        <div class="callout-title">🦆 Thank You to dekuNukem — Creator of duckyPad &amp; duckyPad Pro</div>
+        <strong>DuckyDeck Studio</strong> would not exist without the phenomenal open-source hardware, firmware, and DuckyScript 3 / DSVM v2 virtual machine created by
+        <strong><a href="https://github.com/dekuNukem" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">dekuNukem (Allen Pan / dekuNukem)</a></strong>.
+        Thank you, dekuNukem, for creating the duckyPad and duckyPad Pro and making its documentation, HID protocol, and firmware completely open to the community!
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <h4>🦆 Official duckyPad Website &amp; Documentation</h4>
+          <p>
+            Explore official hardware specifications, getting started guides, DuckyScript 3 documentation, and firmware updates:
+          </p>
+          <ul>
+            <li><strong>Official Site:</strong> <a href="https://www.duckypad.com" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">https://www.duckypad.com</a></li>
+            <li><strong>duckyPad Pro GitHub:</strong> <a href="https://github.com/dekuNukem/duckyPad-Pro" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">github.com/dekuNukem/duckyPad-Pro</a></li>
+            <li><strong>duckyPad (2020) GitHub:</strong> <a href="https://github.com/dekuNukem/duckyPad" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">github.com/dekuNukem/duckyPad</a></li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>🛒 Where to Buy — dekuNukem's Official Tindie Store</h4>
+          <p>
+            Order an official duckyPad Pro, hot-swappable mechanical macropad kits, rotary encoder modules, and expansion accessories directly from dekuNukem:
+          </p>
+          <ul>
+            <li><strong>Tindie Storefront:</strong> <a href="https://www.tindie.com/stores/dekunukem/" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">tindie.com/stores/dekunukem</a></li>
+            <li><strong>duckyPad Pro on Tindie:</strong> <a href="https://www.tindie.com/products/dekunukem/duckypad-pro-macro-scripting-beyond-qmkvia/" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">duckyPad Pro: Macro Scripting Beyond QMK/VIA</a></li>
+          </ul>
+        </div>
       </div>
     </section>
   </main>

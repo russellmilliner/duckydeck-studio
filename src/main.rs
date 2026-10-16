@@ -56,6 +56,12 @@ fn sanitize_xdg_env() {
 
 fn main() {
     sanitize_xdg_env();
+    if env::var("DUCKYDECK_DEMO_SHOWCASE").as_deref() == Ok("1") {
+        env::set_var("QT_QPA_PLATFORM", "xcb");
+        env::set_var("QT_SCALE_FACTOR", "1");
+        env::set_var("QT_AUTO_SCREEN_SCALE_FACTOR", "0");
+        env::set_var("QT_SCREEN_SCALE_FACTORS", "1");
+    }
     let start_minimized = env::args().any(|arg| arg == "--minimized" || arg == "--tray");
     let exit_code = bridge::device_controller::run_application(start_minimized);
     std::process::exit(exit_code);

@@ -30,12 +30,17 @@ Kirigami.ApplicationWindow {
     readonly property int requiredWindowWidth: root.hasSelectedSlot
         ? root.expandedWindowWidth
         : root.compactWindowWidth
-    width: compactWindowWidth
-    height: 800
+    width: (deviceController && deviceController.isDemoShowcaseMode()) ? 1920 : compactWindowWidth
+    height: (deviceController && deviceController.isDemoShowcaseMode()) ? 1080 : 800
     minimumWidth: root.hasSelectedSlot ? root.expandedWindowWidth : root.compactWindowWidth
     minimumHeight: 680
 
     function syncWindowWidthToEditorState() {
+        if (deviceController && deviceController.isDemoShowcaseMode()) {
+            root.width = 1920
+            root.height = 1080
+            return
+        }
         if (root.visibility === Window.Maximized || root.visibility === Window.FullScreen) {
             return
         }
@@ -3679,10 +3684,10 @@ Kirigami.ApplicationWindow {
     Window {
         id: aboutDialog
         title: qsTr("About DuckyDeck Studio v%1").arg(deviceController.appVersion)
-        width: 580
-        height: 455
-        minimumWidth: 540
-        minimumHeight: 430
+        width: 620
+        height: 530
+        minimumWidth: 560
+        minimumHeight: 500
         visible: false
         transientParent: root
         modality: Qt.WindowModal
@@ -3855,7 +3860,7 @@ Kirigami.ApplicationWindow {
                     anchors.fill: parent
                     anchors.margins: 14
                     columns: 2
-                    rowSpacing: 10
+                    rowSpacing: 8
                     columnSpacing: 14
 
                     QQC2.Label {
@@ -3956,6 +3961,66 @@ Kirigami.ApplicationWindow {
                     }
 
                     QQC2.Label {
+                        text: qsTr("Special Thanks:")
+                        font.bold: true
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                    QQC2.Label {
+                        text: qsTr("Thank you to dekuNukem for creating the duckyPad & duckyPad Pro!")
+                        font.bold: true
+                        color: Kirigami.Theme.positiveTextColor
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+
+                    QQC2.Label {
+                        text: qsTr("duckyPad Links:")
+                        font.bold: true
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+
+                        QQC2.Label {
+                            text: "duckypad.com"
+                            font.family: "monospace"
+                            font.underline: duckySiteMouse.containsMouse
+                            color: Kirigami.Theme.highlightColor
+
+                            MouseArea {
+                                id: duckySiteMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: Qt.openUrlExternally("https://www.duckypad.com")
+                            }
+                        }
+
+                        QQC2.Label {
+                            text: "•"
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+
+                        QQC2.Label {
+                            text: "Tindie Store (dekuNukem)"
+                            font.family: "monospace"
+                            font.underline: tindieSiteMouse.containsMouse
+                            color: Kirigami.Theme.highlightColor
+
+                            MouseArea {
+                                id: tindieSiteMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: Qt.openUrlExternally("https://www.tindie.com/stores/dekunukem/")
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
+                    }
+
+                    QQC2.Label {
                         text: qsTr("License:")
                         font.bold: true
                         color: Kirigami.Theme.disabledTextColor
@@ -3984,20 +4049,6 @@ Kirigami.ApplicationWindow {
                         elide: Text.ElideRight
                         Layout.fillWidth: true
                     }
-
-                    QQC2.Label {
-                        text: qsTr("Event Log:")
-                        font.bold: true
-                        color: Kirigami.Theme.disabledTextColor
-                    }
-                    QQC2.Label {
-                        text: deviceController.logFilePath
-                        font.family: "monospace"
-                        font.pixelSize: 11
-                        color: Kirigami.Theme.disabledTextColor
-                        elide: Text.ElideMiddle
-                        Layout.fillWidth: true
-                    }
                 }
             }
 
@@ -4013,18 +4064,21 @@ Kirigami.ApplicationWindow {
                 }
 
                 QQC2.Button {
-                    icon.name: "help-contents"
-                    text: qsTr("User Guide")
-                    onClicked: Qt.openUrlExternally("file:///home/millinr/Builds/Ducky/duckydeck-studio/docs/user-guide.html")
+                    icon.name: "internet-web-browser"
+                    text: qsTr("duckyPad Site")
+                    onClicked: Qt.openUrlExternally("https://www.duckypad.com")
                 }
 
                 QQC2.Button {
-                    icon.name: "view-list-text"
-                    text: qsTr("System Event Log...")
-                    onClicked: {
-                        aboutDialog.close()
-                        eventLogDialog.openLogWindow()
-                    }
+                    icon.name: "internet-web-browser"
+                    text: qsTr("Tindie Store")
+                    onClicked: Qt.openUrlExternally("https://www.tindie.com/stores/dekunukem/")
+                }
+
+                QQC2.Button {
+                    icon.name: "help-contents"
+                    text: qsTr("User Guide")
+                    onClicked: Qt.openUrlExternally("file:///home/millinr/Builds/Ducky/duckydeck-studio/docs/user-guide.html")
                 }
 
                 Item { Layout.fillWidth: true }
@@ -7579,6 +7633,172 @@ Kirigami.ApplicationWindow {
                     text: qsTr("Cancel")
                     onClicked: installedAppPickerDialog.close()
                 }
+            }
+        }
+    }
+
+    property int showcaseStep: 0
+
+    function selectShowcaseSlot(slotNum) {
+        const title = hardwareCanvas.slotTitleFor(slotNum)
+        const color = hardwareCanvas.slotColorFor(slotNum)
+        hardwareCanvas.selectedSlot = slotNum
+        root.loadSlotFromController(slotNum, title, color)
+    }
+
+    Timer {
+        id: showcaseRunnerTimer
+        interval: 350
+        repeat: true
+        running: deviceController.isDemoShowcaseMode()
+        onTriggered: {
+            const screenshotsDir = "/home/millinr/Builds/Ducky/duckydeck-studio/docs/screenshots/"
+            const framesDir = "/home/millinr/Builds/Ducky/duckydeck-studio/docs/video_frames/"
+            const step = root.showcaseStep
+            root.showcaseStep = step + 1
+
+            if (step === 0) {
+                deviceController.selectProfile(1)
+                root.syncSidebarProfilesFromController()
+                hardwareCanvas.syncSlotsFromController()
+                root.selectShowcaseSlot(1)
+            } else if (step === 1) {
+                deviceController.captureShowcaseFrame(screenshotsDir + "01-dolphin-overview.png", "", "")
+                deviceController.captureShowcaseFrame(
+                    framesDir + "scene_01.png",
+                    "DuckyDeck Studio — KDE Plasma 6 Configurator for duckyPad Pro & 2020",
+                    "Profile #1: Dolphin File Manager • 20 RGB Mechanical Keys, Dual Rotary Encoders & Live DSVM v2 Compiler"
+                )
+                deviceController.selectProfile(2)
+                root.syncSidebarProfilesFromController()
+                hardwareCanvas.syncSlotsFromController()
+                root.selectShowcaseSlot(1)
+            } else if (step === 2) {
+                deviceController.captureShowcaseFrame(screenshotsDir + "02-google-chrome.png", "", "")
+                deviceController.captureShowcaseFrame(
+                    framesDir + "scene_02.png",
+                    "Profile #2: Google Chrome — Browser Navigation, Tab Management & DevTools",
+                    "Instant KWin Wayland Auto-Switching when Google Chrome receives window focus"
+                )
+                root.selectShowcaseSlot(5)
+            } else if (step === 3) {
+                deviceController.captureShowcaseFrame(
+                    framesDir + "scene_03.png",
+                    "Interactive 26-Slot Hardware Canvas & Real-Time DuckyScript 3 Editor",
+                    "Click any mechanical key or rotary encoder action to inspect and compile DuckyScript 3 macros"
+                )
+                deviceController.selectProfile(3)
+                root.syncSidebarProfilesFromController()
+                hardwareCanvas.syncSlotsFromController()
+                root.selectShowcaseSlot(1)
+            } else if (step === 4) {
+                deviceController.captureShowcaseFrame(screenshotsDir + "03-vscode-ide.png", "", "")
+                deviceController.captureShowcaseFrame(
+                    framesDir + "scene_04.png",
+                    "Profile #3: Visual Studio Code — Build, Debug, Git & Editor Macros",
+                    "Syntax highlighting, line numbers, Ctrl+Space autocomplete & live .dsb bytecode verification"
+                )
+                duckyColorPickerWindow.openForKey(4, "#f97316")
+            } else if (step === 5) {
+                deviceController.captureShowcaseFrame(screenshotsDir + "04-color-picker-palette.png", "", "")
+                deviceController.captureShowcaseFrame(
+                    framesDir + "scene_05.png",
+                    "Custom Key & Profile Background Color Picker",
+                    "Interactive HSV color wheel, RGB/Hex sliders, Saved Colors palette & Used Colors across all profiles"
+                )
+                duckyColorPickerWindow.close()
+                deviceController.selectProfile(4)
+                root.syncSidebarProfilesFromController()
+                hardwareCanvas.syncSlotsFromController()
+                root.selectShowcaseSlot(17)
+                root.showWebApiBuilder = true
+            } else if (step === 6) {
+                deviceController.captureShowcaseFrame(screenshotsDir + "05-obs-studio-web-api.png", "", "")
+                deviceController.captureShowcaseFrame(
+                    framesDir + "scene_06.png",
+                    "Profile #4: OBS Studio — Scene Switching & Host-Side Web API Triggers",
+                    "Trigger HTTP/REST webhooks (Home Assistant, OBS WebSocket, local APIs) directly from duckyPad keys"
+                )
+                root.showWebApiBuilder = false
+                deviceController.selectProfile(5)
+                root.syncSidebarProfilesFromController()
+                hardwareCanvas.syncSlotsFromController()
+                root.selectShowcaseSlot(7)
+            } else if (step === 7) {
+                deviceController.captureShowcaseFrame(screenshotsDir + "06-konsole-terminal.png", "", "")
+                deviceController.captureShowcaseFrame(
+                    framesDir + "scene_07.png",
+                    "Profile #5: KDE Konsole — One-Key Terminal Commands, Git & Cargo Workflows",
+                    "Automate frequent terminal commands, split panes, and system monitoring with zero typing lag"
+                )
+                deviceController.selectProfile(6)
+                root.syncSidebarProfilesFromController()
+                hardwareCanvas.syncSlotsFromController()
+                root.selectShowcaseSlot(19)
+            } else if (step === 8) {
+                deviceController.captureShowcaseFrame(screenshotsDir + "07-blender-3d.png", "", "")
+                deviceController.captureShowcaseFrame(
+                    framesDir + "scene_08.png",
+                    "Profile #6: Blender 3D — Viewport Navigation, Sculpting Brushes & Loops",
+                    "Full DuckyScript 3 loop & conditional support with Dual Rotary Encoder zoom and brush sizing"
+                )
+                deviceController.selectProfile(7)
+                root.syncSidebarProfilesFromController()
+                hardwareCanvas.syncSlotsFromController()
+                root.selectShowcaseSlot(1)
+            } else if (step === 9) {
+                deviceController.captureShowcaseFrame(screenshotsDir + "08-spotify-media.png", "", "")
+                deviceController.captureShowcaseFrame(
+                    framesDir + "scene_09.png",
+                    "Profile #7: Spotify & Media Controls — Hardware Playback & Volume Encoders",
+                    "Dedicated media transport keys and rotary encoder volume/scrubbing controls"
+                )
+                deviceController.selectProfile(8)
+                root.syncSidebarProfilesFromController()
+                hardwareCanvas.syncSlotsFromController()
+                root.selectShowcaseSlot(2)
+                root.showAppLaunchBuilder = true
+            } else if (step === 10) {
+                deviceController.captureShowcaseFrame(screenshotsDir + "09-app-launcher.png", "", "")
+                deviceController.captureShowcaseFrame(
+                    framesDir + "scene_10.png",
+                    "Profile #8: Desktop Application Launcher — Start Any App from a Key Press",
+                    "Browse installed XDG desktop applications or custom scripts and launch them instantaneously"
+                )
+                root.showAppLaunchBuilder = false
+                deviceController.selectProfile(1)
+                root.syncSidebarProfilesFromController()
+                hardwareCanvas.syncSlotsFromController()
+                root.selectShowcaseSlot(1)
+                autoSwitchDrawer.open()
+            } else if (step === 11) {
+                deviceController.captureShowcaseFrame(screenshotsDir + "10-wayland-auto-switcher.png", "", "")
+                deviceController.captureShowcaseFrame(
+                    framesDir + "scene_11.png",
+                    "KWin Wayland D-Bus Auto-Switcher — Automatic Profile Switching",
+                    "Bind window classes and titles (Dolphin, Chrome, VS Code, OBS, Konsole, Blender, Spotify) to profiles"
+                )
+                autoSwitchDrawer.close()
+                eventLogDialog.openLogWindow()
+            } else if (step === 12) {
+                deviceController.captureShowcaseFrame(screenshotsDir + "11-system-event-log.png", "", "")
+                deviceController.captureShowcaseFrame(
+                    framesDir + "scene_12.png",
+                    "Live System Event Log — Real-Time Diagnostics & Audit Trail",
+                    "Filter USB HID, SD Sync, KWin Auto-Switcher, Web API, and Application Launch events by category"
+                )
+                eventLogDialog.close()
+                aboutDialog.openAboutWindow()
+            } else if (step === 13) {
+                deviceController.captureShowcaseFrame(screenshotsDir + "12-about-duckydeck.png", "", "")
+                deviceController.captureShowcaseFrame(
+                    framesDir + "scene_13.png",
+                    "Open Source for the duckyPad Community — Special Thanks to dekuNukem",
+                    "Explore official duckyPad hardware at duckypad.com and dekuNukem's Tindie store"
+                )
+                aboutDialog.close()
+                showcaseRunnerTimer.stop()
+                deviceController.quitApplication()
             }
         }
     }
