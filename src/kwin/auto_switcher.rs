@@ -70,6 +70,8 @@ pub struct PersistedSwitcherConfig {
     pub editor_text_scale: i32,
     #[serde(default = "default_ui_text_scale")]
     pub status_bar_text_scale: i32,
+    #[serde(default = "default_ui_text_scale")]
+    pub event_log_text_scale: i32,
 }
 
 pub struct SwitcherState {
@@ -86,6 +88,7 @@ pub struct SwitcherState {
     pub inspector_text_scale: i32,
     pub editor_text_scale: i32,
     pub status_bar_text_scale: i32,
+    pub event_log_text_scale: i32,
     pub last_switched_profile: u8,
     pub picker_armed: bool,
     pub loaded_from_disk: bool,
@@ -116,6 +119,7 @@ impl Default for SwitcherState {
                 inspector_text_scale: cfg.inspector_text_scale.clamp(75, 160),
                 editor_text_scale: cfg.editor_text_scale.clamp(75, 160),
                 status_bar_text_scale: cfg.status_bar_text_scale.clamp(75, 160),
+                event_log_text_scale: cfg.event_log_text_scale.clamp(75, 160),
                 last_switched_profile: 0,
                 picker_armed: false,
                 loaded_from_disk: true,
@@ -158,6 +162,7 @@ impl Default for SwitcherState {
             inspector_text_scale: 100,
             editor_text_scale: 100,
             status_bar_text_scale: 100,
+            event_log_text_scale: 100,
             last_switched_profile: 0,
             picker_armed: false,
             loaded_from_disk: false,
@@ -200,6 +205,7 @@ impl SwitcherState {
             inspector_text_scale: self.inspector_text_scale.clamp(75, 160),
             editor_text_scale: self.editor_text_scale.clamp(75, 160),
             status_bar_text_scale: self.status_bar_text_scale.clamp(75, 160),
+            event_log_text_scale: self.event_log_text_scale.clamp(75, 160),
         };
         let json = serde_json::to_string_pretty(&payload)
             .map_err(|e| format!("Failed serializing KWin rules: {e}"))?;

@@ -160,7 +160,7 @@ pub fn read_all_pgvs(device: &HidDevice) -> Result<[i32; PGV_COUNT], String> {
             .read_timeout(&mut rx, 500)
             .map_err(|e| format!("HID read timeout during PGV dump (idx {start_idx}): {e}"))?;
 
-        if bytes_read < 8 || rx[2] != 0 {
+        if bytes_read < 7 || rx[2] != 0 {
             return Err(format!(
                 "Invalid HID response for PGV dump at index {start_idx} (status byte: 0x{:02X})",
                 rx[2]
@@ -169,7 +169,7 @@ pub fn read_all_pgvs(device: &HidDevice) -> Result<[i32; PGV_COUNT], String> {
 
         let count_in_chunk = (PGV_COUNT - start_idx as usize).min(15);
         for offset in 0..count_in_chunk {
-            let byte_pos = 4 + (offset * 4);
+            let byte_pos = 3 + (offset * 4);
             if byte_pos + 4 <= bytes_read {
                 let raw_bytes: [u8; 4] = [
                     rx[byte_pos],
@@ -212,14 +212,22 @@ pub fn write_pgvs(device: &HidDevice, updates: &[(u8, i32)]) -> Result<(), Strin
             cursor += 5;
         }
 
-        device
-            .write(&tx)
-            .map_err(|e| format!("HID write failed for PGV batch #{chunk_seq}: {e}"))?;
+        for attempt in 0..5u8 {
+            tx[1] = (chunk_seq as u8).wrapping_add(0x40).wrapping_add(attempt);
+            device
+                .write(&tx)
+                .map_err(|e| format!("HID write failed for PGV batch #{chunk_seq}: {e}"))?;
 
-        let mut rx = [0u8; 64];
-        let _ = device
-            .read_timeout(&mut rx, 500)
-            .map_err(|e| format!("HID ACK timeout on PGV write batch #{chunk_seq}: {e}"))?;
+            let mut rx = [0u8; 64];
+            let n = device
+                .read_timeout(&mut rx, 500)
+                .map_err(|e| format!("HID ACK timeout on PGV write batch #{chunk_seq}: {e}"))?;
+            if n >= 3 && rx[2] == 2 && attempt < 4 {
+                std::thread::sleep(std::time::Duration::from_millis(30));
+                continue;
+            }
+            break;
+        }
     }
 
     Ok(())
@@ -2387,6 +2395,7 @@ pub struct WebApiExecutionResult {
     pub elapsed_ms: u64,
     pub summary: String,
     pub response_preview: String,
+    pub route_note: Option<String>,
 }
 
 pub fn default_fkey_for_slot(slot_num: usize) -> String {
@@ -2546,6 +2555,44 @@ pub fn apply_web_api_config_to_script(
     out
 }
 
+pub fn sync_profile_web_api_triggers(profiles: &mut [DuckyProfile]) -> bool {
+    let mut changed = false;
+    for prof in profiles.iter_mut() {
+        let pnum = prof.number;
+        for (&slot_num, slot) in prof.slots.iter_mut() {
+            if has_web_api_config(&slot.on_press_script) {
+                let cfg = extract_web_api_config(&slot.on_press_script, slot_num);
+                let updated = apply_web_api_config_to_script(
+                    &slot.on_press_script,
+                    &cfg,
+                    pnum,
+                    slot_num,
+                    false,
+                );
+                if updated != slot.on_press_script {
+                    slot.on_press_script = updated;
+                    changed = true;
+                }
+            }
+            if has_web_api_config(&slot.on_release_script) {
+                let cfg = extract_web_api_config(&slot.on_release_script, slot_num);
+                let updated = apply_web_api_config_to_script(
+                    &slot.on_release_script,
+                    &cfg,
+                    pnum,
+                    slot_num,
+                    true,
+                );
+                if updated != slot.on_release_script {
+                    slot.on_release_script = updated;
+                    changed = true;
+                }
+            }
+        }
+    }
+    changed
+}
+
 pub fn poll_and_clear_pgv31_trigger() -> Option<(u8, usize, bool)> {
     if MSC_SYNC_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst) {
         return None;
@@ -2565,12 +2612,12 @@ pub fn poll_and_clear_pgv31_trigger() -> Option<(u8, usize, bool)> {
 
     let mut rx = [0u8; 64];
     let bytes_read = device.read_timeout(&mut rx, 120).ok()?;
-    if bytes_read < 12 || rx[2] != 0 {
+    if bytes_read < 11 || rx[2] != 0 {
         return None;
     }
 
-    // _GV30 is at rx[4..8], _GV31 is at rx[8..12]
-    let raw_gv31 = i32::from_le_bytes([rx[8], rx[9], rx[10], rx[11]]);
+    // rx[0]=ReportID(4), rx[1]=Seq, rx[2]=Status(0), rx[3..7]=_GV30, rx[7..11]=_GV31
+    let raw_gv31 = i32::from_le_bytes([rx[7], rx[8], rx[9], rx[10]]);
     if let Some(decoded) = decode_pgv31_trigger(raw_gv31) {
         let _ = write_single_pgv(&device, 31, 0);
         return Some(decoded);
@@ -2626,17 +2673,75 @@ pub async fn flash_slot_led_feedback(slot_num: usize, success: bool, restore_rgb
     }
 }
 
+fn resolve_home_assistant_service_url(url: &str, body: &str) -> (String, Option<String>) {
+    let trimmed_body = body.trim();
+    if trimmed_body.is_empty() {
+        return (url.to_string(), None);
+    }
+    let Ok(json_val) = serde_json::from_str::<serde_json::Value>(trimmed_body) else {
+        return (url.to_string(), None);
+    };
+    let Some(entity_val) = json_val.get("entity_id") else {
+        return (url.to_string(), None);
+    };
+
+    let mut entity_ids: Vec<&str> = Vec::new();
+    match entity_val {
+        serde_json::Value::String(s) => entity_ids.push(s.as_str()),
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                if let Some(s) = item.as_str() {
+                    entity_ids.push(s);
+                }
+            }
+        }
+        _ => {}
+    }
+    if entity_ids.is_empty() {
+        return (url.to_string(), None);
+    }
+
+    for &(src_segment, expected_prefix) in &[
+        ("/api/services/switch/toggle", "switch."),
+        ("/api/services/switch/turn_on", "switch."),
+        ("/api/services/switch/turn_off", "switch."),
+        ("/api/services/light/toggle", "light."),
+        ("/api/services/light/turn_on", "light."),
+        ("/api/services/light/turn_off", "light."),
+    ] {
+        if url.contains(src_segment)
+            && entity_ids
+                .iter()
+                .any(|eid| eid.contains('.') && !eid.starts_with(expected_prefix))
+        {
+            let action = src_segment.rsplit('/').next().unwrap_or("toggle");
+            let dst_segment = format!("/api/services/homeassistant/{action}");
+            let new_url = url.replacen(src_segment, &dst_segment, 1);
+            let note = format!(
+                "Home Assistant service auto-routed '{src_segment}' -> '{dst_segment}' to match entity_id domain ({})",
+                entity_ids.join(", ")
+            );
+            return (new_url, Some(note));
+        }
+    }
+
+    (url.to_string(), None)
+}
+
 pub async fn execute_web_api_request(cfg: &WebApiConfig) -> WebApiExecutionResult {
-    let url = cfg.url.trim();
-    if url.is_empty() {
+    let raw_url = cfg.url.trim();
+    if raw_url.is_empty() {
         return WebApiExecutionResult {
             ok: false,
             status_code: 0,
             elapsed_ms: 0,
             summary: "Error: URL is empty".to_string(),
             response_preview: String::new(),
+            route_note: None,
         };
     }
+
+    let (effective_url, route_note) = resolve_home_assistant_service_url(raw_url, &cfg.body);
 
     let start = std::time::Instant::now();
     let client = match reqwest::Client::builder()
@@ -2652,6 +2757,7 @@ pub async fn execute_web_api_request(cfg: &WebApiConfig) -> WebApiExecutionResul
                 elapsed_ms: 0,
                 summary: format!("HTTP client init failed: {e}"),
                 response_preview: String::new(),
+                route_note,
             };
         }
     };
@@ -2666,7 +2772,7 @@ pub async fn execute_web_api_request(cfg: &WebApiConfig) -> WebApiExecutionResul
         _ => reqwest::Method::POST,
     };
 
-    let mut req = client.request(method.clone(), url);
+    let mut req = client.request(method.clone(), &effective_url);
     let mut has_content_type = false;
 
     for raw_line in cfg.headers.split(['\n', ';']) {
@@ -2730,6 +2836,7 @@ pub async fn execute_web_api_request(cfg: &WebApiConfig) -> WebApiExecutionResul
                 elapsed_ms,
                 summary,
                 response_preview: preview,
+                route_note,
             }
         }
         Err(e) => {
@@ -2740,13 +2847,15 @@ pub async fn execute_web_api_request(cfg: &WebApiConfig) -> WebApiExecutionResul
                 format!("Connection error: {e}")
             } else {
                 format!("Request error: {e}")
-            };
+            }
+            ;
             WebApiExecutionResult {
                 ok: false,
                 status_code: 0,
                 elapsed_ms,
                 summary: err_msg.clone(),
                 response_preview: err_msg,
+                route_note,
             }
         }
     }

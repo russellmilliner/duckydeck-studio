@@ -74,10 +74,17 @@ pub mod qobject {
         #[qproperty(i32, inspector_text_scale)]
         #[qproperty(i32, editor_text_scale)]
         #[qproperty(i32, status_bar_text_scale)]
+        #[qproperty(i32, event_log_text_scale)]
         #[qproperty(QString, active_profile_bg_color)]
         #[qproperty(QString, unsynced_changes_json)]
         #[qproperty(bool, has_copied_slot)]
         #[qproperty(QString, copied_slot_summary)]
+        #[qproperty(QString, app_version)]
+        #[qproperty(QString, app_author)]
+        #[qproperty(QString, app_github_url)]
+        #[qproperty(QString, log_file_path)]
+        #[qproperty(QString, event_log_json)]
+        #[qproperty(i32, event_log_count)]
         type DeviceController = super::DeviceControllerRust;
 
         #[qinvokable]
@@ -395,6 +402,34 @@ pub mod qobject {
             config_json: QString,
             slot_number: i32,
         );
+
+        #[qinvokable]
+        fn log_event(
+            self: Pin<&mut DeviceController>,
+            level: QString,
+            category: QString,
+            message: QString,
+        );
+
+        #[qinvokable]
+        fn record_status_log(self: Pin<&mut DeviceController>, message: QString);
+
+        #[qinvokable]
+        fn refresh_event_log(self: Pin<&mut DeviceController>) -> QString;
+
+        #[qinvokable]
+        fn clear_event_log(self: Pin<&mut DeviceController>);
+
+        #[qinvokable]
+        fn export_event_log(self: Pin<&mut DeviceController>, destination_path: QString) -> bool;
+
+        #[qinvokable]
+        fn format_event_log_text(
+            self: &DeviceController,
+            category_filter: QString,
+            level_filter: QString,
+            search_query: QString,
+        ) -> QString;
     }
 
     impl cxx_qt::Threading for DeviceController {}
@@ -408,18 +443,20 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::hardware::storage::{
     apply_web_api_config_to_script, check_latest_duckypad_firmware, check_profile_sync_status,
-    compute_profiles_fingerprint, compute_unsynced_changes_json, execute_web_api_request,
-    extract_web_api_config, find_mounted_duckypad_sd, flash_slot_led_feedback, has_web_api_config,
-    load_all_sd_profiles, load_profiles_for_connected_device, mark_profiles_sd_synced,
-    poll_and_clear_pgv31_trigger, profile_cache_dir_for_serial, query_connected_duckypad_info,
-    read_dpp_config, read_duckypad_pro_profiles_via_msc,
-    read_duckypad_pro_profiles_via_msc_with_progress, reboot_duckypad, save_profile_order_to_sd,
-    set_single_key_led_hid, sync_profiles_to_cache, sync_profiles_to_device_cache,
+    compute_profiles_fingerprint, compute_unsynced_changes_json, encode_pgv31_trigger,
+    execute_web_api_request, extract_web_api_config, find_mounted_duckypad_sd,
+    flash_slot_led_feedback, has_web_api_config, load_all_sd_profiles,
+    load_profiles_for_connected_device, mark_profiles_sd_synced, poll_and_clear_pgv31_trigger,
+    profile_cache_dir_for_serial, query_connected_duckypad_info, read_dpp_config,
+    read_duckypad_pro_profiles_via_msc, read_duckypad_pro_profiles_via_msc_with_progress,
+    reboot_duckypad, save_profile_order_to_sd, set_single_key_led_hid,
+    sync_profile_web_api_triggers, sync_profiles_to_cache, sync_profiles_to_device_cache,
     write_duckypad_pro_profiles_via_msc_with_progress, write_profiles_to_sd_root, DuckyKeySlot,
     DuckyProfile, DuckypadEvdevListener, WebApiConfig, DUCKYPAD_VID, HID_CMD_SET_LED_SINGLE,
     HID_REPORT_ID_OUT, MAX_INPUT_SLOTS, PID_DUCKYPAD_2020, PID_DUCKYPAD_PRO,
@@ -428,6 +465,138 @@ use crate::kwin::auto_switcher::{
     is_kde_autostart_enabled, is_web_browser_class, resolve_rule_icon, set_kde_autostart_enabled,
     strip_browser_title_suffix, sync_local_desktop_and_icon, AutoSwitchRule, SwitcherState,
 };
+
+pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const APP_AUTHOR: &str = "Russell Milliner";
+pub const APP_GITHUB_URL: &str = "https://github.com/russellmilliner/duckydeck-studio";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemLogEntry {
+    pub timestamp: String,
+    pub level: String,
+    pub category: String,
+    pub message: String,
+}
+
+static SYSTEM_EVENT_LOG: OnceLock<Mutex<Vec<SystemLogEntry>>> = OnceLock::new();
+
+pub fn get_system_log_file_path() -> PathBuf {
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
+        .unwrap_or_else(|| PathBuf::from("/tmp"));
+    let dir = base.join("duckydeck-studio");
+    let _ = fs::create_dir_all(&dir);
+    dir.join("duckydeck.log")
+}
+
+fn system_event_log_store() -> &'static Mutex<Vec<SystemLogEntry>> {
+    SYSTEM_EVENT_LOG.get_or_init(|| Mutex::new(Vec::with_capacity(256)))
+}
+
+pub fn record_system_event(level: &str, category: &str, message: impl AsRef<str>) {
+    let msg = message.as_ref().trim();
+    if msg.is_empty() {
+        return;
+    }
+    let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string();
+    let lvl = level.trim().to_ascii_uppercase();
+    let cat = category.trim().to_ascii_uppercase();
+
+    if let Ok(mut guard) = system_event_log_store().lock() {
+        if let Some(last) = guard.last() {
+            if last.message == msg && last.category == cat && last.level == lvl {
+                return;
+            }
+        }
+        guard.push(SystemLogEntry {
+            timestamp: ts.clone(),
+            level: lvl.clone(),
+            category: cat.clone(),
+            message: msg.to_string(),
+        });
+        if guard.len() > 1000 {
+            let drain_count = guard.len() - 1000;
+            guard.drain(0..drain_count);
+        }
+    }
+
+    let log_path = get_system_log_file_path();
+    if let Ok(meta) = fs::metadata(&log_path) {
+        if meta.len() > 2 * 1024 * 1024 {
+            let backup = log_path.with_extension("log.1");
+            let _ = fs::rename(&log_path, backup);
+        }
+    }
+    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&log_path) {
+        let _ = writeln!(f, "[{ts}] [{lvl:<5}] [{cat:<10}] {msg}");
+    }
+}
+
+pub fn classify_status_message(msg: &str) -> (&'static str, &'static str) {
+    let lower = msg.to_ascii_lowercase();
+    let level = if lower.contains("error")
+        || lower.contains("failed")
+        || lower.contains("invalid")
+        || lower.contains("denied")
+        || msg.contains('⚠')
+    {
+        "ERROR"
+    } else if lower.contains("unsynced")
+        || lower.contains("mismatch")
+        || lower.contains("disconnected")
+        || lower.contains("unmounted")
+    {
+        "WARN"
+    } else {
+        "INFO"
+    };
+
+    let category = if lower.contains("web api") || lower.contains("http") || msg.contains('🌐') {
+        "WEB_API"
+    } else if lower.contains("sd") || lower.contains("sync") || lower.contains("msc") {
+        "SD_SYNC"
+    } else if lower.contains("compile")
+        || lower.contains(".dsb")
+        || lower.contains(".txt")
+        || lower.contains("slot")
+        || lower.contains("key ")
+    {
+        "SCRIPT"
+    } else if lower.contains("auto-switch")
+        || lower.contains("rule")
+        || lower.contains("window")
+        || lower.contains("kwin")
+    {
+        "AUTOSWITCH"
+    } else if lower.contains("profile") || lower.contains("group") {
+        "PROFILE"
+    } else if lower.contains("duckypad")
+        || lower.contains("usb")
+        || lower.contains("hid")
+        || lower.contains("rtc")
+        || lower.contains("firmware")
+        || lower.contains("pgv")
+        || lower.contains("sleep")
+        || lower.contains("reboot")
+    {
+        "DEVICE"
+    } else {
+        "SYSTEM"
+    };
+
+    (level, category)
+}
+
+pub fn serialize_system_event_log_json() -> (String, i32) {
+    if let Ok(guard) = system_event_log_store().lock() {
+        let count = guard.len() as i32;
+        let json_str = serde_json::to_string(&*guard).unwrap_or_else(|_| "[]".to_string());
+        (json_str, count)
+    } else {
+        ("[]".to_string(), 0)
+    }
+}
 
 fn default_bundle_version() -> u32 {
     1
@@ -458,6 +627,14 @@ struct ProfileGroupBundle {
 }
 
 pub fn run_application(start_minimized: bool) -> i32 {
+    record_system_event(
+        "INFO",
+        "SYSTEM",
+        format!(
+            "DuckyDeck Studio v{} started (start_minimized={})",
+            APP_VERSION, start_minimized
+        ),
+    );
     sync_local_desktop_and_icon(true);
     qobject::duckydeck_run_app(start_minimized)
 }
@@ -511,10 +688,17 @@ pub struct DeviceControllerRust {
     pub(crate) inspector_text_scale: i32,
     pub(crate) editor_text_scale: i32,
     pub(crate) status_bar_text_scale: i32,
+    pub(crate) event_log_text_scale: i32,
     pub(crate) active_profile_bg_color: QString,
     pub(crate) unsynced_changes_json: QString,
     pub(crate) has_copied_slot: bool,
     pub(crate) copied_slot_summary: QString,
+    pub(crate) app_version: QString,
+    pub(crate) app_author: QString,
+    pub(crate) app_github_url: QString,
+    pub(crate) log_file_path: QString,
+    pub(crate) event_log_json: QString,
+    pub(crate) event_log_count: i32,
     pub(crate) copied_key_slot: Option<DuckyKeySlot>,
     pub(crate) firmware_download_url: String,
     pub(crate) sd_root_path: Option<PathBuf>,
@@ -566,6 +750,14 @@ impl Default for DeviceControllerRust {
 
         if profiles.is_empty() {
             profiles = vec![Self::create_default_demo_profile()];
+        }
+
+        if sync_profile_web_api_triggers(&mut profiles) {
+            if let Some(ref info) = connected_info {
+                sync_profiles_to_device_cache(&info.serial, &profiles);
+            } else {
+                sync_profiles_to_cache(&profiles);
+            }
         }
 
         let mut switcher = SwitcherState::default();
@@ -642,6 +834,7 @@ impl Default for DeviceControllerRust {
         let inspector_scale = switcher.inspector_text_scale.clamp(75, 160);
         let editor_scale = switcher.editor_text_scale.clamp(75, 160);
         let status_bar_scale = switcher.status_bar_text_scale.clamp(75, 160);
+        let event_log_scale = switcher.event_log_text_scale.clamp(75, 160);
         let autostart = is_kde_autostart_enabled();
         let rules_json = Self::serialize_rules(&switcher.rules, &profiles);
         let profiles_json = Self::serialize_profiles_summary(&profiles, &switcher.rules);
@@ -675,6 +868,11 @@ impl Default for DeviceControllerRust {
             sd_root_path.as_deref(),
             &sync_state_str,
         );
+
+        let (init_lvl, init_cat) = classify_status_message(&status_str);
+        record_system_event(init_lvl, init_cat, &status_str);
+        let (init_log_json, init_log_count) = serialize_system_event_log_json();
+        let log_path_str = get_system_log_file_path().to_string_lossy().to_string();
 
         Self {
             connected,
@@ -729,10 +927,17 @@ impl Default for DeviceControllerRust {
             inspector_text_scale: inspector_scale,
             editor_text_scale: editor_scale,
             status_bar_text_scale: status_bar_scale,
+            event_log_text_scale: event_log_scale,
             active_profile_bg_color: QString::from(&active_bg_hex),
             unsynced_changes_json: QString::from(&unsynced_json),
             has_copied_slot: false,
             copied_slot_summary: QString::from(""),
+            app_version: QString::from(APP_VERSION),
+            app_author: QString::from(APP_AUTHOR),
+            app_github_url: QString::from(APP_GITHUB_URL),
+            log_file_path: QString::from(&log_path_str),
+            event_log_json: QString::from(&init_log_json),
+            event_log_count: init_log_count,
             copied_key_slot: None,
             firmware_download_url: String::new(),
             sd_root_path,
@@ -2309,6 +2514,7 @@ impl qobject::DeviceController {
             "inspector" => "Key Inspector & Controls",
             "editor" => "duckyScript Code Editor",
             "statusbar" => "Bottom Status Bar",
+            "eventlog" => "System Event Log Window",
             _ => "All Application Areas",
         };
 
@@ -2321,6 +2527,7 @@ impl qobject::DeviceController {
                     "inspector" => sw.inspector_text_scale = clamped,
                     "editor" => sw.editor_text_scale = clamped,
                     "statusbar" => sw.status_bar_text_scale = clamped,
+                    "eventlog" => sw.event_log_text_scale = clamped,
                     _ => {
                         sw.ui_text_scale = clamped;
                         sw.sidebar_text_scale = clamped;
@@ -2328,6 +2535,7 @@ impl qobject::DeviceController {
                         sw.inspector_text_scale = clamped;
                         sw.editor_text_scale = clamped;
                         sw.status_bar_text_scale = clamped;
+                        sw.event_log_text_scale = clamped;
                     }
                 }
                 let _ = sw.save_to_disk();
@@ -2340,6 +2548,7 @@ impl qobject::DeviceController {
             "inspector" => self.as_mut().set_inspector_text_scale(clamped),
             "editor" => self.as_mut().set_editor_text_scale(clamped),
             "statusbar" => self.as_mut().set_status_bar_text_scale(clamped),
+            "eventlog" => self.as_mut().set_event_log_text_scale(clamped),
             _ => {
                 self.as_mut().set_ui_text_scale(clamped);
                 self.as_mut().set_sidebar_text_scale(clamped);
@@ -2347,6 +2556,7 @@ impl qobject::DeviceController {
                 self.as_mut().set_inspector_text_scale(clamped);
                 self.as_mut().set_editor_text_scale(clamped);
                 self.as_mut().set_status_bar_text_scale(clamped);
+                self.as_mut().set_event_log_text_scale(clamped);
             }
         }
 
@@ -3108,8 +3318,17 @@ impl qobject::DeviceController {
                         if !is_paused {
                             if let Some(prof) = evt.matched_profile {
                                 if *qobject.active_profile() != prof as i32 {
+                                    record_system_event(
+                                        "INFO",
+                                        "AUTOSWITCH",
+                                        format!(
+                                            "Auto-switched to Profile #{} for window '{}' (\"{}\")",
+                                            prof, evt.resource_class, evt.caption
+                                        ),
+                                    );
                                     qobject.as_mut().set_active_profile(prof as i32);
                                     qobject.as_mut().sync_active_profile_state();
+                                    qobject.as_mut().sync_event_log_properties();
                                 } else {
                                     qobject.as_mut().sync_tray_state();
                                 }
@@ -3149,8 +3368,17 @@ impl qobject::DeviceController {
 
         if let Some(prof) = matched_now {
             if *self.active_profile() != prof as i32 {
+                record_system_event(
+                    "INFO",
+                    "AUTOSWITCH",
+                    format!(
+                        "Auto-switched to Profile #{} for window '{}' (\"{}\")",
+                        prof, active_class, active_title
+                    ),
+                );
                 self.as_mut().set_active_profile(prof as i32);
                 self.as_mut().sync_active_profile_state();
+                self.as_mut().sync_event_log_properties();
             }
         }
     }
@@ -4647,7 +4875,9 @@ impl qobject::DeviceController {
         let cfg: WebApiConfig = match serde_json::from_str(&config_json.to_string()) {
             Ok(c) => c,
             Err(e) => {
-                let err = format!("Invalid Web API configuration: {e}");
+                let err = format!("Invalid Web API configuration on Key {slot_idx}: {e}");
+                record_system_event("ERROR", "WEB_API", &err);
+                self.as_mut().sync_event_log_properties();
                 self.as_mut().set_web_api_last_ok(false);
                 self.as_mut().set_web_api_last_result(QString::from(&err));
                 self.as_mut().set_status_message(QString::from(&err));
@@ -4655,12 +4885,14 @@ impl qobject::DeviceController {
             }
         };
 
-        let restore_rgb = self.lookup_slot_rgb( *self.active_profile() as u8, slot_idx);
+        let active_prof = (*self.active_profile()).clamp(1, 64) as u8;
+        let restore_rgb = self.lookup_slot_rgb(active_prof, slot_idx);
+        let source_label = format!("Test Web API (Profile #{active_prof}, Key {slot_idx})");
         self.as_mut().dispatch_web_api_execution(
             cfg,
             slot_idx,
             restore_rgb,
-            "Test Web API",
+            &source_label,
         );
     }
 
@@ -4687,7 +4919,12 @@ impl qobject::DeviceController {
         is_release: bool,
     ) {
         let active_prof = (*self.active_profile()).clamp(1, 64) as u8;
-        let mut found: Option<(u8, String, WebApiConfig, [u8; 3])> = None;
+        let phase = if is_release { "Release" } else { "Press" };
+        let trigger_hex = format!(
+            "0x{:08X}",
+            encode_pgv31_trigger(encoded_prof, slot_num, is_release)
+        );
+        let mut found: Option<(u8, String, String, WebApiConfig, [u8; 3])> = None;
 
         {
             let rust = self.rust();
@@ -4711,7 +4948,51 @@ impl qobject::DeviceController {
                             let label = format!("{} {}", slot.label_line1, slot.label_line2)
                                 .trim()
                                 .to_string();
-                            found = Some((pnum, label, cfg, rgb));
+                            found = Some((prof.number, prof.name.clone(), label, cfg, rgb));
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if found.is_none() {
+                for prof in &rust.profiles {
+                    if let Some(slot) = prof.slots.get(&slot_num) {
+                        let script = if is_release {
+                            &slot.on_release_script
+                        } else {
+                            &slot.on_press_script
+                        };
+                        if script.contains(&trigger_hex) {
+                            let cfg = extract_web_api_config(script, slot_num);
+                            if cfg.enabled && !cfg.url.trim().is_empty() {
+                                let rgb = slot.custom_rgb.unwrap_or(prof.bg_color);
+                                let label = format!("{} {}", slot.label_line1, slot.label_line2)
+                                    .trim()
+                                    .to_string();
+                                found = Some((prof.number, prof.name.clone(), label, cfg, rgb));
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if found.is_none() {
+                for prof in &rust.profiles {
+                    if let Some(slot) = prof.slots.get(&slot_num) {
+                        let script = if is_release {
+                            &slot.on_release_script
+                        } else {
+                            &slot.on_press_script
+                        };
+                        let cfg = extract_web_api_config(script, slot_num);
+                        if cfg.enabled && !cfg.url.trim().is_empty() {
+                            let rgb = slot.custom_rgb.unwrap_or(prof.bg_color);
+                            let label = format!("{} {}", slot.label_line1, slot.label_line2)
+                                .trim()
+                                .to_string();
+                            found = Some((prof.number, prof.name.clone(), label, cfg, rgb));
                             break;
                         }
                     }
@@ -4719,21 +5000,37 @@ impl qobject::DeviceController {
             }
         }
 
-        if let Some((_pnum, label, cfg, restore_rgb)) = found {
-            let phase = if is_release { "Release" } else { "Press" };
+        if let Some((pnum, pname, label, cfg, restore_rgb)) = found {
             let source_label = if label.is_empty() {
-                format!("Key {slot_num} ({phase})")
+                format!("Profile #{pnum} '{pname}' Key {slot_num} ({phase})")
             } else {
-                format!("Key {slot_num} '{label}' ({phase})")
+                format!("Profile #{pnum} '{pname}' Key {slot_num} '{label}' ({phase})")
             };
+            record_system_event(
+                "INFO",
+                "WEB_API",
+                format!(
+                    "Hardware PGV trigger received (_GV31 = {trigger_hex}) -> matched {source_label}"
+                ),
+            );
+            self.as_mut().sync_event_log_properties();
             self.as_mut()
                 .dispatch_web_api_execution(cfg, slot_num, restore_rgb, &source_label);
+        } else {
+            record_system_event(
+                "WARN",
+                "WEB_API",
+                format!(
+                    "Hardware PGV trigger received (_GV31 = {trigger_hex}, Key {slot_num} {phase}, encoded Profile #{encoded_prof}) — no enabled Web API found on this slot"
+                ),
+            );
+            self.as_mut().sync_event_log_properties();
         }
     }
 
     fn handle_hardware_fkey_web_api_trigger(mut self: Pin<&mut Self>, fkey_name: &str) {
         let active_prof = (*self.active_profile()).clamp(1, 64) as u8;
-        let mut found: Option<(usize, String, WebApiConfig, [u8; 3])> = None;
+        let mut found: Option<(u8, String, usize, String, WebApiConfig, [u8; 3])> = None;
 
         {
             let rust = self.rust();
@@ -4755,7 +5052,14 @@ impl qobject::DeviceController {
                             let label = format!("{} {}", slot.label_line1, slot.label_line2)
                                 .trim()
                                 .to_string();
-                            found = Some((slot_num, label, cfg, rgb));
+                            found = Some((
+                                prof.number,
+                                prof.name.clone(),
+                                slot_num,
+                                label,
+                                cfg,
+                                rgb,
+                            ));
                             break;
                         }
                     }
@@ -4766,12 +5070,18 @@ impl qobject::DeviceController {
             }
         }
 
-        if let Some((slot_num, label, cfg, restore_rgb)) = found {
+        if let Some((pnum, pname, slot_num, label, cfg, restore_rgb)) = found {
             let source_label = if label.is_empty() {
-                format!("Key {slot_num} ({fkey_name})")
+                format!("Profile #{pnum} '{pname}' Key {slot_num} ({fkey_name})")
             } else {
-                format!("Key {slot_num} '{label}' ({fkey_name})")
+                format!("Profile #{pnum} '{pname}' Key {slot_num} '{label}' ({fkey_name})")
             };
+            record_system_event(
+                "INFO",
+                "WEB_API",
+                format!("Hardware sentinel key {fkey_name} intercepted -> matched {source_label}"),
+            );
+            self.as_mut().sync_event_log_properties();
             self.as_mut()
                 .dispatch_web_api_execution(cfg, slot_num, restore_rgb, &source_label);
         }
@@ -4786,7 +5096,16 @@ impl qobject::DeviceController {
     ) {
         let method = cfg.method.trim().to_ascii_uppercase();
         let url = cfg.url.trim().to_string();
+        let body_len = cfg.body.trim().len();
         let start_msg = format!("🌐 {source_label}: {method} {url} …");
+        record_system_event(
+            "INFO",
+            "WEB_API",
+            format!(
+                "Dispatching {method} {url} [source: {source_label}, body: {body_len} B]"
+            ),
+        );
+        self.as_mut().sync_event_log_properties();
         self.as_mut().set_web_api_test_busy(true);
         self.as_mut()
             .set_web_api_last_result(QString::from(&start_msg));
@@ -4794,6 +5113,8 @@ impl qobject::DeviceController {
 
         let led_feedback = cfg.led_feedback;
         let source_owned = source_label.to_string();
+        let method_owned = method.clone();
+        let url_owned = url.clone();
         let qt_thread = self.qt_thread();
 
         std::thread::spawn(move || {
@@ -4806,6 +5127,18 @@ impl qobject::DeviceController {
                 }
                 let result = execute_web_api_request(&cfg).await;
                 let ok = result.ok;
+                if let Some(ref note) = result.route_note {
+                    record_system_event("INFO", "WEB_API", note);
+                }
+                let log_lvl = if ok { "INFO" } else { "ERROR" };
+                record_system_event(
+                    log_lvl,
+                    "WEB_API",
+                    format!(
+                        "{source_owned} -> {method_owned} {url_owned}: {}",
+                        result.summary
+                    ),
+                );
                 let summary_msg = if ok {
                     format!("✓ {source_owned}: {}", result.summary)
                 } else {
@@ -4821,6 +5154,7 @@ impl qobject::DeviceController {
                     qobject
                         .as_mut()
                         .set_status_message(QString::from(&summary_msg));
+                    qobject.as_mut().sync_event_log_properties();
                 });
 
                 if led_feedback && (1..=20).contains(&slot_num) {
@@ -4859,5 +5193,138 @@ impl qobject::DeviceController {
             }
         }
         false
+    }
+
+    pub fn sync_event_log_properties(mut self: Pin<&mut Self>) {
+        let (json_str, count) = serialize_system_event_log_json();
+        self.as_mut().set_event_log_count(count);
+        self.as_mut().set_event_log_json(QString::from(&json_str));
+    }
+
+    pub fn log_event(
+        mut self: Pin<&mut Self>,
+        level: QString,
+        category: QString,
+        message: QString,
+    ) {
+        let lvl = level.to_string();
+        let cat = category.to_string();
+        let msg = message.to_string();
+        record_system_event(&lvl, &cat, &msg);
+        self.as_mut().sync_event_log_properties();
+    }
+
+    pub fn record_status_log(mut self: Pin<&mut Self>, message: QString) {
+        let msg = message.to_string();
+        let trimmed = msg.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        // Web API calls log structured entries directly in dispatch_web_api_execution
+        if trimmed.starts_with("🌐 ")
+            || ((trimmed.starts_with("✓ ") || trimmed.starts_with("⚠ "))
+                && (trimmed.contains("Test Web API") || trimmed.contains(": HTTP ")))
+        {
+            self.as_mut().sync_event_log_properties();
+            return;
+        }
+        let (lvl, cat) = classify_status_message(trimmed);
+        record_system_event(lvl, cat, trimmed);
+        self.as_mut().sync_event_log_properties();
+    }
+
+    pub fn refresh_event_log(mut self: Pin<&mut Self>) -> QString {
+        let (json_str, count) = serialize_system_event_log_json();
+        self.as_mut().set_event_log_count(count);
+        self.as_mut().set_event_log_json(QString::from(&json_str));
+        QString::from(&json_str)
+    }
+
+    pub fn clear_event_log(mut self: Pin<&mut Self>) {
+        if let Ok(mut guard) = system_event_log_store().lock() {
+            guard.clear();
+        }
+        let log_path = get_system_log_file_path();
+        let _ = fs::write(&log_path, "");
+        record_system_event("INFO", "SYSTEM", "Event log cleared by user");
+        self.as_mut().sync_event_log_properties();
+    }
+
+    pub fn export_event_log(mut self: Pin<&mut Self>, destination_path: QString) -> bool {
+        let raw_str = destination_path.to_string();
+        let trimmed = raw_str.trim().trim_start_matches("file://");
+        if trimmed.is_empty() {
+            return false;
+        }
+        let mut dest = PathBuf::from(trimmed);
+        if dest.extension().is_none() {
+            dest.set_extension("log");
+        }
+        let text = self
+            .format_event_log_text(
+                QString::from("ALL"),
+                QString::from("ALL"),
+                QString::from(""),
+            )
+            .to_string();
+        match fs::write(&dest, text) {
+            Ok(_) => {
+                let msg = format!("Exported system event log to {}", dest.display());
+                record_system_event("INFO", "SYSTEM", &msg);
+                self.as_mut().set_status_message(QString::from(&msg));
+                self.as_mut().sync_event_log_properties();
+                true
+            }
+            Err(e) => {
+                let err_msg = format!("Failed to export event log: {e}");
+                record_system_event("ERROR", "SYSTEM", &err_msg);
+                self.as_mut().set_status_message(QString::from(&err_msg));
+                self.as_mut().sync_event_log_properties();
+                false
+            }
+        }
+    }
+
+    pub fn format_event_log_text(
+        &self,
+        category_filter: QString,
+        level_filter: QString,
+        search_query: QString,
+    ) -> QString {
+        let cat_f = category_filter.to_string().trim().to_ascii_uppercase();
+        let lvl_f = level_filter.to_string().trim().to_ascii_uppercase();
+        let q = search_query.to_string().trim().to_ascii_lowercase();
+
+        let mut lines = Vec::new();
+        lines.push(format!(
+            "# DuckyDeck Studio v{} — System Event Log ({})",
+            APP_VERSION,
+            get_system_log_file_path().display()
+        ));
+        if let Ok(guard) = system_event_log_store().lock() {
+            for entry in guard.iter() {
+                if !cat_f.is_empty() && cat_f != "ALL" && entry.category != cat_f {
+                    continue;
+                }
+                if !lvl_f.is_empty() && lvl_f != "ALL" && entry.level != lvl_f {
+                    continue;
+                }
+                if !q.is_empty() {
+                    let hay = format!(
+                        "{} {} {} {}",
+                        entry.timestamp, entry.level, entry.category, entry.message
+                    )
+                    .to_ascii_lowercase();
+                    if !hay.contains(&q) {
+                        continue;
+                    }
+                }
+                lines.push(format!(
+                    "[{}] [{:<5}] [{:<10}] {}",
+                    entry.timestamp, entry.level, entry.category, entry.message
+                ));
+            }
+        }
+        QString::from(&lines.join("\n"))
     }
 }

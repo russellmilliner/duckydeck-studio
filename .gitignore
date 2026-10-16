@@ -1,1 +1,3 @@
 /target/
+/.flatpak-build/
+/.flatpak-repo/

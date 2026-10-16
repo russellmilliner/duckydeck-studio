@@ -10,7 +10,7 @@ import io.github.duckydeck 1.0
 Kirigami.ApplicationWindow {
     id: root
     objectName: "duckydeckMainWindow"
-    title: qsTr("DuckyDeck Studio — %1").arg(deviceController.modelName)
+    title: qsTr("DuckyDeck Studio v%1 — %2").arg(deviceController.appVersion).arg(deviceController.modelName)
     readonly property int compactWindowWidth: Math.max(
         profilesSidebar.QQC2.SplitView.preferredWidth
             + hardwareCanvas.requiredWidthForFullHeight
@@ -72,6 +72,9 @@ Kirigami.ApplicationWindow {
         : 100) / 100.0
     readonly property real statusBarScale: (deviceController && deviceController.statusBarTextScale > 0
         ? deviceController.statusBarTextScale
+        : 100) / 100.0
+    readonly property real eventLogScale: (deviceController && deviceController.eventLogTextScale > 0
+        ? deviceController.eventLogTextScale
         : 100) / 100.0
 
     property int selectedSlotNumber: 0
@@ -388,7 +391,7 @@ Kirigami.ApplicationWindow {
             lineStart--
         }
         const lineBeforeCursor = text.slice(lineStart, cursor)
-        const trimmedLine = lineBeforeCursor.trimStart()
+        const trimmedLine = lineBeforeCursor.replace(/^\s+/, "")
 
         // Suppress automatic popup inside literal text/comment lines unless typing a $variable or forcing via Ctrl+Space
         const firstSpaceIdx = trimmedLine.indexOf(" ")
@@ -524,6 +527,76 @@ Kirigami.ApplicationWindow {
     ListModel {
         id: unsyncedItemsModel
     }
+    ListModel {
+        id: eventLogModel
+    }
+    property string eventLogSearchText: ""
+    property string eventLogCategoryFilter: "ALL"
+    property string eventLogLevelFilter: "ALL"
+    readonly property var eventLogCategories: [
+        "ALL",
+        "DEVICE",
+        "PROFILE",
+        "AUTOSWITCH",
+        "SD_SYNC",
+        "SCRIPT",
+        "WEB_API",
+        "SYSTEM"
+    ]
+    readonly property var eventLogLevels: ["ALL", "INFO", "WARN", "ERROR"]
+
+    function levelColorForLog(lvl) {
+        if (lvl === "ERROR") return Kirigami.Theme.negativeTextColor
+        if (lvl === "WARN") return Kirigami.Theme.neutralTextColor
+        return Kirigami.Theme.highlightColor
+    }
+
+    function categoryColorForLog(cat) {
+        if (cat === "DEVICE") return "#38bdf8"
+        if (cat === "PROFILE") return "#a78bfa"
+        if (cat === "AUTOSWITCH") return "#4ade80"
+        if (cat === "SD_SYNC") return "#f59e0b"
+        if (cat === "SCRIPT") return "#2dd4bf"
+        if (cat === "WEB_API") return "#f472b6"
+        return "#94a3b8"
+    }
+
+    function refreshEventLogModel() {
+        if (!deviceController) return
+        eventLogModel.clear()
+        const raw = deviceController.eventLogJson || "[]"
+        const catFilter = (root.eventLogCategoryFilter || "ALL").toUpperCase()
+        const lvlFilter = (root.eventLogLevelFilter || "ALL").toUpperCase()
+        const query = (root.eventLogSearchText || "").trim().toLowerCase()
+        try {
+            const arr = JSON.parse(raw)
+            if (!Array.isArray(arr)) return
+            // Show newest events at the bottom or top; newest first or chronological? Chronological with auto-scroll to bottom (or newest at bottom)
+            for (let i = 0; i < arr.length; ++i) {
+                const it = arr[i]
+                const lvl = (it.level || "INFO").toUpperCase()
+                const cat = (it.category || "SYSTEM").toUpperCase()
+                const msg = it.message || ""
+                const ts = it.timestamp || ""
+                if (catFilter !== "ALL" && cat !== catFilter) continue
+                if (lvlFilter !== "ALL" && lvl !== lvlFilter) continue
+                if (query.length > 0) {
+                    const hay = (ts + " " + lvl + " " + cat + " " + msg).toLowerCase()
+                    if (hay.indexOf(query) === -1) continue
+                }
+                eventLogModel.append({
+                    timestamp: ts,
+                    level: lvl,
+                    category: cat,
+                    message: msg
+                })
+            }
+            if (eventLogListView.count > 0) {
+                eventLogListView.positionViewAtEnd()
+            }
+        } catch (e) {}
+    }
+
     property string unsyncedHeadline: ""
     property int unsyncedTotalChanges: 0
 
@@ -648,6 +721,10 @@ Kirigami.ApplicationWindow {
         }
         root.syncingWebApiScript = false
         root.updateCompilerStatus()
+        if (root.compileOk) {
+            root.saveCurrentSlotToController()
+            hardwareCanvas.syncSlotsFromController()
+        }
     }
 
     function openRenameProfileDialog(profileNumber, currentName) {
@@ -1000,6 +1077,16 @@ Kirigami.ApplicationWindow {
                 } else {
                     root.pressScriptBuffer = scriptEditor.text
                 }
+            }
+        }
+        onStatusMessageChanged: {
+            if (deviceController.statusMessage.length > 0) {
+                deviceController.recordStatusLog(deviceController.statusMessage)
+            }
+        }
+        onEventLogJsonChanged: {
+            if (eventLogDialog.visible) {
+                root.refreshEventLogModel()
             }
         }
     }
@@ -2193,12 +2280,651 @@ Kirigami.ApplicationWindow {
             onTriggered: settingsDialog.open()
         }
 
+        QQC2.MenuItem {
+            icon.name: "view-list-text"
+            text: qsTr("System Event Log (%1)...").arg(deviceController.eventLogCount)
+            onTriggered: eventLogDialog.openLogWindow()
+        }
+
+        QQC2.MenuItem {
+            icon.name: "help-about"
+            text: qsTr("About DuckyDeck Studio...")
+            onTriggered: aboutDialog.openAboutWindow()
+        }
+
         QQC2.MenuSeparator {}
 
         QQC2.MenuItem {
             icon.name: "application-exit"
             text: qsTr("Quit DuckyDeck Studio")
             onTriggered: deviceController.quitApplication()
+        }
+    }
+
+    FileDialog {
+        id: exportEventLogFileDialog
+        title: qsTr("Export System Event Log (.log)")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "log"
+        nameFilters: [
+            qsTr("Log Files (*.log *.txt)"),
+            qsTr("All Files (*)")
+        ]
+        onAccepted: {
+            deviceController.exportEventLog(selectedFile.toString())
+        }
+    }
+
+    Window {
+        id: eventLogDialog
+        title: qsTr("System Event Log — DuckyDeck Studio v%1").arg(deviceController.appVersion)
+        width: 860
+        height: 540
+        minimumWidth: 680
+        minimumHeight: 400
+        visible: false
+        transientParent: root
+        modality: Qt.NonModal
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMinMaxButtonsHint
+
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
+        color: Kirigami.Theme.backgroundColor
+
+        function openLogWindow() {
+            deviceController.refreshEventLog()
+            root.refreshEventLogModel()
+            eventLogDialog.show()
+            eventLogDialog.raise()
+            eventLogDialog.requestActivate()
+        }
+
+        Shortcut {
+            sequence: "Escape"
+            context: Qt.WindowShortcut
+            enabled: eventLogDialog.visible
+            onActivated: eventLogDialog.close()
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: Kirigami.Units.largeSpacing
+            spacing: Kirigami.Units.mediumSpacing
+
+            // Header Banner
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: logHeaderCol.implicitHeight + 20
+                radius: Kirigami.Units.smallSpacing
+                color: Kirigami.Theme.alternateBackgroundColor
+                border.color: Qt.alpha(Kirigami.Theme.highlightColor, 0.45)
+                border.width: 1
+
+                ColumnLayout {
+                    id: logHeaderCol
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 4
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        QQC2.Label {
+                            text: qsTr("📋 System Event Log")
+                            font.bold: true
+                            font.pixelSize: 15
+                            color: Kirigami.Theme.textColor
+                        }
+
+                        Rectangle {
+                            radius: 4
+                            color: Qt.alpha(Kirigami.Theme.highlightColor, 0.18)
+                            border.color: Qt.alpha(Kirigami.Theme.highlightColor, 0.5)
+                            border.width: 1
+                            implicitWidth: logCountBadgeLbl.implicitWidth + 12
+                            implicitHeight: 22
+
+                            QQC2.Label {
+                                id: logCountBadgeLbl
+                                anchors.centerIn: parent
+                                text: qsTr("%1 shown / %2 total")
+                                    .arg(eventLogListView.count)
+                                    .arg(deviceController.eventLogCount)
+                                font.family: "monospace"
+                                font.bold: true
+                                font.pixelSize: 11
+                                color: Kirigami.Theme.highlightColor
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        QQC2.Button {
+                            icon.name: "view-refresh"
+                            text: qsTr("Refresh")
+                            implicitHeight: 26
+                            onClicked: {
+                                deviceController.refreshEventLog()
+                                root.refreshEventLogModel()
+                            }
+                        }
+                    }
+
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        text: qsTr("Log file: %1").arg(deviceController.logFilePath)
+                        font.family: "monospace"
+                        font.pixelSize: 11
+                        color: Kirigami.Theme.disabledTextColor
+                        elide: Text.ElideMiddle
+                    }
+                }
+            }
+
+            // Search & Level Filter Row
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                QQC2.TextField {
+                    id: eventLogSearchField
+                    Layout.fillWidth: true
+                    implicitHeight: 30
+                    selectByMouse: true
+                    placeholderText: qsTr("🔍 Filter events by keyword, timestamp, profile, window class, or error...")
+                    text: root.eventLogSearchText
+                    onTextEdited: {
+                        root.eventLogSearchText = text
+                        root.refreshEventLogModel()
+                    }
+                }
+
+                QQC2.ToolButton {
+                    visible: eventLogSearchField.text.length > 0
+                    text: "✕"
+                    implicitWidth: 28
+                    implicitHeight: 28
+                    onClicked: {
+                        eventLogSearchField.text = ""
+                        root.eventLogSearchText = ""
+                        root.refreshEventLogModel()
+                    }
+                }
+
+                QQC2.Label {
+                    text: qsTr("Level:")
+                    font.pixelSize: 11
+                    color: Kirigami.Theme.disabledTextColor
+                }
+
+                Repeater {
+                    model: root.eventLogLevels
+
+                    delegate: QQC2.Button {
+                        required property string modelData
+                        readonly property bool isSel: root.eventLogLevelFilter === modelData
+                        text: modelData
+                        checkable: true
+                        checked: isSel
+                        highlighted: isSel
+                        implicitHeight: 26
+                        font.pixelSize: 11
+                        font.bold: isSel
+                        onClicked: {
+                            root.eventLogLevelFilter = modelData
+                            root.refreshEventLogModel()
+                        }
+                    }
+                }
+            }
+
+            // Category Filter Pills Row
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 4
+
+                QQC2.Label {
+                    text: qsTr("Category:")
+                    font.pixelSize: 11
+                    color: Kirigami.Theme.disabledTextColor
+                }
+
+                Repeater {
+                    model: root.eventLogCategories
+
+                    delegate: QQC2.Button {
+                        required property string modelData
+                        readonly property bool isSelCat: root.eventLogCategoryFilter === modelData
+                        text: modelData
+                        checkable: true
+                        checked: isSelCat
+                        highlighted: isSelCat
+                        implicitHeight: 24
+                        font.pixelSize: 10
+                        font.bold: isSelCat
+                        onClicked: {
+                            root.eventLogCategoryFilter = modelData
+                            root.refreshEventLogModel()
+                        }
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
+            }
+
+            // Event Log List Container
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: Kirigami.Units.smallSpacing
+                color: Kirigami.Theme.alternateBackgroundColor
+                border.color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                border.width: 1
+                clip: true
+
+                QQC2.ScrollView {
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    clip: true
+
+                    ListView {
+                        id: eventLogListView
+                        model: eventLogModel
+                        spacing: 3
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        delegate: Rectangle {
+                            id: logRow
+                            required property int index
+                            required property string timestamp
+                            required property string level
+                            required property string category
+                            required property string message
+
+                            width: eventLogListView.width - 8
+                            implicitHeight: Math.max(28, logRowLayout.implicitHeight + 8)
+                            radius: 4
+                            color: logRowMouse.containsMouse
+                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.14)
+                                : (index % 2 === 0
+                                    ? Qt.alpha(Kirigami.Theme.backgroundColor, 0.55)
+                                    : Qt.alpha(Kirigami.Theme.backgroundColor, 0.25))
+                            border.color: logRow.level === "ERROR"
+                                ? Qt.alpha(Kirigami.Theme.negativeTextColor, 0.45)
+                                : (logRow.level === "WARN"
+                                    ? Qt.alpha(Kirigami.Theme.neutralTextColor, 0.35)
+                                    : "transparent")
+                            border.width: 1
+
+                            RowLayout {
+                                id: logRowLayout
+                                anchors.fill: parent
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+                                spacing: 8
+
+                                QQC2.Label {
+                                    text: logRow.timestamp
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                    color: Kirigami.Theme.disabledTextColor
+                                    Layout.preferredWidth: 165
+                                }
+
+                                Rectangle {
+                                    radius: 3
+                                    color: Qt.alpha(root.levelColorForLog(logRow.level), 0.18)
+                                    border.color: Qt.alpha(root.levelColorForLog(logRow.level), 0.55)
+                                    border.width: 1
+                                    Layout.preferredWidth: 48
+                                    implicitHeight: 18
+
+                                    QQC2.Label {
+                                        anchors.centerIn: parent
+                                        text: logRow.level
+                                        font.family: "monospace"
+                                        font.bold: true
+                                        font.pixelSize: 9
+                                        color: root.levelColorForLog(logRow.level)
+                                    }
+                                }
+
+                                Rectangle {
+                                    radius: 3
+                                    color: Qt.alpha(root.categoryColorForLog(logRow.category), 0.18)
+                                    border.color: Qt.alpha(root.categoryColorForLog(logRow.category), 0.55)
+                                    border.width: 1
+                                    Layout.preferredWidth: 78
+                                    implicitHeight: 18
+
+                                    QQC2.Label {
+                                        anchors.centerIn: parent
+                                        text: logRow.category
+                                        font.family: "monospace"
+                                        font.bold: true
+                                        font.pixelSize: 9
+                                        color: root.categoryColorForLog(logRow.category)
+                                    }
+                                }
+
+                                QQC2.Label {
+                                    text: logRow.message
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                    color: logRow.level === "ERROR"
+                                        ? Kirigami.Theme.negativeTextColor
+                                        : Kirigami.Theme.textColor
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WrapAnywhere
+                                }
+                            }
+
+                            MouseArea {
+                                id: logRowMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    const lineStr = "[" + logRow.timestamp + "] [" + logRow.level + "] [" + logRow.category + "] " + logRow.message
+                                    root.copyTextToClipboard(lineStr)
+                                }
+                            }
+
+                            QQC2.ToolTip.visible: logRowMouse.containsMouse
+                            QQC2.ToolTip.delay: 400
+                            QQC2.ToolTip.text: qsTr("Click to copy this log entry to clipboard")
+                        }
+                    }
+                }
+            }
+
+            // Footer Actions Row
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                QQC2.Button {
+                    icon.name: "edit-copy"
+                    text: qsTr("Copy Log to Clipboard")
+                    onClicked: {
+                        const txt = deviceController.formatEventLogText(
+                            root.eventLogCategoryFilter,
+                            root.eventLogLevelFilter,
+                            root.eventLogSearchText
+                        )
+                        root.copyTextToClipboard(txt)
+                    }
+                }
+
+                QQC2.Button {
+                    icon.name: "document-export"
+                    text: qsTr("Export Log (.log)...")
+                    onClicked: exportEventLogFileDialog.open()
+                }
+
+                QQC2.Button {
+                    icon.name: "edit-clear-history"
+                    text: qsTr("Clear Log")
+                    onClicked: {
+                        deviceController.clearEventLog()
+                        root.refreshEventLogModel()
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.Button {
+                    text: qsTr("Close")
+                    onClicked: eventLogDialog.close()
+                }
+            }
+        }
+    }
+
+    Window {
+        id: aboutDialog
+        title: qsTr("About DuckyDeck Studio v%1").arg(deviceController.appVersion)
+        width: 540
+        height: 410
+        minimumWidth: 500
+        minimumHeight: 380
+        visible: false
+        transientParent: root
+        modality: Qt.WindowModal
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint
+
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
+        color: Kirigami.Theme.backgroundColor
+
+        function openAboutWindow() {
+            aboutDialog.show()
+            aboutDialog.raise()
+            aboutDialog.requestActivate()
+        }
+
+        Shortcut {
+            sequence: "Escape"
+            context: Qt.WindowShortcut
+            enabled: aboutDialog.visible
+            onActivated: aboutDialog.close()
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: Kirigami.Units.largeSpacing
+            spacing: Kirigami.Units.mediumSpacing
+
+            // App Header Banner
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: aboutHeaderCol.implicitHeight + 24
+                radius: Kirigami.Units.smallSpacing
+                color: Kirigami.Theme.alternateBackgroundColor
+                border.color: Qt.alpha(Kirigami.Theme.highlightColor, 0.5)
+                border.width: 1
+
+                ColumnLayout {
+                    id: aboutHeaderCol
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    spacing: 6
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+
+                        QQC2.Label {
+                            text: qsTr("🦆 DuckyDeck Studio")
+                            font.bold: true
+                            font.pixelSize: 20
+                            color: Kirigami.Theme.textColor
+                        }
+
+                        Rectangle {
+                            radius: 4
+                            color: Qt.alpha(Kirigami.Theme.highlightColor, 0.2)
+                            border.color: Qt.alpha(Kirigami.Theme.highlightColor, 0.6)
+                            border.width: 1
+                            implicitWidth: verPillLbl.implicitWidth + 14
+                            implicitHeight: 24
+
+                            QQC2.Label {
+                                id: verPillLbl
+                                anchors.centerIn: parent
+                                text: qsTr("v%1").arg(deviceController.appVersion)
+                                font.family: "monospace"
+                                font.bold: true
+                                font.pixelSize: 12
+                                color: Kirigami.Theme.highlightColor
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
+                    }
+
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        text: qsTr("KDE Plasma 6 / Kirigami Configurator, DSVM v2 Compiler & Wayland Auto-Switcher for duckyPad Pro & duckyPad (2020)")
+                        font.pixelSize: 12
+                        color: Kirigami.Theme.disabledTextColor
+                        wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
+            // Metadata Details Card
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: Kirigami.Units.smallSpacing
+                color: Kirigami.Theme.alternateBackgroundColor
+                border.color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                border.width: 1
+
+                GridLayout {
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    columns: 2
+                    rowSpacing: 10
+                    columnSpacing: 14
+
+                    QQC2.Label {
+                        text: qsTr("Version:")
+                        font.bold: true
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                    QQC2.Label {
+                        text: qsTr("v%1 (DSVM v2 Bytecode Compiler)").arg(deviceController.appVersion)
+                        font.family: "monospace"
+                        font.bold: true
+                        color: Kirigami.Theme.textColor
+                        Layout.fillWidth: true
+                    }
+
+                    QQC2.Label {
+                        text: qsTr("Author:")
+                        font.bold: true
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                    QQC2.Label {
+                        text: deviceController.appAuthor
+                        font.bold: true
+                        color: Kirigami.Theme.textColor
+                        Layout.fillWidth: true
+                    }
+
+                    QQC2.Label {
+                        text: qsTr("GitHub:")
+                        font.bold: true
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        QQC2.Label {
+                            id: githubLinkLbl
+                            text: deviceController.appGithubUrl
+                            font.family: "monospace"
+                            font.underline: githubMouse.containsMouse
+                            color: Kirigami.Theme.highlightColor
+                            elide: Text.ElideMiddle
+                            Layout.fillWidth: true
+
+                            MouseArea {
+                                id: githubMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: Qt.openUrlExternally(deviceController.appGithubUrl)
+                            }
+                        }
+
+                        QQC2.Button {
+                            icon.name: "edit-copy"
+                            text: qsTr("Copy")
+                            implicitHeight: 24
+                            font.pixelSize: 10
+                            onClicked: root.copyTextToClipboard(deviceController.appGithubUrl)
+                        }
+                    }
+
+                    QQC2.Label {
+                        text: qsTr("License:")
+                        font.bold: true
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                    QQC2.Label {
+                        text: qsTr("GPL-3.0-or-later")
+                        font.family: "monospace"
+                        color: Kirigami.Theme.textColor
+                        Layout.fillWidth: true
+                    }
+
+                    QQC2.Label {
+                        text: qsTr("Device Status:")
+                        font.bold: true
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                    QQC2.Label {
+                        text: deviceController.connected
+                            ? qsTr("%1 (FW: %2 • SN: %3)")
+                                .arg(deviceController.modelName)
+                                .arg(deviceController.firmwareVersion)
+                                .arg(deviceController.serialNumber)
+                            : deviceController.modelName
+                        font.family: "monospace"
+                        color: Kirigami.Theme.textColor
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+
+                    QQC2.Label {
+                        text: qsTr("Event Log:")
+                        font.bold: true
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                    QQC2.Label {
+                        text: deviceController.logFilePath
+                        font.family: "monospace"
+                        font.pixelSize: 11
+                        color: Kirigami.Theme.disabledTextColor
+                        elide: Text.ElideMiddle
+                        Layout.fillWidth: true
+                    }
+                }
+            }
+
+            // Footer Buttons
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                QQC2.Button {
+                    icon.name: "internet-web-browser"
+                    text: qsTr("Open GitHub Repository")
+                    onClicked: Qt.openUrlExternally(deviceController.appGithubUrl)
+                }
+
+                QQC2.Button {
+                    icon.name: "view-list-text"
+                    text: qsTr("System Event Log...")
+                    onClicked: {
+                        aboutDialog.close()
+                        eventLogDialog.openLogWindow()
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.Button {
+                    text: qsTr("Close")
+                    highlighted: true
+                    onClicked: aboutDialog.close()
+                }
+            }
         }
     }
 
@@ -2932,7 +3658,7 @@ Kirigami.ApplicationWindow {
                 spacing: Kirigami.Units.mediumSpacing
 
                 QQC2.Label {
-                    text: qsTr("DuckyDeck Studio")
+                    text: qsTr("DuckyDeck Studio v%1").arg(deviceController.appVersion)
                     font.bold: true
                     font.pixelSize: 16
                     color: Kirigami.Theme.textColor
