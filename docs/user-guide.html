@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DuckyDeck Studio — User Documentation &amp; Manual</title>
+  <style>
+    :root {
+      --bg-primary: #14171f;
+      --bg-secondary: #1c202b;
+      --bg-tertiary: #252b3b;
+      --bg-card: #1e2330;
+      --text-primary: #eef2f8;
+      --text-secondary: #a6b2c6;
+      --text-muted: #728098;
+      --accent: #3daee9;
+      --accent-hover: #5bc0f8;
+      --accent-soft: rgba(61, 174, 233, 0.14);
+      --border: #2e364a;
+      --success: #2ecc71;
+      --warning: #f39c12;
+      --danger: #e74c3c;
+      --kofi: #ff5e5b;
+      --kofi-hover: #ff7875;
+      --purple: #a78bfa;
+      --pink: #f472b6;
+      --orange: #fb923c;
+      --code-bg: #10131a;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+
+    [data-theme="light"] {
+      --bg-primary: #f5f7fa;
+      --bg-secondary: #ffffff;
+      --bg-tertiary: #eaeef5;
+      --bg-card: #ffffff;
+      --text-primary: #1d2433;
+      --text-secondary: #4a5568;
+      --text-muted: #718096;
+      --accent: #0077b6;
+      --accent-hover: #0096c7;
+      --accent-soft: rgba(0, 119, 182, 0.10);
+      --border: #d8e0ec;
+      --code-bg: #edf1f7;
+      --shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: "Inter", "Noto Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.65;
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* Sidebar Navigation */
+    .sidebar {
+      width: 290px;
+      background-color: var(--bg-secondary);
+      border-right: 1px solid var(--border);
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+      z-index: 100;
+      overflow-y: auto;
+    }
+
+    .sidebar-header {
+      padding: 20px 18px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      text-decoration: none;
+    }
+
+    .brand-badge {
+      font-family: monospace;
+      font-size: 0.75rem;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      padding: 2px 7px;
+      border-radius: 5px;
+    }
+
+    .brand-sub {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .search-box {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 0.86rem;
+      outline: none;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent);
+    }
+
+    .nav-scroll {
+      flex: 1;
+      padding: 12px 10px;
+      overflow-y: auto;
+    }
+
+    .nav-group-title {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      padding: 10px 10px 4px;
+    }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 6px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.88rem;
+      transition: all 0.15s ease;
+    }
+
+    .nav-link:hover,
+    .nav-link.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .sidebar-footer {
+      padding: 14px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .kofi-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: var(--kofi);
+      color: #ffffff !important;
+      font-weight: 700;
+      font-size: 0.88rem;
+      padding: 9px 14px;
+      border-radius: 8px;
+      text-decoration: none;
+      box-shadow: 0 3px 10px rgba(255, 94, 91, 0.35);
+      transition: transform 0.12s ease, background 0.15s ease;
+    }
+
+    .kofi-btn:hover {
+      background: var(--kofi-hover);
+      transform: translateY(-1px);
+    }
+
+    .theme-btn {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      padding: 7px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+
+    .theme-btn:hover {
+      border-color: var(--accent);
+    }
+
+    /* Main Content */
+    .main-content {
+      margin-left: 290px;
+      flex: 1;
+      max-width: 1060px;
+      padding: 40px 48px 80px;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 32px;
+      margin-bottom: 36px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    .hero h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .hero p {
+      color: var(--text-secondary);
+      font-size: 1.02rem;
+      max-width: 780px;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .pill {
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+
+    .pill.accent {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    section {
+      margin-bottom: 48px;
+      scroll-margin-top: 24px;
+    }
+
+    h2 {
+      font-size: 1.48rem;
+      font-weight: 700;
+      padding-bottom: 10px;
+      margin-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    h3 {
+      font-size: 1.12rem;
+      font-weight: 700;
+      margin: 22px 0 10px;
+      color: var(--text-primary);
+    }
+
+    p {
+      margin-bottom: 12px;
+      color: var(--text-secondary);
+    }
+
+    ul, ol {
+      margin: 8px 0 16px 22px;
+      color: var(--text-secondary);
+    }
+
+    li {
+      margin-bottom: 6px;
+    }
+
+    li strong {
+      color: var(--text-primary);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+      margin: 16px 0;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .card h4 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 14px 18px;
+      border-radius: 0 8px 8px 0;
+      margin: 16px 0;
+    }
+
+    .callout.warn {
+      border-left-color: var(--warning);
+      background: rgba(243, 156, 18, 0.12);
+    }
+
+    .callout.success {
+      border-left-color: var(--success);
+      background: rgba(46, 204, 113, 0.12);
+    }
+
+    .callout-title {
+      font-weight: 700;
+      font-size: 0.9rem;
+      margin-bottom: 4px;
+      color: var(--text-primary);
+    }
+
+    code {
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      font-size: 0.86em;
+      background: var(--code-bg);
+      color: var(--accent);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      margin: 12px 0 18px;
+      position: relative;
+    }
+
+    pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      color: var(--text-primary);
+      font-size: 0.85rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 22px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+
+    th {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      font-weight: 700;
+    }
+
+    td {
+      color: var(--text-secondary);
+    }
+
+    kbd {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-bottom-width: 2px;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-family: monospace;
+      font-size: 0.82rem;
+      color: var(--text-primary);
+    }
+
+    @media (max-width: 900px) {
+      .sidebar {
+        position: static;
+        width: 100%;
+        height: auto;
+      }
+      body {
+        flex-direction: column;
+      }
+      .main-content {
+        margin-left: 0;
+        padding: 24px 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar Navigation -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <a href="#overview" class="brand">
+        <span>🦆 DuckyDeck Studio</span>
+        <span class="brand-badge">v0.1.0</span>
+      </a>
+      <div class="brand-sub">User Manual &amp; Feature Reference</div>
+    </div>
+
+    <div class="search-box">
+      <input type="text" id="docSearch" class="search-input" placeholder="🔍 Filter guide sections..." oninput="filterSections(this.value)" />
+    </div>
+
+    <nav class="nav-scroll" id="navLinks">
+      <div class="nav-group-title">Getting Started</div>
+      <a class="nav-link" href="#overview">🏠 Overview &amp; Supported Hardware</a>
+      <a class="nav-link" href="#installation">📦 Installation &amp; USB Permissions</a>
+      <a class="nav-link" href="#workspace">🖥️ 3-Column Workspace Tour</a>
+
+      <div class="nav-group-title">Profiles &amp; Hardware</div>
+      <a class="nav-link" href="#profiles">🗂️ Profiles &amp; Profile Groups</a>
+      <a class="nav-link" href="#canvas">🎹 Hardware Canvas &amp; OLED Preview</a>
+      <a class="nav-link" href="#colors">🎨 Key &amp; Profile Color Picker</a>
+      <a class="nav-link" href="#sdsync">💾 microSD Sync &amp; Validation</a>
+
+      <div class="nav-group-title">Scripting &amp; Automation</div>
+      <a class="nav-link" href="#duckyscript">📜 duckyScript 3 &amp; DSVM v2 Compiler</a>
+      <a class="nav-link" href="#applaunch">🚀 Launch Application Builder</a>
+      <a class="nav-link" href="#webapi">🌐 Web API / Webhook Builder</a>
+      <a class="nav-link" href="#autoswitcher">🪟 Wayland Auto-Switcher &amp; Rules</a>
+      <a class="nav-link" href="#pgv">🔢 Global Variables (_GV0.._GV31)</a>
+      <a class="nav-link" href="#ai">✨ AI Macro Architect</a>
+
+      <div class="nav-group-title">Diagnostics &amp; Customization</div>
+      <a class="nav-link" href="#eventlog">📋 System Event Log</a>
+      <a class="nav-link" href="#settings">⚙️ UI Text Scaling &amp; System Tray</a>
+      <a class="nav-link" href="#troubleshooting">🛠️ Troubleshooting &amp; FAQ</a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <a class="kofi-btn" href="https://ko-fi.com/russellmilliner" target="_blank" rel="noopener noreferrer">
+        ☕ Buy Me a Coffee on Ko-fi
+      </a>
+      <button class="theme-btn" onclick="toggleTheme()">🌗 Toggle Dark / Light Theme</button>
+    </div>
+  </aside>
+
+  <!-- Main Documentation Content -->
+  <main class="main-content">
+    <div class="hero" id="overview">
+      <div class="hero-top">
+        <h1>🦆 DuckyDeck Studio — User Guide</h1>
+        <a class="kofi-btn" href="https://ko-fi.com/russellmilliner" target="_blank" rel="noopener noreferrer">
+          ☕ Support Russell Milliner on Ko-fi
+        </a>
+      </div>
+      <p>
+        <strong>DuckyDeck Studio</strong> is a native Linux configurator, <strong>DSVM v2 bytecode compiler</strong>,
+        <strong>Wayland Auto-Switcher</strong>, and <strong>AI Macro Architect</strong> for the
+        <strong>duckyPad Pro (2024)</strong> and <strong>duckyPad (2020)</strong>, crafted with Rust, CXX-Qt, and KDE Plasma 6 Kirigami.
+      </p>
+      <div class="badge-row">
+        <span class="pill accent">duckyPad Pro (0x0483:0xd11d)</span>
+        <span class="pill accent">duckyPad 2020 (0x0483:0xd11c)</span>
+        <span class="pill">DSVM v2 .dsb Bytecode Compiler</span>
+        <span class="pill">KDE Plasma 6 Wayland Auto-Switcher</span>
+        <span class="pill">Saved &amp; Used RGB Palettes</span>
+        <span class="pill">App Launcher &amp; Web API Triggers</span>
+      </div>
+    </div>
+
+    <!-- 1. Installation & Permissions -->
+    <section id="installation">
+      <h2>📦 1. Installation &amp; USB HID Permissions</h2>
+      <p>
+        DuckyDeck Studio communicates directly with your duckyPad over USB HID (`hidraw`) for real-time profile switching,
+        LED color previews, RTC clock sync, and Persistent Global Variables (`_GV0.._GV31`), and mounts or reads the
+        duckyPad microSD card for profile storage.
+      </p>
+
+      <div class="callout">
+        <div class="callout-title">⚡ One-Click Polkit udev Rule Setup</div>
+        If Linux blocks non-root USB HID access (`PermissionDenied` on `/dev/hidraw*`), DuckyDeck Studio automatically displays an inline
+        yellow banner at the top of the window. Click <strong>Install Rules</strong> to authorize the `70-duckypad.rules` installation via Polkit, or run:
+        <pre><code>sudo ./data/udev/install-udev-rules.sh</code></pre>
+      </div>
+
+      <h3>Supported Hardware Matrix</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>USB VID:PID</th>
+            <th>Mechanical Keys</th>
+            <th>Rotary Encoders</th>
+            <th>Expansion Channels</th>
+            <th>OLED Display</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>duckyPad Pro (2024)</strong></td>
+            <td><code>0x0483:0xd11d</code></td>
+            <td>20 RGB Keys (4×5)</td>
+            <td>2 Encoders (Slots 21–26)</td>
+            <td>Up to 32 Channels (Slots 27–58)</td>
+            <td>128×128 Monochrome</td>
+          </tr>
+          <tr>
+            <td><strong>duckyPad (2020)</strong></td>
+            <td><code>0x0483:0xd11c</code></td>
+            <td>15 RGB Keys (3×5)</td>
+            <td>—</td>
+            <td>—</td>
+            <td>128×64 Monochrome</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 2. Workspace Tour -->
+    <section id="workspace">
+      <h2>🖥️ 2. The 3-Column Workspace</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h4>1️⃣ Left Column: Profiles &amp; Auto-Switcher</h4>
+          <p>
+            Browse up to 64 hardware profiles, filter by profile name or bound application, drag-and-drop the <code>⠿</code> handle to reorder profiles,
+            click any profile's color bar to change its default LED color (`BG_COLOR`), and monitor or configure KWin Wayland Auto-Switcher rules.
+          </p>
+        </div>
+        <div class="card">
+          <h4>2️⃣ Center Column: Interactive Hardware Canvas</h4>
+          <p>
+            Interact with the 4×5 RGB key matrix (Keys 1–20), Dual Rotary Encoders (Slots 21–26), live 128×128 OLED screen simulator,
+            and 32 Expansion Module channels (Slots 27–58). Drag and drop keys to swap or shift (`Shift + Drag`) slots.
+          </p>
+        </div>
+        <div class="card">
+          <h4>3️⃣ Right Column: Key Inspector &amp; Script IDE</h4>
+          <p>
+            Opens automatically when you click a key or encoder slot. Edit Line 1 / Line 2 OLED labels (up to 7 characters each),
+            toggle <strong>Allow Abort</strong> and <strong>No Repeat</strong>, write `On Press` (`keyN.txt`) and `On Release` (`keyN-release.txt`) scripts,
+            or configure no-code <strong>🚀 Launch App</strong> and <strong>🌐 Web API</strong> actions.
+          </p>
+        </div>
+        <div class="card">
+          <h4>☕ Top Bar &amp; Hamburger Menu (`☰`)</h4>
+          <p>
+            Displays the active application version, active profile badge, quick <strong>Default Color</strong> button,
+            <strong>☕ Buy Me a Coffee</strong> Ko-fi button, and the <strong>☰ Hamburger Menu</strong> for SD sync, profile groups,
+            PGV variables, System Event Log, Settings, and About.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Profiles & Profile Groups -->
+    <section id="profiles">
+      <h2>🗂️ 3. Profiles &amp; Profile Groups</h2>
+      <p>
+        The duckyPad Pro supports up to <strong>64 profiles</strong> (`profile_1` through `profile_64`). Each profile stores its own default background LED color (`BG_COLOR`),
+        per-key custom colors (`SWCOLOR`), key labels (`zN` / `xN`), and compiled bytecode binaries (`.dsb`).
+      </p>
+      <ul>
+        <li><strong>Create a Profile:</strong> Click <strong>+ New</strong> at the bottom of the left sidebar, type a name (up to 16 characters), and press <kbd>Enter</kbd>.</li>
+        <li><strong>Reorder Profiles:</strong> Drag any profile by its <code>⠿</code> handle (or right-click and choose <em>Move Profile Up / Down</em>). Associated Auto-Switcher rules automatically update to follow the moved profile!</li>
+        <li><strong>Right-Click Profile Context Menu:</strong> Right-click any profile in the sidebar to <em>Select</em>, <em>Rename</em>, <em>Change Default LED Color (`BG_COLOR`)</em>, <em>Bind Window to This Profile (Pick Window)</em>, <em>Export Profile (`.duckyprofile.json` or Folder)</em>, or <em>Delete</em>.</li>
+        <li><strong>Profile Groups (`.duckygroup.json`):</strong> Click <strong>Groups ▾</strong> at the bottom of the sidebar (or in the `☰` menu) to save all profiles and Auto-Switcher rules into a single portable `.duckygroup.json` bundle, load an existing bundle, or start a fresh workspace.</li>
+      </ul>
+    </section>
+
+    <!-- 4. Hardware Canvas -->
+    <section id="canvas">
+      <h2>🎹 4. Interactive Hardware Canvas &amp; OLED Simulator</h2>
+      <ul>
+        <li><strong>Select / Deselect a Slot:</strong> Left-click any key (1–20), encoder action (21–26), or expansion slot (27–58) to open the Right Inspector. Click the selected key again (or click <code>✕</code> in the inspector header) to close the inspector.</li>
+        <li><strong>Drag-and-Drop Swap vs. Shift:</strong>
+          <ul>
+            <li><strong>Drag &amp; Drop:</strong> Swaps the source key and target key (including scripts, labels, and custom RGB colors).</li>
+            <li><strong><kbd>Shift</kbd> + Drag &amp; Drop:</strong> Inserts the dragged key at the target slot and shifts intermediate keys!</li>
+          </ul>
+        </li>
+        <li><strong>Right-Click Key Context Menu:</strong>
+          <ul>
+            <li><strong>Copy Key X</strong> / <strong>Paste → Slot Y</strong>: Copy a key's full configuration and paste it onto another key (even across different profiles).</li>
+            <li><strong>Set Key X Color</strong>: Opens the Color Picker window with your Saved &amp; Used color palettes.</li>
+            <li><strong>Clear / Reset Key X</strong>: Clears labels, scripts, and custom RGB color on that slot.</li>
+          </ul>
+        </li>
+        <li><strong>Toolbar Toggles:</strong>
+          <ul>
+            <li><strong>↻ 90°:</strong> Toggle rotated layout orientation.</li>
+            <li><strong>⚡ 32ch:</strong> Show or hide the 4×8 (32-channel) Expansion Module panel (Slots 27–58).</li>
+            <li><strong>OLED: Grid / Script:</strong> Preview either the standard 4×5 key label grid or custom `OLED_LINE` / `OLED_CIRCLE` / `OLED_RECT` drawing commands on the simulated 128×128 OLED screen.</li>
+          </ul>
+        </li>
+      </ul>
+    </section>
+
+    <!-- 5. Color Picker & Palettes -->
+    <section id="colors">
+      <h2>🎨 5. Key &amp; Profile Color Picker (Saved &amp; Used Palettes)</h2>
+      <p>
+        Open the Color Picker by right-clicking any keycap and choosing <strong>Set Key X Color</strong>, clicking <strong>Key Color</strong> in the right inspector,
+        or clicking <strong>Default Color</strong> in the top bar / center toolbar / profile sidebar.
+      </p>
+      <div class="grid-2">
+        <div class="card">
+          <h4>🌈 Interactive HSV + RGB Controls</h4>
+          <ul>
+            <li><strong>2D Saturation / Value Square &amp; Hue Bar:</strong> Drag the crosshair to blend shades visually.</li>
+            <li><strong>R / G / B Sliders &amp; SpinBoxes (`0–255`):</strong> Dial in exact hardware LED values.</li>
+            <li><strong>Hex Input (`#RRGGBB`) &amp; Old/New Swatch:</strong> Paste hex codes directly or click the <em>Old</em> swatch to revert.</li>
+            <li><strong>System Picker...:</strong> Launch the native KDE/OS color dialog and screen eyedropper anytime.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>📌 Saved Colors &amp; Used Colors Palettes</h4>
+          <ul>
+            <li><strong>Saved Colors Palette:</strong> Click <strong>+ Save Current (`#RRGGBB`)</strong> to pin colors to your persistent palette (`~/.config/duckydeck-studio/kwin_rules.json`). Left-click to select, double-click to apply immediately, or right-click a swatch to remove it.</li>
+            <li><strong>Used Colors Palette:</strong> Automatically lists every unique color currently used in any profile's `BG_COLOR` or key's `SWCOLOR` across all loaded profiles. Left-click to reuse a color, or right-click a Used Color swatch to add it to your Saved Colors!</li>
+            <li><strong>Reset to Profile Default:</strong> When editing a key color, click <em>Reset to Profile Default</em> to remove its custom `SWCOLOR` and inherit the profile's `BG_COLOR`.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. microSD Sync -->
+    <section id="sdsync">
+      <h2>💾 6. microSD Sync &amp; Validation</h2>
+      <p>
+        Edits you make in DuckyDeck Studio are saved immediately to your local profile cache (`~/.local/share/duckydeck-studio/profiles_cache/`) so you never lose work,
+        even when the duckyPad is unplugged.
+      </p>
+      <ul>
+        <li><strong>Status Bar Sync Badge:</strong> The bottom status bar shows whether your local profiles match the hardware microSD card (<strong>✓ SD Synced</strong> vs. <strong>⚠ Unsynced Changes</strong>).</li>
+        <li><strong>📋 Changes Summary:</strong> Click the sync status badge (or <strong>📋 Summary</strong>) to inspect a per-profile diff of added, modified, or deleted keys before writing to hardware.</li>
+        <li><strong>⬆ Sync to SD:</strong> Mounts the duckyPad Pro microSD card (automatically via USB Mass Storage mode `0x1B` + `udisksctl`, or direct SD mount), compiles every `keyN.txt` script into a DSVM v2 `.dsb` binary, writes `config.txt` and `profile_info.txt`, flushes the filesystem, and verifies the written files.</li>
+      </ul>
+    </section>
+
+    <!-- 7. duckyScript 3 & DSVM v2 Compiler -->
+    <section id="duckyscript">
+      <h2>📜 7. duckyScript 3 &amp; Built-In DSVM v2 Bytecode Compiler</h2>
+      <p>
+        DuckyDeck Studio includes a full, pure-Rust <strong>duckyScript 3 → DSVM v2 (`.dsb`) bytecode compiler</strong> with real-time syntax checking and KDE `KSyntaxHighlighting`.
+      </p>
+      <ul>
+        <li><strong>Live Bytecode Verification:</strong> As you type in the script editor, the header badge shows <code>✓ Valid DSVM (N B)</code> or highlights the exact line number and syntax error.</li>
+        <li><strong>On Press vs. On Release Tabs:</strong> Every key and slot supports both an <strong>On Press (`keyN.txt`)</strong> script and an <strong>On Release (`keyN-release.txt`)</strong> script.</li>
+        <li><strong>📖 Command Reference Drawer:</strong> Click <strong>📖 Reference</strong> in the script toolbar to browse and insert all duckyScript 3 commands (`STRING`, `STRINGLN`, `DELAY`, `KEYDOWN`, `KEYUP`, `SWCC`, `SWCF`, `SWCR`, `OLED_PRINT`, `OLED_LINE`, `OLED_RECT`, `OLED_CIRCLE`, `OLED_UPDATE`, `IF/ELSE/END_IF`, `WHILE/END_WHILE`, `FUNCTION/END_FUNCTION`, `GOTO_PROFILE`, `_GV0.._GV31`, etc.).</li>
+      </ul>
+    </section>
+
+    <!-- 8. Launch Application Builder -->
+    <section id="applaunch">
+      <h2>🚀 8. Launch Application Builder</h2>
+      <p>
+        Turn any duckyPad key into a one-press Linux application launcher without writing shell scripts by hand.
+      </p>
+      <ol>
+        <li>Select a key (1–20) to open the Right Inspector and click the <strong>🚀 Launch App</strong> button in the editor toolbar.</li>
+        <li>Check <strong>Enable App Launch on this key</strong>.</li>
+        <li>Click <strong>🔍 Choose Installed App...</strong> to search all installed desktop applications (`.desktop` entries from `/usr/share/applications`, Flatpak exports, and `~/.local/share/applications`) with icons, descriptions, and categories—or type any custom command and arguments.</li>
+        <li>Choose the <strong>Trigger Mode</strong>:
+          <ul>
+            <li><strong>Instant USB HID via `_GV19` (Default — No Keyboard Shortcut Needed):</strong> Pressing the key on the duckyPad writes a unique slot token to `_GV19`. DuckyDeck Studio's background HID listener detects the change within ~180ms and spawns the application directly on your Linux desktop!</li>
+            <li><strong>F13–F24 Global Hotkey (`evdev`):</strong> Emits `F13`–`F24` over USB HID keyboard and triggers the launch via DuckyDeck Studio's background `evdev` listener.</li>
+          </ul>
+        </li>
+        <li>Click <strong>▶ Test Launch</strong> anytime to test the command immediately and inspect the result in the <strong>System Event Log (`APP_LAUNCH`)</strong>.</li>
+      </ol>
+    </section>
+
+    <!-- 9. Web API / Webhook Builder -->
+    <section id="webapi">
+      <h2>🌐 9. Web API / Webhook Builder</h2>
+      <p>
+        Trigger Home Assistant webhooks, REST APIs, Miniflux, OBS, or custom HTTP endpoints directly from a duckyPad key:
+      </p>
+      <ol>
+        <li>Select a key and click <strong>🌐 Web API</strong> in the inspector toolbar.</li>
+        <li>Check <strong>Enable Web API Call on this key</strong> and configure the HTTP Method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`), URL, custom headers (`Header: Value` per line), and request body (JSON/text).</li>
+        <li>Select <strong>HID PGV (`_GV18`)</strong> (zero keyboard interference, works on all profiles and keys) or <strong>F13–F24 Hotkey</strong>.</li>
+        <li>Click <strong>▶ Test Call</strong> to fire the HTTP request immediately and view status codes, latency, and errors in the <strong>System Event Log (`WEB_API`)</strong>.</li>
+      </ol>
+    </section>
+
+    <!-- 10. Wayland Auto-Switcher -->
+    <section id="autoswitcher">
+      <h2>🪟 10. KDE Plasma 6 Wayland Auto-Switcher</h2>
+      <p>
+        DuckyDeck Studio features a native Rust + `zbus` listener that integrates with KDE Plasma 6's KWin Wayland compositor to automatically switch duckyPad hardware profiles when you focus different windows or browser tabs.
+      </p>
+      <ul>
+        <li><strong>🎯 Crosshair Window Picker:</strong> Right-click any profile in the sidebar and select <strong>Bind Window to This Profile (Pick Window)...</strong> (or click <strong>Pick Window</strong> inside the <em>Rules</em> dialog). Click any open window on your desktop to automatically capture its `resourceClass`, window title, and application icon.</li>
+        <li><strong>Browser Tab Title Matching:</strong> When picking a web browser (Zen Browser, Firefox, Chrome, Brave, Vivaldi, etc.), DuckyDeck Studio automatically strips the browser suffix so your rule matches the specific web app or tab title (e.g. `Miniflux`, `GitHub`, `YouTube`), or you can use `*browser*` to match all web browsers.</li>
+        <li><strong>Automatic Pause While Editing:</strong> Whenever the Right Key Inspector is open, the Auto-Switcher automatically pauses (`AUTO-SWITCHER (PAUSED)`) so switching to a browser or terminal to copy a URL or command won't yank the active profile away from the key you're editing!</li>
+      </ul>
+    </section>
+
+    <!-- 11. Global Variables (_GV0.._GV31) -->
+    <section id="pgv">
+      <h2>🔢 11. Persistent Global Variables (`_GV0`..`_GV31`)</h2>
+      <p>
+        Open <strong>Variables (`_GV`)...</strong> from the `☰` menu to inspect and live-edit all 32 32-bit non-volatile Persistent Global Variables (`_GV0` through `_GV31`) over USB HID commands `0x18` (read) and `0x19` (write) in Signed Decimal, Unsigned Decimal, or Hexadecimal format.
+      </p>
+      <div class="callout warn">
+        <div class="callout-title">Reserved Bridge PGVs (`_GV18` &amp; `_GV19`)</div>
+        DuckyDeck Studio uses <code>_GV18</code> for instant Web API triggers and <code>_GV19</code> for instant Application Launch triggers when using the default USB HID PGV trigger mode.
+      </div>
+    </section>
+
+    <!-- 12. AI Macro Architect -->
+    <section id="ai">
+      <h2>✨ 12. AI Macro Architect</h2>
+      <p>
+        Click <strong>✨ AI</strong> in the Right Inspector header (or <strong>AI Macro Architect...</strong> in the `☰` menu) to generate duckyScript 3 macros using natural language.
+        DuckyDeck Studio grounds prompts with your local KDE shortcuts (`~/.config/kglobalshortcutsrc`) and validates the generated script with the built-in DSVM v2 compiler.
+      </p>
+    </section>
+
+    <!-- 13. System Event Log -->
+    <section id="eventlog">
+      <h2>📋 13. System Event Log</h2>
+      <p>
+        Open <strong>System Event Log...</strong> from the `☰` menu (or from the About window) to view real-time diagnostic events across all subsystems:
+      </p>
+      <ul>
+        <li><code>DEVICE</code> — USB HID connection, firmware checks, RTC sync, and reboots</li>
+        <li><code>PROFILE</code> — Profile selection, creation, renaming, reordering, and color changes</li>
+        <li><code>AUTOSWITCH</code> — KWin Wayland window focus changes and automatic profile switches</li>
+        <li><code>SD_SYNC</code> — microSD mounting, `.dsb` bytecode compilation, and file validation</li>
+        <li><code>SCRIPT</code> — Slot script saves and compiler diagnostics</li>
+        <li><code>WEB_API</code> — HTTP webhook triggers, status codes, latency, and response summaries</li>
+        <li><code>APP_LAUNCH</code> — Application launch triggers, desktop IDs, PIDs, and error diagnostics</li>
+        <li><code>SYSTEM</code> — Startup, configuration persistence, and UI events</li>
+      </ul>
+      <p>
+        Logs are also persisted on disk at <code>~/.local/share/duckydeck-studio/logs/system_events.log</code> and can be filtered, copied, or exported to a `.log` file.
+      </p>
+    </section>
+
+    <!-- 14. Settings, Text Scaling & System Tray -->
+    <section id="settings">
+      <h2>⚙️ 14. UI Text Scaling &amp; System Tray Integration</h2>
+      <ul>
+        <li><strong>Independent Per-Area Text Scaling (`75%`–`160%`):</strong> Open <strong>Settings...</strong> from the `☰` menu to adjust text scaling across the entire app at once or independently for:
+          <ul>
+            <li>Left Sidebar (Profiles &amp; Auto-Switcher)</li>
+            <li>Center Hardware Canvas (Keycaps, Encoders, OLED &amp; Toolbar)</li>
+            <li>Right Key Inspector &amp; Action Builders</li>
+            <li>duckyScript 3 Code Editor &amp; Command Reference</li>
+            <li>Bottom Status Bar</li>
+            <li>System Event Log Window</li>
+          </ul>
+        </li>
+        <li><strong>System Tray (`StatusNotifierItem`):</strong> DuckyDeck Studio integrates natively with the KDE Plasma 6 System Tray, displaying a custom dynamic icon with your active profile number and color badge, quick profile switching submenu, and optional <em>Minimize / Close to System Tray</em> behavior.</li>
+      </ul>
+    </section>
+
+    <!-- 15. Troubleshooting -->
+    <section id="troubleshooting">
+      <h2>🛠️ 15. Troubleshooting &amp; FAQ</h2>
+      <div class="card" style="margin-bottom: 14px;">
+        <h4>❓ My Web API or Launch App key didn't trigger on the duckyPad</h4>
+        <p>
+          1. Check the bottom status bar—if it says <strong>⚠ Unsynced Changes</strong>, click <strong>⬆ Sync to SD</strong> so the compiled `.dsb` bytecode is written to the duckyPad's microSD card.<br/>
+          2. Open <strong>☰ → System Event Log</strong> and filter by <code>WEB_API</code> or <code>APP_LAUNCH</code> to see the exact trigger event (`_GV18` / `_GV19` or `F13–F24`) and any HTTP or process errors.
+        </p>
+      </div>
+      <div class="card">
+        <h4>❓ Auto-Switcher isn't switching profiles right now</h4>
+        <p>
+          Check if the Right Key Inspector is currently open—Auto-Switcher intentionally pauses (`⏸ Paused (Editing Key N)`) while you are editing a key so your active profile doesn't jump away while you switch windows. Close the key editor (`✕`) to resume automatic switching.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    function toggleTheme() {
+      const html = document.documentElement;
+      const next = html.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      html.setAttribute("data-theme", next);
+    }
+
+    function filterSections(query) {
+      const q = (query || "").trim().toLowerCase();
+      const sections = document.querySelectorAll("main section");
+      const navLinks = document.querySelectorAll("#navLinks .nav-link");
+      sections.forEach((sec) => {
+        const text = sec.innerText.toLowerCase();
+        sec.style.display = (!q || text.includes(q)) ? "" : "none";
+      });
+      navLinks.forEach((link) => {
+        const targetId = link.getAttribute("href").slice(1);
+        const targetSec = document.getElementById(targetId);
+        if (!q) {
+          link.style.display = "";
+        } else {
+          const match = link.innerText.toLowerCase().includes(q) || (targetSec && targetSec.style.display !== "none");
+          link.style.display = match ? "" : "none";
+        }
+      });
+    }
+  </script>
+</body>
+</html>

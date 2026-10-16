@@ -219,15 +219,32 @@ Item {
         }
     }
 
+    function setKeyRgbAt(slotNum, r, g, b) {
+        if (slotNum >= 1 && slotNum <= 20) {
+            keyModel.setProperty(slotNum - 1, "r", r)
+            keyModel.setProperty(slotNum - 1, "g", g)
+            keyModel.setProperty(slotNum - 1, "b", b)
+            if (controller) {
+                controller.setKeyRgb(slotNum - 1, r, g, b)
+            }
+            syncSlotsFromController()
+            oledSimulator.requestPaint()
+        }
+    }
+
+    function clearKeyRgbAt(slotNum) {
+        if (slotNum >= 1 && slotNum <= 20) {
+            if (controller) {
+                controller.clearKeyCustomRgb(slotNum - 1)
+            }
+            syncSlotsFromController()
+            oledSimulator.requestPaint()
+        }
+    }
+
     function updateSelectedKeyRgb(r, g, b) {
         if (selectedSlot >= 1 && selectedSlot <= 20) {
-            keyModel.setProperty(selectedSlot - 1, "r", r)
-            keyModel.setProperty(selectedSlot - 1, "g", g)
-            keyModel.setProperty(selectedSlot - 1, "b", b)
-            if (controller) {
-                controller.setKeyRgb(selectedSlot - 1, r, g, b)
-            }
-            oledSimulator.requestPaint()
+            setKeyRgbAt(selectedSlot, r, g, b)
         }
     }
 

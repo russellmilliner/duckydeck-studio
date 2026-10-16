@@ -3263,6 +3263,18 @@ Kirigami.ApplicationWindow {
         }
 
         QQC2.MenuItem {
+            icon.name: "help-contents"
+            text: qsTr("User Documentation (Web Guide)...")
+            onTriggered: Qt.openUrlExternally("file:///home/millinr/Builds/Ducky/duckydeck-studio/docs/user-guide.html")
+        }
+
+        QQC2.MenuItem {
+            icon.name: "emblem-favorite"
+            text: qsTr("☕ Buy Me a Coffee (Ko-fi)...")
+            onTriggered: Qt.openUrlExternally("https://ko-fi.com/russellmilliner")
+        }
+
+        QQC2.MenuItem {
             icon.name: "help-about"
             text: qsTr("About DuckyDeck Studio...")
             onTriggered: aboutDialog.openAboutWindow()
@@ -3667,10 +3679,10 @@ Kirigami.ApplicationWindow {
     Window {
         id: aboutDialog
         title: qsTr("About DuckyDeck Studio v%1").arg(deviceController.appVersion)
-        width: 540
-        height: 410
-        minimumWidth: 500
-        minimumHeight: 380
+        width: 580
+        height: 455
+        minimumWidth: 540
+        minimumHeight: 430
         visible: false
         transientParent: root
         modality: Qt.WindowModal
@@ -3744,6 +3756,46 @@ Kirigami.ApplicationWindow {
                         }
 
                         Item { Layout.fillWidth: true }
+
+                        // Ko-fi Buy Me a Coffee Widget in About Header
+                        Rectangle {
+                            id: aboutKofiWidget
+                            radius: 16
+                            color: aboutKofiMouse.containsMouse ? "#ff7875" : "#ff5e5b"
+                            border.color: "#ffffff33"
+                            border.width: 1
+                            implicitWidth: aboutKofiRow.implicitWidth + 22
+                            implicitHeight: 30
+
+                            RowLayout {
+                                id: aboutKofiRow
+                                anchors.centerIn: parent
+                                spacing: 6
+
+                                QQC2.Label {
+                                    text: "☕"
+                                    font.pixelSize: 14
+                                }
+
+                                QQC2.Label {
+                                    text: qsTr("Buy Me a Coffee")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                    color: "#ffffff"
+                                }
+                            }
+
+                            MouseArea {
+                                id: aboutKofiMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: Qt.openUrlExternally("https://ko-fi.com/russellmilliner")
+                            }
+
+                            QQC2.ToolTip.visible: aboutKofiMouse.containsMouse
+                            QQC2.ToolTip.text: qsTr("Support Russell Milliner on Ko-fi (https://ko-fi.com/russellmilliner)")
+                        }
                     }
 
                     QQC2.Label {
@@ -3834,6 +3886,42 @@ Kirigami.ApplicationWindow {
                     }
 
                     QQC2.Label {
+                        text: qsTr("Ko-fi Support:")
+                        font.bold: true
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        QQC2.Label {
+                            id: kofiLinkLbl
+                            text: "https://ko-fi.com/russellmilliner"
+                            font.family: "monospace"
+                            font.underline: kofiLinkMouse.containsMouse
+                            color: "#ff5e5b"
+                            elide: Text.ElideMiddle
+                            Layout.fillWidth: true
+
+                            MouseArea {
+                                id: kofiLinkMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: Qt.openUrlExternally("https://ko-fi.com/russellmilliner")
+                            }
+                        }
+
+                        QQC2.Button {
+                            icon.name: "edit-copy"
+                            text: qsTr("Copy")
+                            implicitHeight: 24
+                            font.pixelSize: 10
+                            onClicked: root.copyTextToClipboard("https://ko-fi.com/russellmilliner")
+                        }
+                    }
+
+                    QQC2.Label {
                         text: qsTr("License:")
                         font.bold: true
                         color: Kirigami.Theme.disabledTextColor
@@ -3886,8 +3974,14 @@ Kirigami.ApplicationWindow {
 
                 QQC2.Button {
                     icon.name: "internet-web-browser"
-                    text: qsTr("Open GitHub Repository")
+                    text: qsTr("GitHub")
                     onClicked: Qt.openUrlExternally(deviceController.appGithubUrl)
+                }
+
+                QQC2.Button {
+                    icon.name: "help-contents"
+                    text: qsTr("User Guide")
+                    onClicked: Qt.openUrlExternally("file:///home/millinr/Builds/Ducky/duckydeck-studio/docs/user-guide.html")
                 }
 
                 QQC2.Button {
@@ -4718,6 +4812,46 @@ Kirigami.ApplicationWindow {
                 }
 
                 Item { Layout.fillWidth: true }
+
+                // Ko-fi Buy Me a Coffee Widget beside Hamburger Menu
+                Rectangle {
+                    id: headerKofiWidget
+                    radius: 15
+                    color: headerKofiMouse.containsMouse ? "#ff7875" : "#ff5e5b"
+                    border.color: "#ffffff33"
+                    border.width: 1
+                    implicitWidth: headerKofiRow.implicitWidth + 20
+                    implicitHeight: 30
+
+                    RowLayout {
+                        id: headerKofiRow
+                        anchors.centerIn: parent
+                        spacing: 6
+
+                        QQC2.Label {
+                            text: "☕"
+                            font.pixelSize: 13
+                        }
+
+                        QQC2.Label {
+                            text: qsTr("Buy Me a Coffee")
+                            font.bold: true
+                            font.pixelSize: 11
+                            color: "#ffffff"
+                        }
+                    }
+
+                    MouseArea {
+                        id: headerKofiMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: Qt.openUrlExternally("https://ko-fi.com/russellmilliner")
+                    }
+
+                    QQC2.ToolTip.visible: headerKofiMouse.containsMouse
+                    QQC2.ToolTip.text: qsTr("Buy Russell Milliner a coffee on Ko-fi (https://ko-fi.com/russellmilliner)")
+                }
 
                 QQC2.Button {
                     id: hamburgerMenuBtn
