@@ -68,6 +68,9 @@ pub mod qobject {
         #[qproperty(bool, web_api_test_busy)]
         #[qproperty(bool, web_api_last_ok)]
         #[qproperty(QString, web_api_last_result)]
+        #[qproperty(bool, app_launch_last_ok)]
+        #[qproperty(QString, app_launch_last_result)]
+        #[qproperty(QString, installed_apps_json)]
         #[qproperty(i32, ui_text_scale)]
         #[qproperty(i32, sidebar_text_scale)]
         #[qproperty(i32, canvas_text_scale)]
@@ -85,6 +88,8 @@ pub mod qobject {
         #[qproperty(QString, log_file_path)]
         #[qproperty(QString, event_log_json)]
         #[qproperty(i32, event_log_count)]
+        #[qproperty(QString, saved_colors_json)]
+        #[qproperty(QString, used_colors_json)]
         type DeviceController = super::DeviceControllerRust;
 
         #[qinvokable]
@@ -404,6 +409,32 @@ pub mod qobject {
         );
 
         #[qinvokable]
+        fn refresh_installed_apps(self: Pin<&mut DeviceController>) -> QString;
+
+        #[qinvokable]
+        fn extract_script_app_launch_json(
+            self: &DeviceController,
+            script: QString,
+            slot_number: i32,
+        ) -> QString;
+
+        #[qinvokable]
+        fn apply_app_launch_to_script(
+            self: &DeviceController,
+            existing_script: QString,
+            config_json: QString,
+            slot_number: i32,
+            is_release: bool,
+        ) -> QString;
+
+        #[qinvokable]
+        fn test_app_launch(
+            self: Pin<&mut DeviceController>,
+            config_json: QString,
+            slot_number: i32,
+        );
+
+        #[qinvokable]
         fn log_event(
             self: Pin<&mut DeviceController>,
             level: QString,
@@ -430,6 +461,15 @@ pub mod qobject {
             level_filter: QString,
             search_query: QString,
         ) -> QString;
+
+        #[qinvokable]
+        fn refresh_color_palettes(self: Pin<&mut DeviceController>);
+
+        #[qinvokable]
+        fn save_palette_color(self: Pin<&mut DeviceController>, hex_color: QString);
+
+        #[qinvokable]
+        fn remove_palette_color(self: Pin<&mut DeviceController>, hex_color: QString);
     }
 
     impl cxx_qt::Threading for DeviceController {}
@@ -448,18 +488,21 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::hardware::storage::{
-    apply_web_api_config_to_script, check_latest_duckypad_firmware, check_profile_sync_status,
-    compute_profiles_fingerprint, compute_unsynced_changes_json, encode_pgv31_trigger,
-    execute_web_api_request, extract_web_api_config, find_mounted_duckypad_sd,
-    flash_slot_led_feedback, has_web_api_config, load_all_sd_profiles,
-    load_profiles_for_connected_device, mark_profiles_sd_synced, poll_and_clear_pgv31_trigger,
-    profile_cache_dir_for_serial, query_connected_duckypad_info, read_dpp_config,
-    read_duckypad_pro_profiles_via_msc, read_duckypad_pro_profiles_via_msc_with_progress,
-    reboot_duckypad, save_profile_order_to_sd, set_single_key_led_hid,
-    sync_profile_web_api_triggers, sync_profiles_to_cache, sync_profiles_to_device_cache,
-    write_duckypad_pro_profiles_via_msc_with_progress, write_profiles_to_sd_root, DuckyKeySlot,
-    DuckyProfile, DuckypadEvdevListener, WebApiConfig, DUCKYPAD_VID, HID_CMD_SET_LED_SINGLE,
-    HID_REPORT_ID_OUT, MAX_INPUT_SLOTS, PID_DUCKYPAD_2020, PID_DUCKYPAD_PRO,
+    apply_app_launch_config_to_script, apply_web_api_config_to_script,
+    check_latest_duckypad_firmware, check_profile_sync_status, compute_profiles_fingerprint,
+    compute_unsynced_changes_json, encode_pgv31_trigger, execute_app_launch,
+    execute_web_api_request, extract_app_launch_config, extract_web_api_config,
+    find_mounted_duckypad_sd, flash_slot_led_feedback, has_app_launch_config, has_web_api_config,
+    load_all_sd_profiles, load_profiles_for_connected_device, mark_profiles_sd_synced,
+    poll_and_clear_pgv31_trigger, profile_cache_dir_for_serial, query_connected_duckypad_info,
+    read_dpp_config, read_duckypad_pro_profiles_via_msc,
+    read_duckypad_pro_profiles_via_msc_with_progress, reboot_duckypad, save_profile_order_to_sd,
+    scan_installed_desktop_apps, set_single_key_led_hid, sync_profile_web_api_triggers,
+    sync_profiles_to_cache, sync_profiles_to_device_cache,
+    write_duckypad_pro_profiles_via_msc_with_progress, write_profiles_to_sd_root,
+    AppLaunchConfig, DuckyKeySlot, DuckyProfile, DuckypadEvdevListener, WebApiConfig,
+    DUCKYPAD_VID, HID_CMD_SET_LED_SINGLE, HID_REPORT_ID_OUT, MAX_INPUT_SLOTS, PID_DUCKYPAD_2020,
+    PID_DUCKYPAD_PRO,
 };
 use crate::kwin::auto_switcher::{
     is_kde_autostart_enabled, is_web_browser_class, resolve_rule_icon, set_kde_autostart_enabled,
@@ -682,6 +725,9 @@ pub struct DeviceControllerRust {
     pub(crate) web_api_test_busy: bool,
     pub(crate) web_api_last_ok: bool,
     pub(crate) web_api_last_result: QString,
+    pub(crate) app_launch_last_ok: bool,
+    pub(crate) app_launch_last_result: QString,
+    pub(crate) installed_apps_json: QString,
     pub(crate) ui_text_scale: i32,
     pub(crate) sidebar_text_scale: i32,
     pub(crate) canvas_text_scale: i32,
@@ -699,6 +745,8 @@ pub struct DeviceControllerRust {
     pub(crate) log_file_path: QString,
     pub(crate) event_log_json: QString,
     pub(crate) event_log_count: i32,
+    pub(crate) saved_colors_json: QString,
+    pub(crate) used_colors_json: QString,
     pub(crate) copied_key_slot: Option<DuckyKeySlot>,
     pub(crate) firmware_download_url: String,
     pub(crate) sd_root_path: Option<PathBuf>,
@@ -835,6 +883,9 @@ impl Default for DeviceControllerRust {
         let editor_scale = switcher.editor_text_scale.clamp(75, 160);
         let status_bar_scale = switcher.status_bar_text_scale.clamp(75, 160);
         let event_log_scale = switcher.event_log_text_scale.clamp(75, 160);
+        let saved_colors_json =
+            serde_json::to_string(&switcher.saved_colors).unwrap_or_else(|_| "[]".to_string());
+        let used_colors_json = Self::collect_used_colors_json(&profiles);
         let autostart = is_kde_autostart_enabled();
         let rules_json = Self::serialize_rules(&switcher.rules, &profiles);
         let profiles_json = Self::serialize_profiles_summary(&profiles, &switcher.rules);
@@ -921,6 +972,9 @@ impl Default for DeviceControllerRust {
             web_api_test_busy: false,
             web_api_last_ok: true,
             web_api_last_result: QString::from(""),
+            app_launch_last_ok: true,
+            app_launch_last_result: QString::from(""),
+            installed_apps_json: QString::from("[]"),
             ui_text_scale: text_scale,
             sidebar_text_scale: sidebar_scale,
             canvas_text_scale: canvas_scale,
@@ -938,6 +992,8 @@ impl Default for DeviceControllerRust {
             log_file_path: QString::from(&log_path_str),
             event_log_json: QString::from(&init_log_json),
             event_log_count: init_log_count,
+            saved_colors_json: QString::from(&saved_colors_json),
+            used_colors_json: QString::from(&used_colors_json),
             copied_key_slot: None,
             firmware_download_url: String::new(),
             sd_root_path,
@@ -950,6 +1006,27 @@ impl Default for DeviceControllerRust {
 }
 
 impl DeviceControllerRust {
+    pub fn collect_used_colors_json(profiles: &[DuckyProfile]) -> String {
+        let mut seen: Vec<String> = Vec::new();
+        for prof in profiles {
+            let bg_hex = format!(
+                "#{:02x}{:02x}{:02x}",
+                prof.bg_color[0], prof.bg_color[1], prof.bg_color[2]
+            );
+            if !seen.iter().any(|c| c.eq_ignore_ascii_case(&bg_hex)) {
+                seen.push(bg_hex);
+            }
+            for slot in prof.slots.values() {
+                if let Some(rgb) = slot.custom_rgb {
+                    let hex = format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2]);
+                    if !seen.iter().any(|c| c.eq_ignore_ascii_case(&hex)) {
+                        seen.push(hex);
+                    }
+                }
+            }
+        }
+        serde_json::to_string(&seen).unwrap_or_else(|_| "[]".to_string())
+    }
     pub fn create_default_demo_profile() -> DuckyProfile {
         let mut profile = DuckyProfile {
             number: 1,
@@ -1092,6 +1169,8 @@ impl DeviceControllerRust {
                     || slot.on_press_script.contains("LOOP");
                 let has_web_api = has_web_api_config(&slot.on_press_script)
                     || has_web_api_config(&slot.on_release_script);
+                let has_app_launch = has_app_launch_config(&slot.on_press_script)
+                    || has_app_launch_config(&slot.on_release_script);
 
                 items.push(json!({
                     "slot": slot_idx,
@@ -1104,6 +1183,7 @@ impl DeviceControllerRust {
                     "hasRel": has_rel,
                     "hasLoop": has_loop,
                     "hasWebApi": has_web_api,
+                    "hasAppLaunch": has_app_launch,
                     "allowAbort": slot.allow_abort,
                     "disableAutorepeat": slot.disable_autorepeat,
                     "hasScript": has_script,
@@ -1125,6 +1205,7 @@ impl DeviceControllerRust {
                     "hasRel": false,
                     "hasLoop": false,
                     "hasWebApi": false,
+                    "hasAppLaunch": false,
                     "allowAbort": false,
                     "disableAutorepeat": false,
                     "hasScript": false,
@@ -1304,6 +1385,7 @@ impl qobject::DeviceController {
             self.as_mut()
                 .set_unsynced_changes_json(QString::from(&unsynced_json));
         }
+        self.as_mut().refresh_color_palettes();
         self.as_mut().sync_tray_state();
     }
 
@@ -4896,6 +4978,72 @@ impl qobject::DeviceController {
         );
     }
 
+    pub fn refresh_installed_apps(mut self: Pin<&mut Self>) -> QString {
+        let apps = scan_installed_desktop_apps();
+        let json_str = serde_json::to_string(&apps).unwrap_or_else(|_| "[]".to_string());
+        let qstr = QString::from(&json_str);
+        self.as_mut().set_installed_apps_json(qstr.clone());
+        qstr
+    }
+
+    pub fn extract_script_app_launch_json(&self, script: QString, slot_number: i32) -> QString {
+        let slot_idx = slot_number.clamp(1, MAX_INPUT_SLOTS as i32) as usize;
+        let cfg = extract_app_launch_config(&script.to_string(), slot_idx);
+        let json_str = serde_json::to_string(&cfg).unwrap_or_else(|_| "{}".to_string());
+        QString::from(&json_str)
+    }
+
+    pub fn apply_app_launch_to_script(
+        &self,
+        existing_script: QString,
+        config_json: QString,
+        slot_number: i32,
+        is_release: bool,
+    ) -> QString {
+        let slot_idx = slot_number.clamp(1, MAX_INPUT_SLOTS as i32) as usize;
+        let active_prof = (*self.active_profile()).clamp(1, 64) as u8;
+        let cfg: AppLaunchConfig =
+            serde_json::from_str(&config_json.to_string()).unwrap_or_default();
+        let updated = apply_app_launch_config_to_script(
+            &existing_script.to_string(),
+            &cfg,
+            active_prof,
+            slot_idx,
+            is_release,
+        );
+        QString::from(&updated)
+    }
+
+    pub fn test_app_launch(
+        mut self: Pin<&mut Self>,
+        config_json: QString,
+        slot_number: i32,
+    ) {
+        let slot_idx = slot_number.clamp(1, MAX_INPUT_SLOTS as i32) as usize;
+        let cfg: AppLaunchConfig = match serde_json::from_str(&config_json.to_string()) {
+            Ok(c) => c,
+            Err(e) => {
+                let err = format!("Invalid App Launch configuration on Key {slot_idx}: {e}");
+                record_system_event("ERROR", "APP_LAUNCH", &err);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_app_launch_last_ok(false);
+                self.as_mut().set_app_launch_last_result(QString::from(&err));
+                self.as_mut().set_status_message(QString::from(&err));
+                return;
+            }
+        };
+
+        let active_prof = (*self.active_profile()).clamp(1, 64) as u8;
+        let restore_rgb = self.lookup_slot_rgb(active_prof, slot_idx);
+        let source_label = format!("Test Launch (Profile #{active_prof}, Key {slot_idx})");
+        self.as_mut().dispatch_app_launch_execution(
+            cfg,
+            slot_idx,
+            restore_rgb,
+            &source_label,
+        );
+    }
+
     fn lookup_slot_rgb(&self, profile_num: u8, slot_idx: usize) -> [u8; 3] {
         let rust = self.rust();
         if let Some(prof) = rust
@@ -4924,7 +5072,8 @@ impl qobject::DeviceController {
             "0x{:08X}",
             encode_pgv31_trigger(encoded_prof, slot_num, is_release)
         );
-        let mut found: Option<(u8, String, String, WebApiConfig, [u8; 3])> = None;
+        let mut found_web: Option<(u8, String, String, WebApiConfig, [u8; 3])> = None;
+        let mut found_app: Option<(u8, String, String, AppLaunchConfig, [u8; 3])> = None;
 
         {
             let rust = self.rust();
@@ -4942,20 +5091,37 @@ impl qobject::DeviceController {
                         } else {
                             &slot.on_press_script
                         };
-                        let cfg = extract_web_api_config(script, slot_num);
-                        if cfg.enabled && !cfg.url.trim().is_empty() {
-                            let rgb = slot.custom_rgb.unwrap_or(prof.bg_color);
-                            let label = format!("{} {}", slot.label_line1, slot.label_line2)
-                                .trim()
-                                .to_string();
-                            found = Some((prof.number, prof.name.clone(), label, cfg, rgb));
+                        let rgb = slot.custom_rgb.unwrap_or(prof.bg_color);
+                        let label = format!("{} {}", slot.label_line1, slot.label_line2)
+                            .trim()
+                            .to_string();
+                        let web_cfg = extract_web_api_config(script, slot_num);
+                        if found_web.is_none() && web_cfg.enabled && !web_cfg.url.trim().is_empty() {
+                            found_web = Some((
+                                prof.number,
+                                prof.name.clone(),
+                                label.clone(),
+                                web_cfg,
+                                rgb,
+                            ));
+                        }
+                        let app_cfg = extract_app_launch_config(script, slot_num);
+                        if found_app.is_none()
+                            && app_cfg.enabled
+                            && app_cfg.trigger_mode == "pgv"
+                            && (!app_cfg.command.trim().is_empty()
+                                || !app_cfg.desktop_id.trim().is_empty())
+                        {
+                            found_app = Some((prof.number, prof.name.clone(), label, app_cfg, rgb));
+                        }
+                        if found_web.is_some() || found_app.is_some() {
                             break;
                         }
                     }
                 }
             }
 
-            if found.is_none() {
+            if found_web.is_none() && found_app.is_none() {
                 for prof in &rust.profiles {
                     if let Some(slot) = prof.slots.get(&slot_num) {
                         let script = if is_release {
@@ -4964,43 +5130,64 @@ impl qobject::DeviceController {
                             &slot.on_press_script
                         };
                         if script.contains(&trigger_hex) {
-                            let cfg = extract_web_api_config(script, slot_num);
-                            if cfg.enabled && !cfg.url.trim().is_empty() {
-                                let rgb = slot.custom_rgb.unwrap_or(prof.bg_color);
-                                let label = format!("{} {}", slot.label_line1, slot.label_line2)
-                                    .trim()
-                                    .to_string();
-                                found = Some((prof.number, prof.name.clone(), label, cfg, rgb));
+                            let rgb = slot.custom_rgb.unwrap_or(prof.bg_color);
+                            let label = format!("{} {}", slot.label_line1, slot.label_line2)
+                                .trim()
+                                .to_string();
+                            let web_cfg = extract_web_api_config(script, slot_num);
+                            if web_cfg.enabled && !web_cfg.url.trim().is_empty() {
+                                found_web = Some((
+                                    prof.number,
+                                    prof.name.clone(),
+                                    label.clone(),
+                                    web_cfg,
+                                    rgb,
+                                ));
+                            }
+                            let app_cfg = extract_app_launch_config(script, slot_num);
+                            if app_cfg.enabled
+                                && app_cfg.trigger_mode == "pgv"
+                                && (!app_cfg.command.trim().is_empty()
+                                    || !app_cfg.desktop_id.trim().is_empty())
+                            {
+                                found_app =
+                                    Some((prof.number, prof.name.clone(), label, app_cfg, rgb));
+                            }
+                            if found_web.is_some() || found_app.is_some() {
                                 break;
                             }
                         }
                     }
                 }
             }
-
-            if found.is_none() {
-                for prof in &rust.profiles {
-                    if let Some(slot) = prof.slots.get(&slot_num) {
-                        let script = if is_release {
-                            &slot.on_release_script
-                        } else {
-                            &slot.on_press_script
-                        };
-                        let cfg = extract_web_api_config(script, slot_num);
-                        if cfg.enabled && !cfg.url.trim().is_empty() {
-                            let rgb = slot.custom_rgb.unwrap_or(prof.bg_color);
-                            let label = format!("{} {}", slot.label_line1, slot.label_line2)
-                                .trim()
-                                .to_string();
-                            found = Some((prof.number, prof.name.clone(), label, cfg, rgb));
-                            break;
-                        }
-                    }
-                }
-            }
         }
 
-        if let Some((pnum, pname, label, cfg, restore_rgb)) = found {
+        let mut handled = false;
+        if let Some((pnum, pname, label, app_cfg, restore_rgb)) = found_app {
+            handled = true;
+            let source_label = if label.is_empty() {
+                format!("Profile #{pnum} '{pname}' Key {slot_num} ({phase})")
+            } else {
+                format!("Profile #{pnum} '{pname}' Key {slot_num} '{label}' ({phase})")
+            };
+            record_system_event(
+                "INFO",
+                "APP_LAUNCH",
+                format!(
+                    "Hardware PGV trigger received (_GV31 = {trigger_hex}) -> matched {source_label}"
+                ),
+            );
+            self.as_mut().sync_event_log_properties();
+            self.as_mut().dispatch_app_launch_execution(
+                app_cfg,
+                slot_num,
+                restore_rgb,
+                &source_label,
+            );
+        }
+
+        if let Some((pnum, pname, label, cfg, restore_rgb)) = found_web {
+            handled = true;
             let source_label = if label.is_empty() {
                 format!("Profile #{pnum} '{pname}' Key {slot_num} ({phase})")
             } else {
@@ -5016,12 +5203,14 @@ impl qobject::DeviceController {
             self.as_mut().sync_event_log_properties();
             self.as_mut()
                 .dispatch_web_api_execution(cfg, slot_num, restore_rgb, &source_label);
-        } else {
+        }
+
+        if !handled {
             record_system_event(
                 "WARN",
-                "WEB_API",
+                "APP_LAUNCH",
                 format!(
-                    "Hardware PGV trigger received (_GV31 = {trigger_hex}, Key {slot_num} {phase}, encoded Profile #{encoded_prof}) — no enabled Web API found on this slot"
+                    "Hardware PGV trigger received (_GV31 = {trigger_hex}, Key {slot_num} {phase}, active Profile #{active_prof}, encoded Profile #{encoded_prof}) — no enabled App Launch or Web API found on this slot"
                 ),
             );
             self.as_mut().sync_event_log_properties();
@@ -5030,7 +5219,8 @@ impl qobject::DeviceController {
 
     fn handle_hardware_fkey_web_api_trigger(mut self: Pin<&mut Self>, fkey_name: &str) {
         let active_prof = (*self.active_profile()).clamp(1, 64) as u8;
-        let mut found: Option<(u8, String, usize, String, WebApiConfig, [u8; 3])> = None;
+        let mut found_web: Option<(u8, String, usize, String, WebApiConfig, [u8; 3])> = None;
+        let mut found_app: Option<(u8, String, usize, String, AppLaunchConfig, [u8; 3])> = None;
 
         {
             let rust = self.rust();
@@ -5042,35 +5232,74 @@ impl qobject::DeviceController {
             {
                 for (&slot_num, slot) in &prof.slots {
                     for script in [&slot.on_press_script, &slot.on_release_script] {
-                        let cfg = extract_web_api_config(script, slot_num);
-                        if cfg.enabled
-                            && cfg.trigger_mode == "fkey"
-                            && cfg.fkey.eq_ignore_ascii_case(fkey_name)
-                            && !cfg.url.trim().is_empty()
-                        {
-                            let rgb = slot.custom_rgb.unwrap_or(prof.bg_color);
-                            let label = format!("{} {}", slot.label_line1, slot.label_line2)
-                                .trim()
-                                .to_string();
-                            found = Some((
-                                prof.number,
-                                prof.name.clone(),
-                                slot_num,
-                                label,
-                                cfg,
-                                rgb,
-                            ));
-                            break;
+                        let rgb = slot.custom_rgb.unwrap_or(prof.bg_color);
+                        let label = format!("{} {}", slot.label_line1, slot.label_line2)
+                            .trim()
+                            .to_string();
+                        if found_web.is_none() {
+                            let cfg = extract_web_api_config(script, slot_num);
+                            if cfg.enabled
+                                && cfg.trigger_mode == "fkey"
+                                && cfg.fkey.eq_ignore_ascii_case(fkey_name)
+                                && !cfg.url.trim().is_empty()
+                            {
+                                found_web = Some((
+                                    prof.number,
+                                    prof.name.clone(),
+                                    slot_num,
+                                    label.clone(),
+                                    cfg,
+                                    rgb,
+                                ));
+                            }
+                        }
+                        if found_app.is_none() {
+                            let app_cfg = extract_app_launch_config(script, slot_num);
+                            if app_cfg.enabled
+                                && app_cfg.trigger_mode == "fkey"
+                                && app_cfg.fkey.eq_ignore_ascii_case(fkey_name)
+                                && (!app_cfg.command.trim().is_empty()
+                                    || !app_cfg.desktop_id.trim().is_empty())
+                            {
+                                found_app = Some((
+                                    prof.number,
+                                    prof.name.clone(),
+                                    slot_num,
+                                    label,
+                                    app_cfg,
+                                    rgb,
+                                ));
+                            }
                         }
                     }
-                    if found.is_some() {
+                    if found_web.is_some() || found_app.is_some() {
                         break;
                     }
                 }
             }
         }
 
-        if let Some((pnum, pname, slot_num, label, cfg, restore_rgb)) = found {
+        if let Some((pnum, pname, slot_num, label, app_cfg, restore_rgb)) = found_app {
+            let source_label = if label.is_empty() {
+                format!("Profile #{pnum} '{pname}' Key {slot_num} ({fkey_name})")
+            } else {
+                format!("Profile #{pnum} '{pname}' Key {slot_num} '{label}' ({fkey_name})")
+            };
+            record_system_event(
+                "INFO",
+                "APP_LAUNCH",
+                format!("Hardware sentinel key {fkey_name} intercepted -> matched {source_label}"),
+            );
+            self.as_mut().sync_event_log_properties();
+            self.as_mut().dispatch_app_launch_execution(
+                app_cfg,
+                slot_num,
+                restore_rgb,
+                &source_label,
+            );
+        }
+
+        if let Some((pnum, pname, slot_num, label, cfg, restore_rgb)) = found_web {
             let source_label = if label.is_empty() {
                 format!("Profile #{pnum} '{pname}' Key {slot_num} ({fkey_name})")
             } else {
@@ -5084,6 +5313,48 @@ impl qobject::DeviceController {
             self.as_mut().sync_event_log_properties();
             self.as_mut()
                 .dispatch_web_api_execution(cfg, slot_num, restore_rgb, &source_label);
+        }
+    }
+
+    fn dispatch_app_launch_execution(
+        mut self: Pin<&mut Self>,
+        cfg: AppLaunchConfig,
+        slot_num: usize,
+        restore_rgb: [u8; 3],
+        source_label: &str,
+    ) {
+        let result = execute_app_launch(&cfg);
+        let ok = result.ok;
+        let log_lvl = if ok { "INFO" } else { "ERROR" };
+        record_system_event(
+            log_lvl,
+            "APP_LAUNCH",
+            format!(
+                "{source_label} -> {} [cmd: {}]",
+                result.summary, result.command_line
+            ),
+        );
+        let summary_msg = if ok {
+            format!("🚀 {source_label}: {}", result.summary)
+        } else {
+            format!("⚠ {source_label}: {}", result.summary)
+        };
+        self.as_mut().set_app_launch_last_ok(ok);
+        self.as_mut()
+            .set_app_launch_last_result(QString::from(&summary_msg));
+        self.as_mut()
+            .set_status_message(QString::from(&summary_msg));
+        self.as_mut().sync_event_log_properties();
+
+        if cfg.led_feedback && (1..=20).contains(&slot_num) {
+            std::thread::spawn(move || {
+                let Ok(rt) = tokio::runtime::Runtime::new() else {
+                    return;
+                };
+                rt.block_on(async move {
+                    flash_slot_led_feedback(slot_num, ok, restore_rgb).await;
+                });
+            });
         }
     }
 
@@ -5220,10 +5491,15 @@ impl qobject::DeviceController {
         if trimmed.is_empty() {
             return;
         }
-        // Web API calls log structured entries directly in dispatch_web_api_execution
+        // Web API and App Launch log structured entries directly in dispatch_*_execution
         if trimmed.starts_with("🌐 ")
+            || trimmed.starts_with("🚀 ")
             || ((trimmed.starts_with("✓ ") || trimmed.starts_with("⚠ "))
-                && (trimmed.contains("Test Web API") || trimmed.contains(": HTTP ")))
+                && (trimmed.contains("Test Web API")
+                    || trimmed.contains("Test Launch")
+                    || trimmed.contains(": HTTP ")
+                    || trimmed.contains(": Launched ")
+                    || trimmed.contains(": Failed to start ")))
         {
             self.as_mut().sync_event_log_properties();
             return;
@@ -5326,5 +5602,76 @@ impl qobject::DeviceController {
             }
         }
         QString::from(&lines.join("\n"))
+    }
+
+    pub fn refresh_color_palettes(mut self: Pin<&mut Self>) {
+        let (saved_json, used_json) = {
+            let rust = self.rust();
+            let saved = rust
+                .switcher_state
+                .lock()
+                .map(|sw| sw.saved_colors.clone())
+                .unwrap_or_default();
+            let s_json = serde_json::to_string(&saved).unwrap_or_else(|_| "[]".to_string());
+            let u_json = DeviceControllerRust::collect_used_colors_json(&rust.profiles);
+            (s_json, u_json)
+        };
+        if self.saved_colors_json().to_string() != saved_json {
+            self.as_mut()
+                .set_saved_colors_json(QString::from(&saved_json));
+        }
+        if self.used_colors_json().to_string() != used_json {
+            self.as_mut()
+                .set_used_colors_json(QString::from(&used_json));
+        }
+    }
+
+    pub fn save_palette_color(mut self: Pin<&mut Self>, hex_color: QString) {
+        let raw = hex_color.to_string();
+        let trimmed = raw.trim().to_ascii_lowercase();
+        let normalized = if trimmed.starts_with('#') {
+            trimmed
+        } else {
+            format!("#{trimmed}")
+        };
+        if normalized.len() != 7
+            || !normalized[1..].chars().all(|c| c.is_ascii_hexdigit())
+        {
+            return;
+        }
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                if !sw
+                    .saved_colors
+                    .iter()
+                    .any(|c| c.eq_ignore_ascii_case(&normalized))
+                {
+                    sw.saved_colors.push(normalized);
+                    let _ = sw.save_to_disk();
+                }
+            }
+        }
+        self.as_mut().refresh_color_palettes();
+    }
+
+    pub fn remove_palette_color(mut self: Pin<&mut Self>, hex_color: QString) {
+        let raw = hex_color.to_string();
+        let target = raw.trim().to_ascii_lowercase();
+        if target.is_empty() {
+            return;
+        }
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                let before = sw.saved_colors.len();
+                sw.saved_colors
+                    .retain(|c| !c.eq_ignore_ascii_case(&target));
+                if sw.saved_colors.len() != before {
+                    let _ = sw.save_to_disk();
+                }
+            }
+        }
+        self.as_mut().refresh_color_palettes();
     }
 }

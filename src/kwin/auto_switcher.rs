@@ -47,6 +47,21 @@ fn default_ui_text_scale() -> i32 {
     100
 }
 
+pub fn default_saved_colors() -> Vec<String> {
+    vec![
+        "#00aaff".to_string(),
+        "#ff3b30".to_string(),
+        "#ff9500".to_string(),
+        "#ffcc00".to_string(),
+        "#34c759".to_string(),
+        "#00c7be".to_string(),
+        "#5856d6".to_string(),
+        "#af52de".to_string(),
+        "#ff2d55".to_string(),
+        "#ffffff".to_string(),
+    ]
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedSwitcherConfig {
     pub enabled: bool,
@@ -72,6 +87,8 @@ pub struct PersistedSwitcherConfig {
     pub status_bar_text_scale: i32,
     #[serde(default = "default_ui_text_scale")]
     pub event_log_text_scale: i32,
+    #[serde(default = "default_saved_colors")]
+    pub saved_colors: Vec<String>,
 }
 
 pub struct SwitcherState {
@@ -89,6 +106,7 @@ pub struct SwitcherState {
     pub editor_text_scale: i32,
     pub status_bar_text_scale: i32,
     pub event_log_text_scale: i32,
+    pub saved_colors: Vec<String>,
     pub last_switched_profile: u8,
     pub picker_armed: bool,
     pub loaded_from_disk: bool,
@@ -105,6 +123,11 @@ impl Default for SwitcherState {
                 "dark" | "light" | "system" => cfg.app_theme_mode,
                 _ => "system".to_string(),
             };
+            let saved_colors = if cfg.saved_colors.is_empty() {
+                default_saved_colors()
+            } else {
+                cfg.saved_colors
+            };
             return Self {
                 enabled: cfg.enabled,
                 paused_for_editing: false,
@@ -120,6 +143,7 @@ impl Default for SwitcherState {
                 editor_text_scale: cfg.editor_text_scale.clamp(75, 160),
                 status_bar_text_scale: cfg.status_bar_text_scale.clamp(75, 160),
                 event_log_text_scale: cfg.event_log_text_scale.clamp(75, 160),
+                saved_colors,
                 last_switched_profile: 0,
                 picker_armed: false,
                 loaded_from_disk: true,
@@ -163,6 +187,7 @@ impl Default for SwitcherState {
             editor_text_scale: 100,
             status_bar_text_scale: 100,
             event_log_text_scale: 100,
+            saved_colors: default_saved_colors(),
             last_switched_profile: 0,
             picker_armed: false,
             loaded_from_disk: false,
@@ -206,6 +231,7 @@ impl SwitcherState {
             editor_text_scale: self.editor_text_scale.clamp(75, 160),
             status_bar_text_scale: self.status_bar_text_scale.clamp(75, 160),
             event_log_text_scale: self.event_log_text_scale.clamp(75, 160),
+            saved_colors: self.saved_colors.clone(),
         };
         let json = serde_json::to_string_pretty(&payload)
             .map_err(|e| format!("Failed serializing KWin rules: {e}"))?;

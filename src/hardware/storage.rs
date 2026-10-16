@@ -2555,6 +2555,248 @@ pub fn apply_web_api_config_to_script(
     out
 }
 
+pub const APP_LAUNCH_META_PREFIX: &str = "// @DUCKYDECK_APP_LAUNCH: ";
+pub const APP_LAUNCH_BLOCK_BEGIN: &str = "// BEGIN_DUCKYDECK_APP_LAUNCH";
+pub const APP_LAUNCH_BLOCK_END: &str = "// END_DUCKYDECK_APP_LAUNCH";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AppLaunchConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub app_name: String,
+    #[serde(default)]
+    pub desktop_id: String,
+    #[serde(default)]
+    pub command: String,
+    #[serde(default)]
+    pub args: String,
+    #[serde(default)]
+    pub working_dir: String,
+    #[serde(default)]
+    pub run_in_terminal: bool,
+    #[serde(default)]
+    pub oled_text: String,
+    #[serde(default = "default_web_api_led_feedback")]
+    pub led_feedback: bool,
+    #[serde(default = "default_web_api_trigger_mode")]
+    pub trigger_mode: String,
+    #[serde(default = "default_web_api_fkey")]
+    pub fkey: String,
+}
+
+impl Default for AppLaunchConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            app_name: String::new(),
+            desktop_id: String::new(),
+            command: String::new(),
+            args: String::new(),
+            working_dir: String::new(),
+            run_in_terminal: false,
+            oled_text: String::new(),
+            led_feedback: true,
+            trigger_mode: default_web_api_trigger_mode(),
+            fkey: default_web_api_fkey(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledDesktopApp {
+    pub name: String,
+    pub desktop_id: String,
+    pub exec_command: String,
+    pub exec_args: String,
+    pub icon: String,
+    pub comment: String,
+    pub categories: String,
+    pub terminal: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppLaunchExecutionResult {
+    pub ok: bool,
+    pub pid: u32,
+    pub summary: String,
+    pub command_line: String,
+}
+
+pub fn extract_app_launch_config(script: &str, slot_num: usize) -> AppLaunchConfig {
+    for line in script.lines() {
+        let trimmed = line.trim();
+        if let Some(json_part) = trimmed.strip_prefix(APP_LAUNCH_META_PREFIX) {
+            if let Ok(mut cfg) = serde_json::from_str::<AppLaunchConfig>(json_part.trim()) {
+                if !matches!(
+                    cfg.trigger_mode.as_str(),
+                    "pgv" | "fkey" | "krunner" | "guir"
+                ) {
+                    cfg.trigger_mode = "pgv".to_string();
+                }
+                if cfg.fkey.trim().is_empty() {
+                    cfg.fkey = default_fkey_for_slot(slot_num);
+                }
+                if cfg.command.trim().is_empty() && !cfg.desktop_id.trim().is_empty() {
+                    let target_id = cfg.desktop_id.trim();
+                    if let Some(found) = scan_installed_desktop_apps()
+                        .into_iter()
+                        .find(|a| a.desktop_id.eq_ignore_ascii_case(target_id))
+                    {
+                        cfg.command = found.exec_command;
+                        if cfg.args.trim().is_empty() && !found.exec_args.trim().is_empty() {
+                            cfg.args = found.exec_args;
+                        }
+                        if cfg.app_name.trim().is_empty() {
+                            cfg.app_name = found.name;
+                        }
+                    } else {
+                        cfg.command = format!("gtk-launch {target_id}");
+                    }
+                }
+                return cfg;
+            }
+        }
+    }
+    AppLaunchConfig {
+        fkey: default_fkey_for_slot(slot_num),
+        ..Default::default()
+    }
+}
+
+pub fn has_app_launch_config(script: &str) -> bool {
+    for line in script.lines() {
+        let trimmed = line.trim();
+        if let Some(json_part) = trimmed.strip_prefix(APP_LAUNCH_META_PREFIX) {
+            if let Ok(cfg) = serde_json::from_str::<AppLaunchConfig>(json_part.trim()) {
+                if cfg.enabled
+                    && (!cfg.command.trim().is_empty() || !cfg.desktop_id.trim().is_empty())
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+pub fn strip_app_launch_from_script(script: &str) -> String {
+    let mut out_lines = Vec::new();
+    let mut inside_block = false;
+    for line in script.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with(APP_LAUNCH_META_PREFIX) {
+            continue;
+        }
+        if trimmed == APP_LAUNCH_BLOCK_BEGIN {
+            inside_block = true;
+            continue;
+        }
+        if trimmed == APP_LAUNCH_BLOCK_END {
+            inside_block = false;
+            continue;
+        }
+        if !inside_block {
+            out_lines.push(line);
+        }
+    }
+    let joined = out_lines.join("\n");
+    let clean = joined.trim_start_matches('\n');
+    if clean.is_empty() {
+        String::new()
+    } else if clean.ends_with('\n') {
+        clean.to_string()
+    } else {
+        format!("{clean}\n")
+    }
+}
+
+pub fn apply_app_launch_config_to_script(
+    existing_script: &str,
+    cfg: &AppLaunchConfig,
+    profile_num: u8,
+    slot_num: usize,
+    is_release: bool,
+) -> String {
+    let remainder = strip_app_launch_from_script(existing_script);
+    if !cfg.enabled {
+        return remainder;
+    }
+
+    let mut normalized = cfg.clone();
+    normalized.command = normalized.command.trim().to_string();
+    normalized.args = normalized.args.trim().to_string();
+    normalized.working_dir = normalized.working_dir.trim().to_string();
+    if !matches!(
+        normalized.trigger_mode.as_str(),
+        "pgv" | "fkey" | "krunner" | "guir"
+    ) {
+        normalized.trigger_mode = "pgv".to_string();
+    }
+    let valid_fkey = {
+        let up = normalized.fkey.trim().to_ascii_uppercase();
+        if matches!(
+            up.as_str(),
+            "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24"
+        ) {
+            up
+        } else {
+            default_fkey_for_slot(slot_num)
+        }
+    };
+    normalized.fkey = valid_fkey.clone();
+
+    let meta_json = serde_json::to_string(&normalized).unwrap_or_else(|_| "{}".to_string());
+    let trigger_code = encode_pgv31_trigger(profile_num, slot_num, is_release);
+
+    let mut out = String::new();
+    out.push_str(&format!("{APP_LAUNCH_META_PREFIX}{meta_json}\n"));
+    out.push_str(&format!("{APP_LAUNCH_BLOCK_BEGIN}\n"));
+
+    let oled_clean = normalized.oled_text.trim();
+    if !oled_clean.is_empty() {
+        out.push_str("OLED_CLEAR\n");
+        out.push_str(&format!("OLED_CPRINT {oled_clean}\n"));
+        out.push_str("OLED_UPDATE\n");
+    }
+
+    let full_cmd = if normalized.args.is_empty() {
+        normalized.command.clone()
+    } else {
+        format!("{} {}", normalized.command, normalized.args)
+    };
+
+    match normalized.trigger_mode.as_str() {
+        "fkey" => {
+            out.push_str(&format!("CONTROL ALT SHIFT {valid_fkey}\n"));
+        }
+        "krunner" => {
+            out.push_str("ALT SPACE\nDELAY 250\n");
+            if !full_cmd.is_empty() {
+                out.push_str(&format!("STRINGLN {full_cmd}\n"));
+            }
+        }
+        "guir" => {
+            out.push_str("GUI r\nDELAY 250\n");
+            if !full_cmd.is_empty() {
+                out.push_str(&format!("STRINGLN {full_cmd}\n"));
+            }
+        }
+        _ => {
+            out.push_str(&format!("$_GV31 = 0x{trigger_code:08X}\n"));
+        }
+    }
+
+    out.push_str(&format!("{APP_LAUNCH_BLOCK_END}\n"));
+    if !remainder.trim().is_empty() {
+        out.push_str(&remainder);
+    }
+    out
+}
+
 pub fn sync_profile_web_api_triggers(profiles: &mut [DuckyProfile]) -> bool {
     let mut changed = false;
     for prof in profiles.iter_mut() {
@@ -2577,6 +2819,34 @@ pub fn sync_profile_web_api_triggers(profiles: &mut [DuckyProfile]) -> bool {
             if has_web_api_config(&slot.on_release_script) {
                 let cfg = extract_web_api_config(&slot.on_release_script, slot_num);
                 let updated = apply_web_api_config_to_script(
+                    &slot.on_release_script,
+                    &cfg,
+                    pnum,
+                    slot_num,
+                    true,
+                );
+                if updated != slot.on_release_script {
+                    slot.on_release_script = updated;
+                    changed = true;
+                }
+            }
+            if has_app_launch_config(&slot.on_press_script) {
+                let cfg = extract_app_launch_config(&slot.on_press_script, slot_num);
+                let updated = apply_app_launch_config_to_script(
+                    &slot.on_press_script,
+                    &cfg,
+                    pnum,
+                    slot_num,
+                    false,
+                );
+                if updated != slot.on_press_script {
+                    slot.on_press_script = updated;
+                    changed = true;
+                }
+            }
+            if has_app_launch_config(&slot.on_release_script) {
+                let cfg = extract_app_launch_config(&slot.on_release_script, slot_num);
+                let updated = apply_app_launch_config_to_script(
                     &slot.on_release_script,
                     &cfg,
                     pnum,
@@ -2959,5 +3229,415 @@ impl DuckypadEvdevListener {
         triggered
     }
 }
+
+pub fn split_shell_words(input: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut current = String::new();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut escaped = false;
+
+    for ch in input.chars() {
+        if escaped {
+            current.push(ch);
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' && !in_single {
+            escaped = true;
+            continue;
+        }
+        if ch == '\'' && !in_double {
+            in_single = !in_single;
+            continue;
+        }
+        if ch == '"' && !in_single {
+            in_double = !in_double;
+            continue;
+        }
+        if ch.is_whitespace() && !in_single && !in_double {
+            if !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
+        } else {
+            current.push(ch);
+        }
+    }
+    if !current.is_empty() {
+        words.push(current);
+    }
+    words
+}
+
+fn expand_tilde_str(input: &str) -> String {
+    let trimmed = input.trim();
+    if trimmed == "~" {
+        if let Ok(home) = std::env::var("HOME") {
+            return home;
+        }
+    } else if let Some(rest) = trimmed.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            return format!("{}/{rest}", home.trim_end_matches('/'));
+        }
+    }
+    trimmed.to_string()
+}
+
+fn clean_desktop_exec(raw_exec: &str, desktop_id: &str) -> (String, String) {
+    let tokens = split_shell_words(raw_exec);
+    let mut filtered: Vec<String> = Vec::new();
+    let mut skip_file_forwarding_block = false;
+    for tok in tokens {
+        if tok == "@@u" || tok == "@@" {
+            skip_file_forwarding_block = !skip_file_forwarding_block;
+            continue;
+        }
+        if tok.starts_with('%') && tok.len() == 2 {
+            continue;
+        }
+        if !tok.is_empty() {
+            filtered.push(tok);
+        }
+    }
+    if filtered.is_empty() {
+        return (String::new(), String::new());
+    }
+
+    let first_bin = Path::new(&filtered[0])
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(filtered[0].as_str());
+    if first_bin == "flatpak" && filtered.get(1).map(|s| s.as_str()) == Some("run") {
+        let app_id = desktop_id.trim_end_matches(".desktop");
+        if !app_id.is_empty() && app_id.contains('.') {
+            return ("flatpak".to_string(), format!("run {app_id}"));
+        }
+    }
+
+    let cmd = filtered.remove(0);
+    let args = filtered.join(" ");
+    (cmd, args)
+}
+
+pub fn scan_installed_desktop_apps() -> Vec<InstalledDesktopApp> {
+    let mut search_dirs: Vec<PathBuf> = Vec::new();
+    if let Ok(home) = std::env::var("HOME") {
+        search_dirs.push(PathBuf::from(&home).join(".local/share/applications"));
+        search_dirs.push(PathBuf::from(&home).join(".local/share/flatpak/exports/share/applications"));
+    }
+    if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
+        for part in xdg_data.split(':') {
+            let p = part.trim();
+            if !p.is_empty() && p != "." {
+                let cand = PathBuf::from(p).join("applications");
+                if !search_dirs.contains(&cand) {
+                    search_dirs.push(cand);
+                }
+            }
+        }
+    }
+    for sys_dir in [
+        "/var/lib/flatpak/exports/share/applications",
+        "/var/lib/snapd/desktop/applications",
+        "/usr/local/share/applications",
+        "/usr/share/applications",
+    ] {
+        let p = PathBuf::from(sys_dir);
+        if !search_dirs.contains(&p) {
+            search_dirs.push(p);
+        }
+    }
+
+    let mut seen_ids = std::collections::HashSet::new();
+    let mut seen_names = std::collections::HashSet::new();
+    let mut apps = Vec::new();
+
+    for dir in search_dirs {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(fname) = path.file_name().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            if !fname.ends_with(".desktop") {
+                continue;
+            }
+            let desktop_id = fname.to_string();
+            if !seen_ids.insert(desktop_id.to_ascii_lowercase()) {
+                continue;
+            }
+
+            let Ok(content) = fs::read_to_string(&path) else {
+                continue;
+            };
+
+            let mut in_entry = false;
+            let mut name = String::new();
+            let mut exec_raw = String::new();
+            let mut icon = String::new();
+            let mut comment = String::new();
+            let mut categories = String::new();
+            let mut no_display = false;
+            let mut hidden = false;
+            let mut terminal = false;
+            let mut entry_type = String::new();
+
+            for line in content.lines() {
+                let l = line.trim();
+                if l.is_empty() || l.starts_with('#') {
+                    continue;
+                }
+                if l.starts_with('[') {
+                    if in_entry {
+                        break;
+                    }
+                    in_entry = l == "[Desktop Entry]";
+                    continue;
+                }
+                if !in_entry {
+                    continue;
+                }
+                if let Some(v) = l.strip_prefix("Name=") {
+                    if name.is_empty() {
+                        name = v.trim().to_string();
+                    }
+                } else if let Some(v) = l.strip_prefix("Exec=") {
+                    if exec_raw.is_empty() {
+                        exec_raw = v.trim().to_string();
+                    }
+                } else if let Some(v) = l.strip_prefix("Icon=") {
+                    if icon.is_empty() {
+                        icon = v.trim().to_string();
+                    }
+                } else if let Some(v) = l.strip_prefix("Comment=") {
+                    if comment.is_empty() {
+                        comment = v.trim().to_string();
+                    }
+                } else if let Some(v) = l.strip_prefix("GenericName=") {
+                    if comment.is_empty() {
+                        comment = v.trim().to_string();
+                    }
+                } else if let Some(v) = l.strip_prefix("Categories=") {
+                    categories = v.trim().to_string();
+                } else if let Some(v) = l.strip_prefix("Type=") {
+                    entry_type = v.trim().to_string();
+                } else if let Some(v) = l.strip_prefix("NoDisplay=") {
+                    no_display = v.trim().eq_ignore_ascii_case("true");
+                } else if let Some(v) = l.strip_prefix("Hidden=") {
+                    hidden = v.trim().eq_ignore_ascii_case("true");
+                } else if let Some(v) = l.strip_prefix("Terminal=") {
+                    terminal = v.trim().eq_ignore_ascii_case("true");
+                }
+            }
+
+            if no_display || hidden || name.is_empty() || exec_raw.is_empty() {
+                continue;
+            }
+            if !entry_type.is_empty() && !entry_type.eq_ignore_ascii_case("Application") {
+                continue;
+            }
+
+            let (exec_command, exec_args) = clean_desktop_exec(&exec_raw, &desktop_id);
+            if exec_command.is_empty() {
+                continue;
+            }
+
+            let dedup_key = format!(
+                "{}|{}|{}",
+                name.to_ascii_lowercase(),
+                exec_command.to_ascii_lowercase(),
+                exec_args.to_ascii_lowercase()
+            );
+            if !seen_names.insert(dedup_key) {
+                continue;
+            }
+
+            if icon.is_empty() {
+                icon = "application-x-executable".to_string();
+            }
+
+            apps.push(InstalledDesktopApp {
+                name,
+                desktop_id,
+                exec_command,
+                exec_args,
+                icon,
+                comment,
+                categories,
+                terminal,
+            });
+        }
+    }
+
+    apps.sort_by(|a, b| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()));
+    apps
+}
+
+fn find_terminal_emulator() -> Option<(String, Vec<String>)> {
+    let candidates: &[(&str, &[&str])] = &[
+        ("konsole", &["-e"]),
+        ("xdg-terminal-exec", &[]),
+        ("ptyxis", &["--"]),
+        ("kgx", &["--"]),
+        ("gnome-terminal", &["--"]),
+        ("alacritty", &["-e"]),
+        ("kitty", &[]),
+        ("wezterm", &["start", "--"]),
+        ("xfce4-terminal", &["-x"]),
+        ("xterm", &["-e"]),
+    ];
+    let path_var = std::env::var("PATH").unwrap_or_default();
+    for &(bin, flags) in candidates {
+        for dir in path_var.split(':') {
+            if dir.is_empty() {
+                continue;
+            }
+            let full = Path::new(dir).join(bin);
+            if full.is_file() {
+                return Some((
+                    bin.to_string(),
+                    flags.iter().map(|s| (*s).to_string()).collect(),
+                ));
+            }
+        }
+    }
+    None
+}
+
+pub fn execute_app_launch(cfg: &AppLaunchConfig) -> AppLaunchExecutionResult {
+    use std::process::{Command, Stdio};
+
+    let mut effective_cmd = cfg.command.trim().to_string();
+    let mut effective_args = cfg.args.trim().to_string();
+
+    if effective_cmd.is_empty() && !cfg.desktop_id.trim().is_empty() {
+        let target_id = cfg.desktop_id.trim();
+        if let Some(found) = scan_installed_desktop_apps()
+            .into_iter()
+            .find(|a| a.desktop_id.eq_ignore_ascii_case(target_id))
+        {
+            effective_cmd = found.exec_command;
+            if effective_args.is_empty() && !found.exec_args.trim().is_empty() {
+                effective_args = found.exec_args;
+            }
+        } else {
+            effective_cmd = format!("gtk-launch {target_id}");
+        }
+    }
+
+    let raw_cmd = effective_cmd.trim();
+    if raw_cmd.is_empty() {
+        return AppLaunchExecutionResult {
+            ok: false,
+            pid: 0,
+            summary: "Error: Application command is empty".to_string(),
+            command_line: String::new(),
+        };
+    }
+
+    let raw_args = effective_args.trim();
+    let full_cmd_display = if raw_args.is_empty() {
+        raw_cmd.to_string()
+    } else {
+        format!("{raw_cmd} {raw_args}")
+    };
+
+    let needs_shell = full_cmd_display.contains('|')
+        || full_cmd_display.contains("&&")
+        || full_cmd_display.contains("||")
+        || full_cmd_display.contains(';')
+        || full_cmd_display.contains('>')
+        || full_cmd_display.contains('<')
+        || full_cmd_display.contains('$');
+
+    let mut tokens: Vec<String> = if needs_shell {
+        vec![
+            "sh".to_string(),
+            "-c".to_string(),
+            full_cmd_display.clone(),
+        ]
+    } else {
+        let mut t = split_shell_words(raw_cmd);
+        if !raw_args.is_empty() {
+            t.extend(split_shell_words(raw_args));
+        }
+        t.into_iter().map(|tok| expand_tilde_str(&tok)).collect()
+    };
+
+    if tokens.is_empty() {
+        return AppLaunchExecutionResult {
+            ok: false,
+            pid: 0,
+            summary: "Error: Unable to parse command".to_string(),
+            command_line: full_cmd_display,
+        };
+    }
+
+    if cfg.run_in_terminal {
+        if let Some((term_bin, mut term_flags)) = find_terminal_emulator() {
+            term_flags.extend(tokens);
+            let mut new_tokens = vec![term_bin];
+            new_tokens.extend(term_flags);
+            tokens = new_tokens;
+        }
+    }
+
+    let program = tokens.remove(0);
+    let mut cmd = Command::new(&program);
+    cmd.args(&tokens)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    let work_dir = expand_tilde_str(&cfg.working_dir);
+    if !work_dir.is_empty() {
+        let p = Path::new(&work_dir);
+        if p.is_dir() {
+            cmd.current_dir(p);
+        } else {
+            return AppLaunchExecutionResult {
+                ok: false,
+                pid: 0,
+                summary: format!("Working directory does not exist: {work_dir}"),
+                command_line: full_cmd_display,
+            };
+        }
+    } else if let Ok(home) = std::env::var("HOME") {
+        let hp = Path::new(&home);
+        if hp.is_dir() {
+            cmd.current_dir(hp);
+        }
+    }
+
+    let display_name = if !cfg.app_name.trim().is_empty() {
+        cfg.app_name.trim().to_string()
+    } else {
+        program.clone()
+    };
+
+    match cmd.spawn() {
+        Ok(mut child) => {
+            let pid = child.id();
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+            AppLaunchExecutionResult {
+                ok: true,
+                pid,
+                summary: format!("Launched '{display_name}' (PID {pid})"),
+                command_line: full_cmd_display,
+            }
+        }
+        Err(e) => AppLaunchExecutionResult {
+            ok: false,
+            pid: 0,
+            summary: format!("Failed to start '{display_name}': {e}"),
+            command_line: full_cmd_display,
+        },
+    }
+}
+
 
 

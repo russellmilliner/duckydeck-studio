@@ -27,6 +27,8 @@ Item {
     signal beforeSlotMutationRequested()
     signal slotContentMutated(int newSelectedSlot)
     signal renameProfileRequested(int profileNumber, string currentName)
+    signal keyColorPickerRequested(int slotNumber, string currentColorHex)
+    signal profileDefaultColorPickerRequested(int profileNumber, string profileName, string currentColorHex)
 
     property int contextMenuSlot: 1
     property int draggingSlot: -1
@@ -68,7 +70,8 @@ Item {
                     b: 255,
                     hasRel: false,
                     hasLoop: false,
-                    hasWebApi: false
+                    hasWebApi: false,
+                    hasAppLaunch: false
                 })
             }
             canvasRoot.syncProfilesFromController()
@@ -153,6 +156,7 @@ Item {
                     keyModel.setProperty(s - 1, "hasRel", !!item.hasRel)
                     keyModel.setProperty(s - 1, "hasLoop", !!item.hasLoop)
                     keyModel.setProperty(s - 1, "hasWebApi", !!item.hasWebApi)
+                    keyModel.setProperty(s - 1, "hasAppLaunch", !!item.hasAppLaunch)
                 } else if (s === 21) {
                     canvasRoot.enc1CcwLabel = formatEncoderLabel(item, "CCW")
                 } else if (s === 22) {
@@ -302,10 +306,13 @@ Item {
         QQC2.MenuItem {
             visible: canvasRoot.contextMenuSlot >= 1 && canvasRoot.contextMenuSlot <= 20
             icon.name: "color-picker"
-            text: qsTr("Set Key %1 RGB Color (SWCOLOR)...").arg(canvasRoot.contextMenuSlot)
+            text: qsTr("Set Key %1 Color").arg(canvasRoot.contextMenuSlot)
             onTriggered: {
                 canvasRoot.selectedSlot = canvasRoot.contextMenuSlot
-                rgbPickerDialog.open()
+                canvasRoot.keyColorPickerRequested(
+                    canvasRoot.contextMenuSlot,
+                    canvasRoot.slotColorFor(canvasRoot.contextMenuSlot).toString()
+                )
             }
         }
 
@@ -317,41 +324,6 @@ Item {
                 ? qsTr("Clear / Reset Key %1").arg(canvasRoot.contextMenuSlot)
                 : qsTr("Clear / Reset Slot %1").arg(canvasRoot.contextMenuSlot)
             onTriggered: canvasRoot.clearSlotAction(canvasRoot.contextMenuSlot)
-        }
-    }
-
-    ColorDialog {
-        id: rgbPickerDialog
-        title: qsTr("Select North-Facing ARGB LED Color for Key %1").arg(canvasRoot.selectedSlot)
-        onAccepted: {
-            const c = selectedColor
-            canvasRoot.updateSelectedKeyRgb(
-                Math.round(c.r * 255),
-                Math.round(c.g * 255),
-                Math.round(c.b * 255)
-            )
-        }
-    }
-
-    ColorDialog {
-        id: profileBgColorDialog
-        title: canvasRoot.controller
-            ? qsTr("Select Default LED Color (BG_COLOR) for Profile #%1 (%2)").arg(canvasRoot.controller.activeProfile).arg(canvasRoot.controller.activeProfileName)
-            : qsTr("Select Profile Default LED Color (BG_COLOR)")
-        selectedColor: canvasRoot.controller && canvasRoot.controller.activeProfileBgColor.length > 0
-            ? canvasRoot.controller.activeProfileBgColor
-            : "#00aaff"
-        onAccepted: {
-            const c = selectedColor
-            if (canvasRoot.controller) {
-                canvasRoot.controller.setProfileBgColor(
-                    canvasRoot.controller.activeProfile,
-                    Math.round(c.r * 255),
-                    Math.round(c.g * 255),
-                    Math.round(c.b * 255)
-                )
-            }
-            oledSimulator.requestPaint()
         }
     }
 
@@ -454,7 +426,15 @@ Item {
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: profileBgColorDialog.open()
+                        onClicked: {
+                            if (canvasRoot.controller) {
+                                canvasRoot.profileDefaultColorPickerRequested(
+                                    canvasRoot.controller.activeProfile,
+                                    canvasRoot.controller.activeProfileName,
+                                    canvasRoot.controller.activeProfileBgColor
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -464,44 +444,20 @@ Item {
                     text: qsTr("Default Color")
                     display: QQC2.AbstractButton.TextBesideIcon
                     enabled: canvasRoot.controller !== null
-                    onClicked: profileBgColorDialog.open()
+                    onClicked: {
+                        if (canvasRoot.controller) {
+                            canvasRoot.profileDefaultColorPickerRequested(
+                                canvasRoot.controller.activeProfile,
+                                canvasRoot.controller.activeProfileName,
+                                canvasRoot.controller.activeProfileBgColor
+                            )
+                        }
+                    }
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: canvasRoot.controller
                         ? qsTr("Change Default Button Color (BG_COLOR) for Profile #%1 (%2)").arg(canvasRoot.controller.activeProfile).arg(canvasRoot.controller.activeProfileName)
                         : qsTr("Change Profile Default Button Color (BG_COLOR)")
                 }
-            }
-
-            QQC2.ToolButton {
-                icon.name: "edit-copy"
-                display: QQC2.AbstractButton.IconOnly
-                enabled: canvasRoot.controller !== null && canvasRoot.selectedSlot >= 1 && canvasRoot.selectedSlot <= 58
-                onClicked: canvasRoot.copySlotAction(canvasRoot.selectedSlot)
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: canvasRoot.selectedSlot >= 1
-                    ? qsTr("Copy Selected Button (Slot %1)").arg(canvasRoot.selectedSlot)
-                    : qsTr("Select a button to copy")
-            }
-
-            QQC2.ToolButton {
-                icon.name: "edit-paste"
-                display: QQC2.AbstractButton.IconOnly
-                enabled: canvasRoot.controller !== null && canvasRoot.controller.hasCopiedSlot && canvasRoot.selectedSlot >= 1 && canvasRoot.selectedSlot <= 58
-                onClicked: canvasRoot.pasteSlotAction(canvasRoot.selectedSlot)
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: canvasRoot.controller && canvasRoot.controller.hasCopiedSlot && canvasRoot.selectedSlot >= 1
-                    ? qsTr("Paste (%1) into Slot %2").arg(canvasRoot.controller.copiedSlotSummary).arg(canvasRoot.selectedSlot)
-                    : qsTr("Paste Copied Button")
-            }
-
-            QQC2.ToolButton {
-                icon.name: "color-picker"
-                text: qsTr("Key RGB")
-                display: QQC2.AbstractButton.TextBesideIcon
-                enabled: canvasRoot.selectedSlot >= 1 && canvasRoot.selectedSlot <= 20
-                onClicked: rgbPickerDialog.open()
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: qsTr("Set custom ARGB LED color for Key %1 (SWCOLOR)").arg(canvasRoot.selectedSlot)
             }
 
             QQC2.ToolButton {
@@ -585,6 +541,7 @@ Item {
                             required property bool hasRel
                             required property bool hasLoop
                             required property bool hasWebApi
+                            required property bool hasAppLaunch
 
                             readonly property bool isSelected: canvasRoot.selectedSlot === slot
                             readonly property bool isDraggingThis: canvasRoot.draggingSlot === slot
@@ -670,6 +627,24 @@ Item {
                                         anchors.margins: 3
                                         spacing: 2
 
+                                        Rectangle {
+                                            visible: keycapItem.hasAppLaunch
+                                            radius: 3
+                                            color: Qt.alpha(Kirigami.Theme.highlightColor, 0.22)
+                                            border.color: Qt.alpha(Kirigami.Theme.highlightColor, 0.65)
+                                            border.width: 1
+                                            width: appBadgeLbl.implicitWidth + 5
+                                            height: 12
+
+                                            QQC2.Label {
+                                                id: appBadgeLbl
+                                                anchors.centerIn: parent
+                                                text: "APP"
+                                                font.pixelSize: 7
+                                                font.bold: true
+                                                color: Kirigami.Theme.highlightColor
+                                            }
+                                        }
                                         Rectangle {
                                             visible: keycapItem.hasWebApi
                                             radius: 3
