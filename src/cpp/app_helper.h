@@ -178,8 +178,8 @@ public:
             m_autoSwitchAction->setChecked(autoSwitchEnabled);
             m_autoSwitchAction->setText(
                 autoSwitchEnabled
-                    ? QStringLiteral("KWin Auto-Switch: Enabled")
-                    : QStringLiteral("KWin Auto-Switch: Disabled")
+                    ? QStringLiteral("Auto-Switcher: Enabled")
+                    : QStringLiteral("Auto-Switcher: Disabled")
             );
             m_autoSwitchAction->blockSignals(oldBlock);
         }
@@ -231,7 +231,7 @@ private:
 
         m_menu->addSeparator();
 
-        m_autoSwitchAction = m_menu->addAction(QStringLiteral("KWin Auto-Switch: Enabled"));
+        m_autoSwitchAction = m_menu->addAction(QStringLiteral("Auto-Switcher: Enabled"));
         m_autoSwitchAction->setCheckable(true);
         QObject::connect(m_autoSwitchAction, &QAction::triggered, [this](bool) {
             if (m_controller) {
@@ -397,6 +397,12 @@ inline void duckydeck_apply_app_theme(const QString& themeMode) {
     if (!QCoreApplication::instance()) {
         return;
     }
+    static QString s_lastAppliedTheme;
+    if (s_lastAppliedTheme == themeMode) {
+        return;
+    }
+    s_lastAppliedTheme = themeMode;
+
     KColorSchemeManager* mgr = KColorSchemeManager::instance();
     if (!mgr) {
         return;

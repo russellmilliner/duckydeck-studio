@@ -3,13 +3,28 @@ import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
 
-Kirigami.OverlayDrawer {
+QQC2.Drawer {
     id: pgvDrawer
     edge: Qt.RightEdge
     modal: true
-    handleVisible: false
-    width: Math.min(parent.width * 0.85, 620)
-    height: parent.height
+    interactive: true
+    padding: Kirigami.Units.largeSpacing
+    width: parent ? Math.min(parent.width * 0.85, 620) : 560
+    height: parent ? parent.height : 600
+
+    Kirigami.Theme.colorSet: Kirigami.Theme.View
+    Kirigami.Theme.inherit: false
+
+    background: Rectangle {
+        color: Kirigami.Theme.backgroundColor
+        Rectangle {
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: 1
+            color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+        }
+    }
 
     property var controller: null
     property string searchFilter: ""
