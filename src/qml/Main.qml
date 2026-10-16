@@ -3729,8 +3729,42 @@ Kirigami.ApplicationWindow {
                         Layout.fillWidth: true
                         spacing: 10
 
+                        // Application Icon matching data/icons/io.github.duckydeck.Studio.svg
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 6
+                            color: "#16181d"
+                            border.color: "#38bdf8"
+                            border.width: 1.5
+
+                            // 3x4 RGB key matrix
+                            Repeater {
+                                model: [
+                                    { x: 4,  y: 5,  c: "#00aaff" }, { x: 10, y: 5,  c: "#00aaff" }, { x: 16, y: 5,  c: "#00aaff" },
+                                    { x: 4,  y: 11, c: "#28dc64" }, { x: 10, y: 11, c: "#28dc64" }, { x: 16, y: 11, c: "#28dc64" },
+                                    { x: 4,  y: 17, c: "#ffb400" }, { x: 10, y: 17, c: "#ffb400" }, { x: 16, y: 17, c: "#ffb400" },
+                                    { x: 4,  y: 23, c: "#ff3c3c" }, { x: 10, y: 23, c: "#b450ff" }, { x: 16, y: 23, c: "#b450ff" }
+                                ]
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    x: modelData.x
+                                    y: modelData.y
+                                    width: 4.5
+                                    height: 4.5
+                                    radius: 1
+                                    color: modelData.c
+                                }
+                            }
+
+                            // Rotary encoders & OLED on right
+                            Rectangle { x: 22.5; y: 5;  width: 5.5; height: 5.5; radius: 2.75; color: "#262b36"; border.color: "#38bdf8"; border.width: 1 }
+                            Rectangle { x: 22.5; y: 12; width: 5.5; height: 5.5; radius: 2.75; color: "#262b36"; border.color: "#38bdf8"; border.width: 1 }
+                            Rectangle { x: 22;   y: 19; width: 6.5; height: 8.5; radius: 1;    color: "#000000"; border.color: "#94a3b8"; border.width: 1 }
+                        }
+
                         QQC2.Label {
-                            text: qsTr("🦆 DuckyDeck Studio")
+                            text: qsTr("DuckyDeck Studio")
                             font.bold: true
                             font.pixelSize: 20
                             color: Kirigami.Theme.textColor

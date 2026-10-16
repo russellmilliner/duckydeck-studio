@@ -1,4 +1,4 @@
-# DuckyDeck Studio — Architecture & Design Developer Documentation
+# <img src="../data/icons/io.github.duckydeck.Studio.svg" width="36" height="36" align="top" alt="DuckyDeck Studio Icon" /> DuckyDeck Studio — Architecture & Design Developer Documentation
 
 **Author:** Russell Milliner  
 **Repository:** [https://github.com/millinr/duckydeck-studio](https://github.com/millinr/duckydeck-studio)  
