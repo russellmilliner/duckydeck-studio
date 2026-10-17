@@ -20,8 +20,6 @@ use std::io::{self, Write};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::thread;
-use std::time::Duration;
 
 use crate::bridge::device_controller::{
     ProfileExportBundle, ProfileGroupBundle, APP_AUTHOR, APP_GITHUB_URL, APP_VERSION,
@@ -94,15 +92,17 @@ fn runtime_dir_path() -> PathBuf {
             return PathBuf::from(trimmed);
         }
     }
-    PathBuf::from("/tmp")
+    let fallback = env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("duckydeck-studio");
+    let _ = fs::create_dir_all(&fallback);
+    fallback
 }
 
 fn pid_file_path() -> PathBuf {
     runtime_dir_path().join("duckydeck-studio.pid")
-}
-
-fn ipc_file_path() -> PathBuf {
-    runtime_dir_path().join("duckydeck-studio.ipc")
 }
 
 fn is_running_duckydeck_pid(pid: u32, self_pid: u32) -> bool {
@@ -160,20 +160,49 @@ fn find_existing_duckydeck_instances() -> Vec<u32> {
 
 fn send_ipc_command_to_running_instance(cmd: &str) -> Result<Vec<u32>, String> {
     let pids = find_existing_duckydeck_instances();
-    if pids.is_empty() {
-        return Err("No running DuckyDeck Studio instance found.".to_string());
-    }
-    let ipc_path = ipc_file_path();
-    fs::write(&ipc_path, format!("{cmd}\n"))
-        .map_err(|e| format!("Failed writing IPC command to {}: {e}", ipc_path.display()))?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("Failed creating Tokio runtime for D-Bus IPC: {e}"))?;
 
-    for _ in 0..20 {
-        if !ipc_path.exists() {
-            break;
+    let dbus_result: Result<u32, String> = rt.block_on(async {
+        let conn = zbus::Connection::session()
+            .await
+            .map_err(|e| format!("Failed connecting to session D-Bus: {e}"))?;
+        let proxy = zbus::Proxy::new(
+            &conn,
+            "io.github.duckydeck.Studio",
+            "/KWinBridge",
+            "io.github.duckydeck.KWinBridge",
+        )
+        .await
+        .map_err(|e| format!("Failed creating D-Bus proxy for io.github.duckydeck.Studio: {e}"))?;
+        let remote_pid: u32 = proxy
+            .call("DispatchIpcCommand", &(cmd,))
+            .await
+            .map_err(|e| format!("D-Bus DispatchIpcCommand failed: {e}"))?;
+        Ok(remote_pid)
+    });
+
+    match dbus_result {
+        Ok(remote_pid) => {
+            let mut all_pids = pids;
+            if remote_pid > 1 && !all_pids.contains(&remote_pid) {
+                all_pids.push(remote_pid);
+            }
+            if all_pids.is_empty() {
+                all_pids.push(remote_pid);
+            }
+            Ok(all_pids)
         }
-        thread::sleep(Duration::from_millis(35));
+        Err(e) => {
+            if pids.is_empty() {
+                Err("No running DuckyDeck Studio instance found on session D-Bus.".to_string())
+            } else {
+                Err(e)
+            }
+        }
     }
-    Ok(pids)
 }
 
 fn print_help() {
@@ -1253,8 +1282,6 @@ fn main() {
 
     let pfile = pid_file_path();
     env::set_var("DUCKYDECK_PID_FILE", &pfile);
-    let ipcfile = ipc_file_path();
-    env::set_var("DUCKYDECK_IPC_FILE", &ipcfile);
 
     let is_daemon_child = env::var("DUCKYDECK_DAEMONIZED").as_deref() == Ok("1");
     let is_offscreen = env::var("QT_QPA_PLATFORM").as_deref() == Ok("offscreen");

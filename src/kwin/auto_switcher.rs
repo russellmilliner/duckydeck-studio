@@ -2088,7 +2088,18 @@ impl KWinBridgeService {
     }
 
     fn notify_oled_widget_mapped(&mut self, is_pinned: bool) {
+        crate::bridge::device_controller::qobject::duckydeck_restore_oled_widget_geometry();
         apply_kwin_oled_keep_above(is_pinned, true);
+    }
+
+    fn dispatch_ipc_command(&mut self, command: String) -> u32 {
+        let qcmd = cxx_qt_lib::QString::from(&command);
+        crate::bridge::device_controller::qobject::duckydeck_dispatch_ipc_command(&qcmd);
+        std::process::id()
+    }
+
+    fn get_pid(&self) -> u32 {
+        std::process::id()
     }
 }
 
@@ -2321,46 +2332,49 @@ pub async fn run_kwin_auto_switcher(
         .build()
         .await?;
 
-    let script_path = write_kwin6_hook_script()
-        .map_err(|e| zbus::Error::Failure(format!("Failed to write KWin JS hook: {e}")))?;
-
-    let kwin_scripting = zbus::Proxy::new(
-        &conn,
-        "org.kde.KWin",
-        "/Scripting",
-        "org.kde.kwin.Scripting",
-    )
-    .await?;
-
-    let plugin_name = "duckydeck_kwin6_autoswitcher";
-    let _: std::result::Result<bool, _> =
-        kwin_scripting.call("unloadScript", &(plugin_name,)).await;
-
-    let mut script_id: i32 = kwin_scripting
-        .call("loadScript", &(&script_path, plugin_name))
-        .await?;
-
-    if script_id < 0 {
-        let fallback_name = format!("duckydeck_kwin6_autoswitcher_{}", std::process::id());
-        let _: std::result::Result<bool, _> = kwin_scripting
-            .call("unloadScript", &(fallback_name.as_str(),))
-            .await;
-        script_id = kwin_scripting
-            .call("loadScript", &(&script_path, fallback_name.as_str()))
-            .await?;
-    }
-
-    if script_id >= 0 {
-        let script_obj_path = format!("/Scripting/Script{script_id}");
-        if let Ok(kwin_script) = zbus::Proxy::new(
+    if let Ok(script_path) = write_kwin6_hook_script() {
+        if let Ok(kwin_scripting) = zbus::Proxy::new(
             &conn,
             "org.kde.KWin",
-            script_obj_path.as_str(),
-            "org.kde.kwin.Script",
+            "/Scripting",
+            "org.kde.kwin.Scripting",
         )
         .await
         {
-            let _ = kwin_script.call_noreply("run", &()).await;
+            let plugin_name = "duckydeck_kwin6_autoswitcher";
+            let _: std::result::Result<bool, _> =
+                kwin_scripting.call("unloadScript", &(plugin_name,)).await;
+
+            let mut script_id: i32 = kwin_scripting
+                .call("loadScript", &(&script_path, plugin_name))
+                .await
+                .unwrap_or(-1);
+
+            if script_id < 0 {
+                let fallback_name =
+                    format!("duckydeck_kwin6_autoswitcher_{}", std::process::id());
+                let _: std::result::Result<bool, _> = kwin_scripting
+                    .call("unloadScript", &(fallback_name.as_str(),))
+                    .await;
+                script_id = kwin_scripting
+                    .call("loadScript", &(&script_path, fallback_name.as_str()))
+                    .await
+                    .unwrap_or(-1);
+            }
+
+            if script_id >= 0 {
+                let script_obj_path = format!("/Scripting/Script{script_id}");
+                if let Ok(kwin_script) = zbus::Proxy::new(
+                    &conn,
+                    "org.kde.KWin",
+                    script_obj_path.as_str(),
+                    "org.kde.kwin.Script",
+                )
+                .await
+                {
+                    let _ = kwin_script.call_noreply("run", &()).await;
+                }
+            }
         }
     }
 
@@ -2369,48 +2383,65 @@ pub async fn run_kwin_auto_switcher(
 }
 
 fn write_kwin6_hook_script() -> std::io::Result<String> {
-    let js_code = r#"
+    let initial_rect_js = match load_saved_oled_geometry_tuple() {
+        Some((gx, gy, gw, gh)) => {
+            format!("{{ x: {gx}, y: {gy}, width: {gw}, height: {gh} }}")
+        }
+        None => "null".to_string(),
+    };
+    let js_code = format!(
+        r#"
 var trackedWindow = null;
 var hookedWindows = [];
 var lastCursorKey = "";
 var lastMotionSentMs = 0;
+var initialSavedOledRect = {initial_rect_js};
 
-function isWindowHooked(win) {
-    for (var i = 0; i < hookedWindows.length; ++i) {
-        if (hookedWindows[i] === win) {
+function isWindowHooked(win) {{
+    for (var i = 0; i < hookedWindows.length; ++i) {{
+        if (hookedWindows[i] === win) {{
             return true;
-        }
-    }
+        }}
+    }}
     return false;
-}
+}}
 
-function isOledWidgetWindow(win) {
+function isOledWidgetWindow(win) {{
     if (!win) return false;
     var cap = win.caption ? win.caption.toString() : "";
     return cap.indexOf("duckyPad OLED —") === 0;
-}
+}}
 
-function isDuckyDeckMainWindow(win) {
+function isDuckyDeckMainWindow(win) {{
     if (!win || isOledWidgetWindow(win)) return false;
     var cls = (win.resourceClass ? win.resourceClass.toString() : "").toLowerCase();
     var cap = win.caption ? win.caption.toString() : "";
     return cls.indexOf("duckydeck") !== -1 || cap.indexOf("DuckyDeck Studio") === 0;
-}
+}}
 
-function checkOledKeepAbove(win) {
+function checkOledKeepAbove(win) {{
     if (!win) return;
-    if (isOledWidgetWindow(win)) {
+    if (isOledWidgetWindow(win)) {{
         var cap = win.caption ? win.caption.toString() : "";
         var isPinned = (cap.indexOf("[Unpinned]") === -1);
         win.keepAbove = isPinned;
         win.skipTaskbar = isPinned;
         win.skipPager = isPinned;
-        if (isPinned && win.minimized) {
+        if (isPinned && win.minimized) {{
             win.minimized = false;
-        }
-        if (!isWindowHooked(win)) {
+        }}
+        if (!isWindowHooked(win)) {{
             hookedWindows.push(win);
-            try {
+            try {{
+                if (initialSavedOledRect) {{
+                    win.frameGeometry = {{
+                        x: initialSavedOledRect.x,
+                        y: initialSavedOledRect.y,
+                        width: initialSavedOledRect.width,
+                        height: initialSavedOledRect.height
+                    }};
+                    initialSavedOledRect = null;
+                }}
                 callDBus(
                     "io.github.duckydeck.Studio",
                     "/KWinBridge",
@@ -2418,24 +2449,24 @@ function checkOledKeepAbove(win) {
                     "NotifyOledWidgetMapped",
                     isPinned
                 );
-                if (win.minimizedChanged) {
-                    win.minimizedChanged.connect(function() {
+                if (win.minimizedChanged) {{
+                    win.minimizedChanged.connect(function() {{
                         var c = win.caption ? win.caption.toString() : "";
                         var pinnedNow = (c.indexOf("[Unpinned]") === -1);
-                        if (pinnedNow && win.minimized) {
+                        if (pinnedNow && win.minimized) {{
                             win.minimized = false;
                             win.keepAbove = true;
-                        }
-                    });
-                }
-                if (win.captionChanged) {
-                    win.captionChanged.connect(function() {
+                        }}
+                    }});
+                }}
+                if (win.captionChanged) {{
+                    win.captionChanged.connect(function() {{
                         checkOledKeepAbove(win);
-                    });
-                }
-                if (win.frameGeometryChanged) {
-                    win.frameGeometryChanged.connect(function() {
-                        if (!win.minimized && win.frameGeometry && win.frameGeometry.width >= 180 && win.frameGeometry.height >= 220) {
+                    }});
+                }}
+                if (win.frameGeometryChanged) {{
+                    win.frameGeometryChanged.connect(function() {{
+                        if (!win.minimized && win.frameGeometry && win.frameGeometry.width >= 180 && win.frameGeometry.height >= 220) {{
                             callDBus(
                                 "io.github.duckydeck.Studio",
                                 "/KWinBridge",
@@ -2446,14 +2477,15 @@ function checkOledKeepAbove(win) {
                                 Math.round(win.frameGeometry.width),
                                 Math.round(win.frameGeometry.height)
                             );
-                        }
-                    });
-                }
-            } catch (e) {}
-        }
+                        }}
+                    }});
+                }}
+            }} catch (e) {{}}
+        }}
         return;
-    }
-
+    }}
+"#
+    ) + r#"
     if (isDuckyDeckMainWindow(win)) {
         if (!isWindowHooked(win)) {
             hookedWindows.push(win);
@@ -2811,7 +2843,7 @@ if (list) {{
             }
             let plugin_name = "duckydeck_oled_keep_above_oneshot";
             let delays_ms: &[u64] = if geom_opt.is_some() {
-                &[0, 50, 140]
+                &[0, 60, 180, 420]
             } else {
                 &[0]
             };

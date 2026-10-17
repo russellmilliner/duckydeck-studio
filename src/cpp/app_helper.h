@@ -95,6 +95,11 @@ struct OledWidgetGeometryState {
     int y = 0;
     int width = 284;
     int height = 356;
+    int transparencyPercent = 0;
+    bool alwaysOnTop = true;
+    bool framelessMode = true;
+    bool showRgbDots = true;
+    QString screenName;
 };
 
 inline qint64& oled_last_shown_ms_ref() {
@@ -138,6 +143,12 @@ inline OledWidgetGeometryState load_oled_widget_geometry() {
     st.y = obj.value(QStringLiteral("y")).toInt(0);
     st.width = std::clamp(obj.value(QStringLiteral("width")).toInt(284), 184, 1600);
     st.height = std::clamp(obj.value(QStringLiteral("height")).toInt(356), 240, 1600);
+    st.transparencyPercent =
+        std::clamp(obj.value(QStringLiteral("transparency_percent")).toInt(0), 0, 75);
+    st.alwaysOnTop = obj.value(QStringLiteral("always_on_top")).toBool(true);
+    st.framelessMode = obj.value(QStringLiteral("frameless_mode")).toBool(true);
+    st.showRgbDots = obj.value(QStringLiteral("show_rgb_dots")).toBool(true);
+    st.screenName = obj.value(QStringLiteral("screen_name")).toString().trimmed();
     return st;
 }
 
@@ -157,11 +168,65 @@ inline void save_oled_widget_geometry(const OledWidgetGeometryState& st) {
     obj.insert(QStringLiteral("y"), st.y);
     obj.insert(QStringLiteral("width"), std::clamp(st.width, 184, 1600));
     obj.insert(QStringLiteral("height"), std::clamp(st.height, 240, 1600));
+    obj.insert(
+        QStringLiteral("transparency_percent"),
+        std::clamp(st.transparencyPercent, 0, 75)
+    );
+    obj.insert(QStringLiteral("always_on_top"), st.alwaysOnTop);
+    obj.insert(QStringLiteral("frameless_mode"), st.framelessMode);
+    obj.insert(QStringLiteral("show_rgb_dots"), st.showRgbDots);
+    obj.insert(QStringLiteral("screen_name"), st.screenName);
     QFile f(path);
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
         f.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
         f.close();
     }
+}
+
+inline void sync_oled_widget_props_from_window(QWindow* win, OledWidgetGeometryState& st) {
+    if (!win || !win->property("_duckydeck_props_restored").toBool()) {
+        return;
+    }
+    const QVariant tp = win->property("transparencyPercent");
+    if (tp.isValid()) {
+        st.transparencyPercent = std::clamp(tp.toInt(), 0, 75);
+    }
+    const QVariant aot = win->property("alwaysOnTop");
+    if (aot.isValid()) {
+        st.alwaysOnTop = aot.toBool();
+    }
+    const QVariant fm = win->property("framelessMode");
+    if (fm.isValid()) {
+        st.framelessMode = fm.toBool();
+    }
+    const QVariant dots = win->property("showRgbDots");
+    if (dots.isValid()) {
+        st.showRgbDots = dots.toBool();
+    }
+}
+
+inline QScreen* find_screen_for_rect(int x, int y, int w, int h, const QString& preferredName) {
+    const QPoint centerPt(x + w / 2, y + h / 2);
+    const auto screens = QGuiApplication::screens();
+    for (QScreen* scr : screens) {
+        if (scr && scr->geometry().contains(centerPt)) {
+            return scr;
+        }
+    }
+    const QRect targetRect(x, y, std::max(1, w), std::max(1, h));
+    for (QScreen* scr : screens) {
+        if (scr && scr->geometry().intersects(targetRect)) {
+            return scr;
+        }
+    }
+    if (!preferredName.isEmpty()) {
+        for (QScreen* scr : screens) {
+            if (scr && scr->name() == preferredName) {
+                return scr;
+            }
+        }
+    }
+    return nullptr;
 }
 
 inline QRect resolve_oled_widget_target_rect(
@@ -178,23 +243,12 @@ inline QRect resolve_oled_widget_target_rect(
     const QRect fallbackAvail =
         fallbackScreen ? fallbackScreen->availableGeometry() : QRect(0, 0, 1920, 1080);
 
-    const int w = std::clamp(st.width, 184, std::max(184, fallbackAvail.width()));
-    const int h = std::clamp(st.height, 240, std::max(240, fallbackAvail.height()));
+    const int w = std::clamp(st.width, 184, 1600);
+    const int h = std::clamp(st.height, 240, 1600);
 
     QScreen* matchedScreen = nullptr;
-    if (st.hasPosition) {
-        const QPoint centerPt(st.x + w / 2, st.y + h / 2);
-        const auto screens = QGuiApplication::screens();
-        for (QScreen* scr : screens) {
-            if (!scr) {
-                continue;
-            }
-            const QRect g = scr->geometry();
-            if (g.contains(centerPt)) {
-                matchedScreen = scr;
-                break;
-            }
-        }
+    if (st.hasPosition || !st.screenName.isEmpty()) {
+        matchedScreen = find_screen_for_rect(st.x, st.y, w, h, st.screenName);
     }
 
     int targetX = st.x;
@@ -203,10 +257,24 @@ inline QRect resolve_oled_widget_target_rect(
         const QRect g = matchedScreen->geometry();
         const int maxX = std::max(g.left(), g.right() + 1 - w);
         const int maxY = std::max(g.top(), g.bottom() + 1 - h);
-        targetX = std::clamp(st.x, g.left(), maxX);
-        targetY = std::clamp(st.y, g.top(), maxY);
+        if (st.hasPosition && g.intersects(QRect(st.x, st.y, w, h))) {
+            targetX = std::clamp(st.x, g.left(), maxX);
+            targetY = std::clamp(st.y, g.top(), maxY);
+        } else if (st.hasPosition) {
+            targetX = std::clamp(st.x, g.left(), maxX);
+            targetY = std::clamp(st.y, g.top(), maxY);
+        } else {
+            targetX = g.x() + (g.width() - w) / 2;
+            targetY = g.y() + (g.height() - h) / 2;
+        }
         if (outScreen) {
             *outScreen = matchedScreen;
+        }
+    } else if (st.hasPosition) {
+        targetX = st.x;
+        targetY = st.y;
+        if (outScreen) {
+            *outScreen = fallbackScreen;
         }
     } else {
         targetX = fallbackAvail.x() + (fallbackAvail.width() - w) / 2;
@@ -231,7 +299,18 @@ inline void ensure_oled_window_hooks(QWindow* win) {
     win->setProperty("_duckydeck_oled_hooked", true);
     win->setIcon(oled_widget_icon());
 
-    const QRect initialTarget = resolve_oled_widget_target_rect(load_oled_widget_geometry(), nullptr);
+    const OledWidgetGeometryState initialLoaded = load_oled_widget_geometry();
+    win->setProperty("transparencyPercent", std::clamp(initialLoaded.transparencyPercent, 0, 75));
+    win->setProperty("alwaysOnTop", initialLoaded.alwaysOnTop);
+    win->setProperty("framelessMode", initialLoaded.framelessMode);
+    win->setProperty("showRgbDots", initialLoaded.showRgbDots);
+    win->setProperty("_duckydeck_props_restored", true);
+
+    QScreen* initialScreen = nullptr;
+    const QRect initialTarget = resolve_oled_widget_target_rect(initialLoaded, &initialScreen);
+    if (initialScreen) {
+        win->setScreen(initialScreen);
+    }
     win->resize(initialTarget.width(), initialTarget.height());
     win->setPosition(initialTarget.x(), initialTarget.y());
 
@@ -264,7 +343,7 @@ inline void ensure_oled_window_hooks(QWindow* win) {
             return;
         }
         if (!oled_restore_settled_ref()
-            && (QDateTime::currentMSecsSinceEpoch() - oled_last_shown_ms_ref() < 1500)) {
+            && (QDateTime::currentMSecsSinceEpoch() - oled_last_shown_ms_ref() < 2500)) {
             return;
         }
         const int w = win->width();
@@ -276,10 +355,14 @@ inline void ensure_oled_window_hooks(QWindow* win) {
         st.visible = true;
         st.width = std::clamp(w, 184, 1600);
         st.height = std::clamp(h, 240, 1600);
+        sync_oled_widget_props_from_window(win, st);
         if (QGuiApplication::platformName() != QStringLiteral("wayland")) {
             st.x = win->x();
             st.y = win->y();
             st.hasPosition = true;
+            if (QScreen* scr = find_screen_for_rect(st.x, st.y, st.width, st.height, st.screenName)) {
+                st.screenName = scr->name();
+            }
         }
         save_oled_widget_geometry(st);
     };
@@ -313,27 +396,44 @@ inline QWindow* find_oled_widget_window() {
     return nullptr;
 }
 
+inline void save_oled_widget_appearance_now() {
+    if (QWindow* win = find_oled_widget_window()) {
+        OledWidgetGeometryState st = load_oled_widget_geometry();
+        sync_oled_widget_props_from_window(win, st);
+        save_oled_widget_geometry(st);
+    }
+}
+
 inline QRect restore_oled_widget_geometry_now() {
     oled_last_shown_ms_ref() = QDateTime::currentMSecsSinceEpoch();
     const OledWidgetGeometryState loaded = load_oled_widget_geometry();
-    const QRect target = resolve_oled_widget_target_rect(loaded, nullptr);
+    QScreen* targetScreen = nullptr;
+    const QRect target = resolve_oled_widget_target_rect(loaded, &targetScreen);
     oled_expected_restore_rect_ref() = target;
     oled_restore_settled_ref() = false;
 
     OledWidgetGeometryState resolved = loaded;
     resolved.visible = true;
-    resolved.hasPosition = true;
-    resolved.x = target.x();
-    resolved.y = target.y();
+    if (!loaded.hasPosition) {
+        resolved.hasPosition = true;
+        resolved.x = target.x();
+        resolved.y = target.y();
+        if (targetScreen) {
+            resolved.screenName = targetScreen->name();
+        }
+    }
     resolved.width = target.width();
     resolved.height = target.height();
-    save_oled_widget_geometry(resolved);
-
     if (QWindow* win = find_oled_widget_window()) {
+        sync_oled_widget_props_from_window(win, resolved);
         win->setTransientParent(nullptr);
+        if (targetScreen) {
+            win->setScreen(targetScreen);
+        }
         win->resize(target.width(), target.height());
         win->setPosition(target.x(), target.y());
     }
+    save_oled_widget_geometry(resolved);
     return target;
 }
 
@@ -349,10 +449,10 @@ inline void record_oled_widget_geometry_from_kwin(int x, int y, int width, int h
     if (!oled_restore_settled_ref()) {
         const QRect expected = oled_expected_restore_rect_ref();
         if (expected.isValid()
-            && std::abs(x - expected.x()) <= 8
-            && std::abs(y - expected.y()) <= 8) {
+            && std::abs(x - expected.x()) <= 16
+            && std::abs(y - expected.y()) <= 16) {
             oled_restore_settled_ref() = true;
-        } else if (elapsed < 1500) {
+        } else if (elapsed < 2500) {
             return;
         } else {
             oled_restore_settled_ref() = true;
@@ -365,6 +465,10 @@ inline void record_oled_widget_geometry_from_kwin(int x, int y, int width, int h
     st.y = y;
     st.width = std::clamp(width, 184, 1600);
     st.height = std::clamp(height, 240, 1600);
+    if (QScreen* scr = find_screen_for_rect(x, y, st.width, st.height, st.screenName)) {
+        st.screenName = scr->name();
+    }
+    sync_oled_widget_props_from_window(win, st);
     save_oled_widget_geometry(st);
 }
 
@@ -484,9 +588,12 @@ inline void show_oled_widget_window() {
 inline void hide_oled_widget_window() {
     OledWidgetGeometryState st = load_oled_widget_geometry();
     st.visible = false;
-    save_oled_widget_geometry(st);
     if (QWindow* win = find_oled_widget_window()) {
+        sync_oled_widget_props_from_window(win, st);
+        save_oled_widget_geometry(st);
         win->hide();
+    } else {
+        save_oled_widget_geometry(st);
     }
 }
 
@@ -539,10 +646,12 @@ inline void hide_main_window_to_tray() {
 }
 
 inline void quit_duckydeck_application() {
+    save_oled_widget_appearance_now();
     QCoreApplication::quit();
 }
 
 inline void restart_duckydeck_application() {
+    save_oled_widget_appearance_now();
     QWindow* win = find_main_window();
     const bool wasHiddenToTray =
         !win || !win->isVisible() || (win->windowStates() & Qt::WindowMinimized);
@@ -551,11 +660,6 @@ inline void restart_duckydeck_application() {
     args << QStringLiteral("--replace");
     if (wasHiddenToTray) {
         args << QStringLiteral("--minimize") << QStringLiteral("--foreground");
-    }
-
-    const QString ipcPath = qEnvironmentVariable("DUCKYDECK_IPC_FILE");
-    if (!ipcPath.isEmpty()) {
-        QFile::remove(ipcPath);
     }
 
     const QString appPath = QCoreApplication::applicationFilePath();
@@ -980,6 +1084,19 @@ inline void duckydeck_restore_oled_widget_geometry() {
     (void)duckydeck::restore_oled_widget_geometry_now();
 }
 
+inline void duckydeck_save_oled_widget_appearance() {
+    if (QCoreApplication::instance()
+        && QThread::currentThread() != QCoreApplication::instance()->thread()) {
+        QMetaObject::invokeMethod(
+            QCoreApplication::instance(),
+            []() { duckydeck::save_oled_widget_appearance_now(); },
+            Qt::QueuedConnection
+        );
+        return;
+    }
+    duckydeck::save_oled_widget_appearance_now();
+}
+
 inline void duckydeck_record_oled_geometry(int32_t x, int32_t y, int32_t width, int32_t height) {
     if (QCoreApplication::instance()
         && QThread::currentThread() != QCoreApplication::instance()->thread()) {
@@ -1001,6 +1118,28 @@ inline void duckydeck_quit_app() {
 
 inline void duckydeck_restart_app() {
     duckydeck::restart_duckydeck_application();
+}
+
+inline void duckydeck_dispatch_ipc_command(const QString& command) {
+    const QString copied = command;
+    if (QCoreApplication::instance()
+        && QThread::currentThread() != QCoreApplication::instance()->thread()) {
+        QMetaObject::invokeMethod(
+            QCoreApplication::instance(),
+            [copied]() {
+                const QStringList lines = copied.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+                for (const QString& line : lines) {
+                    duckydeck::TrayManager::instance().dispatchIpcCommand(line);
+                }
+            },
+            Qt::QueuedConnection
+        );
+        return;
+    }
+    const QStringList lines = copied.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (const QString& line : lines) {
+        duckydeck::TrayManager::instance().dispatchIpcCommand(line);
+    }
 }
 
 inline void duckydeck_apply_app_theme(const QString& themeMode) {
@@ -1252,40 +1391,8 @@ inline int duckydeck_run_app(bool start_minimized) {
         }
     }
 
-    const QString ipcFilePath = qEnvironmentVariable("DUCKYDECK_IPC_FILE").trimmed();
-    QTimer ipcTimer;
-    if (!ipcFilePath.isEmpty()) {
-        QFile staleIpc(ipcFilePath);
-        if (staleIpc.exists()) {
-            staleIpc.remove();
-        }
-        ipcTimer.setInterval(180);
-        QObject::connect(&ipcTimer, &QTimer::timeout, [ipcFilePath]() {
-            QFile f(ipcFilePath);
-            if (!f.exists()) {
-                return;
-            }
-            if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                const QString payload = QString::fromUtf8(f.readAll());
-                f.close();
-                f.remove();
-                const QStringList lines = payload.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-                for (const QString& line : lines) {
-                    duckydeck::TrayManager::instance().dispatchIpcCommand(line);
-                }
-            }
-        });
-        ipcTimer.start();
-    }
-
     const int rc = app.exec();
 
-    if (!ipcFilePath.isEmpty()) {
-        QFile ipcFile(ipcFilePath);
-        if (ipcFile.exists()) {
-            ipcFile.remove();
-        }
-    }
     if (!pidFilePath.isEmpty()) {
         QFile pidFile(pidFilePath);
         if (pidFile.exists()) {

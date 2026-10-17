@@ -112,7 +112,19 @@ pub fn query_connected_duckypad_info() -> Result<ConnectedDuckyPadInfo, String> 
                 }
                 if len >= 12 && rx[6] != 0 {
                     let hw_model = rx[6];
-                    let fw_version = format!("{}.{}.{}", rx[3], rx[4], rx[5]);
+                    let raw_ver = (rx[3], rx[4], rx[5]);
+                    let has_dds_sig = len >= 23 && &rx[20..23] == b"DDS";
+                    let has_rtc_payload = len >= 20 && rx[16..20].iter().any(|&b| b != 0);
+                    let fw_version = if raw_ver == (3, 4, 0)
+                        || has_dds_sig
+                        || (raw_ver == (1, 0, 0) && has_rtc_payload)
+                    {
+                        "1.0.0".to_string()
+                    } else if raw_ver == (1, 0, 0) {
+                        "1.0.0 (Official)".to_string()
+                    } else {
+                        format!("{}.{}.{}", rx[3], rx[4], rx[5])
+                    };
                     let serial =
                         format!("{:02X}{:02X}{:02X}{:02X}", rx[7], rx[8], rx[9], rx[10]);
                     let disk_label = format!("DP{}_{:02X}{:02X}", rx[6], rx[9], rx[10]);
@@ -285,6 +297,10 @@ pub struct DuckyKeySlot {
     pub slot: usize,
     pub label_line1: String,
     pub label_line2: String,
+    #[serde(default)]
+    pub widget_label_line1: String,
+    #[serde(default)]
+    pub widget_label_line2: String,
     pub custom_rgb: Option<[u8; 3]>,
     pub allow_abort: bool,
     pub disable_autorepeat: bool,
@@ -298,12 +314,28 @@ impl Default for DuckyKeySlot {
             slot: 1,
             label_line1: String::new(),
             label_line2: String::new(),
+            widget_label_line1: String::new(),
+            widget_label_line2: String::new(),
             custom_rgb: None,
             allow_abort: false,
             disable_autorepeat: false,
             on_press_script: String::new(),
             on_release_script: String::new(),
         }
+    }
+}
+
+impl DuckyKeySlot {
+    pub fn is_effectively_empty(&self) -> bool {
+        self.label_line1.is_empty()
+            && self.label_line2.is_empty()
+            && self.widget_label_line1.trim().is_empty()
+            && self.widget_label_line2.trim().is_empty()
+            && self.custom_rgb.is_none()
+            && !self.allow_abort
+            && !self.disable_autorepeat
+            && self.on_press_script.trim().is_empty()
+            && self.on_release_script.trim().is_empty()
     }
 }
 
@@ -317,6 +349,148 @@ pub struct DuckyProfile {
     pub dim_unused_keys: bool,
     pub slots: BTreeMap<usize, DuckyKeySlot>,
     pub preserved_config_lines: Vec<String>,
+}
+
+impl DuckyProfile {
+    pub fn oled_rotation_degrees(&self) -> i32 {
+        let mut rot = 0;
+        for line in &self.preserved_config_lines {
+            let t = line.trim();
+            if let Some(rest) = t.strip_prefix("OLED_ROTATION ") {
+                match rest.trim() {
+                    "90" => rot = 90,
+                    "180" => rot = 180,
+                    "270" => rot = 270,
+                    "0" => rot = 0,
+                    _ => {}
+                }
+            } else if t == "IS_LANDSCAPE 3" || t == "IS_ROTATED_270 1" {
+                rot = 270;
+            } else if t == "IS_ROTATED_180 1" || t == "IS_LANDSCAPE 2" {
+                rot = 180;
+            } else if t == "IS_LANDSCAPE 1" {
+                if rot != 180 && rot != 270 {
+                    rot = 90;
+                }
+            }
+        }
+        rot
+    }
+
+    pub fn set_oled_rotation_degrees(&mut self, degrees: i32) {
+        let normalized = match degrees {
+            90 => 90,
+            180 => 180,
+            270 => 270,
+            _ => 0,
+        };
+        let widget_rot = self.widget_rotation_degrees();
+        self.preserved_config_lines.retain(|l| {
+            let t = l.trim();
+            !t.starts_with("IS_LANDSCAPE ")
+                && !t.starts_with("OLED_ROTATION ")
+                && !t.starts_with("IS_ROTATED_180 ")
+                && !t.starts_with("IS_ROTATED_270 ")
+                && !t.starts_with("DW_ROTATION ")
+        });
+        match normalized {
+            90 => {
+                self.preserved_config_lines.push("IS_LANDSCAPE 1".to_string());
+            }
+            180 => {
+                self.preserved_config_lines.push("IS_LANDSCAPE 2".to_string());
+                self.preserved_config_lines.push("OLED_ROTATION 180".to_string());
+            }
+            270 => {
+                self.preserved_config_lines.push("IS_LANDSCAPE 3".to_string());
+                self.preserved_config_lines.push("OLED_ROTATION 270".to_string());
+            }
+            _ => {}
+        }
+        if matches!(widget_rot, 0 | 90 | 180 | 270) {
+            self.preserved_config_lines
+                .push(format!("DW_ROTATION {widget_rot}"));
+        }
+    }
+
+    /// Returns `-1` when Desktop Widget orientation follows the hardware OLED orientation,
+    /// or `0`, `90`, `180`, `270` when configured independently for this profile.
+    pub fn widget_rotation_degrees(&self) -> i32 {
+        let mut wrot = -1;
+        for line in &self.preserved_config_lines {
+            let t = line.trim();
+            if let Some(rest) = t.strip_prefix("DW_ROTATION ") {
+                match rest.trim() {
+                    "0" => wrot = 0,
+                    "90" => wrot = 90,
+                    "180" => wrot = 180,
+                    "270" => wrot = 270,
+                    "-1" | "AUTO" | "FOLLOW" => wrot = -1,
+                    _ => {}
+                }
+            }
+        }
+        wrot
+    }
+
+    pub fn effective_widget_rotation_degrees(&self) -> i32 {
+        let wrot = self.widget_rotation_degrees();
+        if matches!(wrot, 0 | 90 | 180 | 270) {
+            wrot
+        } else {
+            self.oled_rotation_degrees()
+        }
+    }
+
+    pub fn set_widget_rotation_degrees(&mut self, degrees: i32) {
+        let normalized = match degrees {
+            0 => 0,
+            90 => 90,
+            180 => 180,
+            270 => 270,
+            _ => -1,
+        };
+        self.preserved_config_lines
+            .retain(|l| !l.trim().starts_with("DW_ROTATION "));
+        if normalized >= 0 {
+            self.preserved_config_lines
+                .push(format!("DW_ROTATION {normalized}"));
+        }
+    }
+
+    pub fn is_upper_hs(&self) -> bool {
+        self.preserved_config_lines.iter().any(|l| {
+            let t = l.trim();
+            t == "IS_UPPER_HS 1"
+                || t == "UPPER_HS 1"
+                || t.strip_prefix("IS_UPPER_HS ")
+                    .map(|r| r.trim() != "0")
+                    .unwrap_or(false)
+                || t.strip_prefix("UPPER_HS ")
+                    .map(|r| r.trim() != "0")
+                    .unwrap_or(false)
+        })
+    }
+
+    pub fn canonical_extra_config_lines(&self) -> Vec<String> {
+        self.preserved_config_lines
+            .iter()
+            .map(|l| l.trim().to_string())
+            .filter(|t| {
+                !t.is_empty()
+                    && !t.starts_with("IS_LANDSCAPE ")
+                    && !t.starts_with("OLED_ROTATION ")
+                    && !t.starts_with("IS_ROTATED_180 ")
+                    && !t.starts_with("IS_ROTATED_270 ")
+                    && !t.starts_with("DW_ROTATION ")
+                    && !t.starts_with("IS_UPPER_HS ")
+                    && !t.starts_with("UPPER_HS ")
+                    && !t.starts_with("BG_COLOR ")
+                    && !t.starts_with("KEYDOWN_COLOR ")
+                    && !t.starts_with("DIM_UNUSED_KEYS ")
+            })
+            .collect()
+    }
 }
 
 impl Default for DuckyProfile {
@@ -361,6 +535,128 @@ pub fn read_dpp_config(sd_root: &Path) -> Option<DuckySdConfig> {
         }
     }
     Some(cfg)
+}
+
+pub fn oled_icon_char_to_ascii(ch: char, compact: bool) -> Option<&'static str> {
+    match ch {
+        '\u{FE0E}' | '\u{FE0F}' | '\u{200D}' => Some(""),
+        '▶' => Some(if compact { ">" } else { "|>" }),
+        '⏸' => Some("||"),
+        '⏯' => Some(if compact { ">|" } else { "|>||" }),
+        '⏹' => Some(if compact { "#" } else { "[#]" }),
+        '⏭' => Some(if compact { ">|" } else { ">>|" }),
+        '⏮' => Some(if compact { "|<" } else { "|<<" }),
+        '⏩' => Some(">>"),
+        '⏪' => Some("<<"),
+        '🔊' => Some(if compact { "+" } else { "((+)" }),
+        '🔉' => Some(if compact { "-" } else { "((-)" }),
+        '🔇' => Some(if compact { "x" } else { "(x)" }),
+        '🎤' => Some(if compact { "I" } else { "(I)" }),
+        '🎧' => Some(if compact { "H" } else { "d-b" }),
+        '🎵' | '🎶' => Some(if compact { "~" } else { "d~b" }),
+        '⏺' => Some(if compact { "o" } else { "(o)" }),
+        '↑' | '▲' => Some(if compact { "^" } else { "[^]" }),
+        '↓' | '▼' => Some(if compact { "v" } else { "[v]" }),
+        '←' | '◀' => Some(if compact { "<" } else { "<--" }),
+        '→' => Some(if compact { ">" } else { "-->" }),
+        '↖' => Some("<^"),
+        '↘' => Some("v>"),
+        '↩' | '↺' => Some(if compact { "<" } else { "<-'" }),
+        '↪' | '↻' => Some(if compact { ">" } else { "'->" }),
+        '⇄' => Some(if compact { "=" } else { "<->" }),
+        '⇅' => Some(if compact { "|" } else { "^/v" }),
+        '✂' => Some("8<"),
+        '📋' => Some(if compact { "=" } else { "[=]" }),
+        '📌' => Some(if compact { "*" } else { "[o]" }),
+        '💾' => Some(if compact { "S" } else { "[S]" }),
+        '📁' => Some(if compact { "/" } else { "[/]" }),
+        '📄' => Some(if compact { "F" } else { "[F]" }),
+        '🔍' => Some(if compact { "?" } else { "(?)" }),
+        '🗑' => Some(if compact { "X" } else { "[X]" }),
+        '✏' => Some(if compact { "/" } else { "[/]" }),
+        '🔖' => Some(if compact { "*" } else { "[*]" }),
+        '📷' => Some(if compact { "O" } else { "[O]" }),
+        '🔗' => Some(if compact { "~" } else { "o-o" }),
+        '⌨' => Some(">_"),
+        '⚡' => Some(if compact { "!" } else { "/!/" }),
+        '🐞' => Some(if compact { "*" } else { "{*}" }),
+        '🚀' => Some(if compact { "^" } else { "/^\\" }),
+        '🧪' => Some(if compact { "T" } else { "\\o/" }),
+        '🔧' => Some(if compact { "+" } else { ">-<" }),
+        '⚙' => Some(if compact { "*" } else { "(*)" }),
+        '📦' => Some(if compact { "#" } else { "[#]" }),
+        '🌿' => Some("Y-"),
+        '☁' => Some(if compact { "~" } else { "(~)" }),
+        '🤖' => Some(if compact { "@" } else { "[oo]" }),
+        '⌘' => Some(if compact { "#" } else { "[#]" }),
+        '🖥' => Some(if compact { "=" } else { "[=]" }),
+        '🪟' => Some(if compact { "+" } else { "[+]" }),
+        '🔒' => Some(if compact { "L" } else { "[L]" }),
+        '🔓' => Some(if compact { "U" } else { "[U]" }),
+        '🌙' => Some("(("),
+        '☀' => Some(if compact { "*" } else { "\\o/" }),
+        '🔋' => Some(if compact { "+" } else { "[=]+" }),
+        '🌐' => Some(if compact { "W" } else { "(www)" }),
+        '📡' => Some(if compact { "i" } else { "((i))" }),
+        '⏱' => Some(if compact { "L" } else { "(L)" }),
+        '🔔' => Some(if compact { "!" } else { "/_\\" }),
+        '🏠' => Some(if compact { "H" } else { "/H\\" }),
+        '🎥' => Some(if compact { ">" } else { "[>]" }),
+        '📺' => Some(if compact { "T" } else { "[TV]" }),
+        '💬' => Some(if compact { "\"" } else { "(\")" }),
+        '🎮' => Some(if compact { "+" } else { "[+o]" }),
+        '🎨' => Some(if compact { ":" } else { "(:)" }),
+        '🧮' => Some(if compact { "+" } else { "[+-]" }),
+        '📧' => Some(if compact { "M" } else { "[M]" }),
+        '📅' => Some(if compact { "#" } else { "[31]" }),
+        '★' | '☆' => Some(if compact { "*" } else { "[*]" }),
+        '♥' => Some("<3"),
+        '✔' => Some(if compact { "v" } else { "[v]" }),
+        '✖' => Some(if compact { "x" } else { "[x]" }),
+        '➕' => Some(if compact { "+" } else { "[+]" }),
+        '➖' => Some(if compact { "-" } else { "[-]" }),
+        '⚠' => Some(if compact { "!" } else { "/!\\" }),
+        '🔥' => Some(if compact { "^" } else { "^^^" }),
+        '💎' => Some("<>"),
+        '🎯' => Some(if compact { "o" } else { "(o)" }),
+        '∞' => Some("oo"),
+        _ => None,
+    }
+}
+
+/// Converts a key label into a 1–5 byte 7-bit printable ASCII string (`0x20..=0x7E`)
+/// that the physical duckyPad / duckyPad Pro firmware (`Font_6x8` in `ssd1306_fonts.c`)
+/// can render on its hardware OLED screen.
+pub fn oled_label_to_hardware_ascii(label: &str) -> String {
+    let trimmed = label.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if trimmed.bytes().all(|b| (0x20..=0x7E).contains(&b)) {
+        return trimmed.chars().take(5).collect();
+    }
+    let has_ascii_alnum = trimmed.chars().any(|c| c.is_ascii_alphanumeric());
+    let mut out = String::with_capacity(8);
+    for ch in trimmed.chars() {
+        if (' '..='~').contains(&ch) {
+            out.push(ch);
+        } else if let Some(mapped) = oled_icon_char_to_ascii(ch, has_ascii_alnum) {
+            out.push_str(mapped);
+        } else if !ch.is_control() {
+            out.push('*');
+        }
+    }
+    let cleaned: String = out
+        .trim()
+        .chars()
+        .filter(|c| (' '..='~').contains(c))
+        .take(5)
+        .collect();
+    if cleaned.is_empty() {
+        "[*]".to_string()
+    } else {
+        cleaned
+    }
 }
 
 impl DuckyProfile {
@@ -437,10 +733,24 @@ impl DuckyProfile {
                             }
                         }
                     }
-                } else if let Some((slot_idx, label1)) = parse_indexed_directive(line, "z") {
+                } else if let Some((slot_idx, wlabel1)) = parse_indexed_directive(line, "dw_z") {
+                    profile.ensure_slot(slot_idx).widget_label_line1 = wlabel1.to_string();
+                } else if let Some((slot_idx, wlabel2)) = parse_indexed_directive(line, "dw_x") {
+                    profile.ensure_slot(slot_idx).widget_label_line2 = wlabel2.to_string();
+                } else if let Some((slot_idx, label1)) = parse_indexed_directive(line, "ui_z") {
                     profile.ensure_slot(slot_idx).label_line1 = label1.to_string();
-                } else if let Some((slot_idx, label2)) = parse_indexed_directive(line, "x") {
+                } else if let Some((slot_idx, label2)) = parse_indexed_directive(line, "ui_x") {
                     profile.ensure_slot(slot_idx).label_line2 = label2.to_string();
+                } else if let Some((slot_idx, label1)) = parse_indexed_directive(line, "z") {
+                    let slot = profile.ensure_slot(slot_idx);
+                    if slot.label_line1.is_empty() {
+                        slot.label_line1 = label1.to_string();
+                    }
+                } else if let Some((slot_idx, label2)) = parse_indexed_directive(line, "x") {
+                    let slot = profile.ensure_slot(slot_idx);
+                    if slot.label_line2.is_empty() {
+                        slot.label_line2 = label2.to_string();
+                    }
                 } else if let Some(rest) = line.strip_prefix("ab ") {
                     if let Ok(slot_idx) = rest.trim().parse::<usize>() {
                         if (1..=MAX_INPUT_SLOTS).contains(&slot_idx) {
@@ -535,10 +845,28 @@ impl DuckyProfile {
         let mut cfg = String::with_capacity(1024);
         for (&slot_idx, slot) in &self.slots {
             if !slot.label_line1.is_empty() {
-                cfg.push_str(&format!("z{} {}\n", slot_idx, slot.label_line1));
+                let hw_l1 = oled_label_to_hardware_ascii(&slot.label_line1);
+                if !hw_l1.is_empty() {
+                    cfg.push_str(&format!("z{} {}\n", slot_idx, hw_l1));
+                }
+                if hw_l1 != slot.label_line1 {
+                    cfg.push_str(&format!("ui_z{} {}\n", slot_idx, slot.label_line1));
+                }
             }
             if !slot.label_line2.is_empty() {
-                cfg.push_str(&format!("x{} {}\n", slot_idx, slot.label_line2));
+                let hw_l2 = oled_label_to_hardware_ascii(&slot.label_line2);
+                if !hw_l2.is_empty() {
+                    cfg.push_str(&format!("x{} {}\n", slot_idx, hw_l2));
+                }
+                if hw_l2 != slot.label_line2 {
+                    cfg.push_str(&format!("ui_x{} {}\n", slot_idx, slot.label_line2));
+                }
+            }
+            if !slot.widget_label_line1.trim().is_empty() {
+                cfg.push_str(&format!("dw_z{} {}\n", slot_idx, slot.widget_label_line1.trim()));
+            }
+            if !slot.widget_label_line2.trim().is_empty() {
+                cfg.push_str(&format!("dw_x{} {}\n", slot_idx, slot.widget_label_line2.trim()));
             }
         }
 
@@ -957,11 +1285,22 @@ pub fn compute_profiles_fingerprint(profiles: &[DuckyProfile]) -> String {
             feed(&[0]);
         }
         feed(&[u8::from(prof.dim_unused_keys)]);
+        feed(&prof.oled_rotation_degrees().to_le_bytes());
+        feed(&prof.widget_rotation_degrees().to_le_bytes());
+        feed(&[u8::from(prof.is_upper_hs())]);
+        for line in prof.canonical_extra_config_lines() {
+            feed(line.as_bytes());
+        }
         for slot_idx in 1..=MAX_INPUT_SLOTS {
             if let Some(slot) = prof.slots.get(&slot_idx) {
+                if slot.is_effectively_empty() {
+                    continue;
+                }
                 feed(&[slot_idx as u8]);
                 feed(slot.label_line1.as_bytes());
                 feed(slot.label_line2.as_bytes());
+                feed(slot.widget_label_line1.trim().as_bytes());
+                feed(slot.widget_label_line2.trim().as_bytes());
                 if let Some(c) = slot.custom_rgb {
                     feed(&[1, c[0], c[1], c[2]]);
                 } else {
@@ -1376,7 +1715,7 @@ fn is_mount_point_mounted(mount_point: &Path, dev_path: Option<&Path>) -> bool {
     false
 }
 
-fn find_duckypad_msc_block_device(disk_label: &str, allow_whole_disk: bool) -> Option<PathBuf> {
+pub fn find_duckypad_msc_block_device(disk_label: &str, allow_whole_disk: bool) -> Option<PathBuf> {
     if !disk_label.is_empty() {
         let by_label = PathBuf::from(format!("/dev/disk/by-label/{disk_label}"));
         if by_label.exists() {
@@ -1537,6 +1876,105 @@ fn unmount_duckypad_sd_cleanly(mount_root: &Path, known_dev: Option<&Path>) -> R
     }
 }
 
+pub fn unmount_mounted_duckypad_sd(current_mount: Option<&Path>) -> Result<String, String> {
+    let mount_root = current_mount
+        .filter(|p| p.exists())
+        .map(|p| p.to_path_buf())
+        .or_else(find_mounted_duckypad_sd)
+        .ok_or_else(|| "No mounted duckyPad microSD card detected".to_string())?;
+
+    let block_dev = find_mount_block_device(&mount_root);
+    unmount_duckypad_sd_cleanly(&mount_root, block_dev.as_deref())?;
+
+    // If the duckyPad Pro was in USB Mass Storage mode, reset it back to normal HID mode
+    if find_duckypad_msc_block_device("", true).is_some() {
+        let _guard = HID_IO_LOCK.lock().ok();
+        if let Ok(dev) = open_duckypad_hid() {
+            let mut tx = [0u8; 64];
+            tx[0] = HID_REPORT_ID_OUT;
+            tx[1] = 0x15;
+            tx[2] = HID_CMD_SOFTWARE_RESET;
+            tx[3] = 0;
+            let _ = dev.write(&tx);
+        }
+    }
+
+    Ok(format!("Unmounted microSD card at {}", mount_root.display()))
+}
+
+pub fn detect_unmounted_duckypad_sd(disk_label: &str) -> Option<PathBuf> {
+    if find_mounted_duckypad_sd().is_some() {
+        return None;
+    }
+    if let Some(dev) = find_duckypad_msc_block_device(disk_label, true) {
+        return Some(dev);
+    }
+    if let Ok(entries) = fs::read_dir("/sys/block") {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("mmcblk") {
+                let p1 = PathBuf::from(format!("/dev/{name}p1"));
+                if p1.exists() {
+                    return Some(p1);
+                }
+                let whole = PathBuf::from(format!("/dev/{name}"));
+                if whole.exists() {
+                    return Some(whole);
+                }
+            }
+        }
+    }
+    None
+}
+
+pub fn mount_duckypad_sd_only(disk_label: &str) -> Result<PathBuf, String> {
+    if let Some(mounted) = find_mounted_duckypad_sd() {
+        return Ok(mounted);
+    }
+    if let Some(dev_path) = detect_unmounted_duckypad_sd(disk_label) {
+        let out = std::process::Command::new("udisksctl")
+            .args([
+                "mount",
+                "--no-user-interaction",
+                "-b",
+                &dev_path.to_string_lossy(),
+            ])
+            .output()
+            .map_err(|e| format!("Failed invoking udisksctl mount: {e}"))?;
+        std::thread::sleep(std::time::Duration::from_millis(350));
+        if let Some(mounted) = find_mounted_duckypad_sd() {
+            return Ok(mounted);
+        }
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        if !stderr.is_empty() {
+            return Err(format!("udisksctl mount failed for {}: {stderr}", dev_path.display()));
+        }
+    }
+
+    // If a duckyPad Pro is connected over USB HID, switch it into USB MSC mode and mount
+    let entered_msc = {
+        let _guard = HID_IO_LOCK.lock().ok();
+        if let Ok(device) = open_duckypad_hid() {
+            let mut tx = [0u8; 64];
+            tx[0] = HID_REPORT_ID_OUT;
+            tx[1] = 0x18;
+            tx[2] = HID_CMD_SOFTWARE_RESET;
+            tx[3] = 1; // reboot into USB MSC mode
+            device.write(&tx).is_ok()
+        } else {
+            false
+        }
+    };
+
+    if entered_msc {
+        std::thread::sleep(std::time::Duration::from_millis(800));
+        let (mounted, _dev) = wait_and_mount_duckypad_msc(disk_label)?;
+        return Ok(mounted);
+    }
+
+    Err("No unmounted duckyPad microSD card or connected duckyPad Pro detected to mount".to_string())
+}
+
 pub fn check_profile_sync_status(
     serial: &str,
     profiles: &[DuckyProfile],
@@ -1609,6 +2047,37 @@ pub fn check_profile_sync_status(
                 ),
             );
         } else {
+            // Self-heal if baseline snapshot exists and canonical fingerprint or diff count is 0
+            if let Some(baseline) = load_sd_synced_snapshot(serial, sd_root) {
+                let base_hash = compute_profiles_fingerprint(&baseline);
+                if base_hash == mem_hash {
+                    mark_profiles_sd_synced(serial, profiles);
+                    return (
+                        "synced".to_string(),
+                        format!(
+                            "Validated & Synced: All {} profile(s) match the duckyPad microSD card (hash #{}).",
+                            profiles.len(),
+                            &mem_hash[..8.min(mem_hash.len())]
+                        ),
+                    );
+                }
+                let diff_raw = compute_unsynced_changes_json(serial, profiles, sd_root, "unsynced");
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&diff_raw) {
+                    if val.get("hasBaseline").and_then(|v| v.as_bool()) == Some(true)
+                        && val.get("totalChanges").and_then(|v| v.as_u64()) == Some(0)
+                    {
+                        mark_profiles_sd_synced(serial, profiles);
+                        return (
+                            "synced".to_string(),
+                            format!(
+                                "Validated & Synced: All {} profile(s) match the duckyPad microSD card (hash #{}).",
+                                profiles.len(),
+                                &mem_hash[..8.min(mem_hash.len())]
+                            ),
+                        );
+                    }
+                }
+            }
             return (
                 "unsynced".to_string(),
                 "You have unsynced profile changes in DuckyDeck Studio that have not been written to the duckyPad microSD card yet. Click to sync.".to_string(),
@@ -1662,12 +2131,7 @@ pub fn compute_unsynced_changes_json(
             let configured_keys = p
                 .slots
                 .values()
-                .filter(|k| {
-                    !k.label_line1.is_empty()
-                        || !k.label_line2.is_empty()
-                        || !k.on_press_script.trim().is_empty()
-                        || !k.on_release_script.trim().is_empty()
-                })
+                .filter(|k| !k.is_effectively_empty())
                 .count();
             items.push(serde_json::json!({
                 "kind": "unverified",
@@ -1707,7 +2171,7 @@ pub fn compute_unsynced_changes_json(
             let configured_keys = cur
                 .slots
                 .values()
-                .filter(|k| !k.label_line1.is_empty() || !k.on_press_script.trim().is_empty())
+                .filter(|k| !k.is_effectively_empty())
                 .count();
             total_changes += 1;
             let detail_text = format!(
@@ -1785,10 +2249,65 @@ pub fn compute_unsynced_changes_json(
             );
         }
 
+        let base_rot = base.oled_rotation_degrees();
+        let cur_rot = cur.oled_rotation_degrees();
+        if base_rot != cur_rot {
+            push_detail(
+                "is_landscape",
+                format!("OLED Orientation: {}° → {}°", base_rot, cur_rot),
+            );
+        }
+
+        let base_wrot = base.widget_rotation_degrees();
+        let cur_wrot = cur.widget_rotation_degrees();
+        if base_wrot != cur_wrot {
+            let fmt_wrot = |r: i32| -> String {
+                if r < 0 {
+                    "Follow OLED".to_string()
+                } else {
+                    format!("{r}°")
+                }
+            };
+            push_detail(
+                "widget_rotation",
+                format!(
+                    "Desktop Widget Orientation: {} → {}",
+                    fmt_wrot(base_wrot),
+                    fmt_wrot(cur_wrot)
+                ),
+            );
+        }
+
+        let base_upper_hs = base.is_upper_hs();
+        let cur_upper_hs = cur.is_upper_hs();
+        if base_upper_hs != cur_upper_hs {
+            push_detail(
+                "is_upper_hs",
+                format!(
+                    "Inverted Orientation (IS_UPPER_HS): {} → {}",
+                    if base_upper_hs { "ON" } else { "OFF" },
+                    if cur_upper_hs { "ON" } else { "OFF" }
+                ),
+            );
+        }
+
+        let base_other = base.canonical_extra_config_lines();
+        let cur_other = cur.canonical_extra_config_lines();
+        if base_other != cur_other {
+            push_detail(
+                "preserved_config",
+                format!(
+                    "Custom config.txt directives modified ({} → {} line(s))",
+                    base_other.len(),
+                    cur_other.len()
+                ),
+            );
+        }
+
         // Compare slots 1..=MAX_INPUT_SLOTS
         for slot_idx in 1..=MAX_INPUT_SLOTS {
-            let bk = base.slots.get(&slot_idx);
-            let ck = cur.slots.get(&slot_idx);
+            let bk = base.slots.get(&slot_idx).filter(|s| !s.is_effectively_empty());
+            let ck = cur.slots.get(&slot_idx).filter(|s| !s.is_effectively_empty());
             let slot_key = format!("slot:{slot_idx}");
             match (bk, ck) {
                 (Some(b), Some(c)) => {
@@ -1805,6 +2324,21 @@ pub fn compute_unsynced_changes_json(
                             format!("{} / {}", c.label_line1, c.label_line2)
                         };
                         key_diffs.push(format!("label \"{}\" → \"{}\"", old_lbl, new_lbl));
+                    }
+                    if b.widget_label_line1.trim() != c.widget_label_line1.trim()
+                        || b.widget_label_line2.trim() != c.widget_label_line2.trim()
+                    {
+                        let old_wlbl = if b.widget_label_line2.trim().is_empty() {
+                            b.widget_label_line1.trim().to_string()
+                        } else {
+                            format!("{} / {}", b.widget_label_line1.trim(), b.widget_label_line2.trim())
+                        };
+                        let new_wlbl = if c.widget_label_line2.trim().is_empty() {
+                            c.widget_label_line1.trim().to_string()
+                        } else {
+                            format!("{} / {}", c.widget_label_line1.trim(), c.widget_label_line2.trim())
+                        };
+                        key_diffs.push(format!("widget label \"{}\" → \"{}\"", old_wlbl, new_wlbl));
                     }
                     if b.custom_rgb != c.custom_rgb {
                         let old_c = b
@@ -1881,32 +2415,16 @@ pub fn compute_unsynced_changes_json(
                     }
                 }
                 (None, Some(c)) => {
-                    if !c.label_line1.is_empty()
-                        || !c.on_press_script.trim().is_empty()
-                        || !c.on_release_script.trim().is_empty()
-                        || c.custom_rgb.is_some()
-                        || c.disable_autorepeat
-                        || c.allow_abort
-                    {
-                        push_detail(
-                            &slot_key,
-                            format!("Key {} added (\"{}\")", slot_idx, c.label_line1),
-                        );
-                    }
+                    push_detail(
+                        &slot_key,
+                        format!("Key {} added (\"{}\")", slot_idx, c.label_line1),
+                    );
                 }
                 (Some(b), None) => {
-                    if !b.label_line1.is_empty()
-                        || !b.on_press_script.trim().is_empty()
-                        || !b.on_release_script.trim().is_empty()
-                        || b.custom_rgb.is_some()
-                        || b.disable_autorepeat
-                        || b.allow_abort
-                    {
-                        push_detail(
-                            &slot_key,
-                            format!("Key {} cleared (was \"{}\")", slot_idx, b.label_line1),
-                        );
-                    }
+                    push_detail(
+                        &slot_key,
+                        format!("Key {} cleared (was \"{}\")", slot_idx, b.label_line1),
+                    );
                 }
                 (None, None) => {}
             }
@@ -2087,6 +2605,13 @@ pub fn discard_unsynced_change_in_profiles(
             cur.dim_unused_keys = base.dim_unused_keys;
             Ok(format!(
                 "Reverted Dim Unused Keys on Profile #{cur_num} (\"{}\")",
+                cur.name
+            ))
+        }
+        "is_landscape" | "widget_rotation" | "is_upper_hs" | "preserved_config" => {
+            cur.preserved_config_lines = base.preserved_config_lines.clone();
+            Ok(format!(
+                "Reverted Orientation & Hardware Directives on Profile #{cur_num} (\"{}\")",
                 cur.name
             ))
         }
@@ -2292,23 +2817,32 @@ where
     MSC_SYNC_IN_PROGRESS.store(true, std::sync::atomic::Ordering::SeqCst);
     let _msc_guard = MscGuard;
 
-    on_progress(
-        15,
-        "Step 1/4: Switching duckyPad Pro to USB Mass Storage mode...",
-        &format!("• Sending USB MSC command (0x14) to duckyPad Pro ({disk_label})..."),
-    );
+    let already_has_block_dev = find_duckypad_msc_block_device(disk_label, true).is_some();
+    if !already_has_block_dev {
+        on_progress(
+            15,
+            "Step 1/4: Switching duckyPad Pro to USB Mass Storage mode...",
+            &format!("• Sending USB MSC command (0x14) to duckyPad Pro ({disk_label})..."),
+        );
 
-    // 1. Reboot duckyPad Pro into USB Mass Storage mode (0x14, tx[3] = 1)
-    {
-        let _guard = HID_IO_LOCK.lock().ok();
-        let dev = open_duckypad_hid()?;
-        let mut tx = [0u8; 64];
-        tx[0] = HID_REPORT_ID_OUT;
-        tx[1] = 0x11;
-        tx[2] = HID_CMD_SOFTWARE_RESET;
-        tx[3] = 1;
-        dev.write(&tx)
-            .map_err(|e| format!("Failed to enter USB storage mode: {e}"))?;
+        // 1. Reboot duckyPad Pro into USB Mass Storage mode (0x14, tx[3] = 1)
+        {
+            let _guard = HID_IO_LOCK.lock().ok();
+            let dev = open_duckypad_hid()?;
+            let mut tx = [0u8; 64];
+            tx[0] = HID_REPORT_ID_OUT;
+            tx[1] = 0x11;
+            tx[2] = HID_CMD_SOFTWARE_RESET;
+            tx[3] = 1;
+            dev.write(&tx)
+                .map_err(|e| format!("Failed to enter USB storage mode: {e}"))?;
+        }
+    } else {
+        on_progress(
+            20,
+            "Step 1/4: Detected unmounted duckyPad microSD block device...",
+            "• Mounting duckyPad microSD partition via udisksctl...",
+        );
     }
 
     on_progress(
@@ -2777,9 +3311,13 @@ pub async fn check_latest_duckypad_firmware(
     let (remote_semver, latest_version, download_url) =
         best.ok_or_else(|| "No firmware image found in repository".to_string())?;
 
-    let update_available = match parse_semver(current_version) {
-        Some(curr_semver) => remote_semver > curr_semver,
-        None => false,
+    let update_available = if is_duckydeck_studio_firmware_version(current_version) {
+        remote_semver > (3, 3, 5)
+    } else {
+        match parse_semver(current_version) {
+            Some(curr_semver) => remote_semver > curr_semver,
+            None => false,
+        }
     };
 
     Ok(FirmwareUpdateCheckResult {
@@ -2790,6 +3328,703 @@ pub async fn check_latest_duckypad_firmware(
         download_url,
         guide_url: guide_url.to_string(),
     })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FirmwareVersionEntry {
+    pub version: String,
+    pub filename: String,
+    pub path: String,
+    pub crc32: String,
+    pub size_bytes: u64,
+    pub vendor: String,
+    pub is_official: bool,
+    pub channel: String,
+    pub release_date: String,
+    pub notes: String,
+    pub is_installed: bool,
+    pub supports_monochrome_icons: bool,
+}
+
+pub fn is_duckydeck_studio_firmware_version(version: &str) -> bool {
+    let trimmed = version.trim();
+    if trimmed.is_empty() || trimmed == "-" {
+        return false;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.contains("official") || lower.contains("dekunukem") {
+        return false;
+    }
+    if lower.contains("studio") || lower.contains("dds") {
+        return true;
+    }
+    let clean = trimmed.trim_start_matches(['v', 'V']);
+    clean == "1.0.0" || clean == "3.4.0"
+}
+
+pub fn compute_ieee_crc32(data: &[u8]) -> u32 {
+    let mut crc: u32 = 0xFFFF_FFFF;
+    for &byte in data {
+        crc ^= byte as u32;
+        for _ in 0..8 {
+            if (crc & 1) != 0 {
+                crc = (crc >> 1) ^ 0xEDB8_8320;
+            } else {
+                crc >>= 1;
+            }
+        }
+    }
+    !crc
+}
+
+fn firmware_release_metadata(
+    version: &str,
+    is_studio_custom: bool,
+) -> (&'static str, &'static str, &'static str) {
+    if is_studio_custom {
+        return (
+            "DuckyDeck Studio Custom (v1.0.0)",
+            "Oct 17, 2026",
+            "DuckyDeck Studio custom firmware v1.0.0 (built on duckyPad Pro 3.3.5 / DSVM v2): adds native 1-bit monochrome pixel-art OLED icons (16×16 full-cell, 10×10 top-icon + caption, and 7×10 / 6×8 inline glyphs), 0°/90°/180°/270° OLED orientation, UTF-8 key label decoding, and DuckyDeck Studio HID identification.",
+        );
+    }
+    match version {
+        "3.3.5" => (
+            "Official Release",
+            "Mar 15, 2026",
+            "Official dekuNukem release (download from dekuNukem's site): increased Anykey-to-Abort check frequency during script execution.",
+        ),
+        "3.3.4" => (
+            "Official Release",
+            "Mar 11, 2026",
+            "Official dekuNukem release: adjusted PWM default level to reduce power consumption.",
+        ),
+        "3.3.3" => (
+            "Official Release",
+            "Feb 9, 2026",
+            "Official dekuNukem release: disabled PWM output; stable public release.",
+        ),
+        _ => (
+            "Official dekuNukem Firmware",
+            "Release",
+            "Official dekuNukem duckyPad Pro ESP32-S3 OTA firmware binary downloaded from dekuNukem's repository.",
+        ),
+    }
+}
+
+pub fn list_available_duckypad_pro_firmwares(current_version: &str) -> Vec<FirmwareVersionEntry> {
+    let mut candidate_dirs: Vec<(PathBuf, bool)> = Vec::new();
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    candidate_dirs.push((manifest_dir.join("firmware/releases"), true));
+    candidate_dirs.push((manifest_dir.join("firmware/duckyPad-Pro/firmware"), true));
+    if let Some(home) = std::env::var_os("HOME") {
+        candidate_dirs.push((
+            PathBuf::from(&home).join(".local/share/duckydeck-studio/firmware"),
+            false,
+        ));
+    }
+
+    let mut by_key: std::collections::BTreeMap<(u8, u32, u32, u32, String), FirmwareVersionEntry> =
+        std::collections::BTreeMap::new();
+
+    for (dir, is_bundled_studio_dir) in candidate_dirs {
+        let Ok(rd) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in rd.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Some(fname) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if !fname.starts_with("DPP_FW_") || !fname.ends_with(".bin") {
+                continue;
+            }
+            let inner = &fname["DPP_FW_".len()..fname.len() - ".bin".len()];
+            let mut parts = inner.split('_');
+            let Some(ver_str) = parts.next() else {
+                continue;
+            };
+            let crc_str = parts.next().unwrap_or("").to_lowercase();
+            let Some((maj, min, pat)) = parse_semver(ver_str) else {
+                continue;
+            };
+            let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+            let is_studio_custom = is_bundled_studio_dir
+                || matches!(crc_str.as_str(), "ad2acc81" | "6c4977a9" | "9a8c8902")
+                || (maj, min, pat) >= (3, 4, 0);
+            let is_official = !is_studio_custom;
+            let (channel, release_date, notes) =
+                firmware_release_metadata(ver_str, is_studio_custom);
+            let vendor = if is_official {
+                "dekuNukem (Official)".to_string()
+            } else {
+                "DuckyDeck Studio".to_string()
+            };
+            let supports_monochrome_icons = is_studio_custom;
+            let is_installed = if is_studio_custom {
+                is_duckydeck_studio_firmware_version(current_version)
+                    && (current_version.trim().trim_start_matches(['v', 'V']) == ver_str
+                        || current_version.trim() == "3.4.0")
+            } else {
+                !is_duckydeck_studio_firmware_version(current_version)
+                    && current_version.trim().starts_with(ver_str)
+            };
+
+            let studio_rank = if is_studio_custom { 1u8 } else { 0u8 };
+            let key = (studio_rank, maj, min, pat, crc_str.clone());
+            by_key.entry(key).or_insert_with(|| FirmwareVersionEntry {
+                version: ver_str.to_string(),
+                filename: fname.to_string(),
+                path: path.to_string_lossy().to_string(),
+                crc32: crc_str,
+                size_bytes,
+                vendor,
+                is_official,
+                channel: channel.to_string(),
+                release_date: release_date.to_string(),
+                notes: notes.to_string(),
+                is_installed,
+                supports_monochrome_icons,
+            });
+        }
+    }
+
+    let mut out: Vec<FirmwareVersionEntry> = by_key.into_values().collect();
+    out.reverse();
+    out
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileTemplate {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category: String,
+    pub is_builtin: bool,
+    pub profile: DuckyProfile,
+}
+
+fn user_profile_templates_path() -> PathBuf {
+    data_home_dir()
+        .join("duckydeck-studio")
+        .join("profile_templates.json")
+}
+
+pub fn builtin_profile_templates() -> Vec<ProfileTemplate> {
+    let mut list = Vec::new();
+
+    // 1. Blank Starter Template
+    list.push(ProfileTemplate {
+        id: "builtin_blank".to_string(),
+        name: "Blank Profile".to_string(),
+        description: "Clean empty 20-key profile with sky-blue default LED lighting and 0° portrait orientation.".to_string(),
+        category: "Starter".to_string(),
+        is_builtin: true,
+        profile: DuckyProfile {
+            number: 1,
+            name: "New Profile".to_string(),
+            bg_color: [16, 48, 96],
+            keydown_color: Some([255, 255, 255]),
+            dim_unused_keys: true,
+            ..Default::default()
+        },
+    });
+
+    // 2. Media & Productivity Template
+    let mut media_slots = BTreeMap::new();
+    let mut add_slot = |map: &mut BTreeMap<usize, DuckyKeySlot>,
+                        slot: usize,
+                        l1: &str,
+                        l2: &str,
+                        wl1: &str,
+                        wl2: &str,
+                        rgb: Option<[u8; 3]>,
+                        script: &str| {
+        map.insert(
+            slot,
+            DuckyKeySlot {
+                slot,
+                label_line1: l1.to_string(),
+                label_line2: l2.to_string(),
+                widget_label_line1: wl1.to_string(),
+                widget_label_line2: wl2.to_string(),
+                custom_rgb: rgb,
+                allow_abort: false,
+                disable_autorepeat: false,
+                on_press_script: script.to_string(),
+                on_release_script: String::new(),
+            },
+        );
+    };
+    add_slot(&mut media_slots, 1, "Copy", "", "Copy", "Ctrl+C", Some([0, 180, 120]), "CONTROL c\n");
+    add_slot(&mut media_slots, 2, "Paste", "", "Paste", "Ctrl+V", Some([0, 180, 120]), "CONTROL v\n");
+    add_slot(&mut media_slots, 3, "Undo", "", "Undo", "Ctrl+Z", Some([240, 140, 0]), "CONTROL z\n");
+    add_slot(&mut media_slots, 4, "Redo", "", "Redo", "Ctrl+Shift+Z", Some([240, 140, 0]), "CONTROL SHIFT z\n");
+    add_slot(&mut media_slots, 5, "Prev", "Track", "Previous", "Media Track", Some([56, 189, 248]), "MK_PREV\n");
+    add_slot(&mut media_slots, 6, "Play", "Pause", "Play / Pause", "Media", Some([34, 197, 94]), "MK_PP\n");
+    add_slot(&mut media_slots, 7, "Next", "Track", "Next", "Media Track", Some([56, 189, 248]), "MK_NEXT\n");
+    add_slot(&mut media_slots, 8, "Mute", "", "Mute Audio", "Toggle", Some([239, 68, 68]), "MK_MUTE\n");
+    add_slot(&mut media_slots, 21, "Vol-", "", "Volume Down", "", None, "MK_VOLDOWN\n");
+    add_slot(&mut media_slots, 22, "Vol+", "", "Volume Up", "", None, "MK_VOLUP\n");
+    add_slot(&mut media_slots, 23, "Mute", "", "Mute", "", None, "MK_MUTE\n");
+
+    list.push(ProfileTemplate {
+        id: "builtin_media_productivity".to_string(),
+        name: "Media & Productivity".to_string(),
+        description: "Clipboard shortcuts (Copy, Paste, Undo, Redo), media transport controls, and rotary volume knob.".to_string(),
+        category: "Productivity".to_string(),
+        is_builtin: true,
+        profile: DuckyProfile {
+            number: 1,
+            name: "Productivity".to_string(),
+            bg_color: [16, 48, 96],
+            keydown_color: Some([255, 255, 255]),
+            dim_unused_keys: true,
+            slots: media_slots,
+            ..Default::default()
+        },
+    });
+
+    // 3. Developer / IDE Template
+    let mut dev_slots = BTreeMap::new();
+    add_slot(&mut dev_slots, 1, "Build", "", "Build Project", "Ctrl+B", Some([34, 197, 94]), "CONTROL b\n");
+    add_slot(&mut dev_slots, 2, "Run", "", "Run Target", "Shift+F10", Some([16, 185, 129]), "SHIFT F10\n");
+    add_slot(&mut dev_slots, 3, "Debug", "", "Start Debug", "Shift+F9", Some([245, 158, 11]), "SHIFT F9\n");
+    add_slot(&mut dev_slots, 4, "Stop", "", "Stop Process", "Ctrl+F2", Some([239, 68, 68]), "CONTROL F2\n");
+    add_slot(&mut dev_slots, 5, "Find", "All", "Find in Files", "Ctrl+Shift+F", Some([56, 189, 248]), "CONTROL SHIFT f\n");
+    add_slot(&mut dev_slots, 6, "Fmt", "Code", "Format Code", "Ctrl+Shift+I", Some([168, 85, 247]), "CONTROL SHIFT i\n");
+    add_slot(&mut dev_slots, 7, "Term", "", "Toggle Terminal", "Ctrl+`", Some([148, 163, 184]), "CONTROL `\n");
+    add_slot(&mut dev_slots, 8, "Git", "Diff", "Git Commit/Diff", "Ctrl+K", Some([249, 115, 22]), "CONTROL k\n");
+
+    list.push(ProfileTemplate {
+        id: "builtin_developer_ide".to_string(),
+        name: "Developer / IDE".to_string(),
+        description: "Build, Run, Debug, Stop, Find in Files, Format Code, Terminal, and Git workflow keys.".to_string(),
+        category: "Development".to_string(),
+        is_builtin: true,
+        profile: DuckyProfile {
+            number: 1,
+            name: "Dev IDE".to_string(),
+            bg_color: [20, 36, 72],
+            keydown_color: Some([255, 255, 255]),
+            dim_unused_keys: true,
+            slots: dev_slots,
+            ..Default::default()
+        },
+    });
+
+    // 4. Landscape 90° Starter Template
+    let mut landscape_prof = DuckyProfile {
+        number: 1,
+        name: "Landscape 90".to_string(),
+        bg_color: [16, 64, 96],
+        keydown_color: Some([255, 255, 255]),
+        dim_unused_keys: true,
+        ..Default::default()
+    };
+    landscape_prof.set_oled_rotation_degrees(90);
+    landscape_prof.set_widget_rotation_degrees(-1);
+
+    list.push(ProfileTemplate {
+        id: "builtin_landscape_90".to_string(),
+        name: "Landscape 90° Starter".to_string(),
+        description: "Pre-configured for a 90° rotated duckyPad Pro (5×4 landscape key grid on OLED and Desktop Widget).".to_string(),
+        category: "Orientation".to_string(),
+        is_builtin: true,
+        profile: landscape_prof,
+    });
+
+    list
+}
+
+pub fn load_user_profile_templates() -> Vec<ProfileTemplate> {
+    let path = user_profile_templates_path();
+    let Ok(raw) = fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    serde_json::from_str::<Vec<ProfileTemplate>>(&raw).unwrap_or_default()
+}
+
+pub fn save_user_profile_templates(templates: &[ProfileTemplate]) -> Result<(), String> {
+    let path = user_profile_templates_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed creating templates dir: {e}"))?;
+    }
+    let json = serde_json::to_string_pretty(templates)
+        .map_err(|e| format!("Failed serializing profile templates: {e}"))?;
+    fs::write(&path, json).map_err(|e| format!("Failed writing profile templates: {e}"))
+}
+
+pub fn list_all_profile_templates() -> Vec<ProfileTemplate> {
+    let mut all = builtin_profile_templates();
+    let user = load_user_profile_templates();
+    all.extend(user);
+    all
+}
+
+pub fn save_profile_as_user_template(
+    profile: &DuckyProfile,
+    template_name: &str,
+    description: &str,
+) -> Result<ProfileTemplate, String> {
+    let clean_name = template_name.trim();
+    if clean_name.is_empty() {
+        return Err("Template name cannot be empty".to_string());
+    }
+    let slug: String = clean_name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let template_id = format!("user_{}", slug.trim_matches('_'));
+    let mut prof_copy = profile.clone();
+    prof_copy.number = 1;
+    prof_copy.folder_name_override = None;
+
+    let desc = if description.trim().is_empty() {
+        let key_count = prof_copy
+            .slots
+            .values()
+            .filter(|s| !s.is_effectively_empty())
+            .count();
+        format!(
+            "Saved from Profile \"{}\" ({} configured key(s), OLED {}°)",
+            profile.name,
+            key_count,
+            prof_copy.oled_rotation_degrees()
+        )
+    } else {
+        description.trim().to_string()
+    };
+
+    let entry = ProfileTemplate {
+        id: template_id.clone(),
+        name: clean_name.to_string(),
+        description: desc,
+        category: "User Templates".to_string(),
+        is_builtin: false,
+        profile: prof_copy,
+    };
+
+    let mut user_list = load_user_profile_templates();
+    if let Some(existing) = user_list
+        .iter_mut()
+        .find(|t| t.id == template_id || t.name.eq_ignore_ascii_case(clean_name))
+    {
+        *existing = entry.clone();
+    } else {
+        user_list.push(entry.clone());
+    }
+    save_user_profile_templates(&user_list)?;
+    Ok(entry)
+}
+
+pub fn delete_user_profile_template(template_id: &str) -> Result<(), String> {
+    let clean_id = template_id.trim();
+    if clean_id.starts_with("builtin_") {
+        return Err("Built-in starter templates cannot be deleted".to_string());
+    }
+    let mut user_list = load_user_profile_templates();
+    let before = user_list.len();
+    user_list.retain(|t| t.id != clean_id);
+    if user_list.len() == before {
+        return Err(format!("Template '{clean_id}' not found"));
+    }
+    save_user_profile_templates(&user_list)
+}
+
+pub fn instantiate_profile_from_template(
+    template_id: &str,
+    number: u8,
+    profile_name: &str,
+) -> DuckyProfile {
+    let all = list_all_profile_templates();
+    if let Some(tpl) = all.iter().find(|t| t.id == template_id) {
+        let mut p = tpl.profile.clone();
+        p.number = number;
+        p.name = profile_name.to_string();
+        p.folder_name_override = Some(format!("profile{number}_{profile_name}"));
+        p
+    } else {
+        DuckyProfile {
+            number,
+            name: profile_name.to_string(),
+            folder_name_override: Some(format!("profile{number}_{profile_name}")),
+            ..Default::default()
+        }
+    }
+}
+
+fn write_and_verify_firmware_on_sd(
+    sd_root: &Path,
+    target_filename: &str,
+    fw_bytes: &[u8],
+    expected_crc: u32,
+) -> Result<PathBuf, String> {
+    if let Ok(rd) = fs::read_dir(sd_root) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
+                if name.starts_with("DPP_FW_") && name.ends_with(".bin") {
+                    let _ = fs::remove_file(&p);
+                }
+            }
+        }
+    }
+
+    let dest_path = sd_root.join(target_filename);
+    {
+        let mut f = fs::File::create(&dest_path).map_err(|e| {
+            format!(
+                "Failed creating firmware file {} on microSD: {e}",
+                dest_path.display()
+            )
+        })?;
+        f.write_all(fw_bytes).map_err(|e| {
+            format!(
+                "Failed writing firmware bytes to {}: {e}",
+                dest_path.display()
+            )
+        })?;
+        f.sync_all()
+            .map_err(|e| format!("Failed flushing firmware file to microSD: {e}"))?;
+    }
+
+    let read_back = fs::read(&dest_path).map_err(|e| {
+        format!(
+            "Failed reading back staged firmware {} for verification: {e}",
+            dest_path.display()
+        )
+    })?;
+    if read_back.len() != fw_bytes.len() {
+        return Err(format!(
+            "Staged firmware size mismatch on microSD (expected {} bytes, got {} bytes)",
+            fw_bytes.len(),
+            read_back.len()
+        ));
+    }
+    let read_crc = compute_ieee_crc32(&read_back);
+    if read_crc != expected_crc {
+        return Err(format!(
+            "Staged firmware CRC32 mismatch on microSD (expected {:08x}, got {:08x})",
+            expected_crc, read_crc
+        ));
+    }
+
+    Ok(dest_path)
+}
+
+pub fn stage_duckypad_pro_firmware_via_msc_with_progress<F>(
+    disk_label: &str,
+    fw_source_path: &Path,
+    mut on_progress: F,
+) -> Result<String, String>
+where
+    F: FnMut(i32, &str, &str),
+{
+    let clean_str = fw_source_path
+        .to_string_lossy()
+        .trim()
+        .trim_start_matches("file://")
+        .to_string();
+    let src_path = PathBuf::from(&clean_str);
+    if !src_path.is_file() {
+        return Err(format!(
+            "Firmware binary file not found: {}",
+            src_path.display()
+        ));
+    }
+
+    let fw_bytes = fs::read(&src_path)
+        .map_err(|e| format!("Failed reading firmware binary {}: {e}", src_path.display()))?;
+    if fw_bytes.len() < 64 * 1024 {
+        return Err(format!(
+            "File {} is too small ({} bytes) to be a valid duckyPad Pro firmware image",
+            src_path.display(),
+            fw_bytes.len()
+        ));
+    }
+
+    let crc = compute_ieee_crc32(&fw_bytes);
+    let crc_hex = format!("{crc:x}");
+    let raw_name = src_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("DPP_FW_custom.bin");
+
+    let (ver_label, target_filename) = if raw_name.starts_with("DPP_FW_")
+        && raw_name.ends_with(".bin")
+        && raw_name.to_lowercase().contains(&crc_hex)
+    {
+        let ver = raw_name
+            .strip_prefix("DPP_FW_")
+            .and_then(|s| s.strip_suffix(".bin"))
+            .and_then(|s| s.split('_').next())
+            .unwrap_or("custom")
+            .to_string();
+        (ver, raw_name.to_string())
+    } else {
+        let ver = raw_name
+            .strip_prefix("DPP_FW_")
+            .and_then(|s| s.strip_suffix(".bin"))
+            .and_then(|s| s.split('_').next())
+            .unwrap_or("3.4.0")
+            .to_string();
+        (ver.clone(), format!("DPP_FW_{ver}_{crc_hex}.bin"))
+    };
+
+    on_progress(
+        10,
+        &format!("Validating duckyPad Pro firmware v{ver_label} (CRC32: {crc_hex})..."),
+        &format!(
+            "• Verified {} ({} KB, IEEE CRC32: 0x{crc_hex})\n• Target OTA image name: {target_filename}",
+            src_path.display(),
+            fw_bytes.len() / 1024
+        ),
+    );
+
+    if let Some(already_mounted) = find_mounted_duckypad_sd() {
+        on_progress(
+            45,
+            &format!("Staging {target_filename} to mounted microSD card..."),
+            &format!(
+                "• Found mounted microSD at {}\n• Removing old DPP_FW_*.bin and writing {target_filename}...",
+                already_mounted.display()
+            ),
+        );
+        let staged_path =
+            write_and_verify_firmware_on_sd(&already_mounted, &target_filename, &fw_bytes, crc)?;
+        let _ = std::process::Command::new("sync").status();
+        let rebooted = reboot_duckypad().is_ok();
+        let msg = if rebooted {
+            format!(
+                "Staged {target_filename} ({}) and rebooted duckyPad Pro — press ANY KEY on your duckyPad Pro to complete the v{ver_label} update!",
+                staged_path.display()
+            )
+        } else {
+            format!(
+                "Staged {target_filename} to {} — safely eject/insert the microSD into your duckyPad Pro and press ANY KEY on the keypad to install v{ver_label}!",
+                staged_path.display()
+            )
+        };
+        on_progress(100, &msg, &format!("✓ {msg}"));
+        return Ok(msg);
+    }
+
+    struct MscGuard;
+    impl Drop for MscGuard {
+        fn drop(&mut self) {
+            MSC_SYNC_IN_PROGRESS.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    MSC_SYNC_IN_PROGRESS.store(true, std::sync::atomic::Ordering::SeqCst);
+    let _msc_guard = MscGuard;
+
+    on_progress(
+        20,
+        "Step 1/5: Switching duckyPad Pro to USB Mass Storage mode...",
+        &format!("• Sending USB MSC command (0x14) to duckyPad Pro ({disk_label})..."),
+    );
+
+    {
+        let _guard = HID_IO_LOCK.lock().ok();
+        let dev = open_duckypad_hid()?;
+        let mut tx = [0u8; 64];
+        tx[0] = HID_REPORT_ID_OUT;
+        tx[1] = 0x13;
+        tx[2] = HID_CMD_SOFTWARE_RESET;
+        tx[3] = 1;
+        dev.write(&tx)
+            .map_err(|e| format!("Failed to switch duckyPad Pro into USB storage mode: {e}"))?;
+    }
+
+    on_progress(
+        38,
+        "Step 2/5: Waiting for FAT32 partition & mounting microSD...",
+        "• Waiting for duckyPad Pro microSD partition to enumerate on USB bus...",
+    );
+
+    let mount_res = wait_and_mount_duckypad_msc(disk_label);
+    let stage_res: Result<PathBuf, String> = match mount_res {
+        Ok((mount_root, real_dev)) => {
+            on_progress(
+                60,
+                &format!("Step 3/5: Writing {target_filename} & verifying CRC32 on microSD..."),
+                &format!(
+                    "✓ Mounted microSD at {}\n• Writing {} bytes and verifying read-back CRC32 (0x{crc_hex})...",
+                    mount_root.display(),
+                    fw_bytes.len()
+                ),
+            );
+            let mut res =
+                write_and_verify_firmware_on_sd(&mount_root, &target_filename, &fw_bytes, crc);
+            if res.is_ok() {
+                on_progress(
+                    80,
+                    "Step 4/5: CRC32 verified! Flushing FAT32 buffers & unmounting...",
+                    &format!("✓ Read-back CRC32 (0x{crc_hex}) verified on microSD; unmounting cleanly..."),
+                );
+            }
+            if let Err(unmount_err) = unmount_duckypad_sd_cleanly(&mount_root, real_dev.as_deref()) {
+                if res.is_ok() {
+                    res = Err(unmount_err);
+                }
+            } else if res.is_ok() {
+                on_progress(
+                    92,
+                    "Step 5/5: Rebooting duckyPad Pro into OTA Firmware Updater...",
+                    "✓ Unmounted cleanly; rebooting duckyPad Pro into OTA update prompt...",
+                );
+            }
+            res
+        }
+        Err(e) => Err(e),
+    };
+
+    for _ in 0..20 {
+        let reset_ok = {
+            let _guard = HID_IO_LOCK.lock().ok();
+            if let Ok(dev) = open_duckypad_hid() {
+                let mut tx = [0u8; 64];
+                tx[0] = HID_REPORT_ID_OUT;
+                tx[1] = 0x14;
+                tx[2] = HID_CMD_SOFTWARE_RESET;
+                tx[3] = 0;
+                dev.write(&tx).is_ok()
+            } else {
+                false
+            }
+        };
+        if reset_ok {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(180));
+    }
+
+    drop(_msc_guard);
+
+    match stage_res {
+        Ok(_) => {
+            let msg = format!(
+                "Firmware v{ver_label} ({target_filename}) staged to duckyPad Pro! Press ANY KEY on your duckyPad Pro to confirm and install v{ver_label}."
+            );
+            on_progress(
+                100,
+                &format!("Ready on duckyPad Pro: Press ANY KEY on the device to install v{ver_label}!"),
+                &format!("✓ {msg}"),
+            );
+            Ok(msg)
+        }
+        Err(e) => Err(e),
+    }
 }
 
 // ============================================================================
@@ -3749,7 +4984,7 @@ pub async fn execute_web_api_request(input_cfg: &WebApiConfig) -> WebApiExecutio
     let mut req = client.request(method.clone(), &effective_url);
     let mut has_content_type = false;
 
-    for raw_line in cfg.headers.split(['\n', ';']) {
+    for raw_line in cfg.headers.lines() {
         let line = raw_line.trim();
         if line.is_empty() || line.starts_with('#') || line.starts_with("//") {
             continue;
@@ -4621,6 +5856,155 @@ impl GlobalMacroEvdevRecorder {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
 
+    #[test]
+    fn test_firmware_catalog_and_crc32_integrity() {
+        let list = list_available_duckypad_pro_firmwares("1.0.0 (DuckyDeck Studio)");
+        assert!(
+            !list.is_empty(),
+            "Expected at least 1 DuckyDeck Studio firmware release, got {}",
+            list.len()
+        );
+        // First entry should be v1.0.0 (DuckyDeck Studio Firmware)
+        assert_eq!(list[0].version, "1.0.0");
+        assert_eq!(list[0].flavor, "duckydeck_studio");
+        assert!(list[0].supports_monochrome_icons);
+        // Ensure no official dekuNukem binaries are bundled in the repo
+        for entry in &list {
+            assert_eq!(
+                entry.flavor, "duckydeck_studio",
+                "Only DuckyDeck Studio firmware should be bundled in the repo, found: {}",
+                entry.filename
+            );
+            let bytes =
+                std::fs::read(&entry.path).expect("Bundled firmware binary should be readable");
+            let crc = compute_ieee_crc32(&bytes);
+            assert_eq!(
+                format!("{crc:x}"),
+                entry.crc32,
+                "CRC32 mismatch for {}",
+                entry.filename
+            );
+        }
+    }
 
+    #[test]
+    fn test_profile_rotation_fingerprint_and_unsynced_changes() {
+        let base_profiles = vec![DuckyProfile {
+            number: 1,
+            name: "Default".to_string(),
+            ..Default::default()
+        }];
+        let mut rotated_profiles = base_profiles.clone();
+        rotated_profiles[0]
+            .preserved_config_lines
+            .push("IS_LANDSCAPE 1".to_string());
+
+        let base_fp = compute_profiles_fingerprint(&base_profiles);
+        let rotated_fp = compute_profiles_fingerprint(&rotated_profiles);
+        assert_ne!(
+            base_fp, rotated_fp,
+            "Changing IS_LANDSCAPE rotation must change the profile sync fingerprint"
+        );
+
+        // Verify empty slot insertion does NOT change the fingerprint (fixes phantom unsynced state)
+        let mut with_empty_slot = base_profiles.clone();
+        with_empty_slot[0]
+            .slots
+            .insert(5, DuckyKeySlot::default());
+        assert_eq!(
+            compute_profiles_fingerprint(&with_empty_slot),
+            base_fp,
+            "An effectively empty DuckyKeySlot must not change the profile sync fingerprint"
+        );
+
+        let temp_sd = std::env::temp_dir().join(format!(
+            "duckydeck_rotation_test_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&temp_sd);
+        fs::create_dir_all(&temp_sd).expect("create temp sd dir");
+        base_profiles[0]
+            .save_to_sd_root(&temp_sd)
+            .expect("save base profile");
+        save_profile_order_to_sd(&temp_sd, &base_profiles).expect("save profile_info.txt");
+
+        let diff_json = compute_unsynced_changes_json(
+            "TEST_ROTATION_SERIAL",
+            &rotated_profiles,
+            Some(&temp_sd),
+            "unsynced",
+        );
+        assert!(
+            diff_json.contains("is_landscape") && diff_json.contains("OLED Orientation: 0° → 90°"),
+            "Unsynced changes should include is_landscape diff, got: {diff_json}"
+        );
+
+        rotated_profiles[0].set_oled_rotation_degrees(180);
+        assert_eq!(rotated_profiles[0].oled_rotation_degrees(), 180);
+        let diff_180_json = compute_unsynced_changes_json(
+            "TEST_ROTATION_SERIAL",
+            &rotated_profiles,
+            Some(&temp_sd),
+            "unsynced",
+        );
+        assert!(
+            diff_180_json.contains("OLED Orientation: 0° → 180°"),
+            "Unsynced changes should include 180° diff, got: {diff_180_json}"
+        );
+
+        rotated_profiles[0].set_oled_rotation_degrees(270);
+        assert_eq!(rotated_profiles[0].oled_rotation_degrees(), 270);
+        let diff_270_json = compute_unsynced_changes_json(
+            "TEST_ROTATION_SERIAL",
+            &rotated_profiles,
+            Some(&temp_sd),
+            "unsynced",
+        );
+        assert!(
+            diff_270_json.contains("OLED Orientation: 0° → 270°"),
+            "Unsynced changes should include 270° diff, got: {diff_270_json}"
+        );
+
+        // Test separate Desktop Widget orientation
+        rotated_profiles[0].set_widget_rotation_degrees(90);
+        assert_eq!(rotated_profiles[0].widget_rotation_degrees(), 90);
+        assert_eq!(rotated_profiles[0].effective_widget_rotation_degrees(), 90);
+        rotated_profiles[0].set_widget_rotation_degrees(-1);
+        assert_eq!(rotated_profiles[0].widget_rotation_degrees(), -1);
+        assert_eq!(rotated_profiles[0].effective_widget_rotation_degrees(), 270);
+
+        let discard_res = discard_unsynced_change_in_profiles(
+            "TEST_ROTATION_SERIAL",
+            &mut rotated_profiles,
+            Some(&temp_sd),
+            1,
+            "Default",
+            "is_landscape",
+        );
+        assert!(
+            discard_res.is_ok(),
+            "Discarding is_landscape should succeed: {discard_res:?}"
+        );
+        assert_eq!(
+            compute_profiles_fingerprint(&rotated_profiles),
+            base_fp,
+            "Fingerprint should match baseline after discarding rotation change"
+        );
+
+        // Verify built-in profile templates instantiate cleanly
+        let templates = list_all_profile_templates();
+        assert!(templates.len() >= 4);
+        let inst = instantiate_profile_from_template("builtin_media_stream", 2, "My Stream")
+            .expect("instantiate builtin_media_stream");
+        assert_eq!(inst.number, 2);
+        assert_eq!(inst.name, "My Stream");
+        assert!(inst.slots.contains_key(&1));
+
+        let _ = fs::remove_dir_all(&temp_sd);
+    }
+}
 

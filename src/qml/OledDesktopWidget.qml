@@ -11,9 +11,9 @@ Window {
         ? qsTr("duckyPad OLED — P%1: %2").arg(activeProfile).arg(activeProfileName)
         : qsTr("duckyPad OLED — P%1: %2 [Unpinned]").arg(activeProfile).arg(activeProfileName)
     width: 284
-    height: 356
+    height: 382
     minimumWidth: 184
-    minimumHeight: 240
+    minimumHeight: 264
     visible: false
     color: "transparent"
 
@@ -23,6 +23,22 @@ Window {
     property bool framelessMode: true
     property bool showRgbDots: true
     property bool showSizeSlider: false
+    property bool showTransparencySlider: false
+    property int transparencyPercent: 0
+    readonly property real windowOpacity: Math.max(0.20, Math.min(1.0, (100 - transparencyPercent) / 100.0))
+
+    onTransparencyPercentChanged: {
+        transparencyIconCanvas.requestPaint()
+        if (controller) {
+            controller.setOledWidgetKeepAbove(alwaysOnTop)
+        }
+    }
+
+    onShowRgbDotsChanged: {
+        if (controller) {
+            controller.setOledWidgetKeepAbove(alwaysOnTop)
+        }
+    }
 
     transientParent: null
 
@@ -32,7 +48,7 @@ Window {
 
     onFramelessModeChanged: {
         titlebarIconCanvas.requestPaint()
-        if (visible && controller) {
+        if (controller) {
             controller.setOledWidgetKeepAbove(alwaysOnTop)
         }
     }
@@ -70,6 +86,7 @@ Window {
             }
         } else {
             showSizeSlider = false
+            showTransparencySlider = false
         }
     }
 
@@ -79,17 +96,18 @@ Window {
         : "Default"
 
     // Pure top-down geometry calculations (no child implicitHeight dependencies -> zero binding loops)
-    readonly property real uiScale: Math.max(0.85, Math.min(width / 260.0, height / 340.0))
+    readonly property real uiScale: Math.max(0.85, Math.min(width / 260.0, height / 366.0))
     readonly property int outerPad: Math.max(6, Math.round(8 * uiScale))
     readonly property int sectionGap: Math.max(4, Math.round(6 * uiScale))
     readonly property int headerBarHeight: Math.max(26, Math.round(28 * uiScale))
-    readonly property int footerBarHeight: Math.max(44, Math.round(52 * uiScale))
+    readonly property int footerBarHeight: Math.max(70, Math.round(78 * uiScale))
     readonly property int availOledWidth: Math.max(120, width - outerPad * 2)
     readonly property int availOledHeight: Math.max(120, height - outerPad * 2 - headerBarHeight - footerBarHeight - sectionGap * 2)
     readonly property int oledSide: Math.max(120, Math.min(availOledWidth, availOledHeight))
     readonly property real currentScaleMultiplier: Math.max(0.8, Math.min(3.0, oledSide / 128.0))
 
     property real pendingScaleMultiplier: 1.5
+    property int profileOledRotation: 0
     property var slotItems: []
     property string enc1Summary: "CCW · CW · [Push]"
     property string enc2Summary: "CCW · CW · [Push]"
@@ -103,10 +121,40 @@ Window {
         }
     }
 
+    function visibleOledChars(str) {
+        if (!str) return []
+        const raw = Array.from(String(str))
+        const out = []
+        for (let i = 0; i < raw.length; ++i) {
+            const ch = raw[i]
+            if (ch === "\uFE0E" || ch === "\uFE0F" || ch === "\u200D") {
+                if (out.length > 0) out[out.length - 1] += ch
+                continue
+            }
+            out.push(ch)
+        }
+        return out
+    }
+
+    function sliceOledLabel(str, maxChars) {
+        return oledWidgetWindow.visibleOledChars(str).slice(0, maxChars || 5).join("")
+    }
+
+    function isSingleIconLabel(str) {
+        const trimmed = String(str || "").trim()
+        if (!trimmed) return false
+        if (trimmed === ">_" || trimmed === "{}") return true
+        const chars = oledWidgetWindow.visibleOledChars(trimmed)
+        if (chars.length !== 1) return false
+        return chars[0].codePointAt(0) > 127
+    }
+
     function formatEnc(item, fallback) {
         if (!item) return fallback
-        const l1 = (item.l1 || "").trim()
-        const l2 = (item.l2 || "").trim()
+        const wl1 = (item.wl1 || "").trim()
+        const wl2 = (item.wl2 || "").trim()
+        const l1 = wl1.length > 0 ? wl1 : (item.l1 || "").trim()
+        const l2 = wl2.length > 0 ? wl2 : (item.l2 || "").trim()
         const c = (l1 + (l2.length > 0 ? " " + l2 : "")).trim()
         return c.length > 0 ? c : fallback
     }
@@ -123,11 +171,29 @@ Window {
                 }
             }
         }
-        return { slot: slotNum, l1: "", l2: "", r: 0, g: 170, b: 255, hasScript: false }
+        return { slot: slotNum, l1: "", l2: "", wl1: "", wl2: "", r: 0, g: 170, b: 255, hasScript: false }
     }
 
     function syncFromController() {
-        if (!controller || !controller.activeProfileSlotsJson) return
+        if (!controller) return
+        if (controller.profilesJson) {
+            try {
+                const parr = JSON.parse(controller.profilesJson)
+                if (Array.isArray(parr)) {
+                    for (let i = 0; i < parr.length; ++i) {
+                        const p = parr[i]
+                        if (p.number === controller.activeProfile) {
+                            oledWidgetWindow.profileOledRotation =
+                                p.effectiveWidgetRotation !== undefined
+                                    ? p.effectiveWidgetRotation
+                                    : (p.oledRotation !== undefined ? p.oledRotation : (p.isLandscape ? 90 : 0))
+                            break
+                        }
+                    }
+                }
+            } catch (e) {}
+        }
+        if (!controller.activeProfileSlotsJson) return
         try {
             const arr = JSON.parse(controller.activeProfileSlotsJson)
             if (!Array.isArray(arr)) return
@@ -141,6 +207,8 @@ Window {
                         slot: it.slot,
                         l1: it.l1 || "",
                         l2: it.l2 || "",
+                        wl1: it.wl1 || "",
+                        wl2: it.wl2 || "",
                         r: it.r !== undefined ? it.r : 0,
                         g: it.g !== undefined ? it.g : 170,
                         b: it.b !== undefined ? it.b : 255,
@@ -170,7 +238,7 @@ Window {
         const clamped = Math.max(0.8, Math.min(3.0, mult))
         const targetOled = Math.round(128 * clamped)
         oledWidgetWindow.width = Math.max(minimumWidth, targetOled + 32)
-        oledWidgetWindow.height = Math.max(minimumHeight, targetOled + Math.round(114 * Math.max(1.0, clamped * 0.75)))
+        oledWidgetWindow.height = Math.max(minimumHeight, targetOled + Math.round(140 * Math.max(1.0, clamped * 0.75)))
     }
 
     Connections {
@@ -201,6 +269,8 @@ Window {
         color: "#0b0f19"
         border.width: oledWidgetWindow.framelessMode ? 1.5 : 1
         border.color: oledWidgetWindow.alwaysOnTop ? "#38bdf8" : "#334155"
+        opacity: oledWidgetWindow.windowOpacity
+        layer.enabled: oledWidgetWindow.windowOpacity < 0.999
 
         // Top Compact Header & Drag Handle
         Rectangle {
@@ -248,94 +318,6 @@ Window {
                     color: "#f8fafc"
                     elide: Text.ElideRight
                     Layout.fillWidth: true
-                }
-
-                // Previous Profile Button (−)
-                QQC2.ToolButton {
-                    id: prevProfileBtn
-                    Layout.preferredWidth: Math.max(22, Math.round(22 * oledWidgetWindow.uiScale))
-                    Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
-                    implicitWidth: Layout.preferredWidth
-                    implicitHeight: Layout.preferredHeight
-                    padding: 0
-                    onClicked: {
-                        if (oledWidgetWindow.controller) {
-                            const prev = Math.max(1, oledWidgetWindow.activeProfile - 1)
-                            oledWidgetWindow.controller.switchProfile(prev)
-                        }
-                    }
-                    contentItem: Item {
-                        Canvas {
-                            width: 14
-                            height: 14
-                            anchors.centerIn: parent
-                            scale: Math.max(0.85, Math.min(1.35, oledWidgetWindow.uiScale * 0.92))
-                            onPaint: {
-                                const ctx = getContext("2d")
-                                ctx.reset()
-                                ctx.strokeStyle = "#f8fafc"
-                                ctx.lineWidth = 2.0
-                                ctx.lineCap = "round"
-                                ctx.beginPath()
-                                ctx.moveTo(3.5, 7)
-                                ctx.lineTo(10.5, 7)
-                                ctx.stroke()
-                            }
-                        }
-                    }
-                    background: Rectangle {
-                        radius: 4
-                        color: prevProfileBtn.hovered ? "#25334a" : "#1a2333"
-                        border.width: 1
-                        border.color: prevProfileBtn.hovered ? "#38bdf8" : "#344663"
-                    }
-                    QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: qsTr("Previous Profile")
-                }
-
-                // Next Profile Button (+)
-                QQC2.ToolButton {
-                    id: nextProfileBtn
-                    Layout.preferredWidth: Math.max(22, Math.round(22 * oledWidgetWindow.uiScale))
-                    Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
-                    implicitWidth: Layout.preferredWidth
-                    implicitHeight: Layout.preferredHeight
-                    padding: 0
-                    onClicked: {
-                        if (oledWidgetWindow.controller) {
-                            const next = Math.min(64, oledWidgetWindow.activeProfile + 1)
-                            oledWidgetWindow.controller.switchProfile(next)
-                        }
-                    }
-                    contentItem: Item {
-                        Canvas {
-                            width: 14
-                            height: 14
-                            anchors.centerIn: parent
-                            scale: Math.max(0.85, Math.min(1.35, oledWidgetWindow.uiScale * 0.92))
-                            onPaint: {
-                                const ctx = getContext("2d")
-                                ctx.reset()
-                                ctx.strokeStyle = "#f8fafc"
-                                ctx.lineWidth = 2.0
-                                ctx.lineCap = "round"
-                                ctx.beginPath()
-                                ctx.moveTo(3.5, 7)
-                                ctx.lineTo(10.5, 7)
-                                ctx.moveTo(7, 3.5)
-                                ctx.lineTo(7, 10.5)
-                                ctx.stroke()
-                            }
-                        }
-                    }
-                    background: Rectangle {
-                        radius: 4
-                        color: nextProfileBtn.hovered ? "#25334a" : "#1a2333"
-                        border.width: 1
-                        border.color: nextProfileBtn.hovered ? "#38bdf8" : "#344663"
-                    }
-                    QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: qsTr("Next Profile")
                 }
 
                 // Always-on-Top Pin Icon Button
@@ -421,6 +403,72 @@ Window {
                         : qsTr("Always on Top: OFF (Click to keep above all windows)")
                 }
 
+                // Window Transparency Slider Toggle Button
+                QQC2.ToolButton {
+                    id: transparencyToggleBtn
+                    Layout.preferredWidth: Math.max(24, Math.round(24 * oledWidgetWindow.uiScale))
+                    Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
+                    implicitWidth: Layout.preferredWidth
+                    implicitHeight: Layout.preferredHeight
+                    padding: 0
+                    onClicked: {
+                        if (!oledWidgetWindow.showTransparencySlider) {
+                            transparencySlider.value = oledWidgetWindow.transparencyPercent
+                            oledWidgetWindow.showSizeSlider = false
+                            scaleIconCanvas.requestPaint()
+                        }
+                        oledWidgetWindow.showTransparencySlider = !oledWidgetWindow.showTransparencySlider
+                        transparencyIconCanvas.requestPaint()
+                    }
+                    contentItem: Item {
+                        Canvas {
+                            id: transparencyIconCanvas
+                            width: 16
+                            height: 16
+                            anchors.centerIn: parent
+                            scale: Math.max(0.85, Math.min(1.35, oledWidgetWindow.uiScale * 0.92))
+                            onPaint: {
+                                const ctx = getContext("2d")
+                                ctx.reset()
+                                const active = oledWidgetWindow.showTransparencySlider || oledWidgetWindow.transparencyPercent > 0
+                                const col = active ? "#38bdf8" : "#cbd5e1"
+                                ctx.strokeStyle = col
+                                ctx.fillStyle = col
+                                ctx.lineWidth = 1.5
+
+                                // Outer circle representing contrast / opacity dial
+                                ctx.beginPath()
+                                ctx.arc(8, 8, 5.5, 0, Math.PI * 2)
+                                ctx.stroke()
+
+                                // Left half filled solid, right half semi-transparent / hatched
+                                ctx.beginPath()
+                                ctx.arc(8, 8, 5.5, Math.PI * 0.5, Math.PI * 1.5)
+                                ctx.closePath()
+                                ctx.fill()
+
+                                ctx.fillStyle = Qt.rgba(0.22, 0.74, 0.97, 0.35)
+                                ctx.beginPath()
+                                ctx.arc(8, 8, 5.5, -Math.PI * 0.5, Math.PI * 0.5)
+                                ctx.closePath()
+                                ctx.fill()
+                            }
+                        }
+                    }
+                    background: Rectangle {
+                        radius: 4
+                        color: (oledWidgetWindow.showTransparencySlider || oledWidgetWindow.transparencyPercent > 0)
+                            ? Qt.rgba(0.22, 0.74, 0.97, 0.22)
+                            : (transparencyToggleBtn.hovered ? "#25334a" : "#1a2333")
+                        border.width: 1
+                        border.color: (oledWidgetWindow.showTransparencySlider || oledWidgetWindow.transparencyPercent > 0)
+                            ? "#38bdf8"
+                            : "#344663"
+                    }
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.text: qsTr("Window Transparency: %1% (Click to adjust)").arg(oledWidgetWindow.transparencyPercent)
+                }
+
                 // Scale / Size Slider Toggle Button with Resize Icon
                 QQC2.ToolButton {
                     id: scaleToggleBtn
@@ -433,6 +481,8 @@ Window {
                         if (!oledWidgetWindow.showSizeSlider) {
                             oledWidgetWindow.pendingScaleMultiplier = oledWidgetWindow.currentScaleMultiplier
                             sizeSlider.value = oledWidgetWindow.currentScaleMultiplier
+                            oledWidgetWindow.showTransparencySlider = false
+                            transparencyIconCanvas.requestPaint()
                         }
                         oledWidgetWindow.showSizeSlider = !oledWidgetWindow.showSizeSlider
                         scaleIconCanvas.requestPaint()
@@ -484,6 +534,44 @@ Window {
                     }
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: qsTr("Adjust OLED Widget Size")
+                }
+
+                // OLED Orientation Cycle Button (0° -> 90° -> 180°)
+                QQC2.ToolButton {
+                    id: oledRotCycleBtn
+                    Layout.preferredWidth: Math.max(30, Math.round(32 * oledWidgetWindow.uiScale))
+                    Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
+                    implicitWidth: Layout.preferredWidth
+                    implicitHeight: Layout.preferredHeight
+                    padding: 0
+                    onClicked: {
+                        const nextRot = oledWidgetWindow.profileOledRotation === 0
+                            ? 90
+                            : (oledWidgetWindow.profileOledRotation === 90 ? 180 : 0)
+                        oledWidgetWindow.profileOledRotation = nextRot
+                        if (oledWidgetWindow.controller) {
+                            oledWidgetWindow.controller.setActiveProfileOledRotation(nextRot)
+                        }
+                    }
+                    contentItem: Text {
+                        text: oledWidgetWindow.profileOledRotation + "°"
+                        color: oledWidgetWindow.profileOledRotation !== 0 ? "#38bdf8" : "#cbd5e1"
+                        font.family: "monospace"
+                        font.bold: true
+                        font.pixelSize: Math.max(9, Math.round(10 * oledWidgetWindow.uiScale))
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        radius: 4
+                        color: oledWidgetWindow.profileOledRotation !== 0
+                            ? Qt.rgba(0.22, 0.74, 0.97, 0.22)
+                            : (oledRotCycleBtn.hovered ? "#25334a" : "#1a2333")
+                        border.width: 1
+                        border.color: oledWidgetWindow.profileOledRotation !== 0 ? "#38bdf8" : "#344663"
+                    }
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.text: qsTr("OLED Orientation: %1° (Click to cycle 0° / 90° / 180°)").arg(oledWidgetWindow.profileOledRotation)
                 }
 
                 // Restore Window Titlebar / Frameless Mode Toggle Button with Window Icon
@@ -547,6 +635,111 @@ Window {
                     QQC2.ToolTip.text: oledWidgetWindow.framelessMode
                         ? qsTr("Restore Window Titlebar")
                         : qsTr("Frameless Desktop Overlay Mode")
+                }
+            }
+        }
+
+        // Fixed-Geometry Interactive Transparency Slider Overlay
+        Rectangle {
+            id: transparencySliderOverlay
+            visible: oledWidgetWindow.showTransparencySlider
+            z: 25
+            anchors.top: topHeaderBar.bottom
+            anchors.topMargin: 4
+            anchors.left: parent.left
+            anchors.leftMargin: 8
+            width: 194
+            height: 34
+            radius: 6
+            color: "#162033"
+            border.color: "#38bdf8"
+            border.width: 1
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 6
+                anchors.rightMargin: 6
+                spacing: 4
+
+                QQC2.Slider {
+                    id: transparencySlider
+                    Layout.preferredWidth: 92
+                    Layout.fillWidth: false
+                    from: 0
+                    to: 80
+                    stepSize: 5
+                    value: oledWidgetWindow.transparencyPercent
+                    onMoved: {
+                        oledWidgetWindow.transparencyPercent = Math.round(value)
+                    }
+                }
+
+                Text {
+                    text: oledWidgetWindow.transparencyPercent + "%"
+                    color: "#38bdf8"
+                    font.family: "monospace"
+                    font.bold: true
+                    font.pixelSize: 11
+                    Layout.preferredWidth: 32
+                }
+
+                QQC2.ToolButton {
+                    id: resetTransparencyBtn
+                    Layout.preferredWidth: 26
+                    Layout.preferredHeight: 22
+                    implicitWidth: 26
+                    implicitHeight: 22
+                    padding: 0
+                    onClicked: {
+                        transparencySlider.value = 0
+                        oledWidgetWindow.transparencyPercent = 0
+                    }
+                    contentItem: Text {
+                        text: "0%"
+                        color: "#f8fafc"
+                        font.family: "monospace"
+                        font.bold: true
+                        font.pixelSize: 10
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        radius: 4
+                        color: resetTransparencyBtn.hovered ? "#25334a" : "#1a2333"
+                        border.width: 1
+                        border.color: "#344663"
+                    }
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.text: qsTr("Reset to opaque (0% transparency)")
+                }
+
+                QQC2.ToolButton {
+                    id: closeTransparencyBtn
+                    Layout.preferredWidth: 22
+                    Layout.preferredHeight: 22
+                    implicitWidth: 22
+                    implicitHeight: 22
+                    padding: 0
+                    onClicked: {
+                        oledWidgetWindow.showTransparencySlider = false
+                        transparencyIconCanvas.requestPaint()
+                    }
+                    contentItem: Text {
+                        text: "✓"
+                        color: "#38bdf8"
+                        font.bold: true
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        radius: 4
+                        color: closeTransparencyBtn.hovered ? "#25334a" : "#1a2333"
+                        border.width: 1
+                        border.color: "#38bdf8"
+                    }
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.text: qsTr("Close transparency slider")
                 }
             }
         }
@@ -658,7 +851,7 @@ Window {
             }
         }
 
-        // Bottom Rotary Knob Summary (with Rotary Knob Icons 1 & 2) & Corner Resize Grip
+        // Bottom Rotary Knob Summary (with Rotary Knob Icons 1 & 2), Bottom Profile Buttons & Corner Resize Grip
         Rectangle {
             id: bottomFooterBar
             anchors.bottom: parent.bottom
@@ -671,143 +864,206 @@ Window {
             border.color: "#1e293b"
             border.width: 1
 
-            readonly property int knobDiameter: Math.max(16, Math.round(oledWidgetWindow.oledSide * 0.088))
-            readonly property int encFontSize: Math.max(11, Math.round(oledWidgetWindow.oledSide * 0.054))
+            readonly property int knobDiameter: Math.max(15, Math.round(oledWidgetWindow.oledSide * 0.082))
+            readonly property int encFontSize: Math.max(10, Math.round(oledWidgetWindow.oledSide * 0.050))
+            readonly property int profileBtnHeight: Math.max(20, Math.round(21 * oledWidgetWindow.uiScale))
 
-            RowLayout {
+            ColumnLayout {
                 anchors.fill: parent
                 anchors.leftMargin: Math.max(6, Math.round(8 * oledWidgetWindow.uiScale))
                 anchors.rightMargin: 4
-                anchors.topMargin: 2
-                anchors.bottomMargin: 2
-                spacing: 4
+                anchors.topMargin: 3
+                anchors.bottomMargin: 3
+                spacing: Math.max(2, Math.round(3 * oledWidgetWindow.uiScale))
 
-                ColumnLayout {
+                // Rotary Knob 1 Row
+                RowLayout {
                     Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignVCenter
-                    spacing: Math.max(2, Math.round(3 * oledWidgetWindow.uiScale))
+                    spacing: Math.max(5, Math.round(6 * oledWidgetWindow.uiScale))
 
-                    // Rotary Knob 1 Row
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Math.max(5, Math.round(6 * oledWidgetWindow.uiScale))
+                    // Rotary Knob 1 Icon
+                    Rectangle {
+                        width: bottomFooterBar.knobDiameter
+                        height: bottomFooterBar.knobDiameter
+                        radius: width / 2
+                        color: "#0f172a"
+                        border.color: "#38bdf8"
+                        border.width: Math.max(1.5, width * 0.09)
 
-                        // Rotary Knob 1 Icon
+                        // Top indicator notch on rotary dial
                         Rectangle {
-                            width: bottomFooterBar.knobDiameter
-                            height: bottomFooterBar.knobDiameter
-                            radius: width / 2
-                            color: "#0f172a"
-                            border.color: "#38bdf8"
-                            border.width: Math.max(1.5, width * 0.09)
-
-                            // Top indicator notch on rotary dial
-                            Rectangle {
-                                width: Math.max(2, Math.round(parent.width * 0.14))
-                                height: Math.max(3, Math.round(parent.height * 0.22))
-                                radius: 1
-                                color: "#38bdf8"
-                                anchors.top: parent.top
-                                anchors.topMargin: 1
-                                anchors.horizontalCenter: parent.horizontalCenter
-                            }
-
-                            Text {
-                                anchors.centerIn: parent
-                                anchors.verticalCenterOffset: 1
-                                text: "1"
-                                color: "#f8fafc"
-                                font.family: "sans-serif"
-                                font.bold: true
-                                font.pixelSize: Math.max(9, Math.round(parent.height * 0.56))
-                            }
+                            width: Math.max(2, Math.round(parent.width * 0.14))
+                            height: Math.max(3, Math.round(parent.height * 0.22))
+                            radius: 1
+                            color: "#38bdf8"
+                            anchors.top: parent.top
+                            anchors.topMargin: 1
+                            anchors.horizontalCenter: parent.horizontalCenter
                         }
 
                         Text {
-                            text: oledWidgetWindow.enc1Summary
-                            font.family: "monospace"
+                            anchors.centerIn: parent
+                            anchors.verticalCenterOffset: 1
+                            text: "1"
+                            color: "#f8fafc"
+                            font.family: "sans-serif"
                             font.bold: true
-                            font.pixelSize: bottomFooterBar.encFontSize
-                            color: "#7dd3fc"
-                            elide: Text.ElideRight
-                            Layout.fillWidth: true
+                            font.pixelSize: Math.max(9, Math.round(parent.height * 0.56))
                         }
                     }
 
-                    // Rotary Knob 2 Row
-                    RowLayout {
+                    Text {
+                        text: oledWidgetWindow.enc1Summary
+                        font.family: "monospace"
+                        font.bold: true
+                        font.pixelSize: bottomFooterBar.encFontSize
+                        color: "#7dd3fc"
+                        elide: Text.ElideRight
                         Layout.fillWidth: true
-                        spacing: Math.max(5, Math.round(6 * oledWidgetWindow.uiScale))
-
-                        // Rotary Knob 2 Icon
-                        Rectangle {
-                            width: bottomFooterBar.knobDiameter
-                            height: bottomFooterBar.knobDiameter
-                            radius: width / 2
-                            color: "#0f172a"
-                            border.color: "#38bdf8"
-                            border.width: Math.max(1.5, width * 0.09)
-
-                            // Top indicator notch on rotary dial
-                            Rectangle {
-                                width: Math.max(2, Math.round(parent.width * 0.14))
-                                height: Math.max(3, Math.round(parent.height * 0.22))
-                                radius: 1
-                                color: "#38bdf8"
-                                anchors.top: parent.top
-                                anchors.topMargin: 1
-                                anchors.horizontalCenter: parent.horizontalCenter
-                            }
-
-                            Text {
-                                anchors.centerIn: parent
-                                anchors.verticalCenterOffset: 1
-                                text: "2"
-                                color: "#f8fafc"
-                                font.family: "sans-serif"
-                                font.bold: true
-                                font.pixelSize: Math.max(9, Math.round(parent.height * 0.56))
-                            }
-                        }
-
-                        Text {
-                            text: oledWidgetWindow.enc2Summary
-                            font.family: "monospace"
-                            font.bold: true
-                            font.pixelSize: bottomFooterBar.encFontSize
-                            color: "#7dd3fc"
-                            elide: Text.ElideRight
-                            Layout.fillWidth: true
-                        }
                     }
                 }
 
-                // Bottom-Right Resize Grip
-                Rectangle {
-                    width: Math.max(18, Math.round(20 * oledWidgetWindow.uiScale))
-                    height: width
-                    radius: 4
-                    color: resizeMouse.containsMouse ? "#1e293b" : "transparent"
+                // Rotary Knob 2 Row
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Math.max(5, Math.round(6 * oledWidgetWindow.uiScale))
 
-                    Text {
-                        anchors.centerIn: parent
-                        text: "◢"
-                        font.pixelSize: Math.max(11, Math.round(13 * oledWidgetWindow.uiScale))
-                        color: "#64748b"
-                    }
+                    // Rotary Knob 2 Icon
+                    Rectangle {
+                        width: bottomFooterBar.knobDiameter
+                        height: bottomFooterBar.knobDiameter
+                        radius: width / 2
+                        color: "#0f172a"
+                        border.color: "#38bdf8"
+                        border.width: Math.max(1.5, width * 0.09)
 
-                    MouseArea {
-                        id: resizeMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.SizeFDiagCursor
-                        onPressed: {
-                            oledWidgetWindow.startSystemResize(Qt.RightEdge | Qt.BottomEdge)
+                        // Top indicator notch on rotary dial
+                        Rectangle {
+                            width: Math.max(2, Math.round(parent.width * 0.14))
+                            height: Math.max(3, Math.round(parent.height * 0.22))
+                            radius: 1
+                            color: "#38bdf8"
+                            anchors.top: parent.top
+                            anchors.topMargin: 1
+                            anchors.horizontalCenter: parent.horizontalCenter
+                        }
+
+                        Text {
+                            anchors.centerIn: parent
+                            anchors.verticalCenterOffset: 1
+                            text: "2"
+                            color: "#f8fafc"
+                            font.family: "sans-serif"
+                            font.bold: true
+                            font.pixelSize: Math.max(9, Math.round(parent.height * 0.56))
                         }
                     }
 
-                    QQC2.ToolTip.visible: resizeMouse.containsMouse
-                    QQC2.ToolTip.text: qsTr("Drag to resize OLED Desktop Widget")
+                    Text {
+                        text: oledWidgetWindow.enc2Summary
+                        font.family: "monospace"
+                        font.bold: true
+                        font.pixelSize: bottomFooterBar.encFontSize
+                        color: "#7dd3fc"
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                }
+
+                // Bottom Profile Switcher Row (Previous Profile / Current Profile / Next Profile + Corner Resize Grip)
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Math.max(4, Math.round(5 * oledWidgetWindow.uiScale))
+
+                    // Previous Profile Button (− Profile)
+                    QQC2.ToolButton {
+                        id: prevProfileBtn
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: bottomFooterBar.profileBtnHeight
+                        implicitHeight: Layout.preferredHeight
+                        padding: 0
+                        onClicked: {
+                            if (oledWidgetWindow.controller) {
+                                const prev = Math.max(1, oledWidgetWindow.activeProfile - 1)
+                                oledWidgetWindow.controller.switchProfile(prev)
+                            }
+                        }
+                        contentItem: Text {
+                            text: qsTr("− Profile")
+                            color: "#f8fafc"
+                            font.bold: true
+                            font.pixelSize: Math.max(10, Math.round(11 * oledWidgetWindow.uiScale))
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        background: Rectangle {
+                            radius: 4
+                            color: prevProfileBtn.hovered ? "#25334a" : "#1a2333"
+                            border.width: 1
+                            border.color: prevProfileBtn.hovered ? "#38bdf8" : "#344663"
+                        }
+                        QQC2.ToolTip.visible: hovered
+                        QQC2.ToolTip.text: qsTr("Previous Profile")
+                    }
+
+                    // Next Profile Button (+ Profile)
+                    QQC2.ToolButton {
+                        id: nextProfileBtn
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: bottomFooterBar.profileBtnHeight
+                        implicitHeight: Layout.preferredHeight
+                        padding: 0
+                        onClicked: {
+                            if (oledWidgetWindow.controller) {
+                                const next = Math.min(64, oledWidgetWindow.activeProfile + 1)
+                                oledWidgetWindow.controller.switchProfile(next)
+                            }
+                        }
+                        contentItem: Text {
+                            text: qsTr("+ Profile")
+                            color: "#f8fafc"
+                            font.bold: true
+                            font.pixelSize: Math.max(10, Math.round(11 * oledWidgetWindow.uiScale))
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        background: Rectangle {
+                            radius: 4
+                            color: nextProfileBtn.hovered ? "#25334a" : "#1a2333"
+                            border.width: 1
+                            border.color: nextProfileBtn.hovered ? "#38bdf8" : "#344663"
+                        }
+                        QQC2.ToolTip.visible: hovered
+                        QQC2.ToolTip.text: qsTr("Next Profile")
+                    }
+
+                    // Bottom-Right Resize Grip
+                    Rectangle {
+                        width: Math.max(18, Math.round(20 * oledWidgetWindow.uiScale))
+                        height: bottomFooterBar.profileBtnHeight
+                        radius: 4
+                        color: resizeMouse.containsMouse ? "#1e293b" : "transparent"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "◢"
+                            font.pixelSize: Math.max(11, Math.round(13 * oledWidgetWindow.uiScale))
+                            color: "#64748b"
+                        }
+
+                        MouseArea {
+                            id: resizeMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.SizeFDiagCursor
+                            onPressed: {
+                                oledWidgetWindow.startSystemResize(Qt.RightEdge | Qt.BottomEdge)
+                            }
+                        }
+
+                        QQC2.ToolTip.visible: resizeMouse.containsMouse
+                        QQC2.ToolTip.text: qsTr("Drag to resize OLED Desktop Widget")
+                    }
                 }
             }
         }
@@ -855,10 +1111,14 @@ Window {
                     anchors.fill: parent
                     anchors.margins: 4
 
+                    readonly property bool isLandscapeRot:
+                        oledWidgetWindow.profileOledRotation === 90 || oledWidgetWindow.profileOledRotation === 270
+                    readonly property int gridCols: isLandscapeRot ? 5 : 4
+                    readonly property int gridRows: isLandscapeRot ? 4 : 5
                     readonly property int bannerHeight: Math.max(14, Math.round(height * 0.105))
                     readonly property int gridAreaHeight: Math.max(80, height - bannerHeight - 2)
-                    readonly property real cellWidth: width / 4.0
-                    readonly property real cellHeight: gridAreaHeight / 5.0
+                    readonly property real cellWidth: width / gridCols
+                    readonly property real cellHeight: gridAreaHeight / gridRows
 
                     // Top Profile Banner
                     Rectangle {
@@ -884,7 +1144,7 @@ Window {
                         }
                     }
 
-                    // 4x5 Key Grid with Centered Button Text
+                    // Key Grid with Centered Upright Button Text (supports 0°/90°/180°/270° and longer Desktop Widget labels wl1/wl2)
                     Item {
                         anchors.top: oledBanner.bottom
                         anchors.topMargin: 2
@@ -897,7 +1157,19 @@ Window {
 
                             delegate: Rectangle {
                                 required property int index
-                                readonly property int slotNum: index + 1
+                                readonly property int colIdx: index % oledScreenContent.gridCols
+                                readonly property int rowIdx: Math.floor(index / oledScreenContent.gridCols)
+                                readonly property int slotNum: {
+                                    const rot = oledWidgetWindow.profileOledRotation
+                                    if (rot === 90) {
+                                        return colIdx * 4 + (3 - rowIdx) + 1
+                                    } else if (rot === 180) {
+                                        return (4 - rowIdx) * 4 + (3 - colIdx) + 1
+                                    } else if (rot === 270) {
+                                        return (4 - colIdx) * 4 + rowIdx + 1
+                                    }
+                                    return rowIdx * 4 + colIdx + 1
+                                }
                                 readonly property var itemData: {
                                     // Re-evaluate whenever slotItems changes
                                     const _ = oledWidgetWindow.slotItems
@@ -905,9 +1177,15 @@ Window {
                                 }
                                 readonly property string l1: itemData.l1 || ""
                                 readonly property string l2: itemData.l2 || ""
+                                readonly property string wl1: (itemData.wl1 || "").trim()
+                                readonly property string wl2: (itemData.wl2 || "").trim()
+                                readonly property string disp1: wl1.length > 0
+                                    ? wl1
+                                    : oledWidgetWindow.sliceOledLabel(l1, oledScreenContent.isLandscapeRot ? 4 : 5)
+                                readonly property string disp2: wl2.length > 0
+                                    ? wl2
+                                    : oledWidgetWindow.sliceOledLabel(l2, oledScreenContent.isLandscapeRot ? 4 : 5)
                                 readonly property bool isSel: oledWidgetWindow.selectedSlot === slotNum
-                                readonly property int colIdx: index % 4
-                                readonly property int rowIdx: Math.floor(index / 4)
 
                                 x: Math.round(colIdx * oledScreenContent.cellWidth)
                                 y: Math.round(rowIdx * oledScreenContent.cellHeight)
@@ -923,7 +1201,7 @@ Window {
                                 Rectangle {
                                     visible: oledWidgetWindow.showRgbDots
                                         && !parent.isSel
-                                        && (parent.l1.length > 0 || parent.l2.length > 0 || !!parent.itemData.hasScript)
+                                        && (parent.disp1.length > 0 || parent.disp2.length > 0 || !!parent.itemData.hasScript)
                                     anchors.top: parent.top
                                     anchors.right: parent.right
                                     anchors.margins: Math.max(2, Math.round(parent.height * 0.08))
@@ -945,30 +1223,38 @@ Window {
                                     spacing: 0
 
                                     Text {
-                                        visible: parent.parent.l1.length > 0
+                                        readonly property bool isIcon1: oledWidgetWindow.isSingleIconLabel(parent.parent.disp1)
+                                        readonly property bool isLong1: parent.parent.wl1.length > 5
+                                        visible: parent.parent.disp1.length > 0
                                         width: parent.width
                                         horizontalAlignment: Text.AlignHCenter
                                         verticalAlignment: Text.AlignVCenter
-                                        text: parent.parent.l1.slice(0, 6)
+                                        text: parent.parent.disp1
                                         color: parent.parent.isSel ? "#020617" : "#f8fafc"
-                                        font.family: "monospace"
+                                        font.family: (isIcon1 || isLong1) ? "sans-serif" : "monospace"
                                         font.bold: true
-                                        font.pixelSize: Math.max(8, Math.round(parent.parent.height * 0.34))
+                                        font.pixelSize: isIcon1
+                                            ? Math.max(10, Math.round(parent.parent.height * (parent.parent.disp2.length > 0 ? 0.42 : 0.56)))
+                                            : Math.max(8, Math.round(parent.parent.height * 0.34))
                                         fontSizeMode: Text.HorizontalFit
                                         minimumPixelSize: 6
                                         elide: Text.ElideRight
                                     }
 
                                     Text {
-                                        visible: parent.parent.l2.length > 0
+                                        readonly property bool isIcon2: oledWidgetWindow.isSingleIconLabel(parent.parent.disp2)
+                                        readonly property bool isLong2: parent.parent.wl2.length > 5
+                                        visible: parent.parent.disp2.length > 0
                                         width: parent.width
                                         horizontalAlignment: Text.AlignHCenter
                                         verticalAlignment: Text.AlignVCenter
-                                        text: parent.parent.l2.slice(0, 6)
+                                        text: parent.parent.disp2
                                         color: parent.parent.isSel ? "#0f172a" : "#cbd5e1"
-                                        font.family: "monospace"
+                                        font.family: (isIcon2 || isLong2) ? "sans-serif" : "monospace"
                                         font.bold: true
-                                        font.pixelSize: Math.max(7, Math.round(parent.parent.height * 0.30))
+                                        font.pixelSize: isIcon2
+                                            ? Math.max(10, Math.round(parent.parent.height * (parent.parent.disp1.length > 0 ? 0.40 : 0.54)))
+                                            : Math.max(7, Math.round(parent.parent.height * 0.30))
                                         fontSizeMode: Text.HorizontalFit
                                         minimumPixelSize: 6
                                         elide: Text.ElideRight
@@ -976,12 +1262,18 @@ Window {
                                 }
 
                                 MouseArea {
+                                    id: cellMouse
                                     anchors.fill: parent
+                                    hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
                                         oledWidgetWindow.selectedSlot = (oledWidgetWindow.selectedSlot === parent.slotNum) ? 0 : parent.slotNum
                                     }
                                 }
+
+                                QQC2.ToolTip.visible: cellMouse.containsMouse && (disp1.length > 0 || disp2.length > 0)
+                                QQC2.ToolTip.delay: 400
+                                QQC2.ToolTip.text: "Key " + slotNum + ": " + (disp1 + (disp2.length > 0 ? " " + disp2 : "")).trim()
                             }
                         }
                     }

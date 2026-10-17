@@ -39,6 +39,30 @@ Window {
     color: Kirigami.Theme.backgroundColor
     readonly property color subtleBorder: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
 
+    component HighContrastScrollBar: QQC2.ScrollBar {
+        id: hcScrollBar
+        policy: QQC2.ScrollBar.AlwaysOn
+        implicitWidth: 10
+        minimumSize: 0.14
+        z: 50
+        background: Rectangle {
+            implicitWidth: 10
+            radius: 5
+            color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.12)
+            border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.22)
+            border.width: 1
+        }
+        contentItem: Rectangle {
+            implicitWidth: 6
+            radius: 3
+            color: hcScrollBar.pressed
+                ? Kirigami.Theme.highlightColor
+                : (hcScrollBar.hovered
+                    ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.85)
+                    : Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.50))
+        }
+    }
+
     ListModel {
         id: rulesModel
     }
@@ -326,6 +350,26 @@ Window {
                         color: Kirigami.Theme.disabledTextColor
                         font.pixelSize: 12
                     }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        radius: 4
+                        color: Qt.alpha("#f59e0b", 0.14)
+                        border.color: Qt.alpha("#f59e0b", 0.55)
+                        border.width: 1
+                        implicitHeight: autoSwitchHostLbl.implicitHeight + 8
+
+                        QQC2.Label {
+                            id: autoSwitchHostLbl
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            wrapMode: Text.WordWrap
+                            font.pixelSize: 11
+                            font.bold: true
+                            color: "#fbbf24"
+                            text: qsTr("💻 Requires DuckyDeck Studio Running on Host PC (Not Hardware-Portable) — Window tracking uses KDE KWin & USB HID. Without the host app, switch profiles manually on hardware via GOTO_PROFILE / NEXT_PROFILE / PREV_PROFILE or holding '-' on the keypad.")
+                        }
+                    }
                 }
             }
 
@@ -343,11 +387,15 @@ Window {
                 flickableDirection: Flickable.VerticalFlick
                 interactive: rulesListView.draggedRuleIndex === -1
 
-                QQC2.ScrollBar.vertical: QQC2.ScrollBar {
+                QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                    parent: mainFlickable
+                    anchors.top: parent.top
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    visible: mainFlickable.contentHeight > mainFlickable.height
                     policy: mainFlickable.contentHeight > mainFlickable.height
                         ? QQC2.ScrollBar.AlwaysOn
                         : QQC2.ScrollBar.AsNeeded
-                    implicitWidth: 10
                 }
 
                 ColumnLayout {
@@ -1014,12 +1062,12 @@ Window {
                             property int dropTargetRuleIndex: -1
                             readonly property bool canReorder: drawerRoot.ruleFilterText.trim().length === 0
 
-                            QQC2.ScrollBar.vertical: QQC2.ScrollBar {
-                                policy: rulesListView.contentHeight > rulesListView.height
-                                    ? QQC2.ScrollBar.AlwaysOn
-                                    : QQC2.ScrollBar.AsNeeded
-                                minimumSize: 0.14
-                                implicitWidth: 10
+                            QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                                parent: rulesListView
+                                anchors.top: parent.top
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                policy: QQC2.ScrollBar.AlwaysOn
                             }
 
                             QQC2.Label {
@@ -1068,7 +1116,7 @@ Window {
                                 Kirigami.Theme.inherit: false
                                 width: Math.max(
                                     200,
-                                    rulesListView.width - (rulesListView.contentHeight > rulesListView.height ? 14 : 0)
+                                    rulesListView.width - 14
                                 )
                                 height: 60
                                 z: isBeingDragged ? 100 : 1

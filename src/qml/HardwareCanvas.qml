@@ -15,6 +15,7 @@ Item {
     property bool isRotated: false
     property bool showExpansion: false
     property bool oledScriptMode: false
+    property int activeProfileOledRotation: 0
 
     property string enc1CcwLabel: "Size -"
     property string enc1CwLabel: "Size +"
@@ -54,6 +55,36 @@ Item {
         if (!canvasRoot.keyAnimationConfigs || slotNum < 1 || slotNum > 20) return false
         const cfg = canvasRoot.keyAnimationConfigs[String(slotNum)]
         return !!(cfg && cfg.enabled)
+    }
+
+    function visibleOledChars(str) {
+        if (!str) return []
+        const raw = Array.from(String(str))
+        const out = []
+        for (let i = 0; i < raw.length; ++i) {
+            const ch = raw[i]
+            if (ch === "\uFE0E" || ch === "\uFE0F" || ch === "\u200D") {
+                if (out.length > 0) out[out.length - 1] += ch
+                continue
+            }
+            out.push(ch)
+        }
+        return out
+    }
+
+    function sliceOledLabel(str, maxChars) {
+        const chars = canvasRoot.visibleOledChars(str)
+        return chars.slice(0, maxChars || 5).join("")
+    }
+
+    function isSingleIconLabel(str) {
+        const trimmed = String(str || "").trim()
+        if (!trimmed) return false
+        if (trimmed === ">_" || trimmed === "{}") return true
+        const chars = canvasRoot.visibleOledChars(trimmed)
+        if (chars.length !== 1) return false
+        const cp = chars[0].codePointAt(0)
+        return cp > 127
     }
 
     function notifyUserActivity(pressedSlot) {
@@ -426,6 +457,7 @@ Item {
         if (idx >= 0 && canvasRoot.currentProfileIndex !== idx) {
             canvasRoot.currentProfileIndex = idx
         }
+        canvasRoot.syncProfilesFromController()
     }
 
     function syncProfilesFromController() {
@@ -436,17 +468,20 @@ Item {
             const labels = []
             const nums = []
             let activeIdx = 0
+            let activeRot = 0
             for (let i = 0; i < arr.length; ++i) {
                 const p = arr[i]
                 nums.push(p.number)
                 labels.push("P" + p.number + ": " + p.name)
                 if (p.number === controller.activeProfile) {
                     activeIdx = i
+                    activeRot = p.oledRotation !== undefined ? p.oledRotation : (p.isLandscape ? 90 : 0)
                 }
             }
             canvasRoot.profileNumbers = nums
             canvasRoot.profileLabels = labels
             canvasRoot.currentProfileIndex = activeIdx
+            canvasRoot.activeProfileOledRotation = activeRot
         } catch (e) {}
     }
 
@@ -1060,8 +1095,8 @@ Item {
                                         Rectangle {
                                             visible: keycapItem.hasAppLaunch
                                             radius: 3
-                                            color: Qt.alpha(Kirigami.Theme.highlightColor, 0.22)
-                                            border.color: Qt.alpha(Kirigami.Theme.highlightColor, 0.65)
+                                            color: Qt.alpha("#f59e0b", 0.22)
+                                            border.color: Qt.alpha("#f59e0b", 0.75)
                                             border.width: 1
                                             width: appBadgeLbl.implicitWidth + 5
                                             height: 12
@@ -1069,17 +1104,17 @@ Item {
                                             QQC2.Label {
                                                 id: appBadgeLbl
                                                 anchors.centerIn: parent
-                                                text: "APP"
+                                                text: "💻APP"
                                                 font.pixelSize: 7
                                                 font.bold: true
-                                                color: Kirigami.Theme.highlightColor
+                                                color: "#f59e0b"
                                             }
                                         }
                                         Rectangle {
                                             visible: keycapItem.hasWebApi
                                             radius: 3
-                                            color: Qt.alpha(Kirigami.Theme.positiveTextColor, 0.22)
-                                            border.color: Qt.alpha(Kirigami.Theme.positiveTextColor, 0.65)
+                                            color: Qt.alpha("#f59e0b", 0.22)
+                                            border.color: Qt.alpha("#f59e0b", 0.75)
                                             border.width: 1
                                             width: apiBadgeLbl.implicitWidth + 5
                                             height: 12
@@ -1087,10 +1122,10 @@ Item {
                                             QQC2.Label {
                                                 id: apiBadgeLbl
                                                 anchors.centerIn: parent
-                                                text: "API"
+                                                text: "💻API"
                                                 font.pixelSize: 7
                                                 font.bold: true
-                                                color: Kirigami.Theme.positiveTextColor
+                                                color: "#f59e0b"
                                             }
                                         }
                                         QQC2.Label {
@@ -1116,23 +1151,29 @@ Item {
                                         spacing: 1
 
                                         QQC2.Label {
+                                            readonly property bool isIcon1: canvasRoot.isSingleIconLabel(keycapItem.l1)
                                             width: parent.width
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
                                             text: keycapItem.l1
-                                            font.pixelSize: Math.round(12 * canvasRoot.canvasScale)
+                                            font.pixelSize: isIcon1
+                                                ? Math.round((keycapItem.l2.length > 0 ? 16 : 20) * canvasRoot.canvasScale)
+                                                : Math.round(12 * canvasRoot.canvasScale)
                                             fontSizeMode: Text.HorizontalFit
                                             minimumPixelSize: 7
                                             font.bold: true
                                             color: Kirigami.Theme.textColor
                                         }
                                         QQC2.Label {
+                                            readonly property bool isIcon2: canvasRoot.isSingleIconLabel(keycapItem.l2)
                                             visible: keycapItem.l2.length > 0
                                             width: parent.width
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
                                             text: keycapItem.l2
-                                            font.pixelSize: Math.round(10 * canvasRoot.canvasScale)
+                                            font.pixelSize: isIcon2
+                                                ? Math.round((keycapItem.l1.length > 0 ? 14 : 18) * canvasRoot.canvasScale)
+                                                : Math.round(10 * canvasRoot.canvasScale)
                                             fontSizeMode: Text.HorizontalFit
                                             minimumPixelSize: 6
                                             font.weight: Font.Medium
@@ -1251,7 +1292,9 @@ Item {
 
                                 QQC2.ToolTip.visible: keyMouse.containsMouse && !didDrag && !slotContextMenu.visible && !(deviceController && deviceController.isDemoShowcaseMode())
                                 QQC2.ToolTip.delay: 650
-                                QQC2.ToolTip.text: qsTr("Key %1 • Click to edit (click again to close editor) • Drag to swap (Shift+Drag to shift) • Right-click for Copy/Paste").arg(keycapItem.slot)
+                                QQC2.ToolTip.text: (keycapItem.hasAppLaunch || keycapItem.hasWebApi)
+                                    ? qsTr("Key %1 • 💻 Uses Host Action (App Launch / Web API) — requires DuckyDeck Studio running on host PC (not portable standalone) • Click to edit • Drag to swap • Right-click for Copy/Paste").arg(keycapItem.slot)
+                                    : qsTr("Key %1 • ✅ Standalone Hardware Macro • Click to edit (click again to close editor) • Drag to swap (Shift+Drag to shift) • Right-click for Copy/Paste").arg(keycapItem.slot)
                             }
                         }
                     }
@@ -1326,6 +1369,8 @@ Item {
                             width: 128
                             height: 128
                             anchors.centerIn: parent
+                            rotation: canvasRoot.activeProfileOledRotation
+                            transformOrigin: Item.Center
                             scale: 1.0
                             smooth: false
 
@@ -1349,8 +1394,6 @@ Item {
 
                                     const cellW = 32
                                     const cellH = 23
-                                    ctx.font = "bold 8px monospace"
-                                    ctx.textAlign = "center"
 
                                     for (let i = 0; i < keyModel.count; ++i) {
                                         const item = keyModel.get(i)
@@ -1363,23 +1406,9 @@ Item {
                                         if (isSel) {
                                             ctx.fillStyle = "#38bdf8"
                                             ctx.fillRect(x + 1, y + 1, cellW - 2, cellH - 2)
-                                            ctx.fillStyle = "#020617"
                                         } else {
                                             ctx.strokeStyle = "#334155"
                                             ctx.strokeRect(x, y, cellW, cellH)
-                                            ctx.fillStyle = "#f8fafc"
-                                        }
-
-                                        const s1 = (item.l1 || "").slice(0, 5)
-                                        const s2 = (item.l2 || "").slice(0, 5)
-                                        const cx = x + cellW / 2
-                                        if (s1.length > 0 && s2.length > 0) {
-                                            ctx.fillText(s1, cx, y + 10)
-                                            ctx.fillText(s2, cx, y + 19)
-                                        } else if (s1.length > 0) {
-                                            ctx.fillText(s1, cx, y + 14)
-                                        } else if (s2.length > 0) {
-                                            ctx.fillText(s2, cx, y + 14)
                                         }
                                     }
                                     ctx.restore()
@@ -1411,6 +1440,69 @@ Item {
                                     )
                                     ctx.fillStyle = "#94a3b8"
                                     ctx.fillText("128x128 OLED", 28, 114)
+                                }
+                            }
+
+                            Item {
+                                anchors.fill: parent
+                                visible: !canvasRoot.oledScriptMode
+
+                                Repeater {
+                                    model: keyModel
+                                    delegate: Item {
+                                        required property int index
+                                        required property int slot
+                                        required property string l1
+                                        required property string l2
+
+                                        readonly property int col: index % 4
+                                        readonly property int row: Math.floor(index / 4)
+                                        readonly property bool isSel: canvasRoot.selectedSlot === slot
+                                        readonly property string s1: canvasRoot.sliceOledLabel(l1 || "", 5)
+                                        readonly property string s2: canvasRoot.sliceOledLabel(l2 || "", 5)
+                                        readonly property bool icon1: canvasRoot.isSingleIconLabel(s1)
+                                        readonly property bool icon2: canvasRoot.isSingleIconLabel(s2)
+
+                                        x: col * 32
+                                        y: 13 + row * 23
+                                        width: 32
+                                        height: 23
+                                        clip: true
+
+                                        Column {
+                                            anchors.centerIn: parent
+                                            width: parent.width - 2
+                                            spacing: 0
+
+                                            Text {
+                                                visible: s1.length > 0 || s2.length === 0
+                                                width: parent.width
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                                text: s1
+                                                color: isSel ? "#020617" : "#f8fafc"
+                                                font.family: icon1 ? "sans-serif" : "monospace"
+                                                font.bold: true
+                                                font.pixelSize: icon1 ? (s2.length > 0 ? 11 : 14) : 8
+                                                fontSizeMode: Text.HorizontalFit
+                                                minimumPixelSize: 6
+                                            }
+
+                                            Text {
+                                                visible: s2.length > 0
+                                                width: parent.width
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                                text: s2
+                                                color: isSel ? "#020617" : "#f8fafc"
+                                                font.family: icon2 ? "sans-serif" : "monospace"
+                                                font.bold: true
+                                                font.pixelSize: icon2 ? (s1.length > 0 ? 10 : 14) : 8
+                                                fontSizeMode: Text.HorizontalFit
+                                                minimumPixelSize: 6
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1529,14 +1621,16 @@ Item {
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 14
-                spacing: 8
+                anchors.margins: 12
+                spacing: 6
                 visible: canvasRoot.showExpansion
 
                 QQC2.Label {
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
                     text: qsTr("Expansion Modules (4 Modules × 8 Channels) • Drag to swap, Right-click for Copy/Paste")
                     font.bold: true
-                    font.pixelSize: Math.round(12 * canvasRoot.canvasScale)
+                    font.pixelSize: Math.round(13 * canvasRoot.canvasScale)
                     color: Kirigami.Theme.textColor
                 }
 
@@ -1545,7 +1639,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     columns: 4
-                    rowSpacing: 6
+                    rowSpacing: 4
                     columnSpacing: 6
 
                     Repeater {
@@ -1566,7 +1660,12 @@ Item {
 
                             Layout.fillWidth: true
                             Layout.fillHeight: true
+                            Layout.preferredWidth: 1
+                            Layout.preferredHeight: 1
+                            Layout.minimumWidth: 48
+                            Layout.minimumHeight: 24
                             radius: 6
+                            clip: true
                             opacity: isDraggingThis ? 0.55 : 1.0
                             color: isDropTarget
                                 ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(Kirigami.Theme.positiveTextColor.r, Kirigami.Theme.positiveTextColor.g, Kirigami.Theme.positiveTextColor.b, 0.25))
@@ -1582,30 +1681,36 @@ Item {
 
                             Column {
                                 anchors.centerIn: parent
-                                width: parent.width - 6
-                                spacing: 1
+                                width: Math.max(16, parent.width - 8)
+                                spacing: 0
 
-                                QQC2.Label {
+                                Text {
                                     width: parent.width
+                                    height: Math.max(10, Math.floor((expSlotItem.height - 4) * 0.56))
                                     horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
                                     text: expLabel.length > 0
                                         ? ("M" + moduleNum + "·C" + chanNum + ": " + expLabel)
                                         : ("M" + moduleNum + "·C" + chanNum)
                                     font.bold: true
-                                    font.pixelSize: Math.round(10 * canvasRoot.canvasScale)
-                                    fontSizeMode: Text.HorizontalFit
-                                    minimumPixelSize: 7
+                                    font.pixelSize: Math.round(16 * canvasRoot.canvasScale)
+                                    fontSizeMode: Text.Fit
+                                    minimumPixelSize: 9
+                                    elide: Text.ElideRight
                                     color: Kirigami.Theme.textColor
                                 }
-                                QQC2.Label {
+                                Text {
                                     width: parent.width
+                                    height: Math.max(8, Math.floor((expSlotItem.height - 4) * 0.44))
                                     horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
                                     text: isDropTarget
                                         ? (canvasRoot.dragShiftMode ? qsTr("→ Shift Here") : qsTr("⇄ Swap Here"))
                                         : ("Slot " + slotNum)
-                                    font.pixelSize: Math.round(9 * canvasRoot.canvasScale)
-                                    fontSizeMode: Text.HorizontalFit
-                                    minimumPixelSize: 7
+                                    font.pixelSize: Math.round(13 * canvasRoot.canvasScale)
+                                    fontSizeMode: Text.Fit
+                                    minimumPixelSize: 8
+                                    elide: Text.ElideRight
                                     font.bold: isDropTarget
                                     color: isDropTarget ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.disabledTextColor
                                 }

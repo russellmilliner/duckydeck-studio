@@ -20,8 +20,10 @@ pub mod qobject {
         fn duckydeck_hide_main_window();
         fn duckydeck_quit_app();
         fn duckydeck_restart_app();
+        fn duckydeck_dispatch_ipc_command(command: &QString);
         fn duckydeck_toggle_oled_widget();
         fn duckydeck_restore_oled_widget_geometry();
+        fn duckydeck_save_oled_widget_appearance();
         fn duckydeck_record_oled_geometry(x: i32, y: i32, width: i32, height: i32);
         fn duckydeck_apply_app_theme(theme_mode: &QString);
         fn duckydeck_run_app(start_minimized: bool) -> i32;
@@ -44,6 +46,7 @@ pub mod qobject {
         #[qproperty(i32, active_profile)]
         #[qproperty(QString, active_profile_name)]
         #[qproperty(QString, sd_mount_path)]
+        #[qproperty(bool, sd_card_detected)]
         #[qproperty(QString, sd_space_summary)]
         #[qproperty(QString, sd_space_detail)]
         #[qproperty(i32, sd_space_used_percent)]
@@ -586,6 +589,92 @@ pub mod qobject {
             profile_number: i32,
             props_json: QString,
         ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "oledLabelToHardwareAscii"]
+        fn oled_label_to_hardware_ascii_qstr(self: &DeviceController, label: QString) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "listAvailableFirmwaresJson"]
+        fn list_available_firmwares_json(self: &DeviceController) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "installFirmwareToDevice"]
+        fn install_firmware_to_device(
+            self: Pin<&mut DeviceController>,
+            firmware_path: QString,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "refreshSdMountStatus"]
+        fn refresh_sd_mount_status(self: Pin<&mut DeviceController>) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "mountSdCard"]
+        fn mount_sd_card(self: Pin<&mut DeviceController>) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "unmountSdCard"]
+        fn unmount_sd_card(self: Pin<&mut DeviceController>) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "saveSlotWidgetLabels"]
+        fn save_slot_widget_labels(
+            self: Pin<&mut DeviceController>,
+            slot_number: i32,
+            widget_label1: QString,
+            widget_label2: QString,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "setActiveProfileOledRotation"]
+        fn set_active_profile_oled_rotation(
+            self: Pin<&mut DeviceController>,
+            degrees: i32,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "setActiveProfileWidgetRotation"]
+        fn set_active_profile_widget_rotation(
+            self: Pin<&mut DeviceController>,
+            degrees: i32,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "listProfileTemplatesJson"]
+        fn list_profile_templates_json(self: &DeviceController) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "saveProfileAsTemplate"]
+        fn save_profile_as_template(
+            self: Pin<&mut DeviceController>,
+            profile_number: i32,
+            template_name: QString,
+            description: QString,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "deleteProfileTemplate"]
+        fn delete_profile_template(
+            self: Pin<&mut DeviceController>,
+            template_id: QString,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "createProfileFromTemplate"]
+        fn create_profile_from_template(
+            self: Pin<&mut DeviceController>,
+            profile_name: QString,
+            template_id: QString,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "applyTemplateToProfile"]
+        fn apply_template_to_profile(
+            self: Pin<&mut DeviceController>,
+            profile_number: i32,
+            template_id: QString,
+        ) -> bool;
     }
 
     impl cxx_qt::Threading for DeviceController {}
@@ -606,18 +695,23 @@ use std::sync::{Arc, Mutex, OnceLock};
 use crate::hardware::storage::{
     apply_app_launch_config_to_script, apply_web_api_config_to_script,
     check_latest_duckypad_firmware, check_profile_sync_status, compute_profiles_fingerprint,
-    compute_unsynced_changes_json, delete_web_api_destination_by_name,
-    discard_unsynced_change_in_profiles, encode_pgv31_trigger,
-    execute_app_launch, execute_web_api_request, extract_app_launch_config, extract_web_api_config,
-    find_mounted_duckypad_sd, flash_slot_led_feedback, get_sd_card_space_info,
-    has_app_launch_config, has_web_api_config, load_all_sd_profiles,
+    compute_unsynced_changes_json, delete_user_profile_template,
+    delete_web_api_destination_by_name, detect_unmounted_duckypad_sd,
+    discard_unsynced_change_in_profiles, encode_pgv31_trigger, execute_app_launch,
+    execute_web_api_request, extract_app_launch_config, extract_web_api_config,
+    find_duckypad_msc_block_device, find_mounted_duckypad_sd, flash_slot_led_feedback,
+    get_sd_card_space_info, has_app_launch_config, has_web_api_config,
+    instantiate_profile_from_template, list_all_profile_templates,
+    list_available_duckypad_pro_firmwares, load_all_sd_profiles,
     load_profiles_for_connected_device, load_web_api_destinations, mark_profiles_sd_synced,
-    poll_and_clear_pgv31_trigger, poll_hardware_active_profile, profile_cache_dir_for_serial,
-    query_connected_duckypad_info, read_dpp_config, read_duckypad_pro_profiles_via_msc,
-    read_duckypad_pro_profiles_via_msc_with_progress, reboot_duckypad,
+    mount_duckypad_sd_only, oled_label_to_hardware_ascii, poll_and_clear_pgv31_trigger,
+    poll_hardware_active_profile, profile_cache_dir_for_serial, query_connected_duckypad_info,
+    read_dpp_config, read_duckypad_pro_profiles_via_msc,
+    read_duckypad_pro_profiles_via_msc_with_progress, reboot_duckypad, save_profile_as_user_template,
     save_profile_order_to_sd, scan_installed_desktop_apps,
     seed_web_api_destinations_from_profiles, set_batch_key_leds_hid, set_single_key_led_hid,
-    sync_profile_web_api_triggers, sync_profiles_to_cache, sync_profiles_to_device_cache,
+    stage_duckypad_pro_firmware_via_msc_with_progress, sync_profile_web_api_triggers,
+    sync_profiles_to_cache, sync_profiles_to_device_cache, unmount_mounted_duckypad_sd,
     upsert_web_api_destination, write_duckypad_pro_profiles_via_msc_with_progress,
     write_profiles_to_sd_root, AppLaunchConfig, DuckyKeySlot, DuckyProfile, DuckypadEvdevListener,
     GlobalMacroEvdevRecorder, WebApiConfig, DUCKYPAD_VID, HID_CMD_SET_LED_SINGLE,
@@ -818,6 +912,7 @@ pub struct DeviceControllerRust {
     pub(crate) active_profile: i32,
     pub(crate) active_profile_name: QString,
     pub(crate) sd_mount_path: QString,
+    pub(crate) sd_card_detected: bool,
     pub(crate) sd_space_summary: QString,
     pub(crate) sd_space_detail: QString,
     pub(crate) sd_space_used_percent: i32,
@@ -1052,6 +1147,7 @@ impl Default for DeviceControllerRust {
             .as_ref()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
+        let sd_detected = !sd_mount_str.is_empty() || detect_unmounted_duckypad_sd("");
         let (sync_state_str, sync_detail_str) = check_profile_sync_status(
             &sn_str,
             &profiles,
@@ -1081,6 +1177,7 @@ impl Default for DeviceControllerRust {
             active_profile: active_prof,
             active_profile_name: QString::from(&active_prof_name),
             sd_mount_path: QString::from(&sd_mount_str),
+            sd_card_detected: sd_detected,
             sd_space_summary: QString::from(&sd_space.summary_text),
             sd_space_detail: QString::from(&sd_space.detail_tooltip),
             sd_space_used_percent: sd_space.used_percent,
@@ -1226,6 +1323,8 @@ impl DeviceControllerRust {
                     slot: slot_idx,
                     label_line1: l1.to_string(),
                     label_line2: l2.to_string(),
+                    widget_label_line1: String::new(),
+                    widget_label_line2: String::new(),
                     custom_rgb: Some(rgb),
                     allow_abort: false,
                     disable_autorepeat: false,
@@ -1261,6 +1360,8 @@ impl DeviceControllerRust {
                         slot: slot_idx,
                         label_line1: l1.to_string(),
                         label_line2: l2.to_string(),
+                        widget_label_line1: String::new(),
+                        widget_label_line2: String::new(),
                         custom_rgb: Some(rgb),
                         allow_abort: press.contains("WHILE"),
                         disable_autorepeat: false,
@@ -1708,11 +1809,12 @@ impl DeviceControllerRust {
             connected: true,
             udev_rule_missing: false,
             model_name: QString::from("duckyPad Pro"),
-            firmware_version: QString::from("2.3.1"),
+            firmware_version: QString::from("1.0.0 (DuckyDeck Studio)"),
             serial_number: QString::from("DP24-8F4A1C9E"),
             active_profile: 1,
             active_profile_name: QString::from("Dolphin"),
             sd_mount_path: QString::from("/run/media/ducky/DUCKYPAD"),
+            sd_card_detected: true,
             sd_space_summary: QString::from("SD: 1.42 MB used • 3.74 GB free"),
             sd_space_detail: QString::from(
                 "duckyPad microSD Card Capacity\n• Used Space: 1.42 MB (0.04%)\n• Free Space: 3.74 GB (99.96%)\n• Total Capacity: 3.74 GB\n• Source: Mounted at /run/media/ducky/DUCKYPAD",
@@ -1721,7 +1823,7 @@ impl DeviceControllerRust {
             profiles_json: QString::from(&profiles_json),
             active_profile_slots_json: QString::from(&slots_json),
             status_message: QString::from(
-                "Connected to duckyPad Pro (FW v2.3.1) — 8 profile(s) synced & verified",
+                "Connected to duckyPad Pro (FW v1.0.0 DuckyDeck Studio) — 8 profile(s) synced & verified",
             ),
             ai_busy: false,
             generated_script_preview: QString::from(
@@ -1742,13 +1844,13 @@ impl DeviceControllerRust {
             app_theme_mode: QString::from("dark"),
             close_to_tray: true,
             system_dark_theme: true,
-            latest_firmware_version: QString::from("2.3.1"),
+            latest_firmware_version: QString::from("1.0.0"),
             firmware_update_available: false,
             firmware_check_busy: false,
             firmware_update_url: QString::from(
                 "https://dekuNukem.github.io/duckyPad-Pro/doc/fw_update.html",
             ),
-            firmware_check_summary: QString::from("Firmware v2.3.1 is up to date"),
+            firmware_check_summary: QString::from("DuckyDeck Studio Firmware v1.0.0 is up to date"),
             profile_sync_state: QString::from("synced"),
             profile_sync_detail: QString::from(
                 "All 8 profiles verified in sync with duckyPad Pro microSD [hash #8f4a1c9e]",
@@ -1825,6 +1927,9 @@ impl DeviceControllerRust {
                     "slotCount": p.slots.len(),
                     "boundClass": bound_class,
                     "boundIcon": bound_icon,
+                    "oledRotation": p.oled_rotation_degrees(),
+                    "widgetRotation": p.widget_rotation_degrees(),
+                    "effectiveWidgetRotation": p.effective_widget_rotation_degrees(),
                 })
             })
             .collect();
@@ -1869,7 +1974,9 @@ impl DeviceControllerRust {
                 let has_script = !slot.on_press_script.trim().is_empty()
                     || !slot.on_release_script.trim().is_empty()
                     || !slot.label_line1.is_empty()
-                    || !slot.label_line2.is_empty();
+                    || !slot.label_line2.is_empty()
+                    || !slot.widget_label_line1.trim().is_empty()
+                    || !slot.widget_label_line2.trim().is_empty();
                 let default_rgb = if !has_script && profile.dim_unused_keys {
                     [20, 24, 32]
                 } else {
@@ -1888,6 +1995,8 @@ impl DeviceControllerRust {
                     "slot": slot_idx,
                     "l1": slot.label_line1,
                     "l2": slot.label_line2,
+                    "wl1": slot.widget_label_line1,
+                    "wl2": slot.widget_label_line2,
                     "r": rgb[0],
                     "g": rgb[1],
                     "b": rgb[2],
@@ -1910,6 +2019,8 @@ impl DeviceControllerRust {
                     "slot": slot_idx,
                     "l1": "",
                     "l2": "",
+                    "wl1": "",
+                    "wl2": "",
                     "r": rgb[0],
                     "g": rgb[1],
                     "b": rgb[2],
@@ -2433,122 +2544,131 @@ impl qobject::DeviceController {
             return ok;
         }
 
-        if let Ok(info) = query_connected_duckypad_info() {
+        let msc_target = if let Ok(info) = query_connected_duckypad_info() {
             if info.pid == PID_DUCKYPAD_PRO {
-                let disk_label = info.disk_label.clone();
-                let dev_serial = info.serial.clone();
-                let active_prof = info.active_profile;
-                let label_display = if disk_label.is_empty() {
-                    "duckyPad Pro".to_string()
-                } else {
-                    disk_label.clone()
-                };
-
-                self.as_mut().set_sd_sync_busy(true);
-                self.as_mut().set_sd_sync_progress(5);
-                self.as_mut()
-                    .set_sd_sync_result_state(QString::from("running"));
-                self.as_mut().set_sd_sync_result_summary(QString::from(""));
-                self.as_mut().set_sd_sync_step(QString::from(
-                    "Preparing to reload profiles from duckyPad Pro microSD...",
-                ));
-                self.as_mut().set_sd_sync_log(QString::from(&format!(
-                    "• Connected device: duckyPad Pro ({label_display}, SN {dev_serial})\n• Switching to USB Mass Storage mode to read microSD..."
-                )));
-                self.as_mut().set_status_message(QString::from(
-                    "Reading profiles from duckyPad Pro microSD via USB MSC...",
-                ));
-
-                let qt_thread = self.qt_thread();
-                let qt_thread_done = self.qt_thread();
-                std::thread::spawn(move || {
-                    let res = read_duckypad_pro_profiles_via_msc_with_progress(
-                        &disk_label,
-                        &dev_serial,
-                        active_prof,
-                        |pct, step, log_line| {
-                            let step_s = step.to_string();
-                            let log_s = log_line.to_string();
-                            let _ = qt_thread.queue(move |mut qobject| {
-                                qobject.as_mut().set_sd_sync_progress(pct);
-                                qobject.as_mut().set_sd_sync_step(QString::from(&step_s));
-                                if !log_s.is_empty() {
-                                    let prev = qobject.sd_sync_log().to_string();
-                                    let next = if prev.is_empty() {
-                                        log_s.clone()
-                                    } else {
-                                        format!("{prev}\n{log_s}")
-                                    };
-                                    qobject.as_mut().set_sd_sync_log(QString::from(&next));
-                                }
-                                qobject.as_mut().set_status_message(QString::from(&step_s));
-                            });
-                        },
-                    );
-
-                    let _ = qt_thread_done.queue(move |mut qobject| {
-                        qobject.as_mut().set_sd_sync_busy(false);
-                        match res {
-                            Ok(profiles) => {
-                                let count = profiles.len();
-                                let fp = compute_profiles_fingerprint(&profiles);
-                                let short_fp = &fp[..8.min(fp.len())];
-                                {
-                                    let rust = qobject.as_mut().rust_mut().get_mut();
-                                    if let Ok(mut sw) = rust.switcher_state.lock() {
-                                        sw.align_rules_with_profiles(&profiles);
-                                    }
-                                    rust.profiles = profiles;
-                                }
-                                qobject
-                                    .as_mut()
-                                    .set_active_profile((active_prof as i32).clamp(1, 64));
-                                qobject.as_mut().set_connected(true);
-                                qobject.as_mut().sync_active_profile_state();
-
-                                let summary_msg = format!(
-                                    "Validated & Reloaded! {count} profile(s) loaded from duckyPad Pro ({label_display}) — read-back hash #{short_fp} confirmed."
-                                );
-                                qobject.as_mut().set_sd_sync_progress(100);
-                                qobject
-                                    .as_mut()
-                                    .set_sd_sync_result_state(QString::from("success"));
-                                qobject.as_mut().set_sd_sync_step(QString::from(
-                                    "Validated: Profiles reloaded from duckyPad Pro!",
-                                ));
-                                qobject
-                                    .as_mut()
-                                    .set_sd_sync_result_summary(QString::from(&summary_msg));
-                                qobject
-                                    .as_mut()
-                                    .set_status_message(QString::from(&summary_msg));
-                            }
-                            Err(err) => {
-                                let prev = qobject.sd_sync_log().to_string();
-                                let next = format!("{prev}\n✗ Error: {err}");
-                                let err_msg = format!(
-                                    "Failed reloading profiles from duckyPad Pro SD: {err}"
-                                );
-                                qobject
-                                    .as_mut()
-                                    .set_sd_sync_result_state(QString::from("error"));
-                                qobject
-                                    .as_mut()
-                                    .set_sd_sync_step(QString::from("Reload failed"));
-                                qobject.as_mut().set_sd_sync_log(QString::from(&next));
-                                qobject
-                                    .as_mut()
-                                    .set_sd_sync_result_summary(QString::from(&err_msg));
-                                qobject.as_mut().sync_active_profile_state();
-                                qobject
-                                    .as_mut()
-                                    .set_status_message(QString::from(&err_msg));
-                            }
-                        }
-                    });
-                });
-                return true;
+                Some((info.disk_label, info.serial, info.active_profile))
+            } else {
+                None
             }
+        } else if find_duckypad_msc_block_device("", true).is_some() {
+            let cur_serial = self.serial_number().to_string();
+            let cur_prof = (*self.active_profile() as u8).clamp(1, 64);
+            Some((String::new(), cur_serial, cur_prof))
+        } else {
+            None
+        };
+
+        if let Some((disk_label, dev_serial, active_prof)) = msc_target {
+            let label_display = if disk_label.is_empty() {
+                "duckyPad microSD".to_string()
+            } else {
+                disk_label.clone()
+            };
+
+            self.as_mut().set_sd_sync_busy(true);
+            self.as_mut().set_sd_sync_progress(5);
+            self.as_mut()
+                .set_sd_sync_result_state(QString::from("running"));
+            self.as_mut().set_sd_sync_result_summary(QString::from(""));
+            self.as_mut().set_sd_sync_step(QString::from(
+                "Preparing to mount and scan duckyPad microSD...",
+            ));
+            self.as_mut().set_sd_sync_log(QString::from(&format!(
+                "• Target storage: {label_display} (SN {dev_serial})\n• Mounting microSD and scanning profiles..."
+            )));
+            self.as_mut().set_status_message(QString::from(
+                "Mounting and scanning duckyPad microSD...",
+            ));
+
+            let qt_thread = self.qt_thread();
+            let qt_thread_done = self.qt_thread();
+            std::thread::spawn(move || {
+                let res = read_duckypad_pro_profiles_via_msc_with_progress(
+                    &disk_label,
+                    &dev_serial,
+                    active_prof,
+                    |pct, step, log_line| {
+                        let step_s = step.to_string();
+                        let log_s = log_line.to_string();
+                        let _ = qt_thread.queue(move |mut qobject| {
+                            qobject.as_mut().set_sd_sync_progress(pct);
+                            qobject.as_mut().set_sd_sync_step(QString::from(&step_s));
+                            if !log_s.is_empty() {
+                                let prev = qobject.sd_sync_log().to_string();
+                                let next = if prev.is_empty() {
+                                    log_s.clone()
+                                } else {
+                                    format!("{prev}\n{log_s}")
+                                };
+                                qobject.as_mut().set_sd_sync_log(QString::from(&next));
+                            }
+                            qobject.as_mut().set_status_message(QString::from(&step_s));
+                        });
+                    },
+                );
+
+                let _ = qt_thread_done.queue(move |mut qobject| {
+                    qobject.as_mut().set_sd_sync_busy(false);
+                    match res {
+                        Ok(profiles) => {
+                            let count = profiles.len();
+                            let fp = compute_profiles_fingerprint(&profiles);
+                            let short_fp = &fp[..8.min(fp.len())];
+                            {
+                                let rust = qobject.as_mut().rust_mut().get_mut();
+                                if let Ok(mut sw) = rust.switcher_state.lock() {
+                                    sw.align_rules_with_profiles(&profiles);
+                                }
+                                rust.profiles = profiles;
+                            }
+                            qobject
+                                .as_mut()
+                                .set_active_profile((active_prof as i32).clamp(1, 64));
+                            qobject.as_mut().set_connected(true);
+                            qobject.as_mut().sync_active_profile_state();
+
+                            let summary_msg = format!(
+                                "Validated & Reloaded! {count} profile(s) loaded from {label_display} — read-back hash #{short_fp} confirmed."
+                            );
+                            qobject.as_mut().set_sd_sync_progress(100);
+                            qobject
+                                .as_mut()
+                                .set_sd_sync_result_state(QString::from("success"));
+                            qobject.as_mut().set_sd_sync_step(QString::from(
+                                "Validated: Profiles reloaded from duckyPad microSD!",
+                            ));
+                            qobject
+                                .as_mut()
+                                .set_sd_sync_result_summary(QString::from(&summary_msg));
+                            qobject
+                                .as_mut()
+                                .set_status_message(QString::from(&summary_msg));
+                        }
+                        Err(err) => {
+                            let prev = qobject.sd_sync_log().to_string();
+                            let next = format!("{prev}\n✗ Error: {err}");
+                            let err_msg = format!(
+                                "Failed mounting/scanning duckyPad SD: {err}"
+                            );
+                            qobject
+                                .as_mut()
+                                .set_sd_sync_result_state(QString::from("error"));
+                            qobject
+                                .as_mut()
+                                .set_sd_sync_step(QString::from("Mount & Scan failed"));
+                            qobject.as_mut().set_sd_sync_log(QString::from(&next));
+                            qobject
+                                .as_mut()
+                                .set_sd_sync_result_summary(QString::from(&err_msg));
+                            qobject.as_mut().sync_active_profile_state();
+                            qobject
+                                .as_mut()
+                                .set_status_message(QString::from(&err_msg));
+                        }
+                    }
+                });
+            });
+            return true;
         }
 
         let msg = "No mounted duckyPad microSD or connected duckyPad Pro found to reload from";
@@ -3238,6 +3358,14 @@ impl qobject::DeviceController {
                 if let Some(slot) = prof.slots.get_mut(&slot_idx) {
                     slot.custom_rgb = None;
                 }
+                if prof
+                    .slots
+                    .get(&slot_idx)
+                    .map(|s| s.is_effectively_empty())
+                    .unwrap_or(false)
+                {
+                    prof.slots.remove(&slot_idx);
+                }
                 if let Some(root) = sd_root {
                     prof.save_to_sd_root(&root).is_ok()
                 } else {
@@ -3766,6 +3894,8 @@ impl qobject::DeviceController {
                     "slot": slot_idx,
                     "l1": slot.label_line1,
                     "l2": slot.label_line2,
+                    "wl1": slot.widget_label_line1,
+                    "wl2": slot.widget_label_line2,
                     "r": rgb[0],
                     "g": rgb[1],
                     "b": rgb[2],
@@ -3781,6 +3911,8 @@ impl qobject::DeviceController {
                     "slot": slot_idx,
                     "l1": "",
                     "l2": "",
+                    "wl1": "",
+                    "wl2": "",
                     "r": prof.bg_color[0],
                     "g": prof.bg_color[1],
                     "b": prof.bg_color[2],
@@ -3919,6 +4051,9 @@ impl qobject::DeviceController {
                 entry.on_release_script = release;
                 entry.allow_abort = allow_abort;
                 entry.disable_autorepeat = disable_autorepeat;
+                if entry.is_effectively_empty() {
+                    prof.slots.remove(&slot_idx);
+                }
 
                 if let Some(root) = sd_root {
                     prof.save_to_sd_root(&root)
@@ -4112,6 +4247,10 @@ impl qobject::DeviceController {
                                     qobject.as_mut().set_sd_mount_path(QString::from(""));
                                     sd_unmounted = true;
                                 }
+                            } else if let Some(mounted) = find_mounted_duckypad_sd() {
+                                let mounted_str = mounted.to_string_lossy().to_string();
+                                qobject.as_mut().rust_mut().get_mut().sd_root_path = Some(mounted);
+                                qobject.as_mut().set_sd_mount_path(QString::from(&mounted_str));
                             }
 
                             let was_connected = *qobject.connected();
@@ -5681,6 +5820,7 @@ impl qobject::DeviceController {
     }
 
     pub fn set_oled_widget_keep_above(self: Pin<&mut Self>, keep_above: bool) {
+        qobject::duckydeck_save_oled_widget_appearance();
         crate::kwin::auto_switcher::apply_kwin_oled_keep_above(keep_above, false);
     }
 
@@ -6854,29 +6994,16 @@ impl qobject::DeviceController {
             Some(kd) => (true, format!("#{:02x}{:02x}{:02x}", kd[0], kd[1], kd[2])),
             None => (false, "#ffffff".to_string()),
         };
-        let mut is_landscape = false;
-        let mut is_upper_hs = false;
-        let mut extra_lines: Vec<String> = Vec::new();
-        for line in &prof.preserved_config_lines {
-            let trimmed = line.trim();
-            if let Some(rest) = trimmed.strip_prefix("IS_LANDSCAPE ") {
-                is_landscape = rest.trim() != "0";
-            } else if let Some(rest) = trimmed.strip_prefix("IS_UPPER_HS ") {
-                is_upper_hs = rest.trim() != "0";
-            } else if !trimmed.is_empty() {
-                extra_lines.push(trimmed.to_string());
-            }
-        }
+        let oled_rotation = prof.oled_rotation_degrees();
+        let widget_rotation = prof.widget_rotation_degrees();
+        let effective_widget_rotation = prof.effective_widget_rotation_degrees();
+        let is_landscape = oled_rotation == 90 || oled_rotation == 270;
+        let is_upper_hs = prof.is_upper_hs();
+        let extra_lines = prof.canonical_extra_config_lines();
         let configured_keys = prof
             .slots
             .values()
-            .filter(|s| {
-                !s.label_line1.is_empty()
-                    || !s.label_line2.is_empty()
-                    || !s.on_press_script.trim().is_empty()
-                    || !s.on_release_script.trim().is_empty()
-                    || s.custom_rgb.is_some()
-            })
+            .filter(|s| !s.is_effectively_empty())
             .count();
         let obj = serde_json::json!({
             "number": prof.number,
@@ -6887,6 +7014,9 @@ impl qobject::DeviceController {
             "keydownColor": kd_hex,
             "dimUnusedKeys": prof.dim_unused_keys,
             "isLandscape": is_landscape,
+            "oledRotation": oled_rotation,
+            "widgetRotation": widget_rotation,
+            "effectiveWidgetRotation": effective_widget_rotation,
             "isUpperHs": is_upper_hs,
             "extraConfigLines": extra_lines.join("\n"),
             "configuredSlotCount": configured_keys,
@@ -6953,14 +7083,37 @@ impl qobject::DeviceController {
             .get("isLandscape")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+        let oled_rotation = val
+            .get("oledRotation")
+            .and_then(|v| v.as_i64())
+            .map(|d| d as i32)
+            .unwrap_or(if is_landscape { 90 } else { 0 });
+        let widget_rotation_opt = val
+            .get("widgetRotation")
+            .and_then(|v| v.as_i64())
+            .map(|d| d as i32);
         let is_upper_hs = val
             .get("isUpperHs")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        let extra_raw = val
+        let extra_lines_vec: Vec<String> = if let Some(arr) = val
             .get("extraConfigLines")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+            .and_then(|v| v.as_array())
+        {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        } else if let Some(raw_str) = val.get("extraConfigLines").and_then(|v| v.as_str()) {
+            raw_str
+                .lines()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        } else {
+            Vec::new()
+        };
 
         let updated = {
             let rust = self.as_mut().rust_mut().get_mut();
@@ -6990,17 +7143,40 @@ impl qobject::DeviceController {
             };
             prof.dim_unused_keys = dim_unused;
 
+            let existing_widget_rot = prof.widget_rotation_degrees();
+            let final_widget_rot = widget_rotation_opt.unwrap_or(existing_widget_rot);
+
             let mut preserved: Vec<String> = Vec::new();
-            if is_landscape {
-                preserved.push("IS_LANDSCAPE 1".to_string());
+            match oled_rotation {
+                90 => {
+                    preserved.push("IS_LANDSCAPE 1".to_string());
+                }
+                180 => {
+                    preserved.push("IS_LANDSCAPE 2".to_string());
+                    preserved.push("OLED_ROTATION 180".to_string());
+                }
+                270 => {
+                    preserved.push("IS_LANDSCAPE 3".to_string());
+                    preserved.push("OLED_ROTATION 270".to_string());
+                }
+                _ => {}
+            }
+            match final_widget_rot {
+                0 | 90 | 180 | 270 => {
+                    preserved.push(format!("DW_ROTATION {final_widget_rot}"));
+                }
+                _ => {}
             }
             if is_upper_hs {
                 preserved.push("IS_UPPER_HS 1".to_string());
             }
-            for line in extra_raw.lines() {
+            for line in &extra_lines_vec {
                 let t = line.trim();
                 if !t.is_empty()
                     && !t.starts_with("IS_LANDSCAPE ")
+                    && !t.starts_with("OLED_ROTATION ")
+                    && !t.starts_with("IS_ROTATED_180 ")
+                    && !t.starts_with("DW_ROTATION ")
                     && !t.starts_with("IS_UPPER_HS ")
                     && !t.starts_with("BG_COLOR ")
                     && !t.starts_with("KEYDOWN_COLOR ")
@@ -7031,6 +7207,606 @@ impl qobject::DeviceController {
             let msg = format!(
                 "✓ Updated Profile #{} ({}) properties",
                 target_num, final_name
+            );
+            record_system_event("INFO", "PROFILE", &msg);
+            self.as_mut().sync_event_log_properties();
+            self.as_mut().set_status_message(QString::from(&msg));
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn oled_label_to_hardware_ascii_qstr(&self, label: QString) -> QString {
+        QString::from(&oled_label_to_hardware_ascii(&label.to_string()))
+    }
+
+    pub fn list_available_firmwares_json(&self) -> QString {
+        let curr = self.firmware_version().to_string();
+        let list = list_available_duckypad_pro_firmwares(&curr);
+        let json_str = serde_json::to_string(&list).unwrap_or_else(|_| "[]".to_string());
+        QString::from(&json_str)
+    }
+
+    pub fn install_firmware_to_device(
+        mut self: Pin<&mut Self>,
+        firmware_path: QString,
+    ) -> bool {
+        if *self.sd_sync_busy() {
+            return false;
+        }
+        let raw_path = firmware_path.to_string();
+        let clean_path = raw_path.trim().trim_start_matches("file://").to_string();
+        if clean_path.is_empty() {
+            let msg = "No firmware binary selected";
+            self.as_mut().set_status_message(QString::from(msg));
+            return false;
+        }
+
+        let dev_serial = self.serial_number().to_string();
+        let disk_label = if dev_serial.len() >= 4 && dev_serial != "-" {
+            format!("DP24_{}", &dev_serial[dev_serial.len() - 4..])
+        } else {
+            String::new()
+        };
+        let label_display = if disk_label.is_empty() {
+            "DP24".to_string()
+        } else {
+            disk_label.clone()
+        };
+
+        self.as_mut().set_sd_sync_busy(true);
+        self.as_mut().set_sd_sync_progress(5);
+        self.as_mut()
+            .set_sd_sync_result_state(QString::from("running"));
+        self.as_mut().set_sd_sync_result_summary(QString::from(""));
+        self.as_mut().set_sd_sync_step(QString::from(
+            "Preparing duckyPad Pro firmware installation...",
+        ));
+        self.as_mut().set_sd_sync_log(QString::from(&format!(
+            "• Target device: duckyPad Pro ({label_display})\n• Firmware image: {clean_path}"
+        )));
+        self.as_mut().set_status_message(QString::from(
+            "Staging firmware update to duckyPad Pro microSD...",
+        ));
+
+        let qt_thread = self.qt_thread();
+        let qt_thread_done = self.qt_thread();
+        let fw_path_buf = PathBuf::from(&clean_path);
+
+        std::thread::spawn(move || {
+            let res = stage_duckypad_pro_firmware_via_msc_with_progress(
+                &disk_label,
+                &fw_path_buf,
+                |pct, step, log_line| {
+                    let step_s = step.to_string();
+                    let log_s = log_line.to_string();
+                    let _ = qt_thread.queue(move |mut qobject| {
+                        qobject.as_mut().set_sd_sync_progress(pct);
+                        qobject.as_mut().set_sd_sync_step(QString::from(&step_s));
+                        if !log_s.is_empty() {
+                            let prev = qobject.sd_sync_log().to_string();
+                            let next = if prev.is_empty() {
+                                log_s.clone()
+                            } else {
+                                format!("{prev}\n{log_s}")
+                            };
+                            qobject.as_mut().set_sd_sync_log(QString::from(&next));
+                        }
+                        qobject.as_mut().set_status_message(QString::from(&step_s));
+                    });
+                },
+            );
+
+            let _ = qt_thread_done.queue(move |mut qobject| {
+                qobject.as_mut().set_sd_sync_busy(false);
+                match res {
+                    Ok(summary_msg) => {
+                        record_system_event("INFO", "FIRMWARE", &summary_msg);
+                        qobject.as_mut().sync_event_log_properties();
+                        qobject.as_mut().set_sd_sync_progress(100);
+                        qobject
+                            .as_mut()
+                            .set_sd_sync_result_state(QString::from("success"));
+                        qobject
+                            .as_mut()
+                            .set_sd_sync_step(QString::from(&summary_msg));
+                        qobject
+                            .as_mut()
+                            .set_sd_sync_result_summary(QString::from(&summary_msg));
+                        qobject
+                            .as_mut()
+                            .set_status_message(QString::from(&summary_msg));
+                    }
+                    Err(err) => {
+                        let prev = qobject.sd_sync_log().to_string();
+                        let next = format!("{prev}\n✗ Error: {err}");
+                        let err_msg = format!("Firmware installation failed: {err}");
+                        record_system_event("ERROR", "FIRMWARE", &err_msg);
+                        qobject.as_mut().sync_event_log_properties();
+                        qobject
+                            .as_mut()
+                            .set_sd_sync_result_state(QString::from("error"));
+                        qobject
+                            .as_mut()
+                            .set_sd_sync_step(QString::from("Firmware installation failed"));
+                        qobject.as_mut().set_sd_sync_log(QString::from(&next));
+                        qobject
+                            .as_mut()
+                            .set_sd_sync_result_summary(QString::from(&err_msg));
+                        qobject
+                            .as_mut()
+                            .set_status_message(QString::from(&err_msg));
+                    }
+                }
+            });
+        });
+
+        true
+    }
+
+    pub fn refresh_sd_mount_status(mut self: Pin<&mut Self>) -> bool {
+        if let Some(ref sd_root) = self.rust().sd_root_path.clone() {
+            if !crate::hardware::storage::is_duckypad_sd_root(sd_root) {
+                self.as_mut().rust_mut().get_mut().sd_root_path = None;
+                self.as_mut().set_sd_mount_path(QString::from(""));
+            }
+        }
+        if self.rust().sd_root_path.is_none() {
+            if let Some(mounted) = find_mounted_duckypad_sd() {
+                let mounted_str = mounted.to_string_lossy().to_string();
+                self.as_mut().rust_mut().get_mut().sd_root_path = Some(mounted);
+                self.as_mut().set_sd_mount_path(QString::from(&mounted_str));
+            }
+        }
+        let is_mounted = !self.sd_mount_path().is_empty();
+        let dev_serial = self.serial_number().to_string();
+        let disk_label = if dev_serial.len() >= 4 && dev_serial != "-" {
+            format!("DP24_{}", &dev_serial[dev_serial.len() - 4..])
+        } else {
+            String::new()
+        };
+        let detected = is_mounted || detect_unmounted_duckypad_sd(&disk_label);
+        if *self.sd_card_detected() != detected {
+            self.as_mut().set_sd_card_detected(detected);
+        }
+        is_mounted
+    }
+
+    pub fn mount_sd_card(mut self: Pin<&mut Self>) -> bool {
+        if self.as_mut().refresh_sd_mount_status() {
+            let mounted_path = self.sd_mount_path().to_string();
+            let _ = self.as_mut().load_sd_directory(QString::from(&mounted_path));
+            return true;
+        }
+        let dev_serial = self.serial_number().to_string();
+        let disk_label = if dev_serial.len() >= 4 && dev_serial != "-" {
+            format!("DP24_{}", &dev_serial[dev_serial.len() - 4..])
+        } else {
+            String::new()
+        };
+        match mount_duckypad_sd_only(&disk_label) {
+            Ok(mount_root) => {
+                let mount_str = mount_root.to_string_lossy().to_string();
+                self.as_mut().set_sd_card_detected(true);
+                let ok = self.as_mut().load_sd_directory(QString::from(&mount_str));
+                let msg = format!("✓ Mounted duckyPad microSD card at {mount_str}");
+                record_system_event("INFO", "STORAGE", &msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&msg));
+                ok
+            }
+            Err(err) => {
+                let err_msg = format!("Failed to mount microSD card: {err}");
+                record_system_event("ERROR", "STORAGE", &err_msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&err_msg));
+                false
+            }
+        }
+    }
+
+    pub fn unmount_sd_card(mut self: Pin<&mut Self>) -> bool {
+        let current_mount = self.rust().sd_root_path.clone();
+        match unmount_mounted_duckypad_sd(current_mount.as_deref()) {
+            Ok(msg) => {
+                self.as_mut().rust_mut().get_mut().sd_root_path = None;
+                self.as_mut().set_sd_mount_path(QString::from(""));
+                let _ = self.as_mut().refresh_sd_mount_status();
+                self.as_mut().sync_active_profile_state();
+                let full_msg = format!("✓ {msg}");
+                record_system_event("INFO", "STORAGE", &full_msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&full_msg));
+                true
+            }
+            Err(err) => {
+                let err_msg = format!("Failed to unmount microSD card: {err}");
+                record_system_event("ERROR", "STORAGE", &err_msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&err_msg));
+                false
+            }
+        }
+    }
+
+    pub fn save_slot_widget_labels(
+        mut self: Pin<&mut Self>,
+        slot_number: i32,
+        widget_label1: QString,
+        widget_label2: QString,
+    ) -> bool {
+        let slot_idx = slot_number.clamp(1, MAX_INPUT_SLOTS as i32) as usize;
+        let active_num = *self.active_profile() as u8;
+        let wl1: String = widget_label1
+            .to_string()
+            .trim()
+            .chars()
+            .take(24)
+            .collect();
+        let wl2: String = widget_label2
+            .to_string()
+            .trim()
+            .chars()
+            .take(24)
+            .collect();
+
+        let updated = {
+            let rust = self.as_mut().rust_mut().get_mut();
+            let sd_root = rust.sd_root_path.clone();
+            let prof_idx = rust
+                .profiles
+                .iter()
+                .position(|p| p.number == active_num)
+                .unwrap_or(0);
+            if let Some(prof) = rust.profiles.get_mut(prof_idx) {
+                let entry = prof.ensure_slot(slot_idx);
+                entry.widget_label_line1 = wl1;
+                entry.widget_label_line2 = wl2;
+                if entry.is_effectively_empty() {
+                    prof.slots.remove(&slot_idx);
+                }
+                if let Some(root) = sd_root {
+                    let _ = prof.save_to_sd_root(&root);
+                }
+                let sn = rust.serial_number.to_string();
+                if sn != "-" && !sn.is_empty() {
+                    sync_profiles_to_device_cache(&sn, &rust.profiles);
+                } else {
+                    sync_profiles_to_cache(&rust.profiles);
+                }
+                true
+            } else {
+                false
+            }
+        };
+
+        if updated {
+            self.as_mut().sync_active_profile_state();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn set_active_profile_oled_rotation(
+        mut self: Pin<&mut Self>,
+        degrees: i32,
+    ) -> bool {
+        let active_num = (*self.active_profile()).max(1) as u8;
+        let normalized = match degrees {
+            90 => 90,
+            180 => 180,
+            270 => 270,
+            _ => 0,
+        };
+        let updated_name = {
+            let rust = self.as_mut().rust_mut().get_mut();
+            let sd_root = rust.sd_root_path.clone();
+            if let Some(prof) = rust.profiles.iter_mut().find(|p| p.number == active_num) {
+                prof.set_oled_rotation_degrees(normalized);
+                if let Some(root) = sd_root {
+                    let _ = prof.save_to_sd_root(&root);
+                }
+                let name = prof.name.clone();
+                let sn = rust.serial_number.to_string();
+                if sn != "-" && !sn.is_empty() {
+                    sync_profiles_to_device_cache(&sn, &rust.profiles);
+                } else {
+                    sync_profiles_to_cache(&rust.profiles);
+                }
+                Some(name)
+            } else {
+                None
+            }
+        };
+
+        if let Some(name) = updated_name {
+            self.as_mut().sync_active_profile_state();
+            let msg = format!(
+                "✓ Set OLED Orientation to {}° for Profile #{} ({})",
+                normalized, active_num, name
+            );
+            record_system_event("INFO", "PROFILE", &msg);
+            self.as_mut().sync_event_log_properties();
+            self.as_mut().set_status_message(QString::from(&msg));
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn set_active_profile_widget_rotation(
+        mut self: Pin<&mut Self>,
+        degrees: i32,
+    ) -> bool {
+        let active_num = (*self.active_profile()).max(1) as u8;
+        let normalized = match degrees {
+            0 => 0,
+            90 => 90,
+            180 => 180,
+            270 => 270,
+            _ => -1,
+        };
+        let updated_name = {
+            let rust = self.as_mut().rust_mut().get_mut();
+            let sd_root = rust.sd_root_path.clone();
+            if let Some(prof) = rust.profiles.iter_mut().find(|p| p.number == active_num) {
+                prof.set_widget_rotation_degrees(normalized);
+                if let Some(root) = sd_root {
+                    let _ = prof.save_to_sd_root(&root);
+                }
+                let name = prof.name.clone();
+                let sn = rust.serial_number.to_string();
+                if sn != "-" && !sn.is_empty() {
+                    sync_profiles_to_device_cache(&sn, &rust.profiles);
+                } else {
+                    sync_profiles_to_cache(&rust.profiles);
+                }
+                Some(name)
+            } else {
+                None
+            }
+        };
+
+        if let Some(name) = updated_name {
+            self.as_mut().sync_active_profile_state();
+            let label = if normalized < 0 {
+                "Follow Hardware OLED".to_string()
+            } else {
+                format!("{normalized}°")
+            };
+            let msg = format!(
+                "✓ Set Desktop Widget Orientation to {} for Profile #{} ({})",
+                label, active_num, name
+            );
+            record_system_event("INFO", "PROFILE", &msg);
+            self.as_mut().sync_event_log_properties();
+            self.as_mut().set_status_message(QString::from(&msg));
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn list_profile_templates_json(&self) -> QString {
+        let list = list_all_profile_templates();
+        let items: Vec<_> = list
+            .into_iter()
+            .map(|t| {
+                let slot_count = t
+                    .profile
+                    .slots
+                    .values()
+                    .filter(|s| !s.is_effectively_empty())
+                    .count();
+                let bg_hex = format!(
+                    "#{:02x}{:02x}{:02x}",
+                    t.profile.bg_color[0], t.profile.bg_color[1], t.profile.bg_color[2]
+                );
+                serde_json::json!({
+                    "id": t.id,
+                    "name": t.name,
+                    "description": t.description,
+                    "category": t.category,
+                    "builtin": t.builtin,
+                    "slotCount": slot_count,
+                    "bgColor": bg_hex,
+                    "oledRotation": t.profile.oled_rotation_degrees(),
+                    "widgetRotation": t.profile.widget_rotation_degrees(),
+                })
+            })
+            .collect();
+        let json_str = serde_json::to_string(&items).unwrap_or_else(|_| "[]".to_string());
+        QString::from(&json_str)
+    }
+
+    pub fn save_profile_as_template(
+        mut self: Pin<&mut Self>,
+        profile_number: i32,
+        template_name: QString,
+        description: QString,
+    ) -> bool {
+        let target_num = if profile_number > 0 {
+            profile_number as u8
+        } else {
+            (*self.active_profile()).max(1) as u8
+        };
+        let prof_opt = self
+            .rust()
+            .profiles
+            .iter()
+            .find(|p| p.number == target_num)
+            .cloned();
+        let Some(prof) = prof_opt else {
+            self.as_mut()
+                .set_status_message(QString::from("Profile not found to save as template"));
+            return false;
+        };
+        match save_profile_as_user_template(
+            &prof,
+            &template_name.to_string(),
+            &description.to_string(),
+        ) {
+            Ok(saved) => {
+                let msg = format!(
+                    "✓ Saved Profile #{} ({}) as template \"{}\"",
+                    target_num, prof.name, saved.name
+                );
+                record_system_event("INFO", "PROFILE", &msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&msg));
+                true
+            }
+            Err(err) => {
+                let err_msg = format!("Failed saving template: {err}");
+                self.as_mut().set_status_message(QString::from(&err_msg));
+                false
+            }
+        }
+    }
+
+    pub fn delete_profile_template(
+        mut self: Pin<&mut Self>,
+        template_id: QString,
+    ) -> bool {
+        let id = template_id.to_string();
+        match delete_user_profile_template(&id) {
+            Ok(()) => {
+                let msg = "✓ Deleted custom profile template";
+                record_system_event("INFO", "PROFILE", msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(msg));
+                true
+            }
+            Err(err) => {
+                let err_msg = format!("Failed deleting template: {err}");
+                self.as_mut().set_status_message(QString::from(&err_msg));
+                false
+            }
+        }
+    }
+
+    pub fn create_profile_from_template(
+        mut self: Pin<&mut Self>,
+        profile_name: QString,
+        template_id: QString,
+    ) -> bool {
+        let tpl_id = template_id.to_string();
+        if tpl_id.trim().is_empty() || tpl_id == "builtin_blank" {
+            return self.create_new_profile(profile_name);
+        }
+        let trimmed = profile_name.to_string().trim().to_string();
+        if trimmed.is_empty() {
+            return false;
+        }
+        let clean_name: String = trimmed
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == ' ' || *c == '-' || *c == '_')
+            .take(16)
+            .collect();
+        if clean_name.is_empty() {
+            return false;
+        }
+
+        let res = {
+            let rust = self.as_mut().rust_mut().get_mut();
+            let max_num = rust.profiles.iter().map(|p| p.number).max().unwrap_or(0);
+            if max_num >= 64 {
+                return false;
+            }
+            let next_num = max_num + 1;
+            let mut new_prof = match instantiate_profile_from_template(&tpl_id, next_num, &clean_name) {
+                Ok(p) => p,
+                Err(_) => return false,
+            };
+            let is_dpp = rust
+                .sd_root_path
+                .as_ref()
+                .map(|r| r.join("profile_info.txt").is_file())
+                .unwrap_or(true);
+            if is_dpp {
+                new_prof.folder_name_override = Some(format!("profile_{clean_name}"));
+            } else {
+                new_prof.folder_name_override = None;
+            }
+
+            let mut saved = false;
+            if let Some(ref sd_root) = rust.sd_root_path {
+                if new_prof.save_to_sd_root(sd_root).is_ok() {
+                    saved = true;
+                    let _ = save_profile_order_to_sd(sd_root, &rust.profiles);
+                }
+            }
+            rust.profiles.push(new_prof);
+            if let Some(ref sd_root) = rust.sd_root_path {
+                let _ = save_profile_order_to_sd(sd_root, &rust.profiles);
+            }
+            let sn = rust.serial_number.to_string();
+            sync_profiles_to_device_cache(&sn, &rust.profiles);
+            if saved {
+                mark_profiles_sd_synced(&sn, &rust.profiles);
+            }
+            Some((next_num as i32, saved))
+        };
+
+        if let Some((next_num, saved_to_sd)) = res {
+            self.as_mut().set_active_profile(next_num);
+            self.as_mut().sync_active_profile_state();
+            let suffix = if saved_to_sd { " (saved to SD)" } else { "" };
+            let msg = format!(
+                "✓ Created Profile #{next_num}: {clean_name} from template{suffix}"
+            );
+            record_system_event("INFO", "PROFILE", &msg);
+            self.as_mut().sync_event_log_properties();
+            self.as_mut().set_status_message(QString::from(&msg));
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn apply_template_to_profile(
+        mut self: Pin<&mut Self>,
+        profile_number: i32,
+        template_id: QString,
+    ) -> bool {
+        let target_num = if profile_number > 0 {
+            profile_number as u8
+        } else {
+            (*self.active_profile()).max(1) as u8
+        };
+        let tpl_id = template_id.to_string();
+        let updated_name = {
+            let rust = self.as_mut().rust_mut().get_mut();
+            let sd_root = rust.sd_root_path.clone();
+            let Some(prof) = rust.profiles.iter_mut().find(|p| p.number == target_num) else {
+                return false;
+            };
+            let cur_name = prof.name.clone();
+            let cur_folder = prof.folder_name_override.clone();
+            let Ok(inst) = instantiate_profile_from_template(&tpl_id, target_num, &cur_name) else {
+                return false;
+            };
+            *prof = inst;
+            prof.folder_name_override = cur_folder;
+            if let Some(root) = sd_root {
+                let _ = prof.save_to_sd_root(&root);
+            }
+            let sn = rust.serial_number.to_string();
+            if sn != "-" && !sn.is_empty() {
+                sync_profiles_to_device_cache(&sn, &rust.profiles);
+            } else {
+                sync_profiles_to_cache(&rust.profiles);
+            }
+            Some(cur_name)
+        };
+
+        if let Some(name) = updated_name {
+            self.as_mut().sync_active_profile_state();
+            let msg = format!(
+                "✓ Applied template to Profile #{} ({})",
+                target_num, name
             );
             record_system_event("INFO", "PROFILE", &msg);
             self.as_mut().sync_event_log_properties();

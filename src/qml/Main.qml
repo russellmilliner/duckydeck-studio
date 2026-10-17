@@ -115,6 +115,8 @@ Kirigami.ApplicationWindow {
     property int slotSnapshotProfileNumber: 0
     property string slotSnapshotL1: ""
     property string slotSnapshotL2: ""
+    property string slotSnapshotWL1: ""
+    property string slotSnapshotWL2: ""
     property bool slotSnapshotAbort: false
     property bool slotSnapshotNoRepeat: false
     property string slotSnapshotPressScript: ""
@@ -1415,6 +1417,8 @@ Kirigami.ApplicationWindow {
         root.slotSnapshotProfileNumber = deviceController ? deviceController.activeProfile : 1
         root.slotSnapshotL1 = label1Input.text
         root.slotSnapshotL2 = label2Input.text
+        root.slotSnapshotWL1 = widgetLabel1Input.text
+        root.slotSnapshotWL2 = widgetLabel2Input.text
         root.slotSnapshotAbort = allowAbortCheck.checked
         root.slotSnapshotNoRepeat = disableRepeatCheck.checked
         root.slotSnapshotPressScript = root.pressScriptBuffer
@@ -1427,6 +1431,8 @@ Kirigami.ApplicationWindow {
         root.loadingSlotData = true
         label1Input.text = root.slotSnapshotL1
         label2Input.text = root.slotSnapshotL2
+        widgetLabel1Input.text = root.slotSnapshotWL1
+        widgetLabel2Input.text = root.slotSnapshotWL2
         allowAbortCheck.checked = root.slotSnapshotAbort
         disableRepeatCheck.checked = root.slotSnapshotNoRepeat
         root.pressScriptBuffer = root.slotSnapshotPressScript
@@ -1448,6 +1454,8 @@ Kirigami.ApplicationWindow {
         root.loadingSlotData = true
         label1Input.text = ""
         label2Input.text = ""
+        widgetLabel1Input.text = ""
+        widgetLabel2Input.text = ""
         allowAbortCheck.checked = false
         disableRepeatCheck.checked = false
         root.pressScriptBuffer = ""
@@ -1488,11 +1496,15 @@ Kirigami.ApplicationWindow {
             const meta = JSON.parse(metaJson)
             label1Input.text = meta.l1 || ""
             label2Input.text = meta.l2 || ""
+            widgetLabel1Input.text = meta.wl1 || ""
+            widgetLabel2Input.text = meta.wl2 || ""
             allowAbortCheck.checked = !!meta.allowAbort
             disableRepeatCheck.checked = !!meta.disableAutorepeat
         } catch (e) {
             label1Input.text = ""
             label2Input.text = ""
+            widgetLabel1Input.text = ""
+            widgetLabel2Input.text = ""
             allowAbortCheck.checked = false
             disableRepeatCheck.checked = false
         }
@@ -1510,6 +1522,64 @@ Kirigami.ApplicationWindow {
         }
         root.loadingSlotData = false
         root.updateCompilerStatus()
+    }
+
+    function isDuckyDeckStudioFirmware(verStr) {
+        const raw = String(verStr || "").trim()
+        if (!raw || raw === "-") return false
+        const lower = raw.toLowerCase()
+        if (lower.indexOf("duckydeck") >= 0 || lower.indexOf("studio") >= 0 || lower.indexOf("dds") >= 0) {
+            return true
+        }
+        const clean = raw.replace(/^[vV]/, "").split(/\s+/)[0]
+        const parts = clean.split(".")
+        if (parts.length < 3) return false
+        const maj = parseInt(parts[0], 10) || 0
+        const min = parseInt(parts[1], 10) || 0
+        if (maj === 1) return true
+        return (maj > 3) || (maj === 3 && min >= 4)
+    }
+
+    function cleanFirmwareVersionLabel(verStr) {
+        const raw = String(verStr || "-").trim()
+        if (!raw || raw === "-") return "-"
+        return raw.replace(/\s*\(DuckyDeck Studio\)/i, "").replace(/^[vV]/, "").trim()
+    }
+
+    function refreshSidebarTemplateCombo() {
+        if (typeof newProfileTemplateCombo !== "undefined" && newProfileTemplateCombo) {
+            newProfileTemplateCombo.reloadTemplates()
+        }
+    }
+
+    function visibleOledChars(str) {
+        if (!str) return []
+        const raw = Array.from(String(str))
+        const out = []
+        for (let i = 0; i < raw.length; i++) {
+            const cp = raw[i].codePointAt(0)
+            if ((cp === 0xFE0E || cp === 0xFE0F || cp === 0x200D) && out.length > 0) {
+                out[out.length - 1] += raw[i]
+            } else {
+                out.push(raw[i])
+            }
+        }
+        return out
+    }
+
+    function oledLabelCharCount(str) {
+        return visibleOledChars(str).length
+    }
+
+    function clampOledLabel(str) {
+        return visibleOledChars(str).slice(0, 5).join("")
+    }
+
+    function isSingleIconLabel(str) {
+        const s = String(str || "").trim()
+        if (!s) return false
+        const chars = visibleOledChars(s)
+        return chars.length === 1 && chars[0].codePointAt(0) > 127
     }
 
     function saveCurrentSlotToController() {
@@ -1531,6 +1601,11 @@ Kirigami.ApplicationWindow {
             allowAbortCheck.checked,
             disableRepeatCheck.checked
         )
+        deviceController.saveSlotWidgetLabels(
+            root.selectedSlotNumber,
+            widgetLabel1Input.text.trim(),
+            widgetLabel2Input.text.trim()
+        )
     }
 
     function flushPendingSlotEditsIfModified() {
@@ -1541,6 +1616,8 @@ Kirigami.ApplicationWindow {
         const currentRelease = root.editingReleaseScript ? scriptEditor.text : root.releaseScriptBuffer
         const currentL1 = label1Input.text.trim()
         const currentL2 = label2Input.text.trim()
+        const currentWL1 = widgetLabel1Input.text.trim()
+        const currentWL2 = widgetLabel2Input.text.trim()
         const currentAbort = allowAbortCheck.checked
         const currentNoRepeat = disableRepeatCheck.checked
 
@@ -1548,6 +1625,8 @@ Kirigami.ApplicationWindow {
             const meta = JSON.parse(deviceController.getSlotMetaJson(root.selectedSlotNumber))
             const savedL1 = meta.l1 || ""
             const savedL2 = meta.l2 || ""
+            const savedWL1 = meta.wl1 || ""
+            const savedWL2 = meta.wl2 || ""
             const savedAbort = !!meta.allowAbort
             const savedNoRepeat = !!meta.disableAutorepeat
             const savedPress = deviceController.getSlotScript(root.selectedSlotNumber, false)
@@ -1555,6 +1634,8 @@ Kirigami.ApplicationWindow {
 
             if (currentL1 !== savedL1 ||
                 currentL2 !== savedL2 ||
+                currentWL1 !== savedWL1 ||
+                currentWL2 !== savedWL2 ||
                 currentAbort !== savedAbort ||
                 currentNoRepeat !== savedNoRepeat ||
                 currentPress !== savedPress ||
@@ -2930,11 +3011,471 @@ Kirigami.ApplicationWindow {
         QQC2.MenuSeparator {}
 
         QQC2.MenuItem {
+            icon.name: "bookmark-new"
+            text: qsTr("Save Profile as Template...")
+            onTriggered: {
+                profileTemplatesDialog.openSaveFromProfile(
+                    root.contextMenuProfileNumber,
+                    root.contextMenuProfileName
+                )
+            }
+        }
+
+        QQC2.MenuItem {
+            icon.name: "document-new-from-template"
+            text: qsTr("Apply Template to Profile...")
+            onTriggered: {
+                profileTemplatesDialog.openApplyToProfile(
+                    root.contextMenuProfileNumber,
+                    root.contextMenuProfileName
+                )
+            }
+        }
+
+        QQC2.MenuSeparator {}
+
+        QQC2.MenuItem {
             icon.name: "edit-delete"
             text: qsTr("Delete Profile...")
             enabled: profileSidebarList.count > 1
             onTriggered: {
                 deleteProfileDialog.open()
+            }
+        }
+    }
+
+    Window {
+        id: profileTemplatesDialog
+        title: qsTr("Profile Templates Manager — DuckyDeck Studio")
+        width: 780
+        height: 620
+        minimumWidth: 680
+        minimumHeight: 500
+        visible: false
+        transientParent: root
+        modality: Qt.WindowModal
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
+
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
+        color: Kirigami.Theme.backgroundColor
+
+        property var templatesList: []
+        property int selectedIndex: 0
+        property int targetProfileNumber: 0
+        property string targetProfileName: ""
+        property string statusMessage: ""
+
+        function refreshTemplates() {
+            let parsed = []
+            try {
+                parsed = JSON.parse(deviceController.listProfileTemplatesJson())
+            } catch (e) {
+                parsed = []
+            }
+            templatesList = parsed
+            if (selectedIndex >= templatesList.length) {
+                selectedIndex = Math.max(0, templatesList.length - 1)
+            }
+        }
+
+        function selectedTemplate() {
+            if (selectedIndex >= 0 && selectedIndex < templatesList.length) {
+                return templatesList[selectedIndex]
+            }
+            return null
+        }
+
+        function openGeneral() {
+            refreshTemplates()
+            targetProfileNumber = deviceController.activeProfile
+            targetProfileName = deviceController.activeProfileName
+            saveSourceProfileCombo.syncChoices()
+            tplSaveNameField.text = deviceController.activeProfileName + " Template"
+            tplSaveDescField.text = qsTr("Saved from Profile #%1 (%2)")
+                .arg(deviceController.activeProfile)
+                .arg(deviceController.activeProfileName)
+            tplNewProfileNameField.text = ""
+            statusMessage = ""
+            profileTemplatesDialog.show()
+            profileTemplatesDialog.raise()
+            profileTemplatesDialog.requestActivate()
+        }
+
+        function openSaveFromProfile(profNum, profName) {
+            refreshTemplates()
+            targetProfileNumber = profNum
+            targetProfileName = profName
+            saveSourceProfileCombo.syncChoices(profNum)
+            tplSaveNameField.text = profName + " Template"
+            tplSaveDescField.text = qsTr("Copied from Profile #%1 (%2)").arg(profNum).arg(profName)
+            statusMessage = ""
+            profileTemplatesDialog.show()
+            profileTemplatesDialog.raise()
+            profileTemplatesDialog.requestActivate()
+            Qt.callLater(function() {
+                tplSaveNameField.forceActiveFocus()
+                tplSaveNameField.selectAll()
+            })
+        }
+
+        function openApplyToProfile(profNum, profName) {
+            refreshTemplates()
+            targetProfileNumber = profNum
+            targetProfileName = profName
+            saveSourceProfileCombo.syncChoices(profNum)
+            statusMessage = qsTr("Select a template below and click 'Apply to Profile #%1 (%2)'.").arg(profNum).arg(profName)
+            profileTemplatesDialog.show()
+            profileTemplatesDialog.raise()
+            profileTemplatesDialog.requestActivate()
+        }
+
+        Shortcut {
+            sequence: "Escape"
+            context: Qt.WindowShortcut
+            enabled: profileTemplatesDialog.visible
+            onActivated: profileTemplatesDialog.close()
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 10
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    QQC2.Label {
+                        text: qsTr("Profile Templates — Create Profiles from Templates or Save Existing Profiles as Templates")
+                        font.bold: true
+                        font.pixelSize: 14
+                        color: Kirigami.Theme.textColor
+                    }
+                    QQC2.Label {
+                        text: qsTr("Choose a built-in or custom template to create a new profile or overwrite an existing profile, or copy any existing profile into a reusable template.")
+                        font.pixelSize: 11
+                        color: Kirigami.Theme.disabledTextColor
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+                }
+            }
+
+            // Copy Existing Profile to Template Card
+            Rectangle {
+                Layout.fillWidth: true
+                radius: 6
+                color: Qt.alpha(Kirigami.Theme.highlightColor, 0.10)
+                border.color: Qt.alpha(Kirigami.Theme.highlightColor, 0.45)
+                border.width: 1
+                implicitHeight: saveTplCol.implicitHeight + 16
+
+                ColumnLayout {
+                    id: saveTplCol
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 6
+
+                    QQC2.Label {
+                        text: qsTr("Copy Existing Profile to Reusable Template:")
+                        font.bold: true
+                        font.pixelSize: 12
+                        color: Kirigami.Theme.textColor
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        QQC2.Label {
+                            text: qsTr("Source Profile:")
+                            font.pixelSize: 11
+                        }
+
+                        QQC2.ComboBox {
+                            id: saveSourceProfileCombo
+                            Layout.preferredWidth: 180
+                            property var profileNums: []
+                            property var profileNames: []
+                            function syncChoices(preferredNum) {
+                                let nums = []
+                                let names = []
+                                let labels = []
+                                try {
+                                    const arr = JSON.parse(deviceController.profilesJson)
+                                    for (let i = 0; i < arr.length; i++) {
+                                        nums.push(arr[i].number)
+                                        names.push(arr[i].name)
+                                        labels.push("#" + arr[i].number + " — " + arr[i].name)
+                                    }
+                                } catch (e) {}
+                                profileNums = nums
+                                profileNames = names
+                                model = labels
+                                const target = preferredNum || deviceController.activeProfile
+                                const idx = nums.indexOf(target)
+                                currentIndex = idx >= 0 ? idx : 0
+                            }
+                            onActivated: {
+                                if (currentIndex >= 0 && currentIndex < profileNames.length) {
+                                    tplSaveNameField.text = profileNames[currentIndex] + " Template"
+                                    tplSaveDescField.text = qsTr("Copied from Profile #%1 (%2)")
+                                        .arg(profileNums[currentIndex])
+                                        .arg(profileNames[currentIndex])
+                                }
+                            }
+                        }
+
+                        QQC2.TextField {
+                            id: tplSaveNameField
+                            Layout.preferredWidth: 180
+                            maximumLength: 36
+                            placeholderText: qsTr("Template Name...")
+                            selectByMouse: true
+                        }
+
+                        QQC2.TextField {
+                            id: tplSaveDescField
+                            Layout.fillWidth: true
+                            maximumLength: 140
+                            placeholderText: qsTr("Description (optional)...")
+                            selectByMouse: true
+                        }
+
+                        QQC2.Button {
+                            icon.name: "bookmark-new"
+                            text: qsTr("Save as Template")
+                            highlighted: true
+                            enabled: tplSaveNameField.text.trim().length > 0 && saveSourceProfileCombo.profileNums.length > 0
+                            onClicked: {
+                                const srcIdx = Math.max(0, saveSourceProfileCombo.currentIndex)
+                                const srcProf = saveSourceProfileCombo.profileNums[srcIdx] || deviceController.activeProfile
+                                if (deviceController.saveProfileAsTemplate(
+                                    srcProf,
+                                    tplSaveNameField.text.trim(),
+                                    tplSaveDescField.text.trim()
+                                )) {
+                                    profileTemplatesDialog.refreshTemplates()
+                                    root.refreshSidebarTemplateCombo()
+                                    profileTemplatesDialog.statusMessage = qsTr("✓ Saved Profile #%1 as template '%2'.")
+                                        .arg(srcProf)
+                                        .arg(tplSaveNameField.text.trim())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Templates List
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: 6
+                color: Kirigami.Theme.alternateBackgroundColor
+                border.color: Qt.alpha(Kirigami.Theme.textColor, 0.2)
+                border.width: 1
+                clip: true
+
+                ListView {
+                    id: tplListView
+                    anchors.fill: parent
+                    anchors.margins: 6
+                    spacing: 6
+                    model: profileTemplatesDialog.templatesList
+                    boundsBehavior: Flickable.StopAtBounds
+                    QQC2.ScrollBar.vertical: QQC2.ScrollBar { policy: QQC2.ScrollBar.AsNeeded }
+
+                    delegate: Rectangle {
+                        id: tplDelegate
+                        width: tplListView.width - 12
+                        implicitHeight: tplDelegateCol.implicitHeight + 14
+                        radius: 5
+                        readonly property bool isSel: profileTemplatesDialog.selectedIndex === index
+                        color: isSel
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.22)
+                            : (tplRowMouse.containsMouse ? Qt.alpha(Kirigami.Theme.textColor, 0.06) : Kirigami.Theme.backgroundColor)
+                        border.color: isSel
+                            ? Kirigami.Theme.highlightColor
+                            : Qt.alpha(Kirigami.Theme.textColor, 0.18)
+                        border.width: isSel ? 2 : 1
+
+                        ColumnLayout {
+                            id: tplDelegateCol
+                            anchors.fill: parent
+                            anchors.margins: 7
+                            spacing: 3
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                Rectangle {
+                                    width: 14
+                                    height: 14
+                                    radius: 3
+                                    color: modelData.bgColor || "#38bdf8"
+                                    border.color: "#ffffff66"
+                                    border.width: 1
+                                }
+
+                                QQC2.Label {
+                                    text: modelData.name || ""
+                                    font.bold: true
+                                    font.pixelSize: 13
+                                    color: Kirigami.Theme.textColor
+                                }
+
+                                Rectangle {
+                                    radius: 4
+                                    color: modelData.builtIn
+                                        ? Qt.alpha("#0ea5e9", 0.20)
+                                        : Qt.alpha("#a855f7", 0.22)
+                                    border.color: modelData.builtIn
+                                        ? Qt.alpha("#38bdf8", 0.65)
+                                        : Qt.alpha("#c084fc", 0.70)
+                                    border.width: 1
+                                    implicitWidth: tplKindLbl.implicitWidth + 10
+                                    implicitHeight: tplKindLbl.implicitHeight + 4
+
+                                    QQC2.Label {
+                                        id: tplKindLbl
+                                        anchors.centerIn: parent
+                                        font.bold: true
+                                        font.pixelSize: 10
+                                        text: modelData.builtIn ? qsTr("BUILT-IN") : qsTr("CUSTOM TEMPLATE")
+                                        color: Kirigami.Theme.textColor
+                                    }
+                                }
+
+                                QQC2.Label {
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                    color: Kirigami.Theme.disabledTextColor
+                                    text: qsTr("%1 keys configured  •  OLED %2°")
+                                        .arg(modelData.configuredSlotCount || 0)
+                                        .arg(modelData.oledRotation || 0)
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                QQC2.Button {
+                                    visible: !modelData.builtIn
+                                    icon.name: "edit-delete"
+                                    text: qsTr("Delete")
+                                    implicitHeight: 24
+                                    font.pixelSize: 10
+                                    z: 5
+                                    onClicked: {
+                                        if (deviceController.deleteProfileTemplate(modelData.id)) {
+                                            profileTemplatesDialog.refreshTemplates()
+                                            root.refreshSidebarTemplateCombo()
+                                            profileTemplatesDialog.statusMessage = qsTr("Deleted template '%1'.").arg(modelData.name)
+                                        }
+                                    }
+                                }
+                            }
+
+                            QQC2.Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: 11
+                                text: modelData.description || ""
+                                color: Qt.alpha(Kirigami.Theme.textColor, 0.85)
+                            }
+                        }
+
+                        MouseArea {
+                            id: tplRowMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            z: 1
+                            onClicked: {
+                                profileTemplatesDialog.selectedIndex = index
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Status message
+            QQC2.Label {
+                visible: profileTemplatesDialog.statusMessage.length > 0
+                Layout.fillWidth: true
+                text: profileTemplatesDialog.statusMessage
+                font.bold: true
+                font.pixelSize: 11
+                color: Kirigami.Theme.positiveTextColor
+            }
+
+            // Footer Actions: Create New Profile from Template OR Apply to Existing Profile
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                QQC2.TextField {
+                    id: tplNewProfileNameField
+                    Layout.preferredWidth: 170
+                    maximumLength: 13
+                    placeholderText: profileTemplatesDialog.selectedTemplate()
+                        ? profileTemplatesDialog.selectedTemplate().defaultProfileName
+                        : qsTr("New profile name...")
+                    selectByMouse: true
+                }
+
+                QQC2.Button {
+                    icon.name: "list-add"
+                    text: qsTr("Create New Profile from Selected Template")
+                    highlighted: true
+                    enabled: profileTemplatesDialog.selectedTemplate() !== null
+                    onClicked: {
+                        const tpl = profileTemplatesDialog.selectedTemplate()
+                        if (!tpl) return
+                        const pName = tplNewProfileNameField.text.trim().length > 0
+                            ? tplNewProfileNameField.text.trim()
+                            : (tpl.defaultProfileName || tpl.name)
+                        if (deviceController.createProfileFromTemplate(tpl.id, pName)) {
+                            root.syncSidebarProfilesFromController()
+                            hardwareCanvas.syncProfilesFromController()
+                            root.refreshSelectedSlotFromController()
+                            profileTemplatesDialog.statusMessage = qsTr("✓ Created new profile '%1' from template '%2'.").arg(pName).arg(tpl.name)
+                        }
+                    }
+                }
+
+                QQC2.Button {
+                    visible: profileTemplatesDialog.targetProfileNumber > 0
+                    icon.name: "document-new-from-template"
+                    text: qsTr("Apply to Profile #%1 (%2)")
+                        .arg(profileTemplatesDialog.targetProfileNumber)
+                        .arg(profileTemplatesDialog.targetProfileName || deviceController.activeProfileName)
+                    enabled: profileTemplatesDialog.selectedTemplate() !== null
+                    onClicked: {
+                        const tpl = profileTemplatesDialog.selectedTemplate()
+                        if (!tpl) return
+                        if (deviceController.applyTemplateToProfile(profileTemplatesDialog.targetProfileNumber, tpl.id)) {
+                            root.syncSidebarProfilesFromController()
+                            hardwareCanvas.syncProfilesFromController()
+                            root.refreshSelectedSlotFromController()
+                            profileTemplatesDialog.statusMessage = qsTr("✓ Applied template '%1' to Profile #%2.")
+                                .arg(tpl.name)
+                                .arg(profileTemplatesDialog.targetProfileNumber)
+                        }
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.Button {
+                    icon.name: "window-close"
+                    text: qsTr("Close")
+                    onClicked: profileTemplatesDialog.close()
+                }
             }
         }
     }
@@ -3100,8 +3641,13 @@ Kirigami.ApplicationWindow {
         id: hcBar
         policy: QQC2.ScrollBar.AsNeeded
         minimumSize: 0.14
-        implicitWidth: orientation === Qt.Vertical ? 11 : 40
-        implicitHeight: orientation === Qt.Horizontal ? 11 : 40
+        implicitWidth: orientation === Qt.Vertical ? 11 : (parent ? parent.width : 40)
+        implicitHeight: orientation === Qt.Horizontal ? 11 : (parent ? parent.height : 40)
+        x: orientation === Qt.Vertical ? (parent ? parent.width - width : 0) : 0
+        y: orientation === Qt.Horizontal ? (parent ? parent.height - height : 0) : 0
+        width: orientation === Qt.Vertical ? 11 : (parent ? parent.width : implicitWidth)
+        height: orientation === Qt.Horizontal ? 11 : (parent ? parent.height : implicitHeight)
+        z: 50
         padding: 1
         background: Rectangle {
             visible: hcBar.size < 1.0
@@ -3731,6 +4277,10 @@ Kirigami.ApplicationWindow {
                     flickableDirection: Flickable.VerticalFlick
 
                     QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                        parent: destListFlickable
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
                         policy: destListFlickable.contentHeight > destListFlickable.height
                             ? QQC2.ScrollBar.AlwaysOn
                             : QQC2.ScrollBar.AsNeeded
@@ -3997,16 +4547,27 @@ Kirigami.ApplicationWindow {
                             font.bold: true
                             font.pixelSize: 11
                             Layout.preferredWidth: 64
+                            Layout.alignment: Qt.AlignTop
                         }
 
-                        QQC2.TextField {
+                        QQC2.TextArea {
                             id: destManagerHeadersField
                             Layout.fillWidth: true
                             Layout.minimumWidth: 80
                             Layout.preferredWidth: 1
+                            implicitHeight: 54
+                            wrapMode: TextEdit.Wrap
+                            clip: true
                             font.family: "monospace"
+                            font.pixelSize: 11
                             selectByMouse: true
-                            placeholderText: qsTr("Optional HTTP headers separated by ';' (e.g. Authorization: Bearer <token>; X-Api-Key: 123)")
+                            placeholderText: qsTr("Optional HTTP headers, one per line (e.g. Content-Type: application/json; charset=utf-8)")
+                            background: Rectangle {
+                                radius: 4
+                                color: Kirigami.Theme.backgroundColor
+                                border.color: Qt.alpha(Kirigami.Theme.textColor, 0.2)
+                                border.width: 1
+                            }
                         }
                     }
 
@@ -4144,6 +4705,7 @@ Kirigami.ApplicationWindow {
     QQC2.Menu {
         id: hamburgerMenu
         title: qsTr("Menu")
+        onAboutToShow: deviceController.refreshSdMountStatus()
 
         QQC2.MenuItem {
             icon.name: "view-refresh"
@@ -4172,6 +4734,26 @@ Kirigami.ApplicationWindow {
         }
 
         QQC2.MenuItem {
+            visible: deviceController.sdCardDetected && deviceController.sdMountPath.length === 0
+            height: visible ? implicitHeight : 0
+            icon.name: "media-mount"
+            text: qsTr("Mount SD Card")
+            enabled: !deviceController.sdSyncBusy && deviceController.sdCardDetected && deviceController.sdMountPath.length === 0
+            onTriggered: {
+                deviceController.mountSdCard()
+            }
+        }
+
+        QQC2.MenuItem {
+            icon.name: "media-mount"
+            text: qsTr("Mount and Scan SD Card")
+            enabled: !deviceController.sdSyncBusy && deviceController.sdMountPath.length === 0 && (deviceController.sdCardDetected || deviceController.connected)
+            onTriggered: root.triggerReloadFromDeviceSd()
+        }
+
+        QQC2.MenuItem {
+            visible: deviceController.sdMountPath.length > 0
+            height: visible ? implicitHeight : 0
             icon.name: "media-flash-sd-mmc"
             text: qsTr("Scan Mounted SD Card")
             onTriggered: {
@@ -4180,6 +4762,17 @@ Kirigami.ApplicationWindow {
                     root.refreshSelectedSlotFromController()
                 } else {
                     sdFolderDialog.open()
+                }
+            }
+        }
+
+        QQC2.MenuItem {
+            icon.name: "media-eject"
+            text: qsTr("Unmount SD Card")
+            enabled: !deviceController.sdSyncBusy && deviceController.sdMountPath.length > 0
+            onTriggered: {
+                if (deviceController.unmountSdCard()) {
+                    root.refreshSelectedSlotFromController()
                 }
             }
         }
@@ -4249,8 +4842,8 @@ Kirigami.ApplicationWindow {
         QQC2.MenuItem {
             icon.name: "system-software-update"
             text: deviceController.firmwareUpdateAvailable
-                ? qsTr("⬆ Check for Firmware Updates (v%1 Available)...").arg(deviceController.latestFirmwareVersion)
-                : qsTr("Check for Firmware Updates...")
+                ? qsTr("⬆ Firmware Manager & Updater (v%1 Available)...").arg(deviceController.latestFirmwareVersion)
+                : qsTr("Firmware Manager & Updater...")
             onTriggered: {
                 deviceController.checkFirmwareUpdate(true)
                 firmwareUpdateDialog.open()
@@ -5247,6 +5840,10 @@ Kirigami.ApplicationWindow {
                     clip: true
                     model: unsyncedItemsModel
                     QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                        parent: unsyncedListView
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
                         policy: unsyncedListView.contentHeight > unsyncedListView.height
                             ? QQC2.ScrollBar.AlwaysOn
                             : QQC2.ScrollBar.AsNeeded
@@ -5451,23 +6048,74 @@ Kirigami.ApplicationWindow {
 
     Window {
         id: firmwareUpdateDialog
-        title: qsTr("duckyPad Firmware Update Check — DuckyDeck Studio")
+        title: qsTr("duckyPad Pro Firmware Manager & Updater — DuckyDeck Studio")
         width: Math.max(
-            700,
+            780,
             Math.ceil(fwFooterRow.implicitWidth + 64),
             Math.ceil(fwTitleMetrics.width + 180)
         )
-        height: 320
+        height: 620
         minimumWidth: Math.max(
-            660,
+            720,
             Math.ceil(fwFooterRow.implicitWidth + 56),
             Math.ceil(fwTitleMetrics.width + 160)
         )
-        minimumHeight: 290
+        minimumHeight: 520
         visible: false
         transientParent: root
         modality: Qt.WindowModal
-        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMinMaxButtonsHint
+
+        property var availableFirmwares: []
+        property string vendorFilter: "all" // "all" | "official" | "studio"
+        readonly property var filteredFirmwares: {
+            const all = firmwareUpdateDialog.availableFirmwares || []
+            if (firmwareUpdateDialog.vendorFilter === "official") {
+                return all.filter(function(item) { return !!item.is_official })
+            }
+            if (firmwareUpdateDialog.vendorFilter === "studio") {
+                return all.filter(function(item) { return !item.is_official })
+            }
+            return all
+        }
+        property int selectedFirmwareIndex: 0
+        property string customFirmwarePath: ""
+
+        function refreshCatalog() {
+            let parsed = []
+            try {
+                parsed = JSON.parse(deviceController.listAvailableFirmwaresJson())
+            } catch (e) {
+                parsed = []
+            }
+            availableFirmwares = parsed
+            if (filteredFirmwares.length > 0 && (selectedFirmwareIndex < 0 || selectedFirmwareIndex >= filteredFirmwares.length)) {
+                selectedFirmwareIndex = 0
+            }
+        }
+
+        function selectedTargetPath() {
+            if (customFirmwarePath.length > 0) {
+                return customFirmwarePath
+            }
+            if (selectedFirmwareIndex >= 0 && selectedFirmwareIndex < filteredFirmwares.length) {
+                return filteredFirmwares[selectedFirmwareIndex].path || ""
+            }
+            return ""
+        }
+
+        function selectedTargetLabel() {
+            if (customFirmwarePath.length > 0) {
+                const parts = customFirmwarePath.split("/")
+                return parts[parts.length - 1]
+            }
+            if (selectedFirmwareIndex >= 0 && selectedFirmwareIndex < filteredFirmwares.length) {
+                const item = filteredFirmwares[selectedFirmwareIndex]
+                const tag = item.is_official ? "Official dekuNukem" : "DuckyDeck Studio"
+                return "v" + item.version + " (" + tag + ")"
+            }
+            return ""
+        }
 
         onMinimumWidthChanged: {
             if (firmwareUpdateDialog.width < firmwareUpdateDialog.minimumWidth) {
@@ -5486,7 +6134,21 @@ Kirigami.ApplicationWindow {
             text: firmwareUpdateDialog.title
         }
 
+        FileDialog {
+            id: customFirmwareFileDialog
+            title: qsTr("Select duckyPad Pro Firmware Binary (DPP_FW_*.bin)")
+            nameFilters: ["duckyPad Pro Firmware (*.bin)", "All Files (*)"]
+            onAccepted: {
+                let p = selectedFile.toString()
+                if (p.startsWith("file://")) {
+                    p = p.substring(7)
+                }
+                firmwareUpdateDialog.customFirmwarePath = p
+            }
+        }
+
         function open() {
+            refreshCatalog()
             if (firmwareUpdateDialog.width < firmwareUpdateDialog.minimumWidth) {
                 firmwareUpdateDialog.width = firmwareUpdateDialog.minimumWidth
             }
@@ -5512,120 +6174,388 @@ Kirigami.ApplicationWindow {
             id: fwDialogRootCol
             anchors.fill: parent
             anchors.margins: 16
-            spacing: 14
+            spacing: 12
             focus: true
             Keys.onEscapePressed: firmwareUpdateDialog.close()
 
             Rectangle {
                 Layout.fillWidth: true
                 radius: 6
-                color: deviceController.firmwareUpdateAvailable
-                    ? Qt.alpha(Kirigami.Theme.neutralTextColor, 0.16)
-                    : Qt.alpha(Kirigami.Theme.positiveTextColor, 0.14)
-                border.color: deviceController.firmwareUpdateAvailable
-                    ? Qt.alpha(Kirigami.Theme.neutralTextColor, 0.5)
-                    : Qt.alpha(Kirigami.Theme.positiveTextColor, 0.45)
+                color: Qt.alpha(Kirigami.Theme.highlightColor, 0.12)
+                border.color: Qt.alpha(Kirigami.Theme.highlightColor, 0.45)
                 border.width: 1
-                implicitHeight: fwBannerCol.implicitHeight + 20
+                implicitHeight: fwBannerCol.implicitHeight + 18
 
                 ColumnLayout {
                     id: fwBannerCol
                     anchors.fill: parent
                     anchors.margins: 10
-                    spacing: 6
+                    spacing: 4
 
-                    QQC2.Label {
+                    RowLayout {
                         Layout.fillWidth: true
-                        font.bold: true
-                        font.pixelSize: 13
-                        text: deviceController.firmwareCheckBusy
-                            ? qsTr("Checking GitHub for official firmware releases...")
-                            : (deviceController.firmwareUpdateAvailable
-                                ? qsTr("⬆ Firmware Update Available!")
-                                : qsTr("✓ Firmware Status"))
-                        color: Kirigami.Theme.textColor
+                        spacing: 12
+
+                        QQC2.Label {
+                            font.bold: true
+                            font.pixelSize: 13
+                            text: qsTr("duckyPad Pro Firmware Manager — Switch or Update Firmware Version")
+                            color: Kirigami.Theme.textColor
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        Rectangle {
+                            radius: 4
+                            readonly property bool installedIsStudio: root.isDuckyDeckStudioFirmware(deviceController.firmwareVersion)
+                            color: installedIsStudio
+                                ? Qt.alpha("#a855f7", 0.22)
+                                : Qt.alpha(Kirigami.Theme.positiveTextColor, 0.18)
+                            border.color: installedIsStudio
+                                ? Qt.alpha("#c084fc", 0.7)
+                                : Qt.alpha(Kirigami.Theme.positiveTextColor, 0.5)
+                            border.width: 1
+                            implicitWidth: installedBadgeRow.implicitWidth + 14
+                            implicitHeight: installedBadgeRow.implicitHeight + 6
+
+                            RowLayout {
+                                id: installedBadgeRow
+                                anchors.centerIn: parent
+                                spacing: 5
+
+                                Image {
+                                    visible: deviceController.firmwareVersion !== "-" && root.isDuckyDeckStudioFirmware(deviceController.firmwareVersion)
+                                    source: root.effectiveThemeMode === "light"
+                                        ? "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-light.svg"
+                                        : "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-dark.svg"
+                                    width: 13
+                                    height: 13
+                                    sourceSize.width: 26
+                                    sourceSize.height: 26
+                                    fillMode: Image.PreserveAspectFit
+                                }
+
+                                QQC2.Label {
+                                    id: installedBadgeLbl
+                                    font.family: "monospace"
+                                    font.bold: true
+                                    font.pixelSize: 11
+                                    text: deviceController.firmwareVersion !== "-"
+                                        ? (root.isDuckyDeckStudioFirmware(deviceController.firmwareVersion)
+                                            ? qsTr("Installed: v%1  [DuckyDeck Studio]").arg(root.cleanFirmwareVersionLabel(deviceController.firmwareVersion))
+                                            : qsTr("Installed: v%1  [✔ Official dekuNukem]").arg(root.cleanFirmwareVersionLabel(deviceController.firmwareVersion)))
+                                        : qsTr("Device Not Connected")
+                                    color: Kirigami.Theme.textColor
+                                }
+                            }
+                        }
                     }
 
                     QQC2.Label {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
-                        font.pixelSize: 12
-                        text: deviceController.firmwareCheckSummary.length > 0
-                            ? deviceController.firmwareCheckSummary
-                            : qsTr("Click 'Check Again' to query the official dekuNukem GitHub repository.")
-                        color: Kirigami.Theme.textColor
+                        font.pixelSize: 11
+                        text: qsTr("DuckyDeck Studio includes its custom DuckyDeck Studio Firmware v1.0.0 (with monochrome key icons & 0°/90°/180°/270° OLED orientation). Official dekuNukem firmware binaries are not bundled in this repository — download official releases directly from dekuNukem's site (github.com/dekuNukem/duckyPad-Pro/releases) and select them via 'Browse Custom .bin...'.")
+                        color: Qt.alpha(Kirigami.Theme.textColor, 0.85)
                     }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                QQC2.Label {
+                    font.bold: true
+                    font.pixelSize: 12
+                    text: qsTr("Filter Origin:")
+                    color: Kirigami.Theme.textColor
+                }
+
+                QQC2.Button {
+                    text: qsTr("All (%1)").arg(firmwareUpdateDialog.availableFirmwares.length)
+                    checkable: true
+                    checked: firmwareUpdateDialog.vendorFilter === "all"
+                    highlighted: firmwareUpdateDialog.vendorFilter === "all"
+                    onClicked: {
+                        firmwareUpdateDialog.vendorFilter = "all"
+                        firmwareUpdateDialog.selectedFirmwareIndex = 0
+                    }
+                }
+
+                QQC2.Button {
+                    icon.source: root.effectiveThemeMode === "light"
+                        ? "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-light.svg"
+                        : "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-dark.svg"
+                    text: qsTr("DuckyDeck Studio")
+                    checkable: true
+                    checked: firmwareUpdateDialog.vendorFilter === "studio"
+                    highlighted: firmwareUpdateDialog.vendorFilter === "studio"
+                    onClicked: {
+                        firmwareUpdateDialog.vendorFilter = "studio"
+                        firmwareUpdateDialog.selectedFirmwareIndex = 0
+                    }
+                }
+
+                QQC2.Button {
+                    text: qsTr("✔ Official dekuNukem")
+                    checkable: true
+                    checked: firmwareUpdateDialog.vendorFilter === "official"
+                    highlighted: firmwareUpdateDialog.vendorFilter === "official"
+                    onClicked: {
+                        firmwareUpdateDialog.vendorFilter = "official"
+                        firmwareUpdateDialog.selectedFirmwareIndex = 0
+                    }
+                }
+
+                QQC2.Button {
+                    icon.name: "internet-services"
+                    text: qsTr("Download Official dekuNukem Firmware...")
+                    onClicked: Qt.openUrlExternally("https://github.com/dekuNukem/duckyPad-Pro/releases")
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.text: qsTr("Open https://github.com/dekuNukem/duckyPad-Pro/releases to download official dekuNukem DPP_FW_*.bin files")
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.Button {
+                    icon.name: "document-open"
+                    text: firmwareUpdateDialog.customFirmwarePath.length > 0
+                        ? qsTr("Custom: %1").arg(firmwareUpdateDialog.selectedTargetLabel())
+                        : qsTr("Browse Custom .bin...")
+                    onClicked: customFirmwareFileDialog.open()
+                }
+
+                QQC2.Button {
+                    visible: firmwareUpdateDialog.customFirmwarePath.length > 0
+                    icon.name: "edit-clear"
+                    text: qsTr("Clear Custom")
+                    onClicked: firmwareUpdateDialog.customFirmwarePath = ""
                 }
             }
 
             Rectangle {
                 Layout.fillWidth: true
+                Layout.fillHeight: true
                 radius: 6
                 color: Kirigami.Theme.alternateBackgroundColor
                 border.color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
                 border.width: 1
-                implicitHeight: fwGrid.implicitHeight + 20
+                clip: true
 
-                GridLayout {
-                    id: fwGrid
+                ColumnLayout {
+                    anchors.centerIn: parent
+                    width: Math.min(parent.width - 40, 560)
+                    spacing: 10
+                    visible: firmwareUpdateDialog.filteredFirmwares.length === 0
+
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        font.bold: true
+                        font.pixelSize: 13
+                        text: qsTr("Official dekuNukem Firmware Binaries Are Downloaded from dekuNukem's Site")
+                        color: Kirigami.Theme.textColor
+                    }
+
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 11
+                        text: qsTr("Official dekuNukem firmware binaries (DPP_FW_*.bin) have been removed from the DuckyDeck Studio repository. Download any release from dekuNukem's official GitHub Releases page, then click 'Browse Custom .bin...' above to install it onto your duckyPad Pro.")
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+
+                    RowLayout {
+                        Layout.alignment: Qt.AlignHCenter
+                        spacing: 10
+
+                        QQC2.Button {
+                            icon.name: "internet-services"
+                            text: qsTr("Open dekuNukem Releases Page (GitHub)")
+                            highlighted: true
+                            onClicked: Qt.openUrlExternally("https://github.com/dekuNukem/duckyPad-Pro/releases")
+                        }
+
+                        QQC2.Button {
+                            icon.name: "document-open"
+                            text: qsTr("Browse Downloaded .bin...")
+                            onClicked: customFirmwareFileDialog.open()
+                        }
+                    }
+                }
+
+                ListView {
+                    id: fwListView
                     anchors.fill: parent
-                    anchors.margins: 10
-                    columns: 2
-                    rowSpacing: 8
-                    columnSpacing: 14
+                    anchors.margins: 6
+                    spacing: 6
+                    model: firmwareUpdateDialog.filteredFirmwares
+                    boundsBehavior: Flickable.StopAtBounds
+                    QQC2.ScrollBar.vertical: QQC2.ScrollBar { policy: QQC2.ScrollBar.AsNeeded }
 
-                    QQC2.Label {
-                        text: qsTr("Device Model:")
-                        color: Kirigami.Theme.disabledTextColor
-                        font.pixelSize: 12
-                    }
-                    QQC2.Label {
-                        Layout.fillWidth: true
-                        text: deviceController.modelName
-                        font.bold: true
-                        font.pixelSize: 12
-                        color: Kirigami.Theme.textColor
-                    }
+                    delegate: Rectangle {
+                        id: fwRowDelegate
+                        width: fwListView.width - 12
+                        implicitHeight: fwRowCol.implicitHeight + 16
+                        radius: 6
+                        readonly property bool isSelected: firmwareUpdateDialog.customFirmwarePath.length === 0
+                            && firmwareUpdateDialog.selectedFirmwareIndex === index
+                        readonly property bool isCurrentInstalled: modelData.version === root.cleanFirmwareVersionLabel(deviceController.firmwareVersion)
+                            && (!fwRowDelegate.isOfficialFw === root.isDuckyDeckStudioFirmware(deviceController.firmwareVersion))
+                        readonly property bool isOfficialFw: modelData.is_official !== undefined ? Boolean(modelData.is_official) : !modelData.supports_monochrome_icons
+                        color: isSelected
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.22)
+                            : (fwRowMouse.containsMouse
+                                ? Qt.alpha(Kirigami.Theme.textColor, 0.06)
+                                : Kirigami.Theme.backgroundColor)
+                        border.color: isSelected
+                            ? Kirigami.Theme.highlightColor
+                            : (!isOfficialFw
+                                ? Qt.alpha("#a855f7", 0.65)
+                                : Qt.alpha(Kirigami.Theme.positiveTextColor, 0.40))
+                        border.width: isSelected ? 2 : 1
 
-                    QQC2.Label {
-                        text: qsTr("Installed Firmware:")
-                        color: Kirigami.Theme.disabledTextColor
-                        font.pixelSize: 12
-                    }
-                    QQC2.Label {
-                        Layout.fillWidth: true
-                        text: deviceController.firmwareVersion !== "-"
-                            ? qsTr("v%1").arg(deviceController.firmwareVersion)
-                            : qsTr("Not Connected")
-                        font.family: "monospace"
-                        font.bold: true
-                        font.pixelSize: 12
-                        color: Kirigami.Theme.textColor
-                    }
+                        ColumnLayout {
+                            id: fwRowCol
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 4
 
-                    QQC2.Label {
-                        text: qsTr("Latest Official Release:")
-                        color: Kirigami.Theme.disabledTextColor
-                        font.pixelSize: 12
-                    }
-                    QQC2.Label {
-                        Layout.fillWidth: true
-                        text: deviceController.firmwareCheckBusy
-                            ? qsTr("Checking...")
-                            : (deviceController.latestFirmwareVersion !== "-"
-                                ? qsTr("v%1").arg(deviceController.latestFirmwareVersion)
-                                : qsTr("-"))
-                        font.family: "monospace"
-                        font.bold: true
-                        font.pixelSize: 12
-                        color: deviceController.firmwareUpdateAvailable
-                            ? Kirigami.Theme.neutralTextColor
-                            : Kirigami.Theme.positiveTextColor
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Label {
+                                    font.family: "monospace"
+                                    font.bold: true
+                                    font.pixelSize: 13
+                                    text: "v" + modelData.version
+                                    color: Kirigami.Theme.textColor
+                                }
+
+                                // Prominent Origin Badge: Official dekuNukem vs DuckyDeck Studio
+                                Rectangle {
+                                    radius: 4
+                                    color: fwRowDelegate.isOfficialFw
+                                        ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.20)
+                                        : Qt.alpha("#a855f7", 0.24)
+                                    border.color: fwRowDelegate.isOfficialFw
+                                        ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.65)
+                                        : Qt.alpha("#c084fc", 0.80)
+                                    border.width: 1
+                                    implicitWidth: vendorBadgeRow.implicitWidth + 12
+                                    implicitHeight: vendorBadgeRow.implicitHeight + 4
+
+                                    RowLayout {
+                                        id: vendorBadgeRow
+                                        anchors.centerIn: parent
+                                        spacing: 4
+
+                                        Image {
+                                            visible: !fwRowDelegate.isOfficialFw
+                                            source: root.effectiveThemeMode === "light"
+                                                ? "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-light.svg"
+                                                : "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-dark.svg"
+                                            width: 12
+                                            height: 12
+                                            sourceSize.width: 24
+                                            sourceSize.height: 24
+                                            fillMode: Image.PreserveAspectFit
+                                        }
+
+                                        QQC2.Label {
+                                            id: vendorBadgeLbl
+                                            font.bold: true
+                                            font.pixelSize: 10
+                                            text: fwRowDelegate.isOfficialFw
+                                                ? qsTr("✔ OFFICIAL DEKUNUKEM")
+                                                : qsTr("DUCKYDECK STUDIO")
+                                            color: Kirigami.Theme.textColor
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    radius: 4
+                                    color: modelData.supports_monochrome_icons
+                                        ? Qt.alpha("#0ea5e9", 0.20)
+                                        : Qt.alpha(Kirigami.Theme.textColor, 0.10)
+                                    border.color: modelData.supports_monochrome_icons
+                                        ? Qt.alpha("#38bdf8", 0.60)
+                                        : Qt.alpha(Kirigami.Theme.textColor, 0.25)
+                                    border.width: 1
+                                    implicitWidth: chLbl.implicitWidth + 10
+                                    implicitHeight: chLbl.implicitHeight + 4
+
+                                    QQC2.Label {
+                                        id: chLbl
+                                        anchors.centerIn: parent
+                                        font.bold: modelData.supports_monochrome_icons
+                                        font.pixelSize: 10
+                                        text: modelData.supports_monochrome_icons
+                                            ? qsTr("★ Monochrome Icons & 0°/90°/180°/270° OLED")
+                                            : modelData.channel
+                                        color: Kirigami.Theme.textColor
+                                    }
+                                }
+
+                                Rectangle {
+                                    visible: fwRowDelegate.isCurrentInstalled
+                                    radius: 4
+                                    color: Qt.alpha(Kirigami.Theme.highlightColor, 0.25)
+                                    border.color: Kirigami.Theme.highlightColor
+                                    border.width: 1
+                                    implicitWidth: instLbl.implicitWidth + 10
+                                    implicitHeight: instLbl.implicitHeight + 4
+
+                                    QQC2.Label {
+                                        id: instLbl
+                                        anchors.centerIn: parent
+                                        font.bold: true
+                                        font.pixelSize: 10
+                                        text: qsTr("CURRENTLY INSTALLED")
+                                        color: Kirigami.Theme.textColor
+                                    }
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                QQC2.Label {
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                    text: qsTr("%1  •  %2 KB  •  CRC32 %3")
+                                        .arg(modelData.release_date)
+                                        .arg(Math.round((modelData.size_bytes || 0) / 1024))
+                                        .arg(modelData.crc32 || "-")
+                                    color: Kirigami.Theme.disabledTextColor
+                                }
+                            }
+
+                            QQC2.Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: 11
+                                text: modelData.notes || ""
+                                color: Qt.alpha(Kirigami.Theme.textColor, 0.88)
+                            }
+                        }
+
+                        MouseArea {
+                            id: fwRowMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                firmwareUpdateDialog.customFirmwarePath = ""
+                                firmwareUpdateDialog.selectedFirmwareIndex = index
+                            }
+                        }
                     }
                 }
             }
-
-            Item { Layout.fillHeight: true }
 
             RowLayout {
                 id: fwFooterRow
@@ -5634,25 +6564,38 @@ Kirigami.ApplicationWindow {
 
                 QQC2.Button {
                     icon.name: "view-refresh"
-                    text: qsTr("Check Again")
-                    enabled: !deviceController.firmwareCheckBusy
-                    onClicked: deviceController.checkFirmwareUpdate(true)
+                    text: qsTr("Refresh List")
+                    enabled: !deviceController.firmwareCheckBusy && !deviceController.sdSyncBusy
+                    onClicked: {
+                        firmwareUpdateDialog.refreshCatalog()
+                        deviceController.checkFirmwareUpdate(true)
+                    }
+                }
+
+                QQC2.Button {
+                    icon.name: "help-contents"
+                    text: qsTr("Official Guide")
+                    onClicked: deviceController.openFirmwareUpdatePage()
                 }
 
                 Item { Layout.fillWidth: true }
 
                 QQC2.Button {
-                    icon.name: "download"
-                    text: qsTr("Download Firmware")
-                    enabled: deviceController.latestFirmwareVersion !== "-"
-                    highlighted: deviceController.firmwareUpdateAvailable
-                    onClicked: deviceController.downloadFirmwareBinary()
-                }
-
-                QQC2.Button {
-                    icon.name: "help-contents"
-                    text: qsTr("Update Guide")
-                    onClicked: deviceController.openFirmwareUpdatePage()
+                    icon.name: "system-software-update"
+                    text: firmwareUpdateDialog.selectedTargetLabel().length > 0
+                        ? qsTr("Install %1 on duckyPad Pro").arg(firmwareUpdateDialog.selectedTargetLabel())
+                        : qsTr("Install Selected Firmware")
+                    enabled: !deviceController.sdSyncBusy && firmwareUpdateDialog.selectedTargetPath().length > 0
+                    highlighted: true
+                    onClicked: {
+                        const targetPath = firmwareUpdateDialog.selectedTargetPath()
+                        if (targetPath.length > 0) {
+                            if (deviceController.installFirmwareToDevice(targetPath)) {
+                                firmwareUpdateDialog.close()
+                                sdSyncDialog.open()
+                            }
+                        }
+                    }
                 }
 
                 QQC2.Button {
@@ -5802,13 +6745,29 @@ Kirigami.ApplicationWindow {
             }
 
             // Progress Bar
-            QQC2.ProgressBar {
+            Rectangle {
+                id: sdSyncProgressBarTrack
                 Layout.fillWidth: true
-                from: 0
-                to: 100
-                value: deviceController.sdSyncProgress
-                Behavior on value {
+                Layout.preferredHeight: 8
+                implicitHeight: 8
+                radius: 4
+                color: Qt.alpha(Kirigami.Theme.textColor, 0.14)
+                border.color: Qt.alpha(Kirigami.Theme.textColor, 0.24)
+                border.width: 1
+                clip: true
+
+                property real progressFraction: Math.max(0.0, Math.min(1.0, deviceController.sdSyncProgress / 100.0))
+                Behavior on progressFraction {
                     NumberAnimation { duration: 150 }
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: Math.round(parent.width * parent.progressFraction)
+                    radius: 4
+                    color: Kirigami.Theme.highlightColor
                 }
             }
 
@@ -6118,22 +7077,6 @@ Kirigami.ApplicationWindow {
                                 color: Kirigami.Theme.disabledTextColor
                                 Layout.fillWidth: true
                             }
-
-                            QQC2.Button {
-                                text: qsTr("↻ SD")
-                                implicitHeight: Math.round(22 * root.sidebarScale)
-                                font.pixelSize: Math.round(10 * root.sidebarScale)
-                                onClicked: {
-                                    const found = deviceController.scanMountedSdCard()
-                                    if (found.length > 0) {
-                                        root.refreshSelectedSlotFromController()
-                                    } else {
-                                        sdFolderDialog.open()
-                                    }
-                                }
-                                QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: qsTr("Scan / Reload duckyPad SD Card")
-                            }
                         }
 
                         // Filter Search Input
@@ -6150,25 +7093,33 @@ Kirigami.ApplicationWindow {
                         }
 
                         // Scrollable 64-Profile List with Drag-and-Drop Reordering
-                        QQC2.ScrollView {
+                        Item {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
-                            QQC2.ScrollBar.vertical: HighContrastScrollBar {
-                                policy: profileSidebarList.contentHeight > profileSidebarList.height
-                                    ? QQC2.ScrollBar.AlwaysOn
-                                    : QQC2.ScrollBar.AsNeeded
-                            }
 
                             ListView {
                                 id: profileSidebarList
+                                anchors.fill: parent
+                                clip: true
                                 model: sidebarProfileModel
                                 spacing: 4
+                                boundsBehavior: Flickable.StopAtBounds
                                 highlightFollowsCurrentItem: false
 
                                 property int draggedProfileIndex: -1
                                 property int dropTargetIndex: -1
                                 readonly property bool canReorder: root.profileFilterText.trim().length === 0
+
+                                QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                                    parent: profileSidebarList
+                                    anchors.top: parent.top
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    policy: profileSidebarList.contentHeight > profileSidebarList.height
+                                        ? QQC2.ScrollBar.AlwaysOn
+                                        : QQC2.ScrollBar.AsNeeded
+                                }
 
                                 delegate: Item {
                                     id: profDelegate
@@ -6209,7 +7160,10 @@ Kirigami.ApplicationWindow {
                                         return 0
                                     }
 
-                                    width: profileSidebarList.width - 8
+                                    width: Math.max(
+                                        100,
+                                        profileSidebarList.width - (profileSidebarList.contentHeight > profileSidebarList.height ? 14 : 2)
+                                    )
                                     height: Math.round(40 * root.sidebarScale)
                                     z: isBeingDragged ? 100 : 1
 
@@ -6487,32 +7441,95 @@ Kirigami.ApplicationWindow {
                         }
 
                         // Inline New Profile Creator (when toggled)
-                        RowLayout {
+                        ColumnLayout {
                             Layout.fillWidth: true
                             visible: root.showNewProfileInput
                             spacing: 4
 
-                            QQC2.TextField {
-                                id: newProfileNameField
+                            RowLayout {
                                 Layout.fillWidth: true
-                                maximumLength: 16
-                                placeholderText: qsTr("Profile name...")
-                                font.pixelSize: Math.round(11 * root.sidebarScale)
-                                onAccepted: createProfBtn.clicked()
+                                spacing: 4
+
+                                QQC2.ComboBox {
+                                    id: newProfileTemplateCombo
+                                    Layout.fillWidth: true
+                                    font.pixelSize: Math.round(10 * root.sidebarScale)
+                                    implicitHeight: Math.round(24 * root.sidebarScale)
+                                    property var templateIds: ["builtin_blank"]
+                                    property var templateDefaultNames: ["NewProfile"]
+
+                                    function reloadTemplates() {
+                                        let ids = []
+                                        let defNames = []
+                                        let labels = []
+                                        try {
+                                            const arr = JSON.parse(deviceController.listProfileTemplatesJson())
+                                            for (let i = 0; i < arr.length; i++) {
+                                                ids.push(arr[i].id)
+                                                defNames.push(arr[i].defaultProfileName || arr[i].name)
+                                                labels.push((arr[i].builtIn ? "★ " : "📋 ") + arr[i].name)
+                                            }
+                                        } catch (e) {}
+                                        if (ids.length === 0) {
+                                            ids = ["builtin_blank"]
+                                            defNames = ["NewProfile"]
+                                            labels = [qsTr("★ Blank Profile")]
+                                        }
+                                        templateIds = ids
+                                        templateDefaultNames = defNames
+                                        model = labels
+                                        currentIndex = 0
+                                    }
+
+                                    Component.onCompleted: reloadTemplates()
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: qsTr("Select a template for the new profile")
+                                }
+
+                                QQC2.Button {
+                                    icon.name: "bookmark-new"
+                                    text: qsTr("Templates...")
+                                    implicitHeight: Math.round(24 * root.sidebarScale)
+                                    font.pixelSize: Math.round(10 * root.sidebarScale)
+                                    onClicked: profileTemplatesDialog.openGeneral()
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: qsTr("Manage profile templates or save an existing profile as a template")
+                                }
                             }
 
-                            QQC2.Button {
-                                id: createProfBtn
-                                text: qsTr("Add")
-                                implicitHeight: Math.round(26 * root.sidebarScale)
-                                font.pixelSize: Math.round(11 * root.sidebarScale)
-                                highlighted: true
-                                enabled: newProfileNameField.text.trim().length > 0
-                                onClicked: {
-                                    if (deviceController.createNewProfile(newProfileNameField.text.trim())) {
-                                        newProfileNameField.text = ""
-                                        root.showNewProfileInput = false
-                                        root.refreshSelectedSlotFromController()
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 4
+
+                                QQC2.TextField {
+                                    id: newProfileNameField
+                                    Layout.fillWidth: true
+                                    maximumLength: 16
+                                    placeholderText: qsTr("Profile name (optional)...")
+                                    font.pixelSize: Math.round(11 * root.sidebarScale)
+                                    onAccepted: createProfBtn.clicked()
+                                }
+
+                                QQC2.Button {
+                                    id: createProfBtn
+                                    text: qsTr("Add")
+                                    implicitHeight: Math.round(26 * root.sidebarScale)
+                                    font.pixelSize: Math.round(11 * root.sidebarScale)
+                                    highlighted: true
+                                    onClicked: {
+                                        const tIdx = Math.max(0, newProfileTemplateCombo.currentIndex)
+                                        const tplId = newProfileTemplateCombo.templateIds[tIdx] || "builtin_blank"
+                                        const fallbackName = newProfileTemplateCombo.templateDefaultNames[tIdx] || "NewProfile"
+                                        const chosenName = newProfileNameField.text.trim().length > 0
+                                            ? newProfileNameField.text.trim()
+                                            : fallbackName
+                                        if (deviceController.createProfileFromTemplate(tplId, chosenName)) {
+                                            newProfileNameField.text = ""
+                                            root.showNewProfileInput = false
+                                            root.syncSidebarProfilesFromController()
+                                            hardwareCanvas.syncProfilesFromController()
+                                            root.refreshSelectedSlotFromController()
+                                        }
                                     }
                                 }
                             }
@@ -6532,11 +7549,12 @@ Kirigami.ApplicationWindow {
                                 onClicked: {
                                     root.showNewProfileInput = !root.showNewProfileInput
                                     if (root.showNewProfileInput) {
+                                        newProfileTemplateCombo.reloadTemplates()
                                         newProfileNameField.forceActiveFocus()
                                     }
                                 }
                                 QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: qsTr("Create a new profile (Right-click a profile for Export & actions)")
+                                QQC2.ToolTip.text: qsTr("Create a new profile from blank or from a template (Right-click a profile for Templates & Export)")
                             }
 
                             QQC2.Button {
@@ -6561,11 +7579,28 @@ Kirigami.ApplicationWindow {
                                     -profileGroupMenu.implicitHeight
                                 )
                                 QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: qsTr("Create, Load, or Save All Profiles as a Profile Group (.duckygroup.json)")
+                                QQC2.ToolTip.text: qsTr("Manage Profile Templates and Profile Groups (.duckygroup.json)")
 
                                 QQC2.Menu {
                                     id: profileGroupMenu
-                                    title: qsTr("Profile Groups")
+                                    title: qsTr("Templates & Profile Groups")
+
+                                    QQC2.MenuItem {
+                                        icon.name: "document-new-from-template"
+                                        text: qsTr("Profile Templates Manager...")
+                                        onTriggered: profileTemplatesDialog.openGeneral()
+                                    }
+
+                                    QQC2.MenuItem {
+                                        icon.name: "bookmark-new"
+                                        text: qsTr("Save Active Profile as Template...")
+                                        onTriggered: profileTemplatesDialog.openSaveFromProfile(
+                                            deviceController.activeProfile,
+                                            deviceController.activeProfileName
+                                        )
+                                    }
+
+                                    QQC2.MenuSeparator {}
 
                                     QQC2.MenuItem {
                                         icon.name: "document-new"
@@ -7048,14 +8083,14 @@ Kirigami.ApplicationWindow {
                                     color: Qt.alpha(Kirigami.Theme.textColor, 0.08)
                                 }
 
-                                // Row 1B: OLED Key Labels (Line 1 & Line 2 with 5-char indicators) + Clear Slot Action
+                                // Row 1B: OLED Key Labels (Line 1 & Line 2 with 5-char indicators + Icon Picker) + Clear Slot Action
                                 RowLayout {
                                     id: inspectorLabelsRow
                                     Layout.fillWidth: true
-                                    spacing: 6
+                                    spacing: 5
 
                                     QQC2.Label {
-                                        text: inspectorCard.isMechanicalKey ? qsTr("OLED Line 1:") : qsTr("OLED Label:")
+                                        text: inspectorCard.isMechanicalKey ? qsTr("OLED L1:") : qsTr("OLED Label:")
                                         font.bold: true
                                         font.pixelSize: Math.round(10 * root.inspectorScale)
                                         color: Kirigami.Theme.disabledTextColor
@@ -7065,21 +8100,27 @@ Kirigami.ApplicationWindow {
                                         spacing: 3
                                         QQC2.TextField {
                                             id: label1Input
-                                            Layout.preferredWidth: Math.round(70 * root.inspectorScale)
-                                            Layout.minimumWidth: 56
+                                            Layout.preferredWidth: Math.round(66 * root.inspectorScale)
+                                            Layout.minimumWidth: 52
                                             implicitHeight: Math.round(25 * root.inspectorScale)
-                                            maximumLength: 5
+                                            maximumLength: 10
                                             placeholderText: qsTr("Top (5ch)")
                                             selectByMouse: true
                                             font.family: "monospace"
                                             font.pixelSize: Math.round(11 * root.inspectorScale)
+                                            onTextChanged: {
+                                                const clamped = root.clampOledLabel(text)
+                                                if (text !== clamped) {
+                                                    text = clamped
+                                                }
+                                            }
                                             onTextEdited: liveSlotAutoSaveTimer.restart()
                                         }
                                         QQC2.Label {
-                                            text: qsTr("%1/5").arg(label1Input.text.length)
+                                            text: qsTr("%1/5").arg(root.oledLabelCharCount(label1Input.text))
                                             font.family: "monospace"
                                             font.pixelSize: Math.round(9 * root.inspectorScale)
-                                            color: label1Input.text.length >= 5
+                                            color: root.oledLabelCharCount(label1Input.text) >= 5
                                                 ? Kirigami.Theme.neutralTextColor
                                                 : Kirigami.Theme.disabledTextColor
                                         }
@@ -7087,7 +8128,7 @@ Kirigami.ApplicationWindow {
 
                                     QQC2.Label {
                                         visible: inspectorCard.isMechanicalKey
-                                        text: qsTr("Line 2:")
+                                        text: qsTr("L2:")
                                         font.bold: true
                                         font.pixelSize: Math.round(10 * root.inspectorScale)
                                         color: Kirigami.Theme.disabledTextColor
@@ -7098,24 +8139,40 @@ Kirigami.ApplicationWindow {
                                         spacing: 3
                                         QQC2.TextField {
                                             id: label2Input
-                                            Layout.preferredWidth: Math.round(70 * root.inspectorScale)
-                                            Layout.minimumWidth: 56
+                                            Layout.preferredWidth: Math.round(66 * root.inspectorScale)
+                                            Layout.minimumWidth: 52
                                             implicitHeight: Math.round(25 * root.inspectorScale)
-                                            maximumLength: 5
+                                            maximumLength: 10
                                             placeholderText: qsTr("Bot (5ch)")
                                             selectByMouse: true
                                             font.family: "monospace"
                                             font.pixelSize: Math.round(11 * root.inspectorScale)
+                                            onTextChanged: {
+                                                const clamped = root.clampOledLabel(text)
+                                                if (text !== clamped) {
+                                                    text = clamped
+                                                }
+                                            }
                                             onTextEdited: liveSlotAutoSaveTimer.restart()
                                         }
                                         QQC2.Label {
-                                            text: qsTr("%1/5").arg(label2Input.text.length)
+                                            text: qsTr("%1/5").arg(root.oledLabelCharCount(label2Input.text))
                                             font.family: "monospace"
                                             font.pixelSize: Math.round(9 * root.inspectorScale)
-                                            color: label2Input.text.length >= 5
+                                            color: root.oledLabelCharCount(label2Input.text) >= 5
                                                 ? Kirigami.Theme.neutralTextColor
                                                 : Kirigami.Theme.disabledTextColor
                                         }
+                                    }
+
+                                    QQC2.Button {
+                                        text: qsTr("★ Icon")
+                                        implicitHeight: Math.round(24 * root.inspectorScale)
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
+                                        font.bold: true
+                                        onClicked: oledIconPickerDialog.openForInspector(1)
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Pick an OLED Button Icon or Symbol for Slot %1").arg(root.selectedSlotNumber)
                                     }
 
                                     Item { Layout.fillWidth: true }
@@ -7128,6 +8185,62 @@ Kirigami.ApplicationWindow {
                                         onClicked: root.clearSelectedSlotNow()
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Clear labels, scripts, and custom RGB color on Slot %1").arg(root.selectedSlotNumber)
+                                    }
+                                }
+
+                                // Row 1C: Desktop Widget Alternate Labels (longer labels up to 24 chars for Desktop OLED Widget)
+                                RowLayout {
+                                    id: inspectorWidgetLabelsRow
+                                    Layout.fillWidth: true
+                                    spacing: 5
+
+                                    QQC2.Label {
+                                        text: inspectorCard.isMechanicalKey ? qsTr("💻 Widget L1:") : qsTr("💻 Widget Label:")
+                                        font.bold: true
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
+                                        color: (widgetLabel1Input.text.trim().length > 0 || widgetLabel2Input.text.trim().length > 0)
+                                            ? "#fbbf24"
+                                            : Kirigami.Theme.disabledTextColor
+                                        QQC2.ToolTip.visible: widgetLblHover.hovered
+                                        QQC2.ToolTip.text: qsTr("💻 Host App Only (Not Hardware-Portable): Longer labels (up to 24 chars) displayed only on the Desktop OLED Widget while DuckyDeck Studio is running. Physical OLED always uses the 5-char L1/L2 labels above.")
+                                        HoverHandler { id: widgetLblHover }
+                                    }
+
+                                    QQC2.TextField {
+                                        id: widgetLabel1Input
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 70
+                                        implicitHeight: Math.round(24 * root.inspectorScale)
+                                        maximumLength: 24
+                                        placeholderText: inspectorCard.isMechanicalKey
+                                            ? qsTr("Desktop Widget L1 (up to 24ch, host widget only)")
+                                            : qsTr("Desktop Widget Label (up to 24ch, host widget only)")
+                                        selectByMouse: true
+                                        font.family: "monospace"
+                                        font.pixelSize: Math.round(11 * root.inspectorScale)
+                                        onTextEdited: liveSlotAutoSaveTimer.restart()
+                                    }
+
+                                    QQC2.Label {
+                                        visible: inspectorCard.isMechanicalKey
+                                        text: qsTr("L2:")
+                                        font.bold: true
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
+                                        color: Kirigami.Theme.disabledTextColor
+                                    }
+
+                                    QQC2.TextField {
+                                        id: widgetLabel2Input
+                                        visible: inspectorCard.isMechanicalKey
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 70
+                                        implicitHeight: Math.round(24 * root.inspectorScale)
+                                        maximumLength: 24
+                                        placeholderText: qsTr("Widget L2 (host widget only)")
+                                        selectByMouse: true
+                                        font.family: "monospace"
+                                        font.pixelSize: Math.round(11 * root.inspectorScale)
+                                        onTextEdited: liveSlotAutoSaveTimer.restart()
                                     }
                                 }
                             }
@@ -7637,6 +8750,46 @@ Kirigami.ApplicationWindow {
                             }
                         }
 
+                        // Portability / Host-Dependency Status Strip for Selected Key
+                        Rectangle {
+                            id: slotPortabilityStrip
+                            readonly property bool requiresHostApp: root.appLaunchEnabled || root.webApiEnabled
+                            Layout.fillWidth: true
+                            implicitHeight: Math.round(24 * root.inspectorScale)
+                            radius: 4
+                            color: requiresHostApp
+                                ? Qt.alpha("#f59e0b", 0.14)
+                                : Qt.alpha("#22c55e", 0.12)
+                            border.color: requiresHostApp
+                                ? Qt.alpha("#f59e0b", 0.55)
+                                : Qt.alpha("#22c55e", 0.45)
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+                                spacing: 6
+
+                                QQC2.Label {
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideRight
+                                    font.bold: true
+                                    font.pixelSize: Math.round(10 * root.inspectorScale)
+                                    color: slotPortabilityStrip.requiresHostApp ? "#fbbf24" : "#4ade80"
+                                    text: slotPortabilityStrip.requiresHostApp
+                                        ? qsTr("💻 Requires DuckyDeck Studio Running on Host PC — Not Hardware-Portable (uses USB HID host listener)")
+                                        : qsTr("✅ Hardware-Portable DuckyScript 3 — Runs standalone from microSD on any PC without DuckyDeck Studio")
+                                }
+                            }
+
+                            HoverHandler { id: slotPortabilityHover }
+                            QQC2.ToolTip.visible: slotPortabilityHover.hovered
+                            QQC2.ToolTip.text: slotPortabilityStrip.requiresHostApp
+                                ? qsTr("This key uses Launch App or Web API, which are executed by the DuckyDeck Studio host process over USB HID. If DuckyDeck Studio is closed or the keypad is plugged into another computer, host actions will not run.")
+                                : qsTr("Standard DuckyScript 3 keystrokes, delays, mouse moves, and SWC_SET LED commands compile to bytecode (.dsb) on the microSD card and run 100% standalone on the duckyPad hardware.")
+                        }
+
                         // Compact status strip when Launch App or Web API is configured on this key
                         Rectangle {
                             visible: root.appLaunchEnabled || root.inspectorMode === "app_launch"
@@ -7660,8 +8813,8 @@ Kirigami.ApplicationWindow {
                                     font.pixelSize: Math.round(10 * root.inspectorScale)
                                     color: "#fb923c"
                                     text: root.appLaunchEnabled
-                                        ? qsTr("🚀 Launch App: %1").arg(root.appLaunchAppName || appLaunchCommandField.text || qsTr("Configured"))
-                                        : qsTr("🚀 Launch Application Configurator")
+                                        ? qsTr("🚀 Launch App [💻 Host App Required]: %1").arg(root.appLaunchAppName || appLaunchCommandField.text || qsTr("Configured"))
+                                        : qsTr("🚀 Launch Application Configurator [💻 Host App Required]")
                                 }
 
                                 QQC2.Button {
@@ -7696,8 +8849,8 @@ Kirigami.ApplicationWindow {
                                     font.pixelSize: Math.round(10 * root.inspectorScale)
                                     color: Kirigami.Theme.positiveTextColor
                                     text: root.webApiEnabled
-                                        ? qsTr("🌐 Web API: %1").arg(root.webApiSelectedDestination || webApiUrlField.text || qsTr("Configured"))
-                                        : qsTr("🌐 Web API Call Configurator")
+                                        ? qsTr("🌐 Web API [💻 Host App Required]: %1").arg(root.webApiSelectedDestination || webApiUrlField.text || qsTr("Configured"))
+                                        : qsTr("🌐 Web API Call Configurator [💻 Host App Required]")
                                 }
 
                                 QQC2.Button {
@@ -8730,32 +9883,60 @@ Kirigami.ApplicationWindow {
                 Rectangle {
                     id: fwBadgeRect
                     radius: 4
+                    readonly property bool isStudioFw: root.isDuckyDeckStudioFirmware(deviceController.firmwareVersion)
                     color: deviceController.firmwareUpdateAvailable
                         ? Qt.alpha(Kirigami.Theme.neutralTextColor, 0.18)
-                        : Kirigami.Theme.backgroundColor
+                        : (isStudioFw
+                            ? Qt.alpha("#a855f7", 0.14)
+                            : Kirigami.Theme.backgroundColor)
                     border.color: deviceController.firmwareUpdateAvailable
                         ? Qt.alpha(Kirigami.Theme.neutralTextColor, 0.55)
-                        : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                        : (isStudioFw
+                            ? Qt.alpha("#c084fc", 0.55)
+                            : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast))
                     border.width: 1
-                    implicitWidth: fwLabel.implicitWidth + 16
+                    implicitWidth: fwBadgeRow.implicitWidth + 16
                     implicitHeight: Math.round(26 * root.statusBarScale)
 
-                    QQC2.Label {
-                        id: fwLabel
+                    RowLayout {
+                        id: fwBadgeRow
                         anchors.centerIn: parent
-                        text: {
-                            const base = (deviceController.serialNumber && deviceController.serialNumber !== "-")
-                                ? qsTr("FW: %1  •  SN: %2")
-                                    .arg(deviceController.firmwareVersion)
-                                    .arg(deviceController.serialNumber)
-                                : qsTr("Firmware: %1").arg(deviceController.firmwareVersion)
-                            return deviceController.firmwareUpdateAvailable
-                                ? qsTr("%1  (⬆ v%2)").arg(base).arg(deviceController.latestFirmwareVersion)
-                                : base
+                        spacing: 5
+
+                        Image {
+                            visible: deviceController.firmwareVersion !== "-" && fwBadgeRect.isStudioFw
+                            source: root.effectiveThemeMode === "light"
+                                ? "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-light.svg"
+                                : "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-dark.svg"
+                            width: Math.round(14 * root.statusBarScale)
+                            height: Math.round(14 * root.statusBarScale)
+                            sourceSize.width: 28
+                            sourceSize.height: 28
+                            fillMode: Image.PreserveAspectFit
                         }
-                        font.family: "monospace"
-                        font.pixelSize: Math.round(12 * root.statusBarScale)
-                        color: Kirigami.Theme.textColor
+
+                        QQC2.Label {
+                            id: fwLabel
+                            text: {
+                                const rawVer = deviceController.firmwareVersion
+                                const fwVer = root.cleanFirmwareVersionLabel(rawVer)
+                                const vendorTag = (rawVer && rawVer !== "-")
+                                    ? (fwBadgeRect.isStudioFw ? " [Studio]" : " [✔ Official]")
+                                    : ""
+                                const base = (deviceController.serialNumber && deviceController.serialNumber !== "-")
+                                    ? qsTr("FW: %1%2  •  SN: %3")
+                                        .arg(fwVer)
+                                        .arg(vendorTag)
+                                        .arg(deviceController.serialNumber)
+                                    : qsTr("Firmware: %1%2").arg(fwVer).arg(vendorTag)
+                                return deviceController.firmwareUpdateAvailable
+                                    ? qsTr("%1  (⬆ v%2)").arg(base).arg(deviceController.latestFirmwareVersion)
+                                    : base
+                            }
+                            font.family: "monospace"
+                            font.pixelSize: Math.round(12 * root.statusBarScale)
+                            color: Kirigami.Theme.textColor
+                        }
                     }
 
                     MouseArea {
@@ -8770,9 +9951,14 @@ Kirigami.ApplicationWindow {
                     }
 
                     QQC2.ToolTip.visible: fwBadgeMouse.containsMouse
-                    QQC2.ToolTip.text: deviceController.firmwareUpdateAvailable
-                        ? qsTr("Firmware update v%1 is available! Click for details.").arg(deviceController.latestFirmwareVersion)
-                        : qsTr("Click to check for official duckyPad firmware updates")
+                    QQC2.ToolTip.text: {
+                        const originDesc = root.isDuckyDeckStudioFirmware(deviceController.firmwareVersion)
+                            ? qsTr("DuckyDeck Studio Custom Firmware v1.0.0 (Monochrome Icons & 0°/90°/180°/270° OLED)")
+                            : qsTr("Official dekuNukem Firmware Release")
+                        return deviceController.firmwareUpdateAvailable
+                            ? qsTr("%1 — Update v%2 is available! Click to open Firmware Manager.").arg(originDesc).arg(deviceController.latestFirmwareVersion)
+                            : qsTr("%1 — Click to open Firmware Manager & switch between Official dekuNukem or DuckyDeck Studio firmware").arg(originDesc)
+                    }
                 }
 
                 // microSD Card Used / Free Space Badge
@@ -9226,6 +10412,26 @@ Kirigami.ApplicationWindow {
                     text: checked ? qsTr("Enabled") : qsTr("Disabled")
                     font.bold: true
                     onToggled: root.syncAppLaunchBuilderToScript()
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                radius: 5
+                color: Qt.alpha("#f59e0b", 0.14)
+                border.color: Qt.alpha("#f59e0b", 0.55)
+                border.width: 1
+                implicitHeight: appLaunchHostWarnLbl.implicitHeight + 10
+
+                QQC2.Label {
+                    id: appLaunchHostWarnLbl
+                    anchors.fill: parent
+                    anchors.margins: 5
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: 11
+                    font.bold: true
+                    color: "#fbbf24"
+                    text: qsTr("💻 Requires DuckyDeck Studio Running on Host PC (Not Hardware-Portable) — Application launching is executed by DuckyDeck Studio over USB HID. If DuckyDeck Studio is not running or the duckyPad is moved to another PC, only standard DuckyScript 3 commands in this key will run.")
                 }
             }
 
@@ -9685,6 +10891,26 @@ Kirigami.ApplicationWindow {
                 }
             }
 
+            Rectangle {
+                Layout.fillWidth: true
+                radius: 5
+                color: Qt.alpha("#f59e0b", 0.14)
+                border.color: Qt.alpha("#f59e0b", 0.55)
+                border.width: 1
+                implicitHeight: webApiHostWarnLbl.implicitHeight + 10
+
+                QQC2.Label {
+                    id: webApiHostWarnLbl
+                    anchors.fill: parent
+                    anchors.margins: 5
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: 11
+                    font.bold: true
+                    color: "#fbbf24"
+                    text: qsTr("💻 Requires DuckyDeck Studio Running on Host PC (Not Hardware-Portable) — Outbound HTTP REST / Webhook calls are dispatched by DuckyDeck Studio over USB HID. The duckyPad hardware has no network stack and cannot send HTTP requests when DuckyDeck Studio is closed.")
+                }
+            }
+
             Flickable {
                 id: webApiFlickable
                 Layout.fillWidth: true
@@ -10014,6 +11240,7 @@ Kirigami.ApplicationWindow {
         property string profKeydownColor: "#ffffff"
         property bool profDimUnusedKeys: true
         property bool profIsLandscape: false
+        property int profOledRotation: 0 // 0 | 90 | 180
         property bool profIsUpperHs: false
         property string profExtraConfigLines: ""
         property int profConfiguredSlots: 0
@@ -10033,19 +11260,22 @@ Kirigami.ApplicationWindow {
                 profilePropertiesWindow.profKeydownColor = obj.keydownColor || "#ffffff"
                 profilePropertiesWindow.profDimUnusedKeys = obj.dimUnusedKeys !== undefined ? Boolean(obj.dimUnusedKeys) : true
                 profilePropertiesWindow.profIsLandscape = Boolean(obj.isLandscape)
+                profilePropertiesWindow.profOledRotation = obj.oledRotation !== undefined
+                    ? Number(obj.oledRotation)
+                    : (obj.isLandscape ? 90 : 0)
                 profilePropertiesWindow.profIsUpperHs = Boolean(obj.isUpperHs)
                 profilePropertiesWindow.profExtraConfigLines = Array.isArray(obj.extraConfigLines) ? obj.extraConfigLines.join("\n") : ""
                 profilePropertiesWindow.profConfiguredSlots = obj.configuredSlotCount || 0
             } catch (e) {
                 profilePropertiesWindow.profName = deviceController.activeProfileName
                 profilePropertiesWindow.profBgColor = deviceController.activeProfileBgColor
+                profilePropertiesWindow.profOledRotation = 0
             }
             profNameField.text = profilePropertiesWindow.profName
             profBgColorField.text = profilePropertiesWindow.profBgColor
             profKeydownEnableCheck.checked = profilePropertiesWindow.profHasKeydownColor
             profKeydownColorField.text = profilePropertiesWindow.profKeydownColor
             profDimUnusedCheck.checked = profilePropertiesWindow.profDimUnusedKeys
-            profLandscapeCheck.checked = profilePropertiesWindow.profIsLandscape
             profUpperHsCheck.checked = profilePropertiesWindow.profIsUpperHs
             profExtraLinesArea.text = profilePropertiesWindow.profExtraConfigLines
             profilePropertiesWindow.statusFeedback = ""
@@ -10066,7 +11296,8 @@ Kirigami.ApplicationWindow {
                 hasKeydownColor: profKeydownEnableCheck.checked,
                 keydownColor: profKeydownColorField.text.trim(),
                 dimUnusedKeys: profDimUnusedCheck.checked,
-                isLandscape: profLandscapeCheck.checked,
+                isLandscape: profilePropertiesWindow.profOledRotation === 90,
+                oledRotation: profilePropertiesWindow.profOledRotation,
                 isUpperHs: profUpperHsCheck.checked,
                 extraConfigLines: extraArr
             }
@@ -10261,6 +11492,7 @@ Kirigami.ApplicationWindow {
                                 QQC2.CheckBox {
                                     id: profKeydownEnableCheck
                                     text: qsTr("Enable Custom Keydown Color")
+                                    onToggled: profilePropertiesWindow.saveAllProfileProperties()
                                 }
 
                                 Rectangle {
@@ -10282,6 +11514,7 @@ Kirigami.ApplicationWindow {
                                     maximumLength: 7
                                     font.family: "monospace"
                                     selectByMouse: true
+                                    onEditingFinished: profilePropertiesWindow.saveAllProfileProperties()
                                 }
 
                                 Item { Layout.fillWidth: true }
@@ -10317,6 +11550,7 @@ Kirigami.ApplicationWindow {
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
                                 text: qsTr("Dim Unused Keys (DIM_UNUSED_KEYS 1 — turn off LEDs on unconfigured keys)")
+                                onToggled: profilePropertiesWindow.saveAllProfileProperties()
                                 contentItem: QQC2.Label {
                                     leftPadding: (profDimUnusedCheck.indicator ? profDimUnusedCheck.indicator.width : 18) + profDimUnusedCheck.spacing
                                     text: profDimUnusedCheck.text
@@ -10327,19 +11561,50 @@ Kirigami.ApplicationWindow {
                                 }
                             }
 
-                            QQC2.CheckBox {
-                                id: profLandscapeCheck
+                            RowLayout {
                                 Layout.fillWidth: true
-                                Layout.minimumWidth: 0
-                                text: qsTr("Landscape Orientation (IS_LANDSCAPE 1 — rotate OLED and key matrix 90°)")
-                                contentItem: QQC2.Label {
-                                    leftPadding: (profLandscapeCheck.indicator ? profLandscapeCheck.indicator.width : 18) + profLandscapeCheck.spacing
-                                    text: profLandscapeCheck.text
-                                    font: profLandscapeCheck.font
-                                    color: Kirigami.Theme.textColor
-                                    verticalAlignment: Text.AlignVCenter
-                                    wrapMode: Text.WordWrap
+                                spacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("OLED Orientation:")
+                                    font.bold: true
+                                    font.pixelSize: 12
                                 }
+
+                                QQC2.Button {
+                                    text: qsTr("0° (Portrait Normal)")
+                                    checkable: true
+                                    checked: profilePropertiesWindow.profOledRotation === 0
+                                    highlighted: profilePropertiesWindow.profOledRotation === 0
+                                    onClicked: {
+                                        profilePropertiesWindow.profOledRotation = 0
+                                        profilePropertiesWindow.saveAllProfileProperties()
+                                    }
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("90° (Landscape CW)")
+                                    checkable: true
+                                    checked: profilePropertiesWindow.profOledRotation === 90
+                                    highlighted: profilePropertiesWindow.profOledRotation === 90
+                                    onClicked: {
+                                        profilePropertiesWindow.profOledRotation = 90
+                                        profilePropertiesWindow.saveAllProfileProperties()
+                                    }
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("180° (Inverted)")
+                                    checkable: true
+                                    checked: profilePropertiesWindow.profOledRotation === 180
+                                    highlighted: profilePropertiesWindow.profOledRotation === 180
+                                    onClicked: {
+                                        profilePropertiesWindow.profOledRotation = 180
+                                        profilePropertiesWindow.saveAllProfileProperties()
+                                    }
+                                }
+
+                                Item { Layout.fillWidth: true }
                             }
 
                             QQC2.CheckBox {
@@ -10347,6 +11612,7 @@ Kirigami.ApplicationWindow {
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
                                 text: qsTr("Inverted / Upper Hot-Swap Orientation (IS_UPPER_HS 1)")
+                                onToggled: profilePropertiesWindow.saveAllProfileProperties()
                                 contentItem: QQC2.Label {
                                     leftPadding: (profUpperHsCheck.indicator ? profUpperHsCheck.indicator.width : 18) + profUpperHsCheck.spacing
                                     text: profUpperHsCheck.text
@@ -10526,6 +11792,8 @@ Kirigami.ApplicationWindow {
 
             let l1 = ""
             let l2 = ""
+            let wl1 = ""
+            let wl2 = ""
             let allowAbort = false
             let disableRepeat = false
             try {
@@ -10533,12 +11801,16 @@ Kirigami.ApplicationWindow {
                 const meta = JSON.parse(metaJson)
                 l1 = meta.l1 || ""
                 l2 = meta.l2 || ""
+                wl1 = meta.wl1 || ""
+                wl2 = meta.wl2 || ""
                 allowAbort = !!meta.allowAbort
                 disableRepeat = !!meta.disableAutorepeat
             } catch (e) {}
 
-            keyPropLabel1Field.text = l1.substring(0, 5)
-            keyPropLabel2Field.text = l2.substring(0, 5)
+            keyPropLabel1Field.text = root.clampOledLabel(l1)
+            keyPropLabel2Field.text = root.clampOledLabel(l2)
+            keyPropWidgetLabel1Field.text = wl1
+            keyPropWidgetLabel2Field.text = wl2
             keyPropColorField.text = keyPropertiesWindow.slotColor
             keyPropDontRepeatCheck.checked = disableRepeat
             keyPropAllowAbortCheck.checked = allowAbort
@@ -10554,8 +11826,10 @@ Kirigami.ApplicationWindow {
             const targetSlot = keyPropertiesWindow.slotNum
             if (targetSlot <= 0 || targetSlot > 58) return
 
-            const l1 = keyPropLabel1Field.text.trim().substring(0, 5)
-            const l2 = keyPropLabel2Field.text.trim().substring(0, 5)
+            const l1 = root.clampOledLabel(keyPropLabel1Field.text.trim())
+            const l2 = root.clampOledLabel(keyPropLabel2Field.text.trim())
+            const wl1 = keyPropWidgetLabel1Field.text.trim()
+            const wl2 = keyPropWidgetLabel2Field.text.trim()
             const disableRepeat = keyPropDontRepeatCheck.checked
             const allowAbort = keyPropAllowAbortCheck.checked
             const pressScript = keyPropPressScriptArea.text
@@ -10580,6 +11854,11 @@ Kirigami.ApplicationWindow {
                 releaseScript,
                 allowAbort,
                 disableRepeat
+            )
+            deviceController.saveSlotWidgetLabels(
+                targetSlot,
+                wl1,
+                wl2
             )
 
             hardwareCanvas.syncSlotsFromController()
@@ -10624,7 +11903,7 @@ Kirigami.ApplicationWindow {
                         elide: Text.ElideRight
                     }
                     QQC2.Label {
-                        text: qsTr("Profile #%1 (%2) • Edit OLED labels, per-key RGB color, execution flags, and scripts.")
+                        text: qsTr("Profile #%1 (%2) • Edit OLED labels, Desktop Widget alternate labels, per-key RGB color, execution flags, and scripts.")
                             .arg(deviceController.activeProfile)
                             .arg(deviceController.activeProfileName)
                         font.pixelSize: 11
@@ -10699,18 +11978,32 @@ Kirigami.ApplicationWindow {
                                     Layout.fillWidth: true
                                     Layout.minimumWidth: 80
                                     Layout.preferredWidth: 1
-                                    maximumLength: 5
+                                    maximumLength: 10
                                     font.family: "monospace"
                                     font.bold: true
                                     selectByMouse: true
                                     placeholderText: qsTr("Top line (max 5 chars)")
+                                    onTextChanged: {
+                                        const clamped = root.clampOledLabel(text)
+                                        if (text !== clamped) {
+                                            text = clamped
+                                        }
+                                    }
                                 }
 
                                 QQC2.Label {
-                                    text: qsTr("%1/5").arg(keyPropLabel1Field.text.length)
+                                    text: qsTr("%1/5").arg(root.oledLabelCharCount(keyPropLabel1Field.text))
                                     font.family: "monospace"
                                     font.pixelSize: 11
                                     color: Kirigami.Theme.disabledTextColor
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("★ Icon...")
+                                    font.bold: true
+                                    onClicked: oledIconPickerDialog.openForKeyProperties(1)
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: qsTr("Pick an OLED Button Icon or Symbol for Line 1")
                                 }
                             }
 
@@ -10733,14 +12026,92 @@ Kirigami.ApplicationWindow {
                                     Layout.fillWidth: true
                                     Layout.minimumWidth: 80
                                     Layout.preferredWidth: 1
-                                    maximumLength: 5
+                                    maximumLength: 10
                                     font.family: "monospace"
                                     selectByMouse: true
                                     placeholderText: qsTr("Bottom line (max 5 chars, optional)")
+                                    onTextChanged: {
+                                        const clamped = root.clampOledLabel(text)
+                                        if (text !== clamped) {
+                                            text = clamped
+                                        }
+                                    }
                                 }
 
                                 QQC2.Label {
-                                    text: qsTr("%1/5").arg(keyPropLabel2Field.text.length)
+                                    text: qsTr("%1/5").arg(root.oledLabelCharCount(keyPropLabel2Field.text))
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                    color: Kirigami.Theme.disabledTextColor
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("★ Icon...")
+                                    font.bold: true
+                                    onClicked: oledIconPickerDialog.openForKeyProperties(2)
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: qsTr("Pick an OLED Button Icon or Symbol for Line 2")
+                                }
+                            }
+
+                            QQC2.Label {
+                                text: qsTr("Desktop Widget Label L1 (optional):")
+                                font.bold: true
+                                font.pixelSize: 12
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                Layout.preferredWidth: 1
+                                spacing: 8
+
+                                QQC2.TextField {
+                                    id: keyPropWidgetLabel1Field
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 80
+                                    Layout.preferredWidth: 1
+                                    maximumLength: 24
+                                    font.family: "monospace"
+                                    selectByMouse: true
+                                    placeholderText: qsTr("Longer label for Desktop OLED Widget (up to 24 chars, falls back to OLED L1)")
+                                }
+
+                                QQC2.Label {
+                                    text: qsTr("%1/24").arg(keyPropWidgetLabel1Field.text.length)
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                    color: Kirigami.Theme.disabledTextColor
+                                }
+                            }
+
+                            QQC2.Label {
+                                text: qsTr("Desktop Widget Label L2 (optional):")
+                                font.bold: true
+                                font.pixelSize: 12
+                                visible: keyPropertiesWindow.slotNum <= 20
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                Layout.preferredWidth: 1
+                                spacing: 8
+                                visible: keyPropertiesWindow.slotNum <= 20
+
+                                QQC2.TextField {
+                                    id: keyPropWidgetLabel2Field
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 80
+                                    Layout.preferredWidth: 1
+                                    maximumLength: 24
+                                    font.family: "monospace"
+                                    selectByMouse: true
+                                    placeholderText: qsTr("Longer bottom line for Desktop OLED Widget (up to 24 chars, optional)")
+                                }
+
+                                QQC2.Label {
+                                    text: qsTr("%1/24").arg(keyPropWidgetLabel2Field.text.length)
                                     font.family: "monospace"
                                     font.pixelSize: 11
                                     color: Kirigami.Theme.disabledTextColor
@@ -12672,6 +14043,653 @@ Kirigami.ApplicationWindow {
                         root.inspectorMode = "code"
                         macroRecorderDialog.close()
                     }
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // OLED Button Icon & Symbol Picker Window
+    // =========================================================================
+    Window {
+        id: oledIconPickerDialog
+        title: qsTr("OLED Button Icon Picker — %1").arg(root.selectedSlotBadge)
+        width: 680
+        height: 540
+        minimumWidth: 540
+        minimumHeight: 420
+        modality: Qt.NonModal
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMinMaxButtonsHint
+        color: Kirigami.Theme.backgroundColor
+
+        // "inspector" updates label1Input/label2Input directly; "keyProps" updates keyPropLabel1Field/keyPropLabel2Field
+        property string targetSource: "inspector"
+        property int placementMode: 0 // 0 = Icon (L1) + Short Label (L2), 1 = Big Icon Only (L1, clear L2), 2 = Set Line 1, 3 = Set Line 2, 4 = Prepend to Line 1
+        property string selectedCategory: "All"
+        property string searchQuery: ""
+
+        readonly property bool targetSupportsTwoLines: targetSource === "keyProps"
+            ? (keyPropertiesWindow.slotNum <= 20)
+            : (root.selectedSlotNumber <= 20)
+
+        readonly property var categories: [
+            "All",
+            "Media & Audio",
+            "Arrows & Nav",
+            "Editing & Clipboard",
+            "Coding & Terminal",
+            "Window & System",
+            "Streaming & Apps",
+            "Symbols & Shapes"
+        ]
+
+        readonly property var iconCatalog: [
+            // Media & Audio
+            { icon: "▶", label: "PLAY", name: "Play", cat: "Media & Audio" },
+            { icon: "⏸", label: "PAUSE", name: "Pause", cat: "Media & Audio" },
+            { icon: "⏯", label: "PLAY", name: "Play / Pause", cat: "Media & Audio" },
+            { icon: "⏹", label: "STOP", name: "Stop", cat: "Media & Audio" },
+            { icon: "⏭", label: "NEXT", name: "Next Track", cat: "Media & Audio" },
+            { icon: "⏮", label: "PREV", name: "Prev Track", cat: "Media & Audio" },
+            { icon: "⏩", label: "FFWD", name: "Fast Forward", cat: "Media & Audio" },
+            { icon: "⏪", label: "RWND", name: "Rewind", cat: "Media & Audio" },
+            { icon: "🔊", label: "VOL+", name: "Volume Up", cat: "Media & Audio" },
+            { icon: "🔉", label: "VOL-", name: "Volume Down", cat: "Media & Audio" },
+            { icon: "🔇", label: "MUTE", name: "Mute Audio", cat: "Media & Audio" },
+            { icon: "🎤", label: "MIC", name: "Microphone", cat: "Media & Audio" },
+            { icon: "🎧", label: "HEAD", name: "Headphones", cat: "Media & Audio" },
+            { icon: "🎵", label: "MUSIC", name: "Music Note", cat: "Media & Audio" },
+            { icon: "🎶", label: "SONG", name: "Music Notes", cat: "Media & Audio" },
+            { icon: "⏺", label: "REC", name: "Record", cat: "Media & Audio" },
+
+            // Arrows & Nav
+            { icon: "↑", label: "UP", name: "Arrow Up", cat: "Arrows & Nav" },
+            { icon: "↓", label: "DOWN", name: "Arrow Down", cat: "Arrows & Nav" },
+            { icon: "←", label: "LEFT", name: "Arrow Left", cat: "Arrows & Nav" },
+            { icon: "→", label: "RIGHT", name: "Arrow Right", cat: "Arrows & Nav" },
+            { icon: "↖", label: "HOME", name: "Home / Top-Left", cat: "Arrows & Nav" },
+            { icon: "↘", label: "END", name: "End / Bot-Right", cat: "Arrows & Nav" },
+            { icon: "▲", label: "PGUP", name: "Triangle Up / Page Up", cat: "Arrows & Nav" },
+            { icon: "▼", label: "PGDN", name: "Triangle Down / Page Down", cat: "Arrows & Nav" },
+            { icon: "◀", label: "BACK", name: "Triangle Left / Back", cat: "Arrows & Nav" },
+            { icon: "▶", label: "FWD", name: "Triangle Right / Forward", cat: "Arrows & Nav" },
+            { icon: "↩", label: "UNDO", name: "Return / Undo", cat: "Arrows & Nav" },
+            { icon: "↪", label: "REDO", name: "Forward / Redo", cat: "Arrows & Nav" },
+            { icon: "↺", label: "RESET", name: "Counterclockwise / Reset", cat: "Arrows & Nav" },
+            { icon: "↻", label: "SYNC", name: "Clockwise / Reload", cat: "Arrows & Nav" },
+            { icon: "⇄", label: "SWAP", name: "Swap Left/Right", cat: "Arrows & Nav" },
+            { icon: "⇅", label: "SORT", name: "Swap Up/Down", cat: "Arrows & Nav" },
+
+            // Editing & Clipboard
+            { icon: "✂", label: "CUT", name: "Cut / Scissors", cat: "Editing & Clipboard" },
+            { icon: "📋", label: "COPY", name: "Copy / Clipboard", cat: "Editing & Clipboard" },
+            { icon: "📌", label: "PASTE", name: "Pin / Paste", cat: "Editing & Clipboard" },
+            { icon: "💾", label: "SAVE", name: "Save / Floppy", cat: "Editing & Clipboard" },
+            { icon: "📁", label: "OPEN", name: "Folder / Open", cat: "Editing & Clipboard" },
+            { icon: "📄", label: "NEW", name: "New File / Document", cat: "Editing & Clipboard" },
+            { icon: "🔍", label: "FIND", name: "Search / Zoom", cat: "Editing & Clipboard" },
+            { icon: "🗑", label: "DEL", name: "Delete / Trash", cat: "Editing & Clipboard" },
+            { icon: "✏", label: "EDIT", name: "Edit / Pencil", cat: "Editing & Clipboard" },
+            { icon: "🔖", label: "MARK", name: "Bookmark", cat: "Editing & Clipboard" },
+            { icon: "📷", label: "SHOT", name: "Screenshot / Camera", cat: "Editing & Clipboard" },
+            { icon: "🔗", label: "LINK", name: "Link / URL", cat: "Editing & Clipboard" },
+
+            // Coding & Terminal
+            { icon: "⌨", label: "TERM", name: "Keyboard / Terminal", cat: "Coding & Terminal" },
+            { icon: "⚡", label: "BUILD", name: "Build / Flash / Fast", cat: "Coding & Terminal" },
+            { icon: "🐞", label: "DEBUG", name: "Debug / Bug", cat: "Coding & Terminal" },
+            { icon: "🚀", label: "RUN", name: "Run / Deploy / Rocket", cat: "Coding & Terminal" },
+            { icon: "🧪", label: "TEST", name: "Unit Test / Lab", cat: "Coding & Terminal" },
+            { icon: "🔧", label: "TOOL", name: "Wrench / Config", cat: "Coding & Terminal" },
+            { icon: "⚙", label: "PREF", name: "Settings / Gear", cat: "Coding & Terminal" },
+            { icon: "📦", label: "PKG", name: "Package / Cargo", cat: "Coding & Terminal" },
+            { icon: "🌿", label: "GIT", name: "Branch / Git", cat: "Coding & Terminal" },
+            { icon: "☁", label: "PUSH", name: "Cloud / Push", cat: "Coding & Terminal" },
+            { icon: "🤖", label: "AI", name: "AI / Bot / Agent", cat: "Coding & Terminal" },
+            { icon: "⌘", label: "CMD", name: "Command / Super Key", cat: "Coding & Terminal" },
+
+            // Window & System
+            { icon: "🖥", label: "DESK", name: "Desktop / Monitor", cat: "Window & System" },
+            { icon: "🪟", label: "WIN", name: "Window / Tile", cat: "Window & System" },
+            { icon: "🔒", label: "LOCK", name: "Lock Screen", cat: "Window & System" },
+            { icon: "🔓", label: "UNLCK", name: "Unlock", cat: "Window & System" },
+            { icon: "🌙", label: "SLEEP", name: "Sleep / Night", cat: "Window & System" },
+            { icon: "☀", label: "BRITE", name: "Brightness / Sun", cat: "Window & System" },
+            { icon: "🔋", label: "PWR", name: "Battery / Power", cat: "Window & System" },
+            { icon: "🌐", label: "WEB", name: "Browser / Web", cat: "Window & System" },
+            { icon: "📡", label: "WIFI", name: "Network / Wi-Fi", cat: "Window & System" },
+            { icon: "⏱", label: "TIMER", name: "Stopwatch / Macro", cat: "Window & System" },
+            { icon: "🔔", label: "BELL", name: "Notification / Alert", cat: "Window & System" },
+            { icon: "🏠", label: "HOME", name: "Home Workspace", cat: "Window & System" },
+
+            // Streaming & Apps
+            { icon: "🎥", label: "SCENE", name: "Video / OBS Scene", cat: "Streaming & Apps" },
+            { icon: "📺", label: "LIVE", name: "Stream / Monitor", cat: "Streaming & Apps" },
+            { icon: "💬", label: "CHAT", name: "Chat / Discord", cat: "Streaming & Apps" },
+            { icon: "🎮", label: "GAME", name: "Game Controller", cat: "Streaming & Apps" },
+            { icon: "🎨", label: "COLOR", name: "Palette / Art", cat: "Streaming & Apps" },
+            { icon: "🧮", label: "CALC", name: "Calculator", cat: "Streaming & Apps" },
+            { icon: "📧", label: "MAIL", name: "Mail / Inbox", cat: "Streaming & Apps" },
+            { icon: "📅", label: "CAL", name: "Calendar", cat: "Streaming & Apps" },
+
+            // Symbols & Shapes
+            { icon: "★", label: "STAR", name: "Solid Star", cat: "Symbols & Shapes" },
+            { icon: "☆", label: "FAV", name: "Outline Star", cat: "Symbols & Shapes" },
+            { icon: "♥", label: "LIKE", name: "Heart", cat: "Symbols & Shapes" },
+            { icon: "✔", label: "OK", name: "Checkmark / Confirm", cat: "Symbols & Shapes" },
+            { icon: "✖", label: "CLOSE", name: "Cross / Close", cat: "Symbols & Shapes" },
+            { icon: "➕", label: "ADD", name: "Plus / Zoom In", cat: "Symbols & Shapes" },
+            { icon: "➖", label: "SUB", name: "Minus / Zoom Out", cat: "Symbols & Shapes" },
+            { icon: "⚠", label: "WARN", name: "Warning", cat: "Symbols & Shapes" },
+            { icon: "🔥", label: "HOT", name: "Fire / Hotkey", cat: "Symbols & Shapes" },
+            { icon: "💎", label: "PRO", name: "Diamond / Macro", cat: "Symbols & Shapes" },
+            { icon: "🎯", label: "AIM", name: "Target / Focus", cat: "Symbols & Shapes" },
+            { icon: "∞", label: "LOOP", name: "Infinity / Loop", cat: "Symbols & Shapes" }
+        ]
+
+        readonly property var filteredIcons: {
+            const q = searchQuery.trim().toLowerCase()
+            const cat = selectedCategory
+            const out = []
+            for (let i = 0; i < iconCatalog.length; i++) {
+                const item = iconCatalog[i]
+                if (cat !== "All" && item.cat !== cat) continue
+                if (q.length > 0) {
+                    const hay = (item.name + " " + item.label + " " + item.cat + " " + item.icon).toLowerCase()
+                    if (hay.indexOf(q) === -1) continue
+                }
+                out.push(item)
+            }
+            return out
+        }
+
+        function openForInspector(defaultLine) {
+            targetSource = "inspector"
+            if (!targetSupportsTwoLines) {
+                placementMode = 2 // Set Line 1
+            } else if (defaultLine === 2) {
+                placementMode = 3 // Set Line 2
+            } else {
+                placementMode = 0 // Icon (Line 1) + Short Label (Line 2)
+            }
+            show()
+            raise()
+            requestActivate()
+            iconSearchInput.forceActiveFocus()
+        }
+
+        function openForKeyProperties(lineNum) {
+            targetSource = "keyProps"
+            if (!targetSupportsTwoLines) {
+                placementMode = 2
+            } else if (lineNum === 2) {
+                placementMode = 3
+            } else {
+                placementMode = 2
+            }
+            show()
+            raise()
+            requestActivate()
+            iconSearchInput.forceActiveFocus()
+        }
+
+        function currentLine1Text() {
+            return targetSource === "keyProps" ? keyPropLabel1Field.text : label1Input.text
+        }
+
+        function currentLine2Text() {
+            return targetSource === "keyProps" ? keyPropLabel2Field.text : label2Input.text
+        }
+
+        function applyValues(newL1, newL2) {
+            const c1 = root.clampOledLabel(newL1)
+            const c2 = root.clampOledLabel(newL2)
+            if (targetSource === "keyProps") {
+                keyPropLabel1Field.text = c1
+                if (targetSupportsTwoLines) {
+                    keyPropLabel2Field.text = c2
+                }
+            } else {
+                label1Input.text = c1
+                if (targetSupportsTwoLines) {
+                    label2Input.text = c2
+                }
+                liveSlotAutoSaveTimer.stop()
+                if (root.hasSelectedSlot && !root.loadingSlotData && root.compileOk) {
+                    root.saveCurrentSlotToController()
+                    hardwareCanvas.syncSlotsFromController()
+                    root.selectedSlotTitle = hardwareCanvas.slotTitleFor(root.selectedSlotNumber)
+                } else {
+                    liveSlotAutoSaveTimer.restart()
+                }
+            }
+        }
+
+        function applyIconItem(item) {
+            if (!item) return
+            const cur1 = currentLine1Text()
+            const cur2 = currentLine2Text()
+            if (!targetSupportsTwoLines) {
+                if (placementMode === 4) {
+                    applyValues(root.clampOledLabel(item.icon + cur1.trim()), "")
+                } else {
+                    applyValues(item.icon, "")
+                }
+                return
+            }
+
+            if (placementMode === 0) {
+                // Icon on Line 1 + Short Label on Line 2 (or keep existing L2 if user already typed custom text)
+                const nextL2 = cur2.trim().length > 0 && !root.isSingleIconLabel(cur2)
+                    ? cur2
+                    : item.label
+                applyValues(item.icon, nextL2)
+            } else if (placementMode === 1) {
+                // Big Icon Only (Line 1 = icon, Line 2 = empty)
+                applyValues(item.icon, "")
+            } else if (placementMode === 2) {
+                // Set Line 1 Only
+                applyValues(item.icon, cur2)
+            } else if (placementMode === 3) {
+                // Set Line 2 Only
+                applyValues(cur1, item.icon)
+            } else if (placementMode === 4) {
+                // Prepend Icon to Line 1 (e.g. "🔊VOL+")
+                const stripped = root.isSingleIconLabel(cur1) ? "" : cur1.trim()
+                const fallback = stripped.length > 0 ? stripped : item.label
+                applyValues(root.clampOledLabel(item.icon + fallback), cur2)
+            }
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 10
+
+            // Top Header & Live OLED Key Preview Card
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: headerRow.implicitHeight + 16
+                radius: 6
+                color: Kirigami.Theme.alternateBackgroundColor
+                border.color: Qt.alpha(Kirigami.Theme.textColor, 0.14)
+                border.width: 1
+
+                RowLayout {
+                    id: headerRow
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 12
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 3
+
+                        QQC2.Label {
+                            text: qsTr("OLED Button Icon & Symbol Picker (%1)").arg(root.selectedSlotBadge)
+                            font.bold: true
+                            font.pixelSize: 13
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                        }
+
+                        QQC2.Label {
+                            text: qsTr("Click any icon below to assign it. Desktop OLED & Studio render the graphical symbol, and Sync to SD automatically writes the 5-char 7-bit ASCII glyph for the physical duckyPad OLED.")
+                            font.pixelSize: 11
+                            color: Kirigami.Theme.disabledTextColor
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
+                    // Live 1:1 Desktop OLED Preview Box
+                    ColumnLayout {
+                        spacing: 2
+                        QQC2.Label {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: qsTr("Desktop OLED")
+                            font.pixelSize: 9
+                            font.bold: true
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+                        Rectangle {
+                            Layout.preferredWidth: 82
+                            Layout.preferredHeight: 48
+                            radius: 5
+                            color: "#05070a"
+                            border.color: "#38bdf8"
+                            border.width: 1.5
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 4
+                                spacing: 0
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    color: "#ffffff"
+                                    font.family: root.isSingleIconLabel(oledIconPickerDialog.currentLine1Text()) ? "sans-serif" : "monospace"
+                                    font.bold: true
+                                    font.pixelSize: {
+                                        const l1 = oledIconPickerDialog.currentLine1Text()
+                                        const l2 = oledIconPickerDialog.currentLine2Text()
+                                        if (root.isSingleIconLabel(l1)) {
+                                            return (!oledIconPickerDialog.targetSupportsTwoLines || l2.trim().length === 0) ? 20 : 15
+                                        }
+                                        return 11
+                                    }
+                                    text: oledIconPickerDialog.currentLine1Text().length > 0
+                                        ? oledIconPickerDialog.currentLine1Text()
+                                        : "—"
+                                }
+
+                                Text {
+                                    visible: oledIconPickerDialog.targetSupportsTwoLines && oledIconPickerDialog.currentLine2Text().trim().length > 0
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 15
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    color: "#d8f3ff"
+                                    font.family: root.isSingleIconLabel(oledIconPickerDialog.currentLine2Text()) ? "sans-serif" : "monospace"
+                                    font.bold: true
+                                    font.pixelSize: root.isSingleIconLabel(oledIconPickerDialog.currentLine2Text()) ? 13 : 10
+                                    text: oledIconPickerDialog.currentLine2Text()
+                                }
+                            }
+                        }
+                    }
+
+                    // Live Physical duckyPad 6x8 ASCII OLED Preview Box
+                    ColumnLayout {
+                        spacing: 2
+                        QQC2.Label {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: qsTr("duckyPad HW")
+                            font.pixelSize: 9
+                            font.bold: true
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+                        Rectangle {
+                            Layout.preferredWidth: 82
+                            Layout.preferredHeight: 48
+                            radius: 5
+                            color: "#05070a"
+                            border.color: "#94a3b8"
+                            border.width: 1.5
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 4
+                                spacing: 0
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    color: "#ffffff"
+                                    font.family: "monospace"
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                    text: {
+                                        const hw1 = deviceController.oledLabelToHardwareAscii(oledIconPickerDialog.currentLine1Text())
+                                        return hw1.length > 0 ? hw1 : "—"
+                                    }
+                                }
+
+                                Text {
+                                    visible: oledIconPickerDialog.targetSupportsTwoLines && oledIconPickerDialog.currentLine2Text().trim().length > 0
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 15
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    color: "#d8f3ff"
+                                    font.family: "monospace"
+                                    font.bold: true
+                                    font.pixelSize: 10
+                                    text: deviceController.oledLabelToHardwareAscii(oledIconPickerDialog.currentLine2Text())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Placement Mode + Search & Category Filter Row
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                QQC2.Label {
+                    text: qsTr("Apply Mode:")
+                    font.bold: true
+                    font.pixelSize: 11
+                }
+
+                QQC2.ComboBox {
+                    id: iconPlacementCombo
+                    Layout.preferredWidth: 220
+                    model: oledIconPickerDialog.targetSupportsTwoLines
+                        ? [
+                            qsTr("Icon (L1) + Short Label (L2)"),
+                            qsTr("Big Icon Only (L1, clear L2)"),
+                            qsTr("Set Line 1 Only"),
+                            qsTr("Set Line 2 Only"),
+                            qsTr("Icon + Text on Line 1")
+                        ]
+                        : [
+                            qsTr("Set Icon Only"),
+                            qsTr("Icon + Text (5 chars)")
+                        ]
+                    currentIndex: {
+                        if (!oledIconPickerDialog.targetSupportsTwoLines) {
+                            return oledIconPickerDialog.placementMode === 4 ? 1 : 0
+                        }
+                        return oledIconPickerDialog.placementMode
+                    }
+                    onActivated: function(index) {
+                        if (!oledIconPickerDialog.targetSupportsTwoLines) {
+                            oledIconPickerDialog.placementMode = (index === 1) ? 4 : 2
+                        } else {
+                            oledIconPickerDialog.placementMode = index
+                        }
+                    }
+                }
+
+                QQC2.ComboBox {
+                    id: iconCategoryCombo
+                    Layout.preferredWidth: 165
+                    model: oledIconPickerDialog.categories
+                    currentIndex: Math.max(0, oledIconPickerDialog.categories.indexOf(oledIconPickerDialog.selectedCategory))
+                    onActivated: function(index) {
+                        oledIconPickerDialog.selectedCategory = oledIconPickerDialog.categories[index]
+                    }
+                }
+
+                QQC2.TextField {
+                    id: iconSearchInput
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("Search icons (e.g. play, vol, git, arrow)...")
+                    selectByMouse: true
+                    onTextChanged: oledIconPickerDialog.searchQuery = text
+                }
+            }
+
+            // Direct Line 1 / Line 2 Editable Preview Bar
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                QQC2.Label {
+                    text: qsTr("Line 1:")
+                    font.bold: true
+                    font.pixelSize: 11
+                }
+
+                QQC2.TextField {
+                    Layout.preferredWidth: 110
+                    maximumLength: 10
+                    font.family: "monospace"
+                    font.bold: true
+                    selectByMouse: true
+                    text: oledIconPickerDialog.currentLine1Text()
+                    onTextEdited: {
+                        oledIconPickerDialog.applyValues(text, oledIconPickerDialog.currentLine2Text())
+                    }
+                }
+
+                QQC2.Label {
+                    visible: oledIconPickerDialog.targetSupportsTwoLines
+                    text: qsTr("Line 2:")
+                    font.bold: true
+                    font.pixelSize: 11
+                }
+
+                QQC2.TextField {
+                    visible: oledIconPickerDialog.targetSupportsTwoLines
+                    Layout.preferredWidth: 110
+                    maximumLength: 10
+                    font.family: "monospace"
+                    selectByMouse: true
+                    text: oledIconPickerDialog.currentLine2Text()
+                    onTextEdited: {
+                        oledIconPickerDialog.applyValues(oledIconPickerDialog.currentLine1Text(), text)
+                    }
+                }
+
+                QQC2.Button {
+                    visible: oledIconPickerDialog.targetSupportsTwoLines
+                    text: qsTr("⇅ Swap L1/L2")
+                    onClicked: {
+                        oledIconPickerDialog.applyValues(
+                            oledIconPickerDialog.currentLine2Text(),
+                            oledIconPickerDialog.currentLine1Text()
+                        )
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.Label {
+                    text: qsTr("%1 icons").arg(oledIconPickerDialog.filteredIcons.length)
+                    font.pixelSize: 11
+                    color: Kirigami.Theme.disabledTextColor
+                }
+            }
+
+            // Scrollable Icon Grid
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: 6
+                color: Qt.darker(Kirigami.Theme.backgroundColor, 1.08)
+                border.color: Qt.alpha(Kirigami.Theme.textColor, 0.14)
+                border.width: 1
+                clip: true
+
+                GridView {
+                    id: iconGridView
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    cellWidth: 92
+                    cellHeight: 72
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    model: oledIconPickerDialog.filteredIcons
+
+                    QQC2.ScrollBar.vertical: QQC2.ScrollBar {
+                        policy: QQC2.ScrollBar.AsNeeded
+                    }
+
+                    delegate: Item {
+                        width: iconGridView.cellWidth
+                        height: iconGridView.cellHeight
+
+                        required property var modelData
+
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.margins: 3
+                            radius: 6
+                            color: iconTileMouse.containsMouse
+                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.24)
+                                : Kirigami.Theme.alternateBackgroundColor
+                            border.color: iconTileMouse.containsMouse
+                                ? Kirigami.Theme.highlightColor
+                                : Qt.alpha(Kirigami.Theme.textColor, 0.14)
+                            border.width: iconTileMouse.containsMouse ? 1.5 : 1
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 4
+                                spacing: 1
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    text: modelData.icon
+                                    font.pixelSize: 20
+                                    font.bold: true
+                                    color: Kirigami.Theme.textColor
+                                }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    text: modelData.label + " · " + deviceController.oledLabelToHardwareAscii(modelData.icon)
+                                    font.family: "monospace"
+                                    font.pixelSize: 9
+                                    font.bold: true
+                                    color: Kirigami.Theme.disabledTextColor
+                                    elide: Text.ElideRight
+                                }
+                            }
+
+                            MouseArea {
+                                id: iconTileMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: oledIconPickerDialog.applyIconItem(modelData)
+                                onDoubleClicked: {
+                                    oledIconPickerDialog.applyIconItem(modelData)
+                                    oledIconPickerDialog.close()
+                                }
+                            }
+
+                            QQC2.ToolTip.visible: iconTileMouse.containsMouse
+                            QQC2.ToolTip.text: qsTr("%1 (%2 / HW: %3) — Click to apply, double-click to apply & close")
+                                .arg(modelData.name)
+                                .arg(modelData.icon)
+                                .arg(deviceController.oledLabelToHardwareAscii(modelData.icon))
+                        }
+                    }
+                }
+            }
+
+            // Footer Action Bar
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                QQC2.Button {
+                    icon.name: "edit-clear"
+                    text: qsTr("Clear Labels")
+                    onClicked: oledIconPickerDialog.applyValues("", "")
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.Button {
+                    text: qsTr("Done")
+                    highlighted: true
+                    font.bold: true
+                    onClicked: oledIconPickerDialog.close()
                 }
             }
         }
