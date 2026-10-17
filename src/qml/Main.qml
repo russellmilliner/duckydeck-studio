@@ -6615,10 +6615,10 @@ Kirigami.ApplicationWindow {
     Window {
         id: firmwareUpdateDialog
         title: qsTr("duckyPad Pro Firmware Manager & Updater — DuckyDeck Studio")
-        width: 860
-        height: 660
-        minimumWidth: 660
-        minimumHeight: 520
+        width: 880
+        height: 680
+        minimumWidth: Math.max(740, Math.ceil(fwFooterRow.implicitWidth) + 32)
+        minimumHeight: 540
         visible: false
         transientParent: root
         modality: Qt.WindowModal
@@ -6769,6 +6769,8 @@ Kirigami.ApplicationWindow {
 
                         QQC2.Label {
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            Layout.preferredWidth: 1
                             wrapMode: Text.WordWrap
                             font.bold: true
                             font.pixelSize: 13
@@ -6778,6 +6780,7 @@ Kirigami.ApplicationWindow {
 
                         Rectangle {
                             radius: 4
+                            Layout.alignment: Qt.AlignTop | Qt.AlignRight
                             readonly property bool installedIsStudio: root.isDuckyDeckStudioFirmware(deviceController.firmwareVersion)
                             color: installedIsStudio
                                 ? Qt.alpha("#a855f7", 0.22)
@@ -6824,10 +6827,11 @@ Kirigami.ApplicationWindow {
 
                     QQC2.Label {
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
                         wrapMode: Text.WordWrap
                         font.pixelSize: 11
                         text: qsTr("DuckyDeck Studio includes its custom DuckyDeck Studio Firmware v1.0.0 (with monochrome key icons & 0°/90°/180°/270° OLED orientation) and can fetch & download official dekuNukem firmware releases directly from github.com/dekuNukem/duckyPad-Pro.")
-                        color: Qt.alpha(Kirigami.Theme.textColor, 0.85)
+                        color: Kirigami.Theme.textColor
                     }
                 }
             }
@@ -6850,8 +6854,6 @@ Kirigami.ApplicationWindow {
 
                     QQC2.Button {
                         text: qsTr("All (%1)").arg(firmwareUpdateDialog.availableFirmwares.length)
-                        checkable: true
-                        checked: firmwareUpdateDialog.vendorFilter === "all"
                         highlighted: firmwareUpdateDialog.vendorFilter === "all"
                         onClicked: {
                             firmwareUpdateDialog.vendorFilter = "all"
@@ -6864,8 +6866,6 @@ Kirigami.ApplicationWindow {
                             ? "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-light.svg"
                             : "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-dark.svg"
                         text: qsTr("DuckyDeck Studio")
-                        checkable: true
-                        checked: firmwareUpdateDialog.vendorFilter === "studio"
                         highlighted: firmwareUpdateDialog.vendorFilter === "studio"
                         onClicked: {
                             firmwareUpdateDialog.vendorFilter = "studio"
@@ -6875,8 +6875,6 @@ Kirigami.ApplicationWindow {
 
                     QQC2.Button {
                         text: qsTr("✔ Official dekuNukem")
-                        checkable: true
-                        checked: firmwareUpdateDialog.vendorFilter === "official"
                         highlighted: firmwareUpdateDialog.vendorFilter === "official"
                         onClicked: {
                             firmwareUpdateDialog.vendorFilter = "official"
@@ -6889,8 +6887,8 @@ Kirigami.ApplicationWindow {
                     QQC2.Button {
                         icon.name: "download"
                         text: deviceController.firmwareFetchBusy
-                            ? qsTr("Fetching Official Firmwares...")
-                            : qsTr("⬇ Fetch Official List from Site")
+                            ? qsTr("Fetching Official...")
+                            : qsTr("⬇ Fetch Official List")
                         enabled: !deviceController.firmwareFetchBusy && !deviceController.sdSyncBusy
                         highlighted: true
                         onClicked: deviceController.fetchOfficialFirmwaresFromSite()
@@ -6948,23 +6946,25 @@ Kirigami.ApplicationWindow {
 
                     QQC2.Label {
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
                         font.bold: true
                         font.pixelSize: 13
                         text: deviceController.firmwareFetchBusy
                             ? qsTr("Downloading Official Firmware List from dekuNukem/duckyPad-Pro...")
-                            : qsTr("No Official Firmwares Cached Yet — Click 'Fetch Official List from Site'")
+                            : qsTr("No Official Firmwares Cached Yet — Click 'Fetch Official List'")
                         color: Kirigami.Theme.textColor
                     }
 
                     QQC2.Label {
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
                         font.pixelSize: 11
-                        text: qsTr("Click 'Fetch Official List from Site' to query dekuNukem's official duckyPad-Pro repository for available firmware releases, or browse a local DPP_FW_*.bin file.")
-                        color: Kirigami.Theme.disabledTextColor
+                        text: qsTr("Click 'Fetch Official List' to query dekuNukem's official duckyPad-Pro repository for available firmware releases, or browse a local DPP_FW_*.bin file.")
+                        color: Kirigami.Theme.textColor
                     }
 
                     Flow {
@@ -6975,7 +6975,7 @@ Kirigami.ApplicationWindow {
                             icon.name: "download"
                             text: deviceController.firmwareFetchBusy
                                 ? qsTr("Fetching...")
-                                : qsTr("⬇ Fetch Official Firmware List from Site")
+                                : qsTr("⬇ Fetch Official Firmware List")
                             enabled: !deviceController.firmwareFetchBusy
                             highlighted: true
                             onClicked: deviceController.fetchOfficialFirmwaresFromSite()
@@ -7000,15 +7000,26 @@ Kirigami.ApplicationWindow {
                     anchors.fill: parent
                     anchors.margins: 6
                     spacing: 6
+                    clip: true
                     model: firmwareUpdateDialog.filteredFirmwares
                     boundsBehavior: Flickable.StopAtBounds
-                    QQC2.ScrollBar.vertical: QQC2.ScrollBar { policy: QQC2.ScrollBar.AsNeeded }
+                    QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                        parent: fwListView
+                        anchors.top: fwListView.top
+                        anchors.right: fwListView.right
+                        anchors.bottom: fwListView.bottom
+                        policy: fwListView.contentHeight > fwListView.height
+                            ? QQC2.ScrollBar.AlwaysOn
+                            : QQC2.ScrollBar.AsNeeded
+                    }
 
                     delegate: Rectangle {
                         id: fwRowDelegate
-                        width: Math.max(220, fwListView.width - 14)
-                        implicitHeight: fwRowCol.implicitHeight + 16
+                        width: Math.max(220, fwListView.width - (fwListView.contentHeight > fwListView.height ? 20 : 6))
+                        height: fwRowCol.implicitHeight + 20
+                        implicitHeight: fwRowCol.implicitHeight + 20
                         radius: 6
+                        clip: true
                         readonly property bool isSelected: firmwareUpdateDialog.customFirmwarePath.length === 0
                             && firmwareUpdateDialog.selectedFirmwareIndex === index
                         readonly property bool isCurrentInstalled: modelData.version === root.cleanFirmwareVersionLabel(deviceController.firmwareVersion)
@@ -7045,8 +7056,8 @@ Kirigami.ApplicationWindow {
                             anchors.left: parent.left
                             anchors.right: parent.right
                             anchors.top: parent.top
-                            anchors.margins: 8
-                            spacing: 4
+                            anchors.margins: 10
+                            spacing: 5
                             z: 2
 
                             RowLayout {
@@ -7055,9 +7066,13 @@ Kirigami.ApplicationWindow {
 
                                 Flow {
                                     Layout.fillWidth: true
+                                    Layout.minimumWidth: 0
+                                    Layout.preferredWidth: 1
                                     spacing: 6
 
                                     QQC2.Label {
+                                        height: 20
+                                        verticalAlignment: Text.AlignVCenter
                                         font.family: "monospace"
                                         font.bold: true
                                         font.pixelSize: 13
@@ -7075,8 +7090,10 @@ Kirigami.ApplicationWindow {
                                             ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.65)
                                             : Qt.alpha("#c084fc", 0.80)
                                         border.width: 1
-                                        implicitWidth: vendorBadgeRow.implicitWidth + 12
-                                        implicitHeight: vendorBadgeRow.implicitHeight + 4
+                                        width: vendorBadgeRow.implicitWidth + 12
+                                        height: 20
+                                        implicitWidth: width
+                                        implicitHeight: height
 
                                         RowLayout {
                                             id: vendorBadgeRow
@@ -7116,8 +7133,10 @@ Kirigami.ApplicationWindow {
                                             ? Qt.alpha("#38bdf8", 0.60)
                                             : Qt.alpha(Kirigami.Theme.textColor, 0.25)
                                         border.width: 1
-                                        implicitWidth: chLbl.implicitWidth + 10
-                                        implicitHeight: chLbl.implicitHeight + 4
+                                        width: chLbl.implicitWidth + 10
+                                        height: 20
+                                        implicitWidth: width
+                                        implicitHeight: height
 
                                         QQC2.Label {
                                             id: chLbl
@@ -7140,8 +7159,10 @@ Kirigami.ApplicationWindow {
                                             ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.55)
                                             : Qt.alpha("#f59e0b", 0.65)
                                         border.width: 1
-                                        implicitWidth: dlStateLbl.implicitWidth + 10
-                                        implicitHeight: dlStateLbl.implicitHeight + 4
+                                        width: dlStateLbl.implicitWidth + 10
+                                        height: 20
+                                        implicitWidth: width
+                                        implicitHeight: height
 
                                         QQC2.Label {
                                             id: dlStateLbl
@@ -7159,8 +7180,10 @@ Kirigami.ApplicationWindow {
                                         color: Qt.alpha(Kirigami.Theme.highlightColor, 0.25)
                                         border.color: Kirigami.Theme.highlightColor
                                         border.width: 1
-                                        implicitWidth: instLbl.implicitWidth + 10
-                                        implicitHeight: instLbl.implicitHeight + 4
+                                        width: instLbl.implicitWidth + 10
+                                        height: 20
+                                        implicitWidth: width
+                                        implicitHeight: height
 
                                         QQC2.Label {
                                             id: instLbl
@@ -7176,6 +7199,7 @@ Kirigami.ApplicationWindow {
                                 QQC2.Button {
                                     visible: !fwRowDelegate.isDownloaded && fwRowDelegate.dlUrl.length > 0
                                     enabled: !deviceController.firmwareFetchBusy && !deviceController.sdSyncBusy
+                                    Layout.alignment: Qt.AlignTop | Qt.AlignRight
                                     icon.name: "download"
                                     text: qsTr("⬇ Download .bin")
                                     implicitHeight: 26
@@ -7190,6 +7214,7 @@ Kirigami.ApplicationWindow {
 
                             QQC2.Label {
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 font.family: "monospace"
                                 font.pixelSize: 11
                                 wrapMode: Text.WordWrap
@@ -7198,15 +7223,16 @@ Kirigami.ApplicationWindow {
                                     .arg(modelData.release_date || "-")
                                     .arg(Math.max(1, Math.round((modelData.size_bytes || 0) / 1024)))
                                     .arg(modelData.crc32 || "-")
-                                color: Kirigami.Theme.disabledTextColor
+                                color: Kirigami.Theme.textColor
                             }
 
                             QQC2.Label {
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 wrapMode: Text.WordWrap
                                 font.pixelSize: 11
                                 text: modelData.notes || ""
-                                color: Qt.alpha(Kirigami.Theme.textColor, 0.88)
+                                color: Kirigami.Theme.textColor
                             }
                         }
                     }
@@ -12322,6 +12348,13 @@ Kirigami.ApplicationWindow {
         function openForProfile(profileNumber) {
             const targetNum = profileNumber > 0 ? profileNumber : deviceController.activeProfile
             if (targetNum <= 0) return
+            if (deviceController.activeProfile !== targetNum) {
+                deviceController.selectProfile(targetNum)
+                root.syncSidebarProfilesFromController()
+                hardwareCanvas.syncProfilesFromController()
+                hardwareCanvas.syncSlotsFromController()
+                oledDesktopWidget.syncFromController()
+            }
             profilePropertiesWindow.profNumber = targetNum
             const rawJson = deviceController.getProfilePropertiesJson(targetNum)
             try {
@@ -12412,6 +12445,7 @@ Kirigami.ApplicationWindow {
                 root.syncSidebarProfilesFromController()
                 hardwareCanvas.syncProfilesFromController()
                 hardwareCanvas.syncSlotsFromController()
+                oledDesktopWidget.syncFromController()
                 profilePropertiesWindow.statusFeedback = qsTr("✓ Saved all properties for Profile #%1.").arg(profilePropertiesWindow.profNumber)
             }
             return ok
@@ -12685,8 +12719,6 @@ Kirigami.ApplicationWindow {
 
                                     QQC2.Button {
                                         text: qsTr("0° (Portrait)")
-                                        checkable: true
-                                        checked: profilePropertiesWindow.profOledRotation === 0
                                         highlighted: profilePropertiesWindow.profOledRotation === 0
                                         onClicked: {
                                             profilePropertiesWindow.profOledRotation = 0
@@ -12696,8 +12728,6 @@ Kirigami.ApplicationWindow {
 
                                     QQC2.Button {
                                         text: qsTr("90° (Landscape CW)")
-                                        checkable: true
-                                        checked: profilePropertiesWindow.profOledRotation === 90
                                         highlighted: profilePropertiesWindow.profOledRotation === 90
                                         onClicked: {
                                             profilePropertiesWindow.profOledRotation = 90
@@ -12707,8 +12737,6 @@ Kirigami.ApplicationWindow {
 
                                     QQC2.Button {
                                         text: qsTr("180° (Inverted)")
-                                        checkable: true
-                                        checked: profilePropertiesWindow.profOledRotation === 180
                                         highlighted: profilePropertiesWindow.profOledRotation === 180
                                         onClicked: {
                                             profilePropertiesWindow.profOledRotation = 180
@@ -12718,8 +12746,6 @@ Kirigami.ApplicationWindow {
 
                                     QQC2.Button {
                                         text: qsTr("270° (Landscape CCW)")
-                                        checkable: true
-                                        checked: profilePropertiesWindow.profOledRotation === 270
                                         highlighted: profilePropertiesWindow.profOledRotation === 270
                                         onClicked: {
                                             profilePropertiesWindow.profOledRotation = 270
@@ -12750,8 +12776,6 @@ Kirigami.ApplicationWindow {
 
                                     QQC2.Button {
                                         text: qsTr("Follow OLED (%1°)").arg(profilePropertiesWindow.profOledRotation)
-                                        checkable: true
-                                        checked: profilePropertiesWindow.profWidgetRotation < 0
                                         highlighted: profilePropertiesWindow.profWidgetRotation < 0
                                         onClicked: {
                                             profilePropertiesWindow.profWidgetRotation = -1
@@ -12761,8 +12785,6 @@ Kirigami.ApplicationWindow {
 
                                     QQC2.Button {
                                         text: qsTr("0°")
-                                        checkable: true
-                                        checked: profilePropertiesWindow.profWidgetRotation === 0
                                         highlighted: profilePropertiesWindow.profWidgetRotation === 0
                                         onClicked: {
                                             profilePropertiesWindow.profWidgetRotation = 0
@@ -12772,8 +12794,6 @@ Kirigami.ApplicationWindow {
 
                                     QQC2.Button {
                                         text: qsTr("90°")
-                                        checkable: true
-                                        checked: profilePropertiesWindow.profWidgetRotation === 90
                                         highlighted: profilePropertiesWindow.profWidgetRotation === 90
                                         onClicked: {
                                             profilePropertiesWindow.profWidgetRotation = 90
@@ -12783,8 +12803,6 @@ Kirigami.ApplicationWindow {
 
                                     QQC2.Button {
                                         text: qsTr("180°")
-                                        checkable: true
-                                        checked: profilePropertiesWindow.profWidgetRotation === 180
                                         highlighted: profilePropertiesWindow.profWidgetRotation === 180
                                         onClicked: {
                                             profilePropertiesWindow.profWidgetRotation = 180
@@ -12794,8 +12812,6 @@ Kirigami.ApplicationWindow {
 
                                     QQC2.Button {
                                         text: qsTr("270°")
-                                        checkable: true
-                                        checked: profilePropertiesWindow.profWidgetRotation === 270
                                         highlighted: profilePropertiesWindow.profWidgetRotation === 270
                                         onClicked: {
                                             profilePropertiesWindow.profWidgetRotation = 270

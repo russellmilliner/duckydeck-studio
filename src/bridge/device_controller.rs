@@ -2271,6 +2271,19 @@ impl qobject::DeviceController {
         let bg_color_str = self.active_profile_bg_color().to_string();
         let slots_val: serde_json::Value =
             serde_json::from_str(&slots_raw).unwrap_or_else(|_| json!([]));
+        let (oled_rot, widget_rot, eff_widget_rot) = self
+            .rust()
+            .profiles
+            .iter()
+            .find(|p| p.number as i32 == prof_num)
+            .map(|p| {
+                (
+                    p.oled_rotation(),
+                    p.widget_rotation(),
+                    p.effective_widget_rotation(),
+                )
+            })
+            .unwrap_or((0, -1, 0));
         let oled_snapshot = json!({
             "connected": connected,
             "modelName": model,
@@ -2279,6 +2292,9 @@ impl qobject::DeviceController {
             "activeProfile": prof_num,
             "activeProfileName": prof_name,
             "activeProfileBgColor": bg_color_str,
+            "oledRotation": oled_rot,
+            "widgetRotation": widget_rot,
+            "effectiveWidgetRotation": eff_widget_rot,
             "totalProfiles": total_profiles,
             "sdSpaceSummary": sd_space.summary_text,
             "slots": slots_val,
@@ -7368,6 +7384,10 @@ impl qobject::DeviceController {
             prof.set_profile_webhook(&final_webhook);
             let final_name = prof.name.clone();
 
+            let prof_snapshot = prof.clone();
+            if let Some(ref sd_root) = rust.sd_root_path {
+                let _ = prof_snapshot.save_to_sd_root(sd_root);
+            }
             if let Ok(mut sw) = rust.switcher_state.lock() {
                 sw.align_rules_with_profiles(&rust.profiles);
                 let _ = sw.save_to_disk();

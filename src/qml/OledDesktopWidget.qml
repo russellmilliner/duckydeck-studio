@@ -108,9 +108,14 @@ Window {
 
     property real pendingScaleMultiplier: 1.5
     property int profileOledRotation: 0
+    property int dataRevision: 0
     property var slotItems: []
     property string enc1Summary: "CCW · CW · [Push]"
     property string enc2Summary: "CCW · CW · [Push]"
+
+    onProfileOledRotationChanged: {
+        oledWidgetWindow.dataRevision += 1
+    }
 
     Timer {
         id: sliderResizeTimer
@@ -183,10 +188,11 @@ Window {
                     for (let i = 0; i < parr.length; ++i) {
                         const p = parr[i]
                         if (p.number === controller.activeProfile) {
-                            oledWidgetWindow.profileOledRotation =
+                            const nextRot =
                                 p.effectiveWidgetRotation !== undefined
-                                    ? p.effectiveWidgetRotation
-                                    : (p.oledRotation !== undefined ? p.oledRotation : (p.isLandscape ? 90 : 0))
+                                    ? Number(p.effectiveWidgetRotation)
+                                    : (p.oledRotation !== undefined ? Number(p.oledRotation) : (p.isLandscape ? 90 : 0))
+                            oledWidgetWindow.profileOledRotation = nextRot
                             break
                         }
                     }
@@ -231,6 +237,7 @@ Window {
             slotItems = keys
             enc1Summary = e1ccw + " · " + e1cw + " · [" + e1push + "]"
             enc2Summary = e2ccw + " · " + e2cw + " · [" + e2push + "]"
+            oledWidgetWindow.dataRevision += 1
         } catch (e) {}
     }
 
@@ -536,7 +543,7 @@ Window {
                     QQC2.ToolTip.text: qsTr("Adjust OLED Widget Size")
                 }
 
-                // OLED Orientation Cycle Button (0° -> 90° -> 180°)
+                // Desktop Widget Orientation Cycle Button (0° -> 90° -> 180° -> 270° -> 0°)
                 QQC2.ToolButton {
                     id: oledRotCycleBtn
                     Layout.preferredWidth: Math.max(30, Math.round(32 * oledWidgetWindow.uiScale))
@@ -545,12 +552,11 @@ Window {
                     implicitHeight: Layout.preferredHeight
                     padding: 0
                     onClicked: {
-                        const nextRot = oledWidgetWindow.profileOledRotation === 0
-                            ? 90
-                            : (oledWidgetWindow.profileOledRotation === 90 ? 180 : 0)
+                        const cur = oledWidgetWindow.profileOledRotation
+                        const nextRot = cur === 0 ? 90 : (cur === 90 ? 180 : (cur === 180 ? 270 : 0))
                         oledWidgetWindow.profileOledRotation = nextRot
                         if (oledWidgetWindow.controller) {
-                            oledWidgetWindow.controller.setActiveProfileOledRotation(nextRot)
+                            oledWidgetWindow.controller.setActiveProfileWidgetRotation(nextRot)
                         }
                     }
                     contentItem: Text {
@@ -571,7 +577,7 @@ Window {
                         border.color: oledWidgetWindow.profileOledRotation !== 0 ? "#38bdf8" : "#344663"
                     }
                     QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: qsTr("OLED Orientation: %1° (Click to cycle 0° / 90° / 180°)").arg(oledWidgetWindow.profileOledRotation)
+                    QQC2.ToolTip.text: qsTr("Desktop Widget Orientation: %1° (Click to cycle 0° / 90° / 180° / 270°)").arg(oledWidgetWindow.profileOledRotation)
                 }
 
                 // Restore Window Titlebar / Frameless Mode Toggle Button with Window Icon
@@ -1136,6 +1142,7 @@ Window {
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                             text: "P" + oledWidgetWindow.activeProfile + ": " + oledWidgetWindow.activeProfileName
+                                + (oledWidgetWindow.profileOledRotation !== 0 ? " [" + oledWidgetWindow.profileOledRotation + "°]" : "")
                             color: "#020617"
                             font.family: "sans-serif"
                             font.bold: true
@@ -1171,14 +1178,28 @@ Window {
                                     return rowIdx * 4 + colIdx + 1
                                 }
                                 readonly property var itemData: {
-                                    // Re-evaluate whenever slotItems changes
-                                    const _ = oledWidgetWindow.slotItems
+                                    // Re-evaluate whenever slotItems, rotation, or dataRevision changes
+                                    const _rev = oledWidgetWindow.dataRevision
+                                    const _items = oledWidgetWindow.slotItems
+                                    const _rot = oledWidgetWindow.profileOledRotation
                                     return oledWidgetWindow.slotDataFor(slotNum)
                                 }
-                                readonly property string l1: itemData.l1 || ""
-                                readonly property string l2: itemData.l2 || ""
-                                readonly property string wl1: (itemData.wl1 || "").trim()
-                                readonly property string wl2: (itemData.wl2 || "").trim()
+                                readonly property string l1: {
+                                    const _rev = oledWidgetWindow.dataRevision
+                                    return itemData.l1 || ""
+                                }
+                                readonly property string l2: {
+                                    const _rev = oledWidgetWindow.dataRevision
+                                    return itemData.l2 || ""
+                                }
+                                readonly property string wl1: {
+                                    const _rev = oledWidgetWindow.dataRevision
+                                    return (itemData.wl1 || "").trim()
+                                }
+                                readonly property string wl2: {
+                                    const _rev = oledWidgetWindow.dataRevision
+                                    return (itemData.wl2 || "").trim()
+                                }
                                 readonly property string disp1: wl1.length > 0
                                     ? wl1
                                     : oledWidgetWindow.sliceOledLabel(l1, oledScreenContent.isLandscapeRot ? 4 : 5)

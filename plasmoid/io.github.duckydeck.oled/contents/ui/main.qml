@@ -27,6 +27,8 @@ PlasmoidItem {
     property int activeProfile: 1
     property string activeProfileName: "Default"
     property string activeProfileBgColor: "#00aaff"
+    property int profileOledRotation: 0
+    property int dataRevision: 0
     property int totalProfiles: 1
     property string sdSpaceSummary: ""
     property var slotsList: []
@@ -36,8 +38,10 @@ PlasmoidItem {
 
     function formatEnc(item, fallback) {
         if (!item) return fallback
-        const l1 = (item.l1 || "").trim()
-        const l2 = (item.l2 || "").trim()
+        const wl1 = (item.wl1 || "").trim()
+        const wl2 = (item.wl2 || "").trim()
+        const l1 = wl1.length > 0 ? wl1 : (item.l1 || "").trim()
+        const l2 = wl2.length > 0 ? wl2 : (item.l2 || "").trim()
         const c = (l1 + (l2.length > 0 ? " " + l2 : "")).trim()
         return c.length > 0 ? c : fallback
     }
@@ -54,7 +58,7 @@ PlasmoidItem {
                 }
             }
         }
-        return { slot: slotNum, l1: "", l2: "", r: 0, g: 170, b: 255, hasScript: false }
+        return { slot: slotNum, l1: "", l2: "", wl1: "", wl2: "", r: 0, g: 170, b: 255, hasScript: false }
     }
 
     function updateEncoderSummaries(arr) {
@@ -99,11 +103,15 @@ PlasmoidItem {
                     root.activeProfile = parsed.activeProfile || 1
                     root.activeProfileName = parsed.activeProfileName || "Default"
                     root.activeProfileBgColor = parsed.activeProfileBgColor || "#00aaff"
+                    root.profileOledRotation = parsed.effectiveWidgetRotation !== undefined
+                        ? Number(parsed.effectiveWidgetRotation)
+                        : (parsed.oledRotation !== undefined ? Number(parsed.oledRotation) : 0)
                     root.totalProfiles = parsed.totalProfiles || 1
                     root.sdSpaceSummary = parsed.sdSpaceSummary || ""
                     const rawSlots = Array.isArray(parsed.slots) ? parsed.slots : []
                     root.slotsList = rawSlots
                     root.updateEncoderSummaries(rawSlots)
+                    root.dataRevision += 1
                 } catch (e) {
                 }
             }
@@ -478,10 +486,14 @@ PlasmoidItem {
                         anchors.fill: parent
                         anchors.margins: 4
 
+                        readonly property bool isLandscapeRot:
+                            root.profileOledRotation === 90 || root.profileOledRotation === 270
+                        readonly property int gridCols: isLandscapeRot ? 5 : 4
+                        readonly property int gridRows: isLandscapeRot ? 4 : 5
                         readonly property int bannerHeight: Math.max(14, Math.round(height * 0.105))
                         readonly property int gridAreaHeight: Math.max(80, height - bannerHeight - 2)
-                        readonly property real cellWidth: width / 4.0
-                        readonly property real cellHeight: gridAreaHeight / 5.0
+                        readonly property real cellWidth: width / gridCols
+                        readonly property real cellHeight: gridAreaHeight / gridRows
 
                         // Top Profile Banner
                         Rectangle {
@@ -499,6 +511,7 @@ PlasmoidItem {
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                                 text: "P" + root.activeProfile + ": " + root.activeProfileName
+                                    + (root.profileOledRotation !== 0 ? " [" + root.profileOledRotation + "°]" : "")
                                 color: "#020617"
                                 font.family: "sans-serif"
                                 font.bold: true
@@ -507,7 +520,7 @@ PlasmoidItem {
                             }
                         }
 
-                        // 4x5 Key Grid with Centered Button Text
+                        // Key Grid with Centered Button Text (supports 0°/90°/180°/270° and wl1/wl2)
                         Item {
                             anchors.top: oledBanner.bottom
                             anchors.topMargin: 2
@@ -520,16 +533,48 @@ PlasmoidItem {
 
                                 delegate: Rectangle {
                                     required property int index
-                                    readonly property int slotNum: index + 1
+                                    readonly property int colIdx: index % oledScreenContent.gridCols
+                                    readonly property int rowIdx: Math.floor(index / oledScreenContent.gridCols)
+                                    readonly property int slotNum: {
+                                        const rot = root.profileOledRotation
+                                        if (rot === 90) {
+                                            return colIdx * 4 + (3 - rowIdx) + 1
+                                        } else if (rot === 180) {
+                                            return (4 - rowIdx) * 4 + (3 - colIdx) + 1
+                                        } else if (rot === 270) {
+                                            return (4 - colIdx) * 4 + rowIdx + 1
+                                        }
+                                        return rowIdx * 4 + colIdx + 1
+                                    }
                                     readonly property var itemData: {
+                                        const _rev = root.dataRevision
                                         const _ = root.slotsList
+                                        const _rot = root.profileOledRotation
                                         return root.slotDataFor(slotNum)
                                     }
-                                    readonly property string l1: itemData.l1 || ""
-                                    readonly property string l2: itemData.l2 || ""
+                                    readonly property string l1: {
+                                        const _rev = root.dataRevision
+                                        return itemData.l1 || ""
+                                    }
+                                    readonly property string l2: {
+                                        const _rev = root.dataRevision
+                                        return itemData.l2 || ""
+                                    }
+                                    readonly property string wl1: {
+                                        const _rev = root.dataRevision
+                                        return (itemData.wl1 || "").trim()
+                                    }
+                                    readonly property string wl2: {
+                                        const _rev = root.dataRevision
+                                        return (itemData.wl2 || "").trim()
+                                    }
+                                    readonly property string disp1: wl1.length > 0
+                                        ? wl1
+                                        : l1.slice(0, oledScreenContent.isLandscapeRot ? 4 : 6)
+                                    readonly property string disp2: wl2.length > 0
+                                        ? wl2
+                                        : l2.slice(0, oledScreenContent.isLandscapeRot ? 4 : 6)
                                     readonly property bool isSel: root.selectedSlot === slotNum
-                                    readonly property int colIdx: index % 4
-                                    readonly property int rowIdx: Math.floor(index / 4)
 
                                     x: Math.round(colIdx * oledScreenContent.cellWidth)
                                     y: Math.round(rowIdx * oledScreenContent.cellHeight)
@@ -544,7 +589,7 @@ PlasmoidItem {
                                     // RGB LED indicator dot
                                     Rectangle {
                                         visible: !parent.isSel
-                                            && (parent.l1.length > 0 || parent.l2.length > 0 || !!parent.itemData.hasScript)
+                                            && (parent.disp1.length > 0 || parent.disp2.length > 0 || !!parent.itemData.hasScript)
                                         anchors.top: parent.top
                                         anchors.right: parent.right
                                         anchors.margins: Math.max(2, Math.round(parent.height * 0.08))
@@ -566,13 +611,13 @@ PlasmoidItem {
                                         spacing: 0
 
                                         Text {
-                                            visible: parent.parent.l1.length > 0
+                                            visible: parent.parent.disp1.length > 0
                                             width: parent.width
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
-                                            text: parent.parent.l1.slice(0, 6)
+                                            text: parent.parent.disp1
                                             color: parent.parent.isSel ? "#020617" : "#f8fafc"
-                                            font.family: "monospace"
+                                            font.family: parent.parent.wl1.length > 5 ? "sans-serif" : "monospace"
                                             font.bold: true
                                             font.pixelSize: Math.max(8, Math.round(parent.parent.height * 0.34))
                                             fontSizeMode: Text.HorizontalFit
@@ -581,13 +626,13 @@ PlasmoidItem {
                                         }
 
                                         Text {
-                                            visible: parent.parent.l2.length > 0
+                                            visible: parent.parent.disp2.length > 0
                                             width: parent.width
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
-                                            text: parent.parent.l2.slice(0, 6)
+                                            text: parent.parent.disp2
                                             color: parent.parent.isSel ? "#0f172a" : "#cbd5e1"
-                                            font.family: "monospace"
+                                            font.family: parent.parent.wl2.length > 5 ? "sans-serif" : "monospace"
                                             font.bold: true
                                             font.pixelSize: Math.max(7, Math.round(parent.parent.height * 0.30))
                                             fontSizeMode: Text.HorizontalFit

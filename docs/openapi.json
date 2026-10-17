@@ -1,0 +1,2118 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "DuckyDeck Studio HTTP REST API",
+    "version": "0.1.24",
+    "description": "Local and LAN HTTP REST API for **DuckyDeck Studio**, a native Linux (Rust + CXX-Qt + KDE Plasma 6 Kirigami) configurator and automation daemon for the **duckyPad Pro** (`0x0483:0xd11d`) and **duckyPad (2020)** (`0x0483:0xd11c`).\n\n### Authentication\nWhen **Require API Token Authentication** is enabled (recommended and on by default), every request except `GET /api/v1/health`, `GET /api/v1/openapi.json`, `GET /api/v1/swagger.json`, and `GET /api/v1/openapi.yaml` must include the API token via either:\n- `Authorization: Bearer <token>`\n- `X-API-Token: <token>`\n\nToken comparison uses a constant-time byte comparison to prevent timing side-channel attacks.\n",
+    "license": {
+      "name": "GPL-3.0-or-later",
+      "url": "https://www.gnu.org/licenses/gpl-3.0.html"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:28491",
+      "description": "Default Localhost Server"
+    },
+    {
+      "url": "http://{host}:{port}",
+      "description": "Custom Bind Address / LAN Server",
+      "variables": {
+        "host": {
+          "default": "127.0.0.1"
+        },
+        "port": {
+          "default": "28491"
+        }
+      }
+    }
+  ],
+  "tags": [
+    {
+      "name": "System & Status",
+      "description": "Health probes, device connection state, firmware info, and event logs"
+    },
+    {
+      "name": "Profiles",
+      "description": "List, inspect, create, update, reorder, switch, and delete profiles"
+    },
+    {
+      "name": "Key & Encoder Slots",
+      "description": "Inspect, update, clear, and remotely trigger mechanical keys (1-20) and rotary encoder actions (21-26)"
+    },
+    {
+      "name": "duckyScript & Templates",
+      "description": "Compile duckyScript 3 source to DSVM bytecode and inspect reusable key templates"
+    },
+    {
+      "name": "Global Variables (PGV)",
+      "description": "Read and write duckyPad Pro Persistent Global Variables (PGV 1-16)"
+    },
+    {
+      "name": "RGB LEDs & Device Control",
+      "description": "Override per-key RGB LEDs, sleep/wake/reboot hardware, sync RTC, and manage microSD sync"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    },
+    {
+      "ApiTokenHeader": []
+    }
+  ],
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "System & Status"
+        ],
+        "summary": "Unauthenticated health probe",
+        "description": "Returns server liveness, version, and whether Bearer token authentication is required. Does not require authentication.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Server is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "service",
+                    "version",
+                    "authRequired"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "duckydeck-studio"
+                    },
+                    "version": {
+                      "type": "string",
+                      "example": "0.1.24"
+                    },
+                    "authRequired": {
+                      "type": "boolean",
+                      "example": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/openapi.json": {
+      "get": {
+        "tags": [
+          "System & Status"
+        ],
+        "summary": "OpenAPI 3.0 JSON specification",
+        "description": "Returns the OpenAPI 3.0 / Swagger JSON specification for the DuckyDeck Studio REST API.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.0 JSON specification",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/swagger.json": {
+      "get": {
+        "tags": [
+          "System & Status"
+        ],
+        "summary": "Swagger / OpenAPI 3.0 JSON specification alias",
+        "description": "Alias for `/api/v1/openapi.json`.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.0 JSON specification",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/openapi.yaml": {
+      "get": {
+        "tags": [
+          "System & Status"
+        ],
+        "summary": "OpenAPI 3.0 YAML specification",
+        "description": "Returns the OpenAPI 3.0 YAML specification for the DuckyDeck Studio REST API.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.0 YAML specification",
+            "content": {
+              "application/yaml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "tags": [
+          "System & Status"
+        ],
+        "summary": "Full device, profile, SD card, and auto-switcher status",
+        "description": "Returns live hardware connection state, model, firmware version, serial number, active profile, microSD storage summary, and auto-switcher status. Also accessible at `GET /api/v1`.",
+        "responses": {
+          "200": {
+            "description": "Current studio and hardware status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          }
+        }
+      }
+    },
+    "/api/v1/profiles": {
+      "get": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "List all loaded profiles",
+        "description": "Returns the active profile number and an array of all loaded profiles (up to 64 on duckyPad Pro).",
+        "responses": {
+          "200": {
+            "description": "Profile list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "activeProfile",
+                    "count",
+                    "profiles"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "activeProfile": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "count": {
+                      "type": "integer",
+                      "example": 6
+                    },
+                    "profiles": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ProfileSummary"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "Create or duplicate a profile",
+        "description": "Creates a new profile with the given `name`, or duplicates an existing profile when `duplicateFrom` is provided.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 13,
+                    "description": "Profile name (up to 13 ASCII characters)",
+                    "example": "MediaCtrl"
+                  },
+                  "duplicateFrom": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 64,
+                    "description": "Optional existing profile number to clone slots and settings from"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Profile created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveProfileMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          }
+        }
+      }
+    },
+    "/api/v1/profiles/select": {
+      "post": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "Select and optionally switch hardware to a profile",
+        "description": "Selects a profile in DuckyDeck Studio and switches the physical duckyPad over USB HID when `switchHardware` is `true` (default).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "profile"
+                ],
+                "properties": {
+                  "profile": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 64,
+                    "description": "Target 1-based profile number (alias `number` also accepted)",
+                    "example": 2
+                  },
+                  "switchHardware": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "If true, sends HID GOTO_PROFILE to the connected duckyPad"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile selected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveProfileMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          }
+        }
+      }
+    },
+    "/api/v1/profiles/reorder": {
+      "post": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "Move a profile to a new index",
+        "description": "Reorders profiles by moving `fromProfile` to `toProfile` and renumbering folders sequentially.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "fromProfile",
+                  "toProfile"
+                ],
+                "properties": {
+                  "fromProfile": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 64,
+                    "example": 3
+                  },
+                  "toProfile": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 64,
+                    "example": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profiles reordered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimpleOkResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          }
+        }
+      }
+    },
+    "/api/v1/profiles/{number}": {
+      "parameters": [
+        {
+          "name": "number",
+          "in": "path",
+          "required": true,
+          "description": "1-based profile number (1..64)",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "Get full profile details including properties and all 26 slots",
+        "responses": {
+          "200": {
+            "description": "Full profile details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "profile",
+                    "properties",
+                    "slots"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "profile": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "properties": {
+                      "$ref": "#/components/schemas/ProfileProperties"
+                    },
+                    "slots": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SlotConfig"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "Update profile properties (colors, rotation, webhook, hardware directives)",
+        "description": "Updates profile properties such as `name`, `bgColor`, `hasKeydownColor`, `keydownColor`, `dimUnusedKeys`, `oledRotation` (`0|90|180|270`), `widgetRotation` (`-1|0|90|180|270`), `isUpperHs`, `extraConfigLines`, and `webhook`. Partial updates are merged with existing properties.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfilePropertiesUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile properties updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "profile",
+                    "properties"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "profile": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "properties": {
+                      "$ref": "#/components/schemas/ProfileProperties"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "Partially update profile properties",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfilePropertiesUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile properties updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "profile",
+                    "properties"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "profile": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "properties": {
+                      "$ref": "#/components/schemas/ProfileProperties"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "Delete a profile",
+        "description": "Deletes the specified profile (at least one profile must remain).",
+        "responses": {
+          "200": {
+            "description": "Profile deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveProfileMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestError"
+          }
+        }
+      }
+    },
+    "/api/v1/profiles/{number}/slots": {
+      "parameters": [
+        {
+          "name": "number",
+          "in": "path",
+          "required": true,
+          "description": "1-based profile number (1..64)",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Key & Encoder Slots"
+        ],
+        "summary": "List all 26 key & rotary encoder slots in a profile",
+        "description": "Returns slots 1..20 (mechanical keys) and 21..26 (rotary encoders 1 & 2 CCW/CW/Push) for the specified profile.",
+        "responses": {
+          "200": {
+            "description": "Array of 26 slot configurations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "profile",
+                    "slots"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "profile": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "slots": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SlotConfig"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      }
+    },
+    "/api/v1/profiles/{number}/slots/{slot}": {
+      "parameters": [
+        {
+          "name": "number",
+          "in": "path",
+          "required": true,
+          "description": "1-based profile number (1..64)",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          }
+        },
+        {
+          "name": "slot",
+          "in": "path",
+          "required": true,
+          "description": "1-based slot index (1..20 for mechanical keys, 21..26 for rotary encoders)",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 26
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Key & Encoder Slots"
+        ],
+        "summary": "Get configuration and duckyScript for a single slot",
+        "responses": {
+          "200": {
+            "description": "Slot configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "profile",
+                    "slot"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "profile": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "slot": {
+                      "$ref": "#/components/schemas/SlotConfig"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Key & Encoder Slots"
+        ],
+        "summary": "Update labels, RGB color, duckyScript, or host command for a slot",
+        "description": "Updates any combination of `labelLine1` (`l1`), `labelLine2` (`l2`), `widgetLabelLine1` (`wl1`), `widgetLabelLine2` (`wl2`), `colorHex` (or `r`/`g`/`b` + `useCustomColor`), `scriptContent` (`script`), `allowAbort`, `dontRepeat`, `hostApp` (`hostCmd`), or `applyTemplateId`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SlotUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Slot updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "profile",
+                    "slot"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "profile": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "slot": {
+                      "$ref": "#/components/schemas/SlotConfig"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Key & Encoder Slots"
+        ],
+        "summary": "Update slot configuration (alias for PUT)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SlotUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Slot updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "profile",
+                    "slot"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "profile": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "slot": {
+                      "$ref": "#/components/schemas/SlotConfig"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Key & Encoder Slots"
+        ],
+        "summary": "Partially update slot configuration",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SlotUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Slot updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "profile",
+                    "slot"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "profile": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "slot": {
+                      "$ref": "#/components/schemas/SlotConfig"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Key & Encoder Slots"
+        ],
+        "summary": "Clear a slot back to unconfigured state",
+        "responses": {
+          "200": {
+            "description": "Slot cleared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "profile",
+                    "slot",
+                    "message"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "profile": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "slot": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "\u2713 Cleared Slot 1"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profiles/{number}/slots/{slot}/trigger": {
+      "parameters": [
+        {
+          "name": "number",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          }
+        },
+        {
+          "name": "slot",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 26
+          }
+        }
+      ],
+      "post": {
+        "tags": [
+          "Key & Encoder Slots"
+        ],
+        "summary": "Trigger a slot's host action (shell command, Home Assistant action, or HTTP webhook)",
+        "description": "Executes the host-side action (`# @HOST_APP`, `# @HA_ACTION`, or `# @WEBHOOK`) configured on the given profile and slot.",
+        "responses": {
+          "200": {
+            "description": "Host action triggered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "profile",
+                    "slot",
+                    "hostCommand",
+                    "message"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "profile": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "slot": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "hostCommand": {
+                      "type": "string",
+                      "example": "notify-send 'Hello'"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      }
+    },
+    "/api/v1/dsvm/compile": {
+      "post": {
+        "tags": [
+          "duckyScript & Templates"
+        ],
+        "summary": "Compile duckyScript 3 source into DSVM bytecode (.dsb)",
+        "description": "Runs the DuckyDeck Studio DSVM compiler/validator on the supplied duckyScript source and returns diagnostics, bytecode size, CRC32, and hex-encoded `.dsb` bytes.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "script"
+                ],
+                "properties": {
+                  "script": {
+                    "type": "string",
+                    "example": "STRINGLN Hello from duckyPad Pro!"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Compilation result and diagnostics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "hasErrors",
+                    "sizeBytes",
+                    "crc32",
+                    "bytecodeHex",
+                    "diagnostics"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "hasErrors": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "sizeBytes": {
+                      "type": "integer",
+                      "example": 42
+                    },
+                    "crc32": {
+                      "type": "string",
+                      "example": "0x8a91b2c3"
+                    },
+                    "bytecodeHex": {
+                      "type": "string",
+                      "example": "01001a..."
+                    },
+                    "diagnostics": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "line": {
+                            "type": "integer"
+                          },
+                          "severity": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/templates": {
+      "get": {
+        "tags": [
+          "duckyScript & Templates"
+        ],
+        "summary": "List all built-in and user-saved key templates",
+        "responses": {
+          "200": {
+            "description": "Template catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "templates"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "templates": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pgv": {
+      "get": {
+        "tags": [
+          "Global Variables (PGV)"
+        ],
+        "summary": "Read all 16 Persistent Global Variables (PGV 1-16)",
+        "responses": {
+          "200": {
+            "description": "PGV values",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "pgv"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "pgv": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "index": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 16
+                          },
+                          "value": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Global Variables (PGV)"
+        ],
+        "summary": "Update one or more Persistent Global Variables (PGV 1-16)",
+        "description": "Accepts either `{ \"index\": 1, \"value\": 42 }` for a single variable or `{ \"values\": [{ \"index\": 1, \"value\": 42 }] }` for batch updates.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "required": [
+                      "index",
+                      "value"
+                    ],
+                    "properties": {
+                      "index": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 16
+                      },
+                      "value": {
+                        "type": "integer"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "values"
+                    ],
+                    "properties": {
+                      "values": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "index",
+                            "value"
+                          ],
+                          "properties": {
+                            "index": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 16
+                            },
+                            "value": {
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated PGV array",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "pgv"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "pgv": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Global Variables (PGV)"
+        ],
+        "summary": "Update Persistent Global Variables (alias for PUT)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated PGV array"
+          }
+        }
+      }
+    },
+    "/api/v1/leds": {
+      "post": {
+        "tags": [
+          "RGB LEDs & Device Control"
+        ],
+        "summary": "Live-override per-key RGB LEDs or restore profile LEDs over USB HID",
+        "description": "Controls physical RGB LEDs on the connected duckyPad over USB HID:\n- Set `\"restore\": true` to exit software LED override mode and restore hardware profile colors.\n- Provide `\"colorHex\": \"#ff0055\"` (and optional `\"slot\": 1..20`) or `\"leds\": [{ \"slot\": 1, \"colorHex\": \"#00ff88\" }]` to set live software LED colors.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "restore": {
+                    "type": "boolean",
+                    "description": "If true, restores hardware profile LED colors"
+                  },
+                  "slot": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20,
+                    "description": "Optional single key slot (1..20); if omitted with colorHex, sets all 20 keys"
+                  },
+                  "colorHex": {
+                    "type": "string",
+                    "example": "#38bdf8"
+                  },
+                  "r": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 255
+                  },
+                  "g": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 255
+                  },
+                  "b": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 255
+                  },
+                  "leds": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "slot"
+                      ],
+                      "properties": {
+                        "slot": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 20
+                        },
+                        "colorHex": {
+                          "type": "string"
+                        },
+                        "r": {
+                          "type": "integer"
+                        },
+                        "g": {
+                          "type": "integer"
+                        },
+                        "b": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "LED command applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimpleOkResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestError"
+          }
+        }
+      }
+    },
+    "/api/v1/sd/sync": {
+      "post": {
+        "tags": [
+          "RGB LEDs & Device Control"
+        ],
+        "summary": "Sync all profiles and compiled .dsb bytecode to the duckyPad microSD card",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sdRootPath": {
+                    "type": "string",
+                    "description": "Optional explicit mount path; if omitted, uses detected microSD mount or USB HID SD mode"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sync started or completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimpleOkResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sd/reload": {
+      "post": {
+        "tags": [
+          "RGB LEDs & Device Control"
+        ],
+        "summary": "Reload profiles from microSD card or local cache",
+        "responses": {
+          "200": {
+            "description": "Profiles reloaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveProfileMutationResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sd/mount": {
+      "post": {
+        "tags": [
+          "RGB LEDs & Device Control"
+        ],
+        "summary": "Reboot duckyPad Pro into USB Mass Storage (microSD Card) mode",
+        "responses": {
+          "200": {
+            "description": "Mount initiated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimpleOkResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sd/unmount": {
+      "post": {
+        "tags": [
+          "RGB LEDs & Device Control"
+        ],
+        "summary": "Flush, unmount, and eject mounted duckyPad microSD card",
+        "responses": {
+          "200": {
+            "description": "Unmount initiated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimpleOkResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/device/sleep": {
+      "post": {
+        "tags": [
+          "RGB LEDs & Device Control"
+        ],
+        "summary": "Put connected duckyPad into sleep mode (OLED & LEDs off)",
+        "responses": {
+          "200": {
+            "description": "Device sleeping",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimpleOkResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/device/wake": {
+      "post": {
+        "tags": [
+          "RGB LEDs & Device Control"
+        ],
+        "summary": "Wake connected duckyPad from sleep mode",
+        "responses": {
+          "200": {
+            "description": "Device woken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimpleOkResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/device/reboot": {
+      "post": {
+        "tags": [
+          "RGB LEDs & Device Control"
+        ],
+        "summary": "Soft-reboot connected duckyPad into normal operating mode",
+        "responses": {
+          "200": {
+            "description": "Device rebooting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimpleOkResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/device/sync-rtc": {
+      "post": {
+        "tags": [
+          "RGB LEDs & Device Control"
+        ],
+        "summary": "Synchronize duckyPad Pro real-time clock (RTC) with host system time",
+        "responses": {
+          "200": {
+            "description": "RTC synchronized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimpleOkResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/logs": {
+      "get": {
+        "tags": [
+          "System & Status"
+        ],
+        "summary": "Retrieve recent system, HID, script, and automation event logs",
+        "responses": {
+          "200": {
+            "description": "Event log entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "count",
+                    "events"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "API token passed via 'Authorization: Bearer <token>'"
+      },
+      "ApiTokenHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Token",
+        "description": "API token passed via 'X-API-Token: <token>'"
+      }
+    },
+    "responses": {
+      "BadRequestError": {
+        "description": "Invalid request parameters or payload",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "UnauthorizedError": {
+        "description": "Missing or invalid API token",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "NotFoundError": {
+        "description": "Requested profile, slot, or endpoint not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "error"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "example": false
+          },
+          "error": {
+            "type": "string",
+            "example": "Profile #99 not found"
+          }
+        }
+      },
+      "SimpleOkResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "statusMessage"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "example": true
+          },
+          "statusMessage": {
+            "type": "string",
+            "example": "\u2713 Operation completed"
+          }
+        }
+      },
+      "ActiveProfileMutationResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "activeProfile",
+          "activeProfileName",
+          "statusMessage"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "example": true
+          },
+          "activeProfile": {
+            "type": "integer",
+            "example": 1
+          },
+          "activeProfileName": {
+            "type": "string",
+            "example": "Default"
+          },
+          "statusMessage": {
+            "type": "string"
+          }
+        }
+      },
+      "StatusResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "version",
+          "connected",
+          "sdCardMode",
+          "modelName",
+          "firmwareVersion",
+          "serialNumber",
+          "activeProfile",
+          "activeProfileName",
+          "activeProfileBgColor",
+          "profileCount"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "example": true
+          },
+          "version": {
+            "type": "string",
+            "example": "0.1.24"
+          },
+          "connected": {
+            "type": "boolean",
+            "example": true
+          },
+          "sdCardMode": {
+            "type": "boolean",
+            "example": false
+          },
+          "sdMounted": {
+            "type": "boolean",
+            "example": false
+          },
+          "sdRootPath": {
+            "type": "string"
+          },
+          "sdSpaceSummary": {
+            "type": "string"
+          },
+          "sdSpaceUsedPercent": {
+            "type": "integer"
+          },
+          "sdSyncBusy": {
+            "type": "boolean"
+          },
+          "modelName": {
+            "type": "string",
+            "example": "duckyPad Pro"
+          },
+          "firmwareVersion": {
+            "type": "string",
+            "example": "1.0.0-studio"
+          },
+          "latestFirmwareVersion": {
+            "type": "string"
+          },
+          "firmwareUpdateAvailable": {
+            "type": "boolean"
+          },
+          "serialNumber": {
+            "type": "string",
+            "example": "DP24A1B2"
+          },
+          "activeProfile": {
+            "type": "integer",
+            "example": 1
+          },
+          "activeProfileName": {
+            "type": "string",
+            "example": "Default"
+          },
+          "activeProfileBgColor": {
+            "type": "string",
+            "example": "#38bdf8"
+          },
+          "profileCount": {
+            "type": "integer",
+            "example": 6
+          },
+          "autoSwitcherEnabled": {
+            "type": "boolean"
+          },
+          "activeWindowClass": {
+            "type": "string"
+          },
+          "activeWindowTitle": {
+            "type": "string"
+          },
+          "statusMessage": {
+            "type": "string"
+          }
+        }
+      },
+      "ProfileSummary": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "integer",
+            "example": 1
+          },
+          "name": {
+            "type": "string",
+            "example": "Default"
+          },
+          "bgColor": {
+            "type": "string",
+            "example": "#38bdf8"
+          },
+          "hasKeydownColor": {
+            "type": "boolean"
+          },
+          "keydownColor": {
+            "type": "string"
+          },
+          "dimUnusedKeys": {
+            "type": "boolean"
+          },
+          "isLandscape": {
+            "type": "boolean"
+          },
+          "oledRotation": {
+            "type": "integer",
+            "enum": [
+              0,
+              90,
+              180,
+              270
+            ]
+          },
+          "widgetRotation": {
+            "type": "integer",
+            "enum": [
+              -1,
+              0,
+              90,
+              180,
+              270
+            ]
+          },
+          "effectiveWidgetRotation": {
+            "type": "integer",
+            "enum": [
+              0,
+              90,
+              180,
+              270
+            ]
+          },
+          "isUpperHs": {
+            "type": "boolean"
+          },
+          "configuredCount": {
+            "type": "integer"
+          }
+        }
+      },
+      "ProfileProperties": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "folderName": {
+            "type": "string"
+          },
+          "bgColor": {
+            "type": "string"
+          },
+          "hasKeydownColor": {
+            "type": "boolean"
+          },
+          "keydownColor": {
+            "type": "string"
+          },
+          "dimUnusedKeys": {
+            "type": "boolean"
+          },
+          "isLandscape": {
+            "type": "boolean"
+          },
+          "oledRotation": {
+            "type": "integer",
+            "enum": [
+              0,
+              90,
+              180,
+              270
+            ]
+          },
+          "widgetRotation": {
+            "type": "integer",
+            "enum": [
+              -1,
+              0,
+              90,
+              180,
+              270
+            ]
+          },
+          "effectiveWidgetRotation": {
+            "type": "integer",
+            "enum": [
+              0,
+              90,
+              180,
+              270
+            ]
+          },
+          "isUpperHs": {
+            "type": "boolean"
+          },
+          "extraConfigLines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "configuredSlotCount": {
+            "type": "integer"
+          },
+          "webhook": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "method": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "headers": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "ProfilePropertiesUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 13
+          },
+          "bgColor": {
+            "type": "string",
+            "example": "#38bdf8"
+          },
+          "hasKeydownColor": {
+            "type": "boolean"
+          },
+          "keydownColor": {
+            "type": "string",
+            "example": "#ffffff"
+          },
+          "dimUnusedKeys": {
+            "type": "boolean"
+          },
+          "oledRotation": {
+            "type": "integer",
+            "enum": [
+              0,
+              90,
+              180,
+              270
+            ],
+            "description": "Physical hardware OLED orientation in degrees"
+          },
+          "widgetRotation": {
+            "type": "integer",
+            "enum": [
+              -1,
+              0,
+              90,
+              180,
+              270
+            ],
+            "description": "Desktop OLED Widget orientation override (-1 = follow oledRotation, or 0/90/180/270)"
+          },
+          "isUpperHs": {
+            "type": "boolean"
+          },
+          "extraConfigLines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "webhook": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "method": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "headers": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "SlotConfig": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 26
+          },
+          "l1": {
+            "type": "string",
+            "description": "Hardware OLED line 1 (max 5 chars in portrait, 4 in landscape)"
+          },
+          "l2": {
+            "type": "string",
+            "description": "Hardware OLED line 2 (max 5 chars in portrait, 4 in landscape)"
+          },
+          "wl1": {
+            "type": "string",
+            "description": "Extended Desktop Widget label line 1 (up to 14 chars, host-only)"
+          },
+          "wl2": {
+            "type": "string",
+            "description": "Extended Desktop Widget label line 2 (up to 14 chars, host-only)"
+          },
+          "r": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "g": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "b": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "useCustomColor": {
+            "type": "boolean"
+          },
+          "allowAbort": {
+            "type": "boolean"
+          },
+          "dontRepeat": {
+            "type": "boolean"
+          },
+          "script": {
+            "type": "string"
+          },
+          "hasScript": {
+            "type": "boolean"
+          },
+          "hostCmd": {
+            "type": "string"
+          }
+        }
+      },
+      "SlotUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "labelLine1": {
+            "type": "string",
+            "description": "Hardware OLED label line 1 (alias `l1`)"
+          },
+          "labelLine2": {
+            "type": "string",
+            "description": "Hardware OLED label line 2 (alias `l2`)"
+          },
+          "widgetLabelLine1": {
+            "type": "string",
+            "description": "Extended Desktop Widget label line 1 (alias `wl1`)"
+          },
+          "widgetLabelLine2": {
+            "type": "string",
+            "description": "Extended Desktop Widget label line 2 (alias `wl2`)"
+          },
+          "colorHex": {
+            "type": "string",
+            "example": "#22c55e"
+          },
+          "useCustomColor": {
+            "type": "boolean"
+          },
+          "r": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "g": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "b": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "scriptContent": {
+            "type": "string",
+            "description": "duckyScript 3 source code (alias `script`)"
+          },
+          "allowAbort": {
+            "type": "boolean"
+          },
+          "dontRepeat": {
+            "type": "boolean"
+          },
+          "hostApp": {
+            "type": "string",
+            "description": "Host shell command / Home Assistant / Webhook directive (alias `hostCmd`)"
+          },
+          "applyTemplateId": {
+            "type": "string",
+            "description": "Optional template ID to apply to this slot"
+          }
+        }
+      }
+    }
+  }
+}

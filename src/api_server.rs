@@ -347,6 +347,31 @@ fn handle_client_connection(
         return;
     }
 
+    // Unauthenticated OpenAPI 3.0 / Swagger specifications
+    if req.method == "GET"
+        && (req.path == "/api/v1/openapi.json" || req.path == "/api/v1/swagger.json")
+    {
+        const SWAGGER_JSON: &str = include_str!("../docs/swagger.json");
+        write_http_response(
+            &mut stream,
+            200,
+            "application/json; charset=utf-8",
+            SWAGGER_JSON,
+        );
+        return;
+    }
+
+    if req.method == "GET" && req.path == "/api/v1/openapi.yaml" {
+        const OPENAPI_YAML: &str = include_str!("../docs/openapi.yaml");
+        write_http_response(
+            &mut stream,
+            200,
+            "application/yaml; charset=utf-8",
+            OPENAPI_YAML,
+        );
+        return;
+    }
+
     // Enforce Bearer token authentication when enabled
     if cfg.require_auth {
         let expected = cfg.token.trim().as_bytes();
