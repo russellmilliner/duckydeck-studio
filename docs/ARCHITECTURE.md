@@ -222,10 +222,34 @@ The custom Color Picker window (`duckyColorPickerWindow` in [`src/qml/Main.qml`]
 
 | Path | Format | Contents |
 | :--- | :--- | :--- |
-| `~/.config/duckydeck-studio/kwin_rules.json` | JSON | Auto-Switcher rules, fallback profile, UI area text scales, tray preferences, and **Saved Colors** palette. |
+| [`~/.config/duckydeck-studio/kwin_rules.json`](file:///home/millinr/.config/duckydeck-studio/kwin_rules.json) | JSON | Auto-Switcher rules, fallback profile, UI area text scales, tray preferences, and **Saved Colors** palette. |
+| `~/.config/duckydeck-studio/oled_widget_geometry.json` | JSON | Multi-monitor screen name (`screen_name`), position (`x`, `y`), size (`width`, `height`), `transparency_percent`, `always_on_top`, `frameless_mode`, and `show_rgb_dots` for the Desktop OLED Widget. |
+| `~/.config/duckydeck-studio/profile_templates.json` | JSON | User-created reusable profile templates saved from existing profiles (merged with built-in templates). |
 | `~/.local/share/duckydeck-studio/profiles_cache/<serial>/` | Directory | Offline mirror of all hardware profiles (`profile_info.txt`, `profile_*/config.txt`, `key*.txt`, `key*.dsb`) and `.sd_baseline/` snapshot for diffing. |
 | `~/.local/share/duckydeck-studio/logs/system_events.log` | Plaintext Log | Timestamped diagnostic event log (`DEVICE`, `PROFILE`, `AUTOSWITCH`, `SD_SYNC`, `SCRIPT`, `WEB_API`, `APP_LAUNCH`, `SYSTEM`). |
 | `~/.local/share/org.kde.syntax-highlighting/syntax/duckyscript3.xml` | Kate XML | KDE `KSyntaxHighlighting` grammar definition for duckyScript 3. |
+
+---
+
+## 9.5 Hardware Portability vs. Host-Dependent Execution Model
+
+DuckyDeck Studio distinguishes between **Standalone Hardware-Portable Capabilities** (stored on the FAT32 microSD card and executed directly by the STM32 / DSVM v2 firmware on any host OS) and **Host-Dependent Capabilities** (which require the `duckydeck-studio` process running on the Linux host PC):
+
+1. **Hardware-Portable (Autonomous on microSD):**
+   - Compiled `.dsb` bytecode (`STRING`, `KEYDOWN`, `DELAY`, `MOUSE_MOVE`, `SWC_SET`, `OLED_PRINT`, `GOTO_PROFILE`, etc.).
+   - `config.txt` hardware directives: `BG_COLOR`, `KEYDOWN_COLOR`, `SWCOLOR_<N>`, `DIM_UNUSED_KEYS`, `IS_UPPER_HS`, `IS_LANDSCAPE`, `OLED_ROTATION` (`0°/90°/180°/270°`), and 5-character `z<N>`/`x<N>` OLED labels.
+2. **Host-Dependent (`💻 Requires DuckyDeck Studio Running`):**
+   - **Application Launcher (`// @DUCKYDECK_APPLAUNCH`)** and **Web API Webhooks (`// @DUCKYDECK_WEBAPI`)**: The key script writes a trigger token to `_GV19` / `_GV18` (or emits `F13..F24`), which is polled over USB HID by `duckydeck-studio` and executed on the host PC.
+   - **KWin Wayland Active-Window Auto-Switcher**: Driven by the KWin D-Bus script and `zbus` listener inside `duckydeck-studio`.
+   - **Desktop OLED Companion Widget (`OledDesktopWidget.qml`), 24-Char Extended Labels (`wz<N>`/`wx<N>`), and Independent Widget Rotation (`DW_ROTATION`)**: Rendered on the host desktop by `duckydeck-studio`.
+   - **Live USB HID RGB Streaming**: Pushes real-time LED frames via HID command `0x14` from `duckydeck-studio`.
+
+---
+
+## 9.6 Firmware Versioning (`v1.0.0`) & Upstream dekuNukem Releases
+
+- **DuckyDeck Studio Firmware (`v1.0.0`)**: Built from `firmware/duckyPad-Pro/firmware/` (`DPP_FW_1.0.0_<crc32>.bin`) and identified over USB HID `GET_INFO` (`0x01`) via the `'D', 'D', 'S'` signature at bytes `20..22`. Adds `0°/90°/180°/270°` hardware OLED orientation and `0x80..0x9F` 1-bit monochrome key icons.
+- **Upstream dekuNukem Firmware**: Official dekuNukem `.bin` files are not stored in the repository; users download official releases directly from `https://github.com/dekuNukem/duckyPad-Pro/releases` and flash them via **Browse Custom .bin...** in the Firmware Manager.
 
 ---
 
@@ -247,3 +271,4 @@ install -Dm755 target/release/duckydeck-studio ~/.local/bin/duckydeck-studio
 2. Add the backing field to `pub struct DeviceControllerRust` (with an initial value in `Default::default()`).
 3. Implement any `#[qinvokable]` method on `impl qobject::DeviceController`.
 4. Note that CXX-Qt automatically converts `snake_case` Rust identifiers to `camelCase` in QML (e.g. `save_palette_color` becomes `deviceController.savePaletteColor(...)`).
+

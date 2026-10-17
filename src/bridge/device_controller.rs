@@ -1147,7 +1147,7 @@ impl Default for DeviceControllerRust {
             .as_ref()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
-        let sd_detected = !sd_mount_str.is_empty() || detect_unmounted_duckypad_sd("");
+        let sd_detected = !sd_mount_str.is_empty() || detect_unmounted_duckypad_sd("").is_some();
         let (sync_state_str, sync_detail_str) = check_profile_sync_status(
             &sn_str,
             &profiles,
@@ -7366,7 +7366,7 @@ impl qobject::DeviceController {
         } else {
             String::new()
         };
-        let detected = is_mounted || detect_unmounted_duckypad_sd(&disk_label);
+        let detected = is_mounted || detect_unmounted_duckypad_sd(&disk_label).is_some();
         if *self.sd_card_detected() != detected {
             self.as_mut().set_sd_card_detected(detected);
         }
@@ -7609,7 +7609,7 @@ impl qobject::DeviceController {
                     "name": t.name,
                     "description": t.description,
                     "category": t.category,
-                    "builtin": t.builtin,
+                    "builtin": t.is_builtin,
                     "slotCount": slot_count,
                     "bgColor": bg_hex,
                     "oledRotation": t.profile.oled_rotation_degrees(),
@@ -7716,10 +7716,7 @@ impl qobject::DeviceController {
                 return false;
             }
             let next_num = max_num + 1;
-            let mut new_prof = match instantiate_profile_from_template(&tpl_id, next_num, &clean_name) {
-                Ok(p) => p,
-                Err(_) => return false,
-            };
+            let mut new_prof = instantiate_profile_from_template(&tpl_id, next_num, &clean_name);
             let is_dpp = rust
                 .sd_root_path
                 .as_ref()
@@ -7785,9 +7782,7 @@ impl qobject::DeviceController {
             };
             let cur_name = prof.name.clone();
             let cur_folder = prof.folder_name_override.clone();
-            let Ok(inst) = instantiate_profile_from_template(&tpl_id, target_num, &cur_name) else {
-                return false;
-            };
+            let inst = instantiate_profile_from_template(&tpl_id, target_num, &cur_name);
             *prof = inst;
             prof.folder_name_override = cur_folder;
             if let Some(root) = sd_root {

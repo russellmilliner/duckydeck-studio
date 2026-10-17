@@ -3451,10 +3451,12 @@ pub fn list_available_duckypad_pro_firmwares(current_version: &str) -> Vec<Firmw
             let Some((maj, min, pat)) = parse_semver(ver_str) else {
                 continue;
             };
+            if ver_str == "3.4.0" {
+                continue;
+            }
             let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
             let is_studio_custom = is_bundled_studio_dir
-                || matches!(crc_str.as_str(), "ad2acc81" | "6c4977a9" | "9a8c8902")
-                || (maj, min, pat) >= (3, 4, 0);
+                || matches!(crc_str.as_str(), "ad2acc81");
             let is_official = !is_studio_custom;
             let (channel, release_date, notes) =
                 firmware_release_metadata(ver_str, is_studio_custom);
@@ -3535,7 +3537,7 @@ pub fn builtin_profile_templates() -> Vec<ProfileTemplate> {
 
     // 2. Media & Productivity Template
     let mut media_slots = BTreeMap::new();
-    let mut add_slot = |map: &mut BTreeMap<usize, DuckyKeySlot>,
+    let add_slot = |map: &mut BTreeMap<usize, DuckyKeySlot>,
                         slot: usize,
                         l1: &str,
                         l2: &str,
@@ -5870,12 +5872,13 @@ mod tests {
         );
         // First entry should be v1.0.0 (DuckyDeck Studio Firmware)
         assert_eq!(list[0].version, "1.0.0");
-        assert_eq!(list[0].flavor, "duckydeck_studio");
+        assert_eq!(list[0].vendor, "DuckyDeck Studio");
+        assert!(!list[0].is_official);
         assert!(list[0].supports_monochrome_icons);
         // Ensure no official dekuNukem binaries are bundled in the repo
         for entry in &list {
             assert_eq!(
-                entry.flavor, "duckydeck_studio",
+                entry.vendor, "DuckyDeck Studio",
                 "Only DuckyDeck Studio firmware should be bundled in the repo, found: {}",
                 entry.filename
             );
@@ -5998,8 +6001,7 @@ mod tests {
         // Verify built-in profile templates instantiate cleanly
         let templates = list_all_profile_templates();
         assert!(templates.len() >= 4);
-        let inst = instantiate_profile_from_template("builtin_media_stream", 2, "My Stream")
-            .expect("instantiate builtin_media_stream");
+        let inst = instantiate_profile_from_template("builtin_media_productivity", 2, "My Stream");
         assert_eq!(inst.number, 2);
         assert_eq!(inst.name, "My Stream");
         assert!(inst.slots.contains_key(&1));

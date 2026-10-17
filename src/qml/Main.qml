@@ -4786,6 +4786,12 @@ Kirigami.ApplicationWindow {
         QQC2.MenuSeparator {}
 
         QQC2.MenuItem {
+            icon.name: "document-new-from-template"
+            text: qsTr("Profile Templates Manager...")
+            onTriggered: profileTemplatesDialog.openGeneral()
+        }
+
+        QQC2.MenuItem {
             icon.name: "document-new"
             text: qsTr("New Profile Group...")
             onTriggered: newProfileGroupDialog.openWithDefaults()
@@ -11240,7 +11246,8 @@ Kirigami.ApplicationWindow {
         property string profKeydownColor: "#ffffff"
         property bool profDimUnusedKeys: true
         property bool profIsLandscape: false
-        property int profOledRotation: 0 // 0 | 90 | 180
+        property int profOledRotation: 0 // 0 | 90 | 180 | 270
+        property int profWidgetRotation: -1 // -1 (Follow OLED) | 0 | 90 | 180 | 270
         property bool profIsUpperHs: false
         property string profExtraConfigLines: ""
         property int profConfiguredSlots: 0
@@ -11263,6 +11270,9 @@ Kirigami.ApplicationWindow {
                 profilePropertiesWindow.profOledRotation = obj.oledRotation !== undefined
                     ? Number(obj.oledRotation)
                     : (obj.isLandscape ? 90 : 0)
+                profilePropertiesWindow.profWidgetRotation = obj.widgetRotation !== undefined
+                    ? Number(obj.widgetRotation)
+                    : -1
                 profilePropertiesWindow.profIsUpperHs = Boolean(obj.isUpperHs)
                 profilePropertiesWindow.profExtraConfigLines = Array.isArray(obj.extraConfigLines) ? obj.extraConfigLines.join("\n") : ""
                 profilePropertiesWindow.profConfiguredSlots = obj.configuredSlotCount || 0
@@ -11270,6 +11280,7 @@ Kirigami.ApplicationWindow {
                 profilePropertiesWindow.profName = deviceController.activeProfileName
                 profilePropertiesWindow.profBgColor = deviceController.activeProfileBgColor
                 profilePropertiesWindow.profOledRotation = 0
+                profilePropertiesWindow.profWidgetRotation = -1
             }
             profNameField.text = profilePropertiesWindow.profName
             profBgColorField.text = profilePropertiesWindow.profBgColor
@@ -11296,8 +11307,9 @@ Kirigami.ApplicationWindow {
                 hasKeydownColor: profKeydownEnableCheck.checked,
                 keydownColor: profKeydownColorField.text.trim(),
                 dimUnusedKeys: profDimUnusedCheck.checked,
-                isLandscape: profilePropertiesWindow.profOledRotation === 90,
+                isLandscape: profilePropertiesWindow.profOledRotation === 90 || profilePropertiesWindow.profOledRotation === 270,
                 oledRotation: profilePropertiesWindow.profOledRotation,
+                widgetRotation: profilePropertiesWindow.profWidgetRotation,
                 isUpperHs: profUpperHsCheck.checked,
                 extraConfigLines: extraArr
             }
@@ -11563,16 +11575,17 @@ Kirigami.ApplicationWindow {
 
                             RowLayout {
                                 Layout.fillWidth: true
-                                spacing: 8
+                                spacing: 6
 
                                 QQC2.Label {
                                     text: qsTr("OLED Orientation:")
                                     font.bold: true
                                     font.pixelSize: 12
+                                    Layout.preferredWidth: 165
                                 }
 
                                 QQC2.Button {
-                                    text: qsTr("0° (Portrait Normal)")
+                                    text: qsTr("0° (Portrait)")
                                     checkable: true
                                     checked: profilePropertiesWindow.profOledRotation === 0
                                     highlighted: profilePropertiesWindow.profOledRotation === 0
@@ -11604,7 +11617,98 @@ Kirigami.ApplicationWindow {
                                     }
                                 }
 
+                                QQC2.Button {
+                                    text: qsTr("270° (Landscape CCW)")
+                                    checkable: true
+                                    checked: profilePropertiesWindow.profOledRotation === 270
+                                    highlighted: profilePropertiesWindow.profOledRotation === 270
+                                    onClicked: {
+                                        profilePropertiesWindow.profOledRotation = 270
+                                        profilePropertiesWindow.saveAllProfileProperties()
+                                    }
+                                }
+
                                 Item { Layout.fillWidth: true }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 6
+
+                                QQC2.Label {
+                                    text: qsTr("💻 Widget Orientation:")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                    Layout.preferredWidth: 165
+                                    QQC2.ToolTip.visible: dwRotHover.hovered
+                                    QQC2.ToolTip.text: qsTr("💻 Host App Only: Configure the Desktop OLED Widget orientation separately from the physical hardware OLED screen (stored as DW_ROTATION in config.txt).")
+                                    HoverHandler { id: dwRotHover }
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("Follow OLED (%1°)").arg(profilePropertiesWindow.profOledRotation)
+                                    checkable: true
+                                    checked: profilePropertiesWindow.profWidgetRotation < 0
+                                    highlighted: profilePropertiesWindow.profWidgetRotation < 0
+                                    onClicked: {
+                                        profilePropertiesWindow.profWidgetRotation = -1
+                                        profilePropertiesWindow.saveAllProfileProperties()
+                                    }
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("0°")
+                                    checkable: true
+                                    checked: profilePropertiesWindow.profWidgetRotation === 0
+                                    highlighted: profilePropertiesWindow.profWidgetRotation === 0
+                                    onClicked: {
+                                        profilePropertiesWindow.profWidgetRotation = 0
+                                        profilePropertiesWindow.saveAllProfileProperties()
+                                    }
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("90°")
+                                    checkable: true
+                                    checked: profilePropertiesWindow.profWidgetRotation === 90
+                                    highlighted: profilePropertiesWindow.profWidgetRotation === 90
+                                    onClicked: {
+                                        profilePropertiesWindow.profWidgetRotation = 90
+                                        profilePropertiesWindow.saveAllProfileProperties()
+                                    }
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("180°")
+                                    checkable: true
+                                    checked: profilePropertiesWindow.profWidgetRotation === 180
+                                    highlighted: profilePropertiesWindow.profWidgetRotation === 180
+                                    onClicked: {
+                                        profilePropertiesWindow.profWidgetRotation = 180
+                                        profilePropertiesWindow.saveAllProfileProperties()
+                                    }
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("270°")
+                                    checkable: true
+                                    checked: profilePropertiesWindow.profWidgetRotation === 270
+                                    highlighted: profilePropertiesWindow.profWidgetRotation === 270
+                                    onClicked: {
+                                        profilePropertiesWindow.profWidgetRotation = 270
+                                        profilePropertiesWindow.saveAllProfileProperties()
+                                    }
+                                }
+
+                                Item { Layout.fillWidth: true }
+                            }
+
+                            QQC2.Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: 10
+                                color: Kirigami.Theme.disabledTextColor
+                                text: qsTr("Note: Physical OLED 180° & 270° require DuckyDeck Studio Firmware v1.0.0+. Desktop Widget Orientation (💻) applies to the on-screen Desktop OLED Widget while DuckyDeck Studio is running.")
                             }
 
                             QQC2.CheckBox {
@@ -11655,6 +11759,17 @@ Kirigami.ApplicationWindow {
                                         hardwareCanvas.syncSlotsFromController()
                                     }
                                     lightingAnimatorDialog.openFor("profile", 0)
+                                }
+                            }
+
+                            QQC2.Button {
+                                icon.name: "bookmark-new"
+                                text: qsTr("Save as Template...")
+                                onClicked: {
+                                    profileTemplatesDialog.openSaveFromProfile(
+                                        profilePropertiesWindow.profNumber,
+                                        profNameField.text.trim()
+                                    )
                                 }
                             }
 
@@ -13139,7 +13254,7 @@ Kirigami.ApplicationWindow {
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
                                 checked: lightingAnimatorDialog.animPushToHardware
-                                text: qsTr("Stream live RGB animation frames to physical duckyPad LEDs over USB HID")
+                                text: qsTr("💻 [Host App Required — Not Hardware-Portable] Stream live RGB animation frames to physical duckyPad LEDs over USB HID while DuckyDeck Studio is running")
                                 font.bold: true
                                 font.pixelSize: 11
                                 onToggled: lightingAnimatorDialog.animPushToHardware = checked
@@ -13159,7 +13274,7 @@ Kirigami.ApplicationWindow {
                                 Layout.minimumWidth: 0
                                 visible: lightingAnimatorDialog.targetScope === "key" && (lightingAnimatorDialog.animTrigger === "keypress" || lightingAnimatorDialog.animTrigger === "both")
                                 checked: lightingAnimatorDialog.animCompileIntoScript
-                                text: qsTr("Embed standalone DuckyScript 3 SWC_SET / SWC_RESET animation block into Key %1's script (runs on hardware even without PC app)")
+                                text: qsTr("✅ [Hardware-Portable — Runs Without PC App] Embed standalone DuckyScript 3 SWC_SET / SWC_RESET animation block into Key %1's script on microSD")
                                     .arg(lightingAnimatorDialog.targetKeySlot)
                                 font.pixelSize: 11
                                 onToggled: lightingAnimatorDialog.animCompileIntoScript = checked
