@@ -45,8 +45,12 @@
 - **🚀 Launch Application Builder (No-Code Desktop App Launcher):**
   - Search installed Linux desktop applications (`.desktop` entries from system, user, and Flatpak directories with icons and categories) or configure custom CLI commands, arguments, working directories, and terminal execution.
   - Triggers instantaneously over USB HID via Persistent Global Variable `_GV19` (no keyboard shortcut conflicts!) or via `F13–F24` global hotkeys (`evdev`).
-- **🌐 Web API / Webhook Builder:**
+- **🌐 Web API / Webhook Builder & 🏠 Home Assistant Entity Search:**
   - Trigger HTTP `GET`, `POST`, `PUT`, `PATCH`, and `DELETE` requests (Home Assistant, Miniflux, OBS, custom webhooks) with custom headers and JSON bodies directly from any duckyPad key via USB HID (`_GV18`) or `F13–F24`.
+  - **Built-in Home Assistant Web API Browser:** Connect to your Home Assistant instance (`base_url` + Long-Lived Access Token) to search devices and entities across domains (`light`, `switch`, `scene`, `script`, `automation`, `button`, `input_boolean`, `media_player`, `cover`, `fan`, `climate`, `lock`) and bind `toggle` / `turn_on` / `turn_off` / `trigger` service calls to any key in one click.
+  - **🔔 Profile Change Webhooks:** Automatically fire a per-profile HTTP webhook (configured in **Profile Properties**) and/or a global profile-change webhook (configured in **Settings**) whenever the active profile changes via UI, hardware buttons, Window Auto-Switcher, or the REST API, with template placeholders (`{{profile_number}}`, `{{profile_name}}`, `{{previous_profile_number}}`, `{{previous_profile_name}}`, `{{source}}`, `{{device_serial}}`, `{{timestamp}}`).
+- **🔌 Built-In HTTP REST API Server (`/api/v1/*`) for Remote Control & Programming:**
+  - Optional embedded HTTP/1.1 REST API server configurable in **Settings → HTTP REST API Server** (defaults to `127.0.0.1:28491`, disabled by default, with 160-bit `ddk_...` Bearer token authentication) for controlling and programming every function of the duckyPad remotely (switching/creating/editing/deleting profiles, programming key labels/colors/icons/scripts, reading/writing `_GV0.._GV31`, setting LEDs/OLED, triggering slots, and syncing to microSD).
 - **🪟 KDE Plasma 6 Wayland Auto-Switcher:**
   - Pure-Rust `zbus` D-Bus listener integrated with KWin Wayland to automatically switch duckyPad hardware profiles when you focus different applications or browser tabs.
   - Includes a **🎯 Crosshair Window Picker** to bind any open window or web app tab in one click, and automatically pauses while the Key Editor is open.
@@ -62,10 +66,11 @@
   - Independent text size scaling (`75%–160%`) for every area of the application, plus a dynamic KDE `StatusNotifierItem` System Tray icon showing the active profile number and color badge.
 - **🗂️ Reusable Profile Templates:**
   - Create new profiles from built-in templates (*Blank*, *Media & Streaming*, *IDE & Developer*, *Desktop App & Web API Launcher*) or copy any existing profile into a reusable custom template (`~/.config/duckydeck-studio/profile_templates.json`).
-- **🖥️ Desktop OLED Companion Widget & Independent Orientation (`0° / 90° / 180° / 270°`):**
-  - Floating, multi-monitor-aware desktop replica of the duckyPad OLED screen with persistent screen/position/transparency settings, optional 24-character extended labels (`wzN`/`wxN`), and independent **Desktop Widget Orientation** (`Follow OLED`, `0°`, `90°`, `180°`, `270°`) configurable per profile in **Profile Properties**.
-- **🔧 DuckyDeck Studio Firmware `v1.0.0`:**
-  - Custom firmware build (`v1.0.0`, badged with the DuckyDeck Studio icon in the status bar) supporting `0°`, `90°`, `180°`, and `270°` hardware OLED orientations and crisp 1-bit monochrome key icons. Official dekuNukem firmware binaries can be downloaded directly from **[dekuNukem's duckyPad Pro Releases](https://github.com/dekuNukem/duckyPad-Pro/releases)** and installed via the built-in Firmware Manager.
+- **🖥️ Desktop OLED Companion Widget & Instant Independent Orientation (`0° / 90° / 180° / 270°`):**
+  - Floating, multi-monitor-aware desktop replica of the duckyPad OLED screen with persistent screen/position/transparency settings, optional 24-character extended labels (`wzN`/`wxN`), and independent **Desktop Widget Orientation** (`Follow OLED`, `0°`, `90°`, `180°`, `270°`) configurable per profile in **Profile Properties** that applies immediately without requiring a microSD card sync.
+- **🔧 DuckyDeck Studio Firmware `v1.0.0` & Official Firmware Catalog Downloader:**
+  - Custom firmware build (`v1.0.0`, badged with the DuckyDeck Studio icon in the status bar) supporting `0°`, `90°`, `180°`, and `270°` hardware OLED orientations and crisp 1-bit monochrome key icons.
+  - **Official Firmware Catalog Downloader:** Fetch the list of official dekuNukem firmwares directly inside the **Firmware Manager** window, download `.bin` images with IEEE CRC32 verification, and install them in one click.
 
 ---
 
@@ -82,17 +87,66 @@ DuckyDeck Studio clearly badges capabilities in the UI as either **✅ Hardware-
 | **Physical OLED Orientation (`0° / 90° / 180° / 270°`) & Monochrome Icons** | ✅ **Hardware-Portable** *(180°/270° & icons require DuckyDeck Studio Firmware v1.0.0)* | Stored in `config.txt` (`IS_LANDSCAPE` / `OLED_ROTATION`) and rendered on the hardware OLED screen. |
 | **Manual Profile Switching** (`GOTO_PROFILE`, `NEXT_PROFILE`, `PREV_PROFILE`, `+`/`-` button hold) | ✅ **Hardware-Portable** | Handled natively on the duckyPad hardware. |
 | **🚀 Launch Desktop Application (`💻APP` badge)** | 💻 **Requires DuckyDeck Studio Running** | Triggered over USB HID (`_GV19`/`_GV31`) or `evdev` (`F13–F24`) by the DuckyDeck Studio host process. **Will not launch apps if DuckyDeck Studio is closed or on another PC.** |
-| **🌐 Web API / HTTP Webhooks (`💻API` badge)** | 💻 **Requires DuckyDeck Studio Running** | Outbound HTTP requests are dispatched by DuckyDeck Studio on the host PC. **The duckyPad hardware has no network stack and cannot fire webhooks standalone.** |
+| **🌐 Web API / HTTP Webhooks & Home Assistant Triggers (`💻API` badge)** | 💻 **Requires DuckyDeck Studio Running** | Outbound HTTP requests are dispatched by DuckyDeck Studio on the host PC. **The duckyPad hardware has no network stack and cannot fire webhooks standalone.** |
+| **🔔 Profile Change Webhooks (Per-Profile & Global)** | 💻 **Requires DuckyDeck Studio Running** | Fired by DuckyDeck Studio when a profile switch is initiated or detected on the host PC. Does not require a microSD card sync. |
+| **🔌 HTTP REST API Server (`/api/v1/*`)** | 💻 **Requires DuckyDeck Studio Running** | Hosted by the DuckyDeck Studio process (`127.0.0.1:28491` by default). |
 | **🪟 KWin Wayland Active-Window Auto-Switcher** | 💻 **Requires DuckyDeck Studio Running** | Uses KDE Plasma 6 KWin D-Bus tracking on the host PC to send USB HID profile-switch commands. Without the host app, switch profiles manually on the keypad. |
-| **🖥️ Desktop OLED Widget, 24-Char Extended Widget Labels (`wzN`/`wxN`) & Widget Orientation (`DW_ROTATION`)** | 💻 **Requires DuckyDeck Studio Running** | Displayed on your computer monitor by DuckyDeck Studio. The physical OLED always displays the 5-char `zN`/`xN` labels and hardware `OLED_ROTATION`. |
+| **🖥️ Desktop OLED Widget, 24-Char Extended Widget Labels (`wzN`/`wxN`) & Widget Orientation (`DW_ROTATION`)** | 💻 **Requires DuckyDeck Studio Running** | Displayed on your computer monitor by DuckyDeck Studio; orientation changes apply immediately without requiring a microSD card sync. |
 | **✨ Live USB HID RGB Animation Streaming** | 💻 **Requires DuckyDeck Studio Running** | Streams RGB frames over USB HID (`0x14`) from DuckyDeck Studio. Use the *"Embed standalone DuckyScript 3 SWC_SET"* option if you want portable on-device key lighting. |
+
+---
+
+## 🔌 HTTP REST API Server & Security Implications
+
+DuckyDeck Studio includes a full-featured **HTTP REST API Server** (configurable in **Settings → HTTP REST API Server**) for remotely controlling and programming all functions of the duckyPad from scripts, Home Assistant, Node-RED, Stream Deck bridges, or custom tools.
+
+- **Default Listen Address & Port:** `127.0.0.1:28491` (Disabled by default; Bearer Token Authentication enabled by default).
+- **Authentication Header:** Pass your generated 160-bit token (`ddk_<40 hex chars>`) via `Authorization: Bearer <token>` or `X-API-Token: <token>`.
+
+### ⚠️ Security Implications & Best Practices
+1. **Full Hardware & Host Control:** An authenticated REST API client has complete administrative control over the connected duckyPad and host integrations. It can switch/create/modify/delete profiles and key scripts, sync changes to the microSD card, compile and execute DuckyScript keystroke/mouse macros, manipulate LEDs/OLED/PGVs, and invoke host actions (`APP_LAUNCH`, `WEB_API`, `SYS_ACTION`) configured on slots.
+2. **Loopback (`127.0.0.1`) vs. Network Binding (`0.0.0.0`):**
+   - Keeping the listen address set to **`127.0.0.1` (default)** ensures that only local processes running on your computer can connect to the API.
+   - Binding to **`0.0.0.0`** or a LAN IP address exposes the server over **unencrypted HTTP** to every device on your local network.
+3. **Token Protection & Transport Security:**
+   - Always keep **Require Bearer Token Authentication** enabled, especially when binding to a non-loopback address.
+   - Treat your API token (`ddk_...`) as a sensitive secret and rotate it immediately using **Generate Token** in Settings if you suspect it was exposed.
+   - Never expose the plain-HTTP port directly to the public internet or untrusted networks; place it behind a TLS/HTTPS reverse proxy (Caddy, Nginx) or use an encrypted tunnel (SSH port forwarding, WireGuard, Tailscale).
+
+### REST API Endpoint Summary (`/api/v1/*`)
+| Method & Path | Description |
+| :--- | :--- |
+| `GET /api/v1/health` | Unauthenticated liveness probe (`{"ok":true,"status":"healthy"}`). |
+| `GET /api/v1/status` | Full device connection, firmware, active profile, SD sync, and auto-switcher state. |
+| `POST /api/v1/device/reconnect` | Re-scan USB HID devices and reload profiles. |
+| `POST /api/v1/device/sleep` \| `/wake` \| `/reboot` | Put duckyPad to sleep, wake it up, or reboot it (`{"bootloader":false}`). |
+| `POST /api/v1/device/sync-sd` | Compile all `.dsb` binaries and synchronize profiles to the microSD card. |
+| `GET /api/v1/profiles` | List all profiles and their properties. |
+| `POST /api/v1/profiles` | Create a new profile (`{"name":"Streaming"}`). |
+| `POST /api/v1/profiles/select` | Switch active profile (`{"profile":2}`). |
+| `POST /api/v1/profiles/next` \| `/prev` | Step to next or previous profile. |
+| `GET /api/v1/profiles/{num}` | Get full profile details, webhook config, and all 58 slots. |
+| `PUT /api/v1/profiles/{num}` | Update profile properties (`name`, `bgColor`, `oledRotation`, `widgetRotation`, `webhook`, etc.). |
+| `DELETE /api/v1/profiles/{num}` | Delete profile `{num}`. |
+| `POST /api/v1/profiles/{num}/duplicate` | Duplicate profile `{num}`. |
+| `POST /api/v1/profiles/{num}/move` | Reorder profile (`{"direction":-1}` or `1`). |
+| `GET /api/v1/profiles/{num}/slots` | List all 58 slots in profile `{num}`. |
+| `GET /api/v1/profiles/{num}/slots/{slot}` | Get configuration and scripts for a specific slot (`1..58`). |
+| `PUT /api/v1/profiles/{num}/slots/{slot}` | Program a slot (`line1`, `line2`, `widgetLine1`, `widgetLine2`, `colorHex`, `iconName`, `script`, `releaseScript`, `allowAbort`, `dontRepeat`). |
+| `DELETE /api/v1/profiles/{num}/slots/{slot}` | Clear/reset slot `{slot}` in profile `{num}`. |
+| `POST /api/v1/profiles/{num}/slots/{slot}/trigger` | Remotely execute the slot's configured action/webhook/app-launch/macro. |
+| `GET /api/v1/pgv` \| `POST /api/v1/pgv` | Read all 32 PGVs (`_GV0.._GV31`) or write one (`{"index":0,"value":42}`). |
+| `POST /api/v1/leds` \| `POST /api/v1/leds/restore` | Override RGB LEDs (`{"fill":"#38bdf8"}` or `{"slot":1,"color":"#ff0055"}`) or restore profile LEDs. |
+| `POST /api/v1/oled/text` \| `/clear` \| `/restore` | Draw text on the OLED (`{"x":0,"y":0,"text":"Hello"}`), clear, or restore profile OLED. |
+| `POST /api/v1/compile` | Validate/compile DuckyScript 3 source (`{"script":"STRING Hello\nENTER"}`). |
+| `POST /api/v1/auto-switcher` | Enable/disable the KWin Wayland Auto-Switcher (`{"enabled":true}`). |
 
 ---
 
 ## 📚 Documentation
 
 - **📖 [Web User Documentation & Manual (`docs/user-guide.html`)](docs/user-guide.html)** — Interactive dark/light web manual covering every feature, workflow, and troubleshooting tip (also accessible inside the app via **☰ → User Documentation** or **About → User Guide**).
-- **🏗️ [Architecture & Design Developer Documentation (`docs/ARCHITECTURE.md`)](docs/ARCHITECTURE.md)** — In-depth technical documentation with Mermaid diagrams detailing the CXX-Qt bridge, USB HID protocol, DSVM v2 bytecode compiler, and KWin Wayland Auto-Switcher.
+- **🏗️ [Architecture & Design Developer Documentation (`docs/ARCHITECTURE.md`)](docs/ARCHITECTURE.md)** — In-depth technical documentation with Mermaid diagrams detailing the CXX-Qt bridge, USB HID protocol, DSVM v2 bytecode compiler, HTTP REST API server, and KWin Wayland Auto-Switcher.
 
 ---
 
@@ -116,12 +170,13 @@ duckydeck-studio/
 │       └── install-udev-rules.sh               # Helper script to install & reload udev rules
 └── src/
     ├── main.rs                            # Qt 6 / Breeze entrypoint & syntax registration
+    ├── api_server.rs                      # Embedded HTTP/1.1 REST API Server (/api/v1/*) with Bearer auth
     ├── tray.rs                            # StatusNotifierItem system tray & dynamic profile icon
     ├── bridge/device_controller.rs        # #[cxx_qt::bridge] DeviceController QObject
     ├── hardware/
     │   ├── dsvm.rs                        # Pure-Rust duckyScript 3 -> DSVM v2 (.dsb) bytecode compiler
     │   ├── permissions.rs                 # /sys/class/hidraw permission checker & Polkit installer
-    │   └── storage.rs                     # USB HID protocol (0x18/0x19/0x1B) & microSD parser/sync
+    │   └── storage.rs                     # USB HID protocol (0x18/0x19/0x1B), HA client & microSD sync
     ├── kwin/auto_switcher.rs              # Pure-Rust zbus listener for Plasma 6 KWin Wayland window focus
     ├── ai/shortcut_scraper.rs             # Local ~/.config/kglobalshortcutsrc parser for AI grounding
     └── qml/

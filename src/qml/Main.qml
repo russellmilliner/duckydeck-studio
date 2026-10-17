@@ -3047,10 +3047,10 @@ Kirigami.ApplicationWindow {
     Window {
         id: profileTemplatesDialog
         title: qsTr("Profile Templates Manager — DuckyDeck Studio")
-        width: 780
-        height: 620
-        minimumWidth: 680
-        minimumHeight: 500
+        width: 840
+        height: 660
+        minimumWidth: 640
+        minimumHeight: 520
         visible: false
         transientParent: root
         modality: Qt.WindowModal
@@ -3084,6 +3084,17 @@ Kirigami.ApplicationWindow {
                 return templatesList[selectedIndex]
             }
             return null
+        }
+
+        function deleteTemplateById(tplId, tplName) {
+            if (!tplId) return
+            if (deviceController.deleteProfileTemplate(tplId)) {
+                profileTemplatesDialog.refreshTemplates()
+                root.refreshSidebarTemplateCombo()
+                profileTemplatesDialog.statusMessage = qsTr("✓ Deleted custom template '%1'.").arg(tplName || tplId)
+            } else {
+                profileTemplatesDialog.statusMessage = deviceController.statusMessage
+            }
         }
 
         function openGeneral() {
@@ -3139,29 +3150,26 @@ Kirigami.ApplicationWindow {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 16
+            anchors.margins: 14
             spacing: 10
 
-            RowLayout {
+            ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 10
-
-                ColumnLayout {
+                spacing: 2
+                QQC2.Label {
                     Layout.fillWidth: true
-                    spacing: 2
-                    QQC2.Label {
-                        text: qsTr("Profile Templates — Create Profiles from Templates or Save Existing Profiles as Templates")
-                        font.bold: true
-                        font.pixelSize: 14
-                        color: Kirigami.Theme.textColor
-                    }
-                    QQC2.Label {
-                        text: qsTr("Choose a built-in or custom template to create a new profile or overwrite an existing profile, or copy any existing profile into a reusable template.")
-                        font.pixelSize: 11
-                        color: Kirigami.Theme.disabledTextColor
-                        wrapMode: Text.WordWrap
-                        Layout.fillWidth: true
-                    }
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Profile Templates — Create Profiles from Templates or Save Existing Profiles as Templates")
+                    font.bold: true
+                    font.pixelSize: 14
+                    color: Kirigami.Theme.textColor
+                }
+                QQC2.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Choose a built-in or custom template to create a new profile or overwrite an existing profile, or copy any existing profile into a reusable template.")
+                    font.pixelSize: 11
+                    color: Kirigami.Theme.disabledTextColor
                 }
             }
 
@@ -3176,11 +3184,15 @@ Kirigami.ApplicationWindow {
 
                 ColumnLayout {
                     id: saveTplCol
-                    anchors.fill: parent
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
                     anchors.margins: 8
                     spacing: 6
 
                     QQC2.Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
                         text: qsTr("Copy Existing Profile to Reusable Template:")
                         font.bold: true
                         font.pixelSize: 12
@@ -3198,7 +3210,8 @@ Kirigami.ApplicationWindow {
 
                         QQC2.ComboBox {
                             id: saveSourceProfileCombo
-                            Layout.preferredWidth: 180
+                            Layout.preferredWidth: 185
+                            Layout.minimumWidth: 130
                             property var profileNums: []
                             property var profileNames: []
                             function syncChoices(preferredNum) {
@@ -3230,19 +3243,17 @@ Kirigami.ApplicationWindow {
                             }
                         }
 
-                        QQC2.TextField {
-                            id: tplSaveNameField
-                            Layout.preferredWidth: 180
-                            maximumLength: 36
-                            placeholderText: qsTr("Template Name...")
-                            selectByMouse: true
+                        QQC2.Label {
+                            text: qsTr("Template Name:")
+                            font.pixelSize: 11
                         }
 
                         QQC2.TextField {
-                            id: tplSaveDescField
+                            id: tplSaveNameField
                             Layout.fillWidth: true
-                            maximumLength: 140
-                            placeholderText: qsTr("Description (optional)...")
+                            Layout.minimumWidth: 140
+                            maximumLength: 36
+                            placeholderText: qsTr("Template Name...")
                             selectByMouse: true
                         }
 
@@ -3261,11 +3272,30 @@ Kirigami.ApplicationWindow {
                                 )) {
                                     profileTemplatesDialog.refreshTemplates()
                                     root.refreshSidebarTemplateCombo()
+                                    profileTemplatesDialog.selectedIndex = Math.max(0, profileTemplatesDialog.templatesList.length - 1)
                                     profileTemplatesDialog.statusMessage = qsTr("✓ Saved Profile #%1 as template '%2'.")
                                         .arg(srcProf)
                                         .arg(tplSaveNameField.text.trim())
                                 }
                             }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        QQC2.Label {
+                            text: qsTr("Description:")
+                            font.pixelSize: 11
+                        }
+
+                        QQC2.TextField {
+                            id: tplSaveDescField
+                            Layout.fillWidth: true
+                            maximumLength: 140
+                            placeholderText: qsTr("Description (optional)...")
+                            selectByMouse: true
                         }
                     }
                 }
@@ -3275,6 +3305,7 @@ Kirigami.ApplicationWindow {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                Layout.minimumHeight: 200
                 radius: 6
                 color: Kirigami.Theme.alternateBackgroundColor
                 border.color: Qt.alpha(Kirigami.Theme.textColor, 0.2)
@@ -3292,10 +3323,12 @@ Kirigami.ApplicationWindow {
 
                     delegate: Rectangle {
                         id: tplDelegate
-                        width: tplListView.width - 12
-                        implicitHeight: tplDelegateCol.implicitHeight + 14
+                        width: Math.max(200, tplListView.width - 14)
+                        implicitHeight: tplDelegateCol.implicitHeight + 16
                         radius: 5
                         readonly property bool isSel: profileTemplatesDialog.selectedIndex === index
+                        readonly property bool isBuiltIn: Boolean(modelData.builtIn !== undefined ? modelData.builtIn : modelData.builtin)
+                        readonly property int keyCount: Number(modelData.configuredSlotCount !== undefined ? modelData.configuredSlotCount : (modelData.slotCount || 0))
                         color: isSel
                             ? Qt.alpha(Kirigami.Theme.highlightColor, 0.22)
                             : (tplRowMouse.containsMouse ? Qt.alpha(Kirigami.Theme.textColor, 0.06) : Kirigami.Theme.backgroundColor)
@@ -3304,11 +3337,25 @@ Kirigami.ApplicationWindow {
                             : Qt.alpha(Kirigami.Theme.textColor, 0.18)
                         border.width: isSel ? 2 : 1
 
+                        MouseArea {
+                            id: tplRowMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            z: 0
+                            onClicked: {
+                                profileTemplatesDialog.selectedIndex = index
+                            }
+                        }
+
                         ColumnLayout {
                             id: tplDelegateCol
-                            anchors.fill: parent
-                            anchors.margins: 7
-                            spacing: 3
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 8
+                            spacing: 4
+                            z: 2
 
                             RowLayout {
                                 Layout.fillWidth: true
@@ -3328,14 +3375,16 @@ Kirigami.ApplicationWindow {
                                     font.bold: true
                                     font.pixelSize: 13
                                     color: Kirigami.Theme.textColor
+                                    elide: Text.ElideRight
+                                    Layout.maximumWidth: 260
                                 }
 
                                 Rectangle {
                                     radius: 4
-                                    color: modelData.builtIn
+                                    color: tplDelegate.isBuiltIn
                                         ? Qt.alpha("#0ea5e9", 0.20)
                                         : Qt.alpha("#a855f7", 0.22)
-                                    border.color: modelData.builtIn
+                                    border.color: tplDelegate.isBuiltIn
                                         ? Qt.alpha("#38bdf8", 0.65)
                                         : Qt.alpha("#c084fc", 0.70)
                                     border.width: 1
@@ -3347,7 +3396,7 @@ Kirigami.ApplicationWindow {
                                         anchors.centerIn: parent
                                         font.bold: true
                                         font.pixelSize: 10
-                                        text: modelData.builtIn ? qsTr("BUILT-IN") : qsTr("CUSTOM TEMPLATE")
+                                        text: tplDelegate.isBuiltIn ? qsTr("BUILT-IN") : qsTr("CUSTOM TEMPLATE")
                                         color: Kirigami.Theme.textColor
                                     }
                                 }
@@ -3357,25 +3406,20 @@ Kirigami.ApplicationWindow {
                                     font.pixelSize: 11
                                     color: Kirigami.Theme.disabledTextColor
                                     text: qsTr("%1 keys configured  •  OLED %2°")
-                                        .arg(modelData.configuredSlotCount || 0)
+                                        .arg(tplDelegate.keyCount)
                                         .arg(modelData.oledRotation || 0)
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
                                 }
 
-                                Item { Layout.fillWidth: true }
-
                                 QQC2.Button {
-                                    visible: !modelData.builtIn
+                                    visible: !tplDelegate.isBuiltIn
                                     icon.name: "edit-delete"
                                     text: qsTr("Delete")
-                                    implicitHeight: 24
-                                    font.pixelSize: 10
-                                    z: 5
+                                    implicitHeight: 26
+                                    font.pixelSize: 11
                                     onClicked: {
-                                        if (deviceController.deleteProfileTemplate(modelData.id)) {
-                                            profileTemplatesDialog.refreshTemplates()
-                                            root.refreshSidebarTemplateCombo()
-                                            profileTemplatesDialog.statusMessage = qsTr("Deleted template '%1'.").arg(modelData.name)
-                                        }
+                                        profileTemplatesDialog.deleteTemplateById(modelData.id, modelData.name)
                                     }
                                 }
                             }
@@ -3388,17 +3432,6 @@ Kirigami.ApplicationWindow {
                                 color: Qt.alpha(Kirigami.Theme.textColor, 0.85)
                             }
                         }
-
-                        MouseArea {
-                            id: tplRowMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            z: 1
-                            onClicked: {
-                                profileTemplatesDialog.selectedIndex = index
-                            }
-                        }
                     }
                 }
             }
@@ -3407,74 +3440,107 @@ Kirigami.ApplicationWindow {
             QQC2.Label {
                 visible: profileTemplatesDialog.statusMessage.length > 0
                 Layout.fillWidth: true
+                wrapMode: Text.WordWrap
                 text: profileTemplatesDialog.statusMessage
                 font.bold: true
                 font.pixelSize: 11
                 color: Kirigami.Theme.positiveTextColor
             }
 
-            // Footer Actions: Create New Profile from Template OR Apply to Existing Profile
-            RowLayout {
+            // Footer Actions: two clean rows to prevent horizontal overflow
+            ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 8
+                spacing: 6
 
-                QQC2.TextField {
-                    id: tplNewProfileNameField
-                    Layout.preferredWidth: 170
-                    maximumLength: 13
-                    placeholderText: profileTemplatesDialog.selectedTemplate()
-                        ? profileTemplatesDialog.selectedTemplate().defaultProfileName
-                        : qsTr("New profile name...")
-                    selectByMouse: true
-                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
 
-                QQC2.Button {
-                    icon.name: "list-add"
-                    text: qsTr("Create New Profile from Selected Template")
-                    highlighted: true
-                    enabled: profileTemplatesDialog.selectedTemplate() !== null
-                    onClicked: {
-                        const tpl = profileTemplatesDialog.selectedTemplate()
-                        if (!tpl) return
-                        const pName = tplNewProfileNameField.text.trim().length > 0
-                            ? tplNewProfileNameField.text.trim()
-                            : (tpl.defaultProfileName || tpl.name)
-                        if (deviceController.createProfileFromTemplate(tpl.id, pName)) {
-                            root.syncSidebarProfilesFromController()
-                            hardwareCanvas.syncProfilesFromController()
-                            root.refreshSelectedSlotFromController()
-                            profileTemplatesDialog.statusMessage = qsTr("✓ Created new profile '%1' from template '%2'.").arg(pName).arg(tpl.name)
+                    QQC2.Label {
+                        text: qsTr("New Profile Name:")
+                        font.pixelSize: 11
+                    }
+
+                    QQC2.TextField {
+                        id: tplNewProfileNameField
+                        Layout.preferredWidth: 180
+                        Layout.minimumWidth: 120
+                        maximumLength: 16
+                        placeholderText: profileTemplatesDialog.selectedTemplate()
+                            ? (profileTemplatesDialog.selectedTemplate().defaultProfileName || profileTemplatesDialog.selectedTemplate().name || qsTr("New profile name..."))
+                            : qsTr("New profile name...")
+                        selectByMouse: true
+                    }
+
+                    QQC2.Button {
+                        icon.name: "list-add"
+                        text: qsTr("Create New Profile from Selected")
+                        highlighted: true
+                        enabled: profileTemplatesDialog.selectedTemplate() !== null
+                        onClicked: {
+                            const tpl = profileTemplatesDialog.selectedTemplate()
+                            if (!tpl) return
+                            const pName = tplNewProfileNameField.text.trim().length > 0
+                                ? tplNewProfileNameField.text.trim()
+                                : (tpl.defaultProfileName || tpl.name)
+                            if (deviceController.createProfileFromTemplate(pName, tpl.id)) {
+                                root.syncSidebarProfilesFromController()
+                                hardwareCanvas.syncProfilesFromController()
+                                root.refreshSelectedSlotFromController()
+                                profileTemplatesDialog.statusMessage = qsTr("✓ Created new profile '%1' from template '%2'.").arg(pName).arg(tpl.name)
+                            }
                         }
                     }
+
+                    Item { Layout.fillWidth: true }
                 }
 
-                QQC2.Button {
-                    visible: profileTemplatesDialog.targetProfileNumber > 0
-                    icon.name: "document-new-from-template"
-                    text: qsTr("Apply to Profile #%1 (%2)")
-                        .arg(profileTemplatesDialog.targetProfileNumber)
-                        .arg(profileTemplatesDialog.targetProfileName || deviceController.activeProfileName)
-                    enabled: profileTemplatesDialog.selectedTemplate() !== null
-                    onClicked: {
-                        const tpl = profileTemplatesDialog.selectedTemplate()
-                        if (!tpl) return
-                        if (deviceController.applyTemplateToProfile(profileTemplatesDialog.targetProfileNumber, tpl.id)) {
-                            root.syncSidebarProfilesFromController()
-                            hardwareCanvas.syncProfilesFromController()
-                            root.refreshSelectedSlotFromController()
-                            profileTemplatesDialog.statusMessage = qsTr("✓ Applied template '%1' to Profile #%2.")
-                                .arg(tpl.name)
-                                .arg(profileTemplatesDialog.targetProfileNumber)
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    QQC2.Button {
+                        visible: profileTemplatesDialog.targetProfileNumber > 0
+                        icon.name: "document-new-from-template"
+                        text: qsTr("Apply to Profile #%1 (%2)")
+                            .arg(profileTemplatesDialog.targetProfileNumber)
+                            .arg(profileTemplatesDialog.targetProfileName || deviceController.activeProfileName)
+                        enabled: profileTemplatesDialog.selectedTemplate() !== null
+                        onClicked: {
+                            const tpl = profileTemplatesDialog.selectedTemplate()
+                            if (!tpl) return
+                            if (deviceController.applyTemplateToProfile(profileTemplatesDialog.targetProfileNumber, tpl.id)) {
+                                root.syncSidebarProfilesFromController()
+                                hardwareCanvas.syncProfilesFromController()
+                                root.refreshSelectedSlotFromController()
+                                profileTemplatesDialog.statusMessage = qsTr("✓ Applied template '%1' to Profile #%2.")
+                                    .arg(tpl.name)
+                                    .arg(profileTemplatesDialog.targetProfileNumber)
+                            }
                         }
                     }
-                }
 
-                Item { Layout.fillWidth: true }
+                    QQC2.Button {
+                        readonly property var curTpl: profileTemplatesDialog.selectedTemplate()
+                        readonly property bool canDelete: curTpl !== null && !(curTpl.builtIn !== undefined ? curTpl.builtIn : curTpl.builtin)
+                        visible: canDelete
+                        enabled: canDelete
+                        icon.name: "edit-delete"
+                        text: qsTr("Delete Selected Template")
+                        onClicked: {
+                            const tpl = profileTemplatesDialog.selectedTemplate()
+                            if (!tpl) return
+                            profileTemplatesDialog.deleteTemplateById(tpl.id, tpl.name)
+                        }
+                    }
 
-                QQC2.Button {
-                    icon.name: "window-close"
-                    text: qsTr("Close")
-                    onClicked: profileTemplatesDialog.close()
+                    Item { Layout.fillWidth: true }
+
+                    QQC2.Button {
+                        icon.name: "window-close"
+                        text: qsTr("Close")
+                        onClicked: profileTemplatesDialog.close()
+                    }
                 }
             }
         }
@@ -3794,28 +3860,73 @@ Kirigami.ApplicationWindow {
         }
     }
 
-    // Settings Window (Appearance, System Integration, and Per-Area Text Sizes)
+    // Settings Window (Appearance, System Integration, HTTP REST API, Global Webhook, and Per-Area Text Sizes)
     Window {
         id: settingsDialog
         title: qsTr("Settings — DuckyDeck Studio")
         readonly property int availScreenHeight: (root.screen && root.screen.desktopAvailableHeight > 0)
             ? root.screen.desktopAvailableHeight
             : (Screen.desktopAvailableHeight > 0 ? Screen.desktopAvailableHeight : 960)
-        readonly property int targetFullHeight: Math.max(700, settingsContentCol.implicitHeight + 132)
-        width: 680
+        readonly property int targetFullHeight: Math.max(760, settingsContentCol.implicitHeight + 132)
+        width: 780
         height: Math.min(availScreenHeight - 48, targetFullHeight)
-        minimumWidth: 540
-        minimumHeight: 380
+        minimumWidth: 560
+        minimumHeight: 440
         visible: false
         transientParent: root
         modality: Qt.WindowModal
-        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
 
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
         Kirigami.Theme.inherit: false
         color: Kirigami.Theme.backgroundColor
 
+        property bool showRestToken: false
+        property string restApiFeedback: ""
+        property string globalWebhookFeedback: ""
+
+        function syncRestApiFieldsFromController() {
+            restApiEnableCheck.checked = deviceController.restApiEnabled
+            restApiIpField.text = deviceController.restApiBindIp || "127.0.0.1"
+            restApiPortField.text = String(deviceController.restApiPort || 28491)
+            restApiRequireAuthCheck.checked = deviceController.restApiRequireAuth
+            restApiTokenField.text = deviceController.restApiToken || ""
+        }
+
+        function syncGlobalWebhookFieldsFromController() {
+            try {
+                const wh = JSON.parse(deviceController.getGlobalProfileWebhookJson())
+                globalWebhookEnableCheck.checked = Boolean(wh.enabled)
+                const mIdx = globalWebhookMethodCombo.indexOfValue((wh.method || "POST").toUpperCase())
+                globalWebhookMethodCombo.currentIndex = mIdx >= 0 ? mIdx : 1
+                globalWebhookUrlField.text = wh.url || ""
+                globalWebhookHeadersArea.text = wh.headers !== undefined ? String(wh.headers) : "Content-Type: application/json"
+                globalWebhookBodyArea.text = wh.body !== undefined
+                    ? String(wh.body)
+                    : "{\"event\":\"profile_changed\",\"profile_number\":{{profile_number}},\"profile_name\":\"{{profile_name}}\",\"previous_profile_number\":{{previous_profile_number}},\"previous_profile_name\":\"{{previous_profile_name}}\",\"source\":\"{{source}}\",\"device_serial\":\"{{device_serial}}\",\"timestamp\":{{timestamp}}}"
+            } catch (e) {
+                globalWebhookEnableCheck.checked = false
+            }
+        }
+
+        function saveGlobalWebhookConfig() {
+            const payload = {
+                enabled: globalWebhookEnableCheck.checked,
+                method: globalWebhookMethodCombo.currentText || "POST",
+                url: globalWebhookUrlField.text.trim(),
+                headers: globalWebhookHeadersArea.text,
+                body: globalWebhookBodyArea.text
+            }
+            if (deviceController.saveGlobalProfileWebhookJson(JSON.stringify(payload))) {
+                settingsDialog.globalWebhookFeedback = qsTr("✓ Saved global profile-change webhook configuration.")
+            }
+        }
+
         function open() {
+            settingsDialog.syncRestApiFieldsFromController()
+            settingsDialog.syncGlobalWebhookFieldsFromController()
+            settingsDialog.restApiFeedback = ""
+            settingsDialog.globalWebhookFeedback = ""
             settingsDialog.height = Math.min(settingsDialog.availScreenHeight - 48, settingsDialog.targetFullHeight)
             settingsDialog.show()
             settingsDialog.raise()
@@ -3862,7 +3973,7 @@ Kirigami.ApplicationWindow {
                 Layout.fillHeight: true
                 clip: true
                 contentWidth: width
-                contentHeight: settingsContentCol.implicitHeight + 8
+                contentHeight: settingsContentCol.implicitHeight + 12
                 boundsBehavior: Flickable.StopAtBounds
                 flickableDirection: Flickable.VerticalFlick
 
@@ -3885,7 +3996,448 @@ Kirigami.ApplicationWindow {
                     )
                     spacing: 12
 
-                    // Section 1: Text Sizes by Application Area
+                    // Section 1: HTTP REST API Server (Remote Control & Programming)
+                    Rectangle {
+                        Kirigami.Theme.colorSet: Kirigami.Theme.View
+                        Kirigami.Theme.inherit: false
+                        Layout.fillWidth: true
+                        implicitHeight: restApiCol.implicitHeight + 20
+                        radius: 8
+                        color: Kirigami.Theme.alternateBackgroundColor
+                        border.color: deviceController.restApiEnabled
+                            ? Kirigami.Theme.positiveTextColor
+                            : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: restApiCol
+                            anchors.fill: parent
+                            anchors.margins: 10
+                            spacing: 8
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("🌐 HTTP REST API SERVER (REMOTE CONTROL & PROGRAMMING)")
+                                    font.bold: true
+                                    font.pixelSize: 11
+                                    color: Kirigami.Theme.disabledTextColor
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WordWrap
+                                }
+
+                                Rectangle {
+                                    radius: 4
+                                    color: deviceController.restApiEnabled
+                                        ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.18)
+                                        : Qt.alpha(Kirigami.Theme.textColor, 0.1)
+                                    border.color: deviceController.restApiEnabled
+                                        ? Kirigami.Theme.positiveTextColor
+                                        : Qt.alpha(Kirigami.Theme.textColor, 0.3)
+                                    border.width: 1
+                                    implicitWidth: restStatusBadgeLbl.implicitWidth + 12
+                                    implicitHeight: 22
+
+                                    QQC2.Label {
+                                        id: restStatusBadgeLbl
+                                        anchors.centerIn: parent
+                                        text: deviceController.restApiStatus
+                                        font.family: "monospace"
+                                        font.bold: true
+                                        font.pixelSize: 10
+                                        color: deviceController.restApiEnabled
+                                            ? Kirigami.Theme.positiveTextColor
+                                            : Kirigami.Theme.disabledTextColor
+                                    }
+                                }
+                            }
+
+                            // Prominent Security Implications Box
+                            Rectangle {
+                                Layout.fillWidth: true
+                                radius: 6
+                                color: Qt.alpha("#f59e0b", 0.14)
+                                border.color: Qt.alpha("#f59e0b", 0.65)
+                                border.width: 1
+                                implicitHeight: restSecWarnCol.implicitHeight + 14
+
+                                ColumnLayout {
+                                    id: restSecWarnCol
+                                    anchors.fill: parent
+                                    anchors.margins: 7
+                                    spacing: 4
+
+                                    QQC2.Label {
+                                        text: qsTr("⚠ Security Implications — Please Read Before Enabling")
+                                        font.bold: true
+                                        font.pixelSize: 11
+                                        color: "#fbbf24"
+                                        Layout.fillWidth: true
+                                        wrapMode: Text.WordWrap
+                                    }
+
+                                    QQC2.Label {
+                                        text: qsTr("• Full Device & Host Control: Any client with access to this API can switch/create/edit/delete profiles and keys, write to the microSD card, inject duckyScript keystroke macros onto the host PC, control RGB LEDs and the OLED display, and trigger host actions (APP_LAUNCH, WEB_API, SYS_ACTION) bound to keys.\n• Network Exposure (127.0.0.1 vs 0.0.0.0): Binding to 127.0.0.1 (Default) restricts access strictly to local processes on this computer. Binding to 0.0.0.0 or a LAN IP exposes an unencrypted plain-HTTP server to all devices on your local network.\n• Token Authentication: Keep Bearer Token Authentication enabled at all times (send 'Authorization: Bearer <token>' or 'X-API-Token: <token>'). Never expose this plain-HTTP port directly to the public internet; use an HTTPS reverse proxy or SSH/WireGuard tunnel if remote access is required.")
+                                        font.pixelSize: 10
+                                        color: Kirigami.Theme.textColor
+                                        Layout.fillWidth: true
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
+                            }
+
+                            QQC2.CheckBox {
+                                id: restApiEnableCheck
+                                Layout.fillWidth: true
+                                text: qsTr("Enable HTTP REST API Server (/api/v1/*)")
+                                font.bold: true
+                            }
+
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("Listen IP:")
+                                    font.bold: true
+                                    font.pixelSize: 11
+                                    height: 28
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+
+                                QQC2.TextField {
+                                    id: restApiIpField
+                                    width: 140
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                    selectByMouse: true
+                                    placeholderText: "127.0.0.1"
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("127.0.0.1 (Localhost Default)")
+                                    implicitHeight: 28
+                                    font.pixelSize: 10
+                                    onClicked: restApiIpField.text = "127.0.0.1"
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("0.0.0.0 (All Interfaces / LAN)")
+                                    implicitHeight: 28
+                                    font.pixelSize: 10
+                                    onClicked: restApiIpField.text = "0.0.0.0"
+                                }
+
+                                QQC2.Label {
+                                    text: qsTr("Port:")
+                                    font.bold: true
+                                    font.pixelSize: 11
+                                    height: 28
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+
+                                QQC2.TextField {
+                                    id: restApiPortField
+                                    width: 80
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                    selectByMouse: true
+                                    placeholderText: "28491"
+                                    validator: IntValidator { bottom: 1024; top: 65535 }
+                                }
+                            }
+
+                            QQC2.CheckBox {
+                                id: restApiRequireAuthCheck
+                                Layout.fillWidth: true
+                                text: qsTr("Require Bearer Token Authentication (Recommended — header 'Authorization: Bearer <token>')")
+                                font.bold: true
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 6
+
+                                QQC2.Label {
+                                    text: qsTr("API Token:")
+                                    font.bold: true
+                                    font.pixelSize: 11
+                                }
+
+                                QQC2.TextField {
+                                    id: restApiTokenField
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 140
+                                    Layout.preferredWidth: 1
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                    selectByMouse: true
+                                    echoMode: settingsDialog.showRestToken ? TextInput.Normal : TextInput.Password
+                                    placeholderText: qsTr("Click 'Generate Token' to create a 160-bit API token")
+                                }
+
+                                QQC2.Button {
+                                    text: settingsDialog.showRestToken ? qsTr("Hide") : qsTr("Show")
+                                    implicitHeight: 28
+                                    onClicked: settingsDialog.showRestToken = !settingsDialog.showRestToken
+                                }
+
+                                QQC2.Button {
+                                    icon.name: "edit-copy"
+                                    text: qsTr("Copy Token")
+                                    implicitHeight: 28
+                                    onClicked: {
+                                        const prevShow = settingsDialog.showRestToken
+                                        settingsDialog.showRestToken = true
+                                        restApiTokenField.selectAll()
+                                        restApiTokenField.copy()
+                                        restApiTokenField.deselect()
+                                        settingsDialog.showRestToken = prevShow
+                                        settingsDialog.restApiFeedback = qsTr("✓ Copied API Bearer token to clipboard.")
+                                    }
+                                }
+
+                                QQC2.Button {
+                                    icon.name: "view-refresh"
+                                    text: qsTr("Generate Token")
+                                    implicitHeight: 28
+                                    onClicked: {
+                                        const newTok = deviceController.regenerateRestApiToken()
+                                        restApiTokenField.text = newTok
+                                        settingsDialog.restApiFeedback = qsTr("✓ Generated new 160-bit API token (ddk_...).")
+                                    }
+                                }
+                            }
+
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Button {
+                                    icon.name: "dialog-ok-apply"
+                                    text: qsTr("Apply & Restart REST API Server")
+                                    highlighted: true
+                                    font.bold: true
+                                    onClicked: {
+                                        const portNum = parseInt(restApiPortField.text.trim(), 10) || 28491
+                                        if (deviceController.applyRestApiConfig(
+                                            restApiEnableCheck.checked,
+                                            restApiIpField.text.trim(),
+                                            portNum,
+                                            restApiRequireAuthCheck.checked,
+                                            restApiTokenField.text.trim()
+                                        )) {
+                                            settingsDialog.syncRestApiFieldsFromController()
+                                            settingsDialog.restApiFeedback = qsTr("✓ %1").arg(deviceController.restApiStatus)
+                                        } else {
+                                            settingsDialog.restApiFeedback = qsTr("✗ %1").arg(deviceController.statusText)
+                                        }
+                                    }
+                                }
+
+                                QQC2.Button {
+                                    icon.name: "edit-reset"
+                                    text: qsTr("Reset Defaults (127.0.0.1:28491)")
+                                    onClicked: {
+                                        if (deviceController.resetRestApiDefaults()) {
+                                            settingsDialog.syncRestApiFieldsFromController()
+                                            settingsDialog.restApiFeedback = qsTr("✓ Reset REST API settings to defaults (127.0.0.1:28491, Auth Required).")
+                                        }
+                                    }
+                                }
+                            }
+
+                            QQC2.Label {
+                                visible: settingsDialog.restApiFeedback.length > 0
+                                text: settingsDialog.restApiFeedback
+                                font.family: "monospace"
+                                font.pixelSize: 11
+                                font.bold: true
+                                color: settingsDialog.restApiFeedback.startsWith("✓")
+                                    ? Kirigami.Theme.positiveTextColor
+                                    : Kirigami.Theme.neutralTextColor
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
+
+                    // Section 2: Global Profile Change Webhook
+                    Rectangle {
+                        Kirigami.Theme.colorSet: Kirigami.Theme.View
+                        Kirigami.Theme.inherit: false
+                        Layout.fillWidth: true
+                        implicitHeight: globalWebhookCol.implicitHeight + 20
+                        radius: 8
+                        color: Kirigami.Theme.alternateBackgroundColor
+                        border.color: globalWebhookEnableCheck.checked
+                            ? Kirigami.Theme.highlightColor
+                            : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: globalWebhookCol
+                            anchors.fill: parent
+                            anchors.margins: 10
+                            spacing: 8
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("🔔 GLOBAL PROFILE CHANGE WEBHOOK")
+                                    font.bold: true
+                                    font.pixelSize: 11
+                                    color: Kirigami.Theme.disabledTextColor
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WordWrap
+                                }
+
+                                QQC2.Button {
+                                    icon.name: "network-transmit-receive"
+                                    text: qsTr("Test Webhook")
+                                    enabled: globalWebhookUrlField.text.trim().length > 0
+                                    onClicked: {
+                                        const resRaw = deviceController.testProfileWebhookJson(JSON.stringify({
+                                            enabled: true,
+                                            method: globalWebhookMethodCombo.currentText || "POST",
+                                            url: globalWebhookUrlField.text.trim(),
+                                            headers: globalWebhookHeadersArea.text,
+                                            body: globalWebhookBodyArea.text
+                                        }))
+                                        try {
+                                            const res = JSON.parse(resRaw)
+                                            settingsDialog.globalWebhookFeedback = res.ok
+                                                ? qsTr("✓ HTTP %1 (%2 ms)").arg(res.status).arg(res.elapsed_ms)
+                                                : qsTr("✗ %1").arg(res.error || ("HTTP " + res.status))
+                                        } catch (e) {
+                                            settingsDialog.globalWebhookFeedback = resRaw
+                                        }
+                                    }
+                                }
+
+                                QQC2.Button {
+                                    icon.name: "document-save"
+                                    text: qsTr("Save Global Webhook")
+                                    highlighted: true
+                                    onClicked: settingsDialog.saveGlobalWebhookConfig()
+                                }
+                            }
+
+                            QQC2.CheckBox {
+                                id: globalWebhookEnableCheck
+                                Layout.fillWidth: true
+                                text: qsTr("Call this HTTP Webhook whenever the active profile changes (UI, Hardware buttons, Window Auto-Switcher, or REST API)")
+                                onToggled: settingsDialog.saveGlobalWebhookConfig()
+                                contentItem: QQC2.Label {
+                                    leftPadding: (globalWebhookEnableCheck.indicator ? globalWebhookEnableCheck.indicator.width : 18) + globalWebhookEnableCheck.spacing
+                                    text: globalWebhookEnableCheck.text
+                                    font: globalWebhookEnableCheck.font
+                                    color: Kirigami.Theme.textColor
+                                    verticalAlignment: Text.AlignVCenter
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.ComboBox {
+                                    id: globalWebhookMethodCombo
+                                    Layout.preferredWidth: 105
+                                    model: ["GET", "POST", "PUT", "PATCH", "DELETE"]
+                                    currentIndex: 1
+                                }
+
+                                QQC2.TextField {
+                                    id: globalWebhookUrlField
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 120
+                                    Layout.preferredWidth: 1
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                    selectByMouse: true
+                                    placeholderText: qsTr("http://homeassistant.local:8123/api/webhook/duckypad_profile_changed")
+                                }
+                            }
+
+                            QQC2.Label {
+                                text: qsTr("Headers (Optional, one 'Header-Name: Value' per line):")
+                                font.pixelSize: 10
+                                font.bold: true
+                                color: Kirigami.Theme.disabledTextColor
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                            }
+
+                            QQC2.TextArea {
+                                id: globalWebhookHeadersArea
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 100
+                                Layout.preferredWidth: 1
+                                implicitHeight: 44
+                                font.family: "monospace"
+                                font.pixelSize: 11
+                                selectByMouse: true
+                                wrapMode: TextEdit.Wrap
+                                clip: true
+                                placeholderText: qsTr("Content-Type: application/json")
+                                background: Rectangle {
+                                    radius: 4
+                                    color: Kirigami.Theme.backgroundColor
+                                    border.color: Qt.alpha(Kirigami.Theme.textColor, 0.2)
+                                    border.width: 1
+                                }
+                            }
+
+                            QQC2.Label {
+                                text: qsTr("Payload Body (Placeholders: {{profile_number}}, {{profile_name}}, {{previous_profile_number}}, {{previous_profile_name}}, {{source}}, {{device_serial}}, {{timestamp}}):")
+                                font.pixelSize: 10
+                                font.bold: true
+                                color: Kirigami.Theme.disabledTextColor
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                            }
+
+                            QQC2.TextArea {
+                                id: globalWebhookBodyArea
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 100
+                                Layout.preferredWidth: 1
+                                implicitHeight: 54
+                                font.family: "monospace"
+                                font.pixelSize: 11
+                                selectByMouse: true
+                                wrapMode: TextEdit.Wrap
+                                clip: true
+                                background: Rectangle {
+                                    radius: 4
+                                    color: Kirigami.Theme.backgroundColor
+                                    border.color: Qt.alpha(Kirigami.Theme.textColor, 0.2)
+                                    border.width: 1
+                                }
+                            }
+
+                            QQC2.Label {
+                                visible: settingsDialog.globalWebhookFeedback.length > 0
+                                text: settingsDialog.globalWebhookFeedback
+                                font.family: "monospace"
+                                font.pixelSize: 11
+                                font.bold: true
+                                color: settingsDialog.globalWebhookFeedback.startsWith("✓")
+                                    ? Kirigami.Theme.positiveTextColor
+                                    : Kirigami.Theme.neutralTextColor
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
+
+                    // Section 3: Text Sizes by Application Area
                     Rectangle {
                         Kirigami.Theme.colorSet: Kirigami.Theme.View
                         Kirigami.Theme.inherit: false
@@ -3993,7 +4545,7 @@ Kirigami.ApplicationWindow {
                         }
                     }
 
-                    // Section 2: Appearance & System Integration
+                    // Section 4: Appearance & System Integration
                     Rectangle {
                         Kirigami.Theme.colorSet: Kirigami.Theme.View
                         Kirigami.Theme.inherit: false
@@ -6055,17 +6607,9 @@ Kirigami.ApplicationWindow {
     Window {
         id: firmwareUpdateDialog
         title: qsTr("duckyPad Pro Firmware Manager & Updater — DuckyDeck Studio")
-        width: Math.max(
-            780,
-            Math.ceil(fwFooterRow.implicitWidth + 64),
-            Math.ceil(fwTitleMetrics.width + 180)
-        )
-        height: 620
-        minimumWidth: Math.max(
-            720,
-            Math.ceil(fwFooterRow.implicitWidth + 56),
-            Math.ceil(fwTitleMetrics.width + 160)
-        )
+        width: 860
+        height: 660
+        minimumWidth: 660
         minimumHeight: 520
         visible: false
         transientParent: root
@@ -6087,6 +6631,15 @@ Kirigami.ApplicationWindow {
         property int selectedFirmwareIndex: 0
         property string customFirmwarePath: ""
 
+        Connections {
+            target: deviceController
+            function onFirmwareFetchBusyChanged() {
+                if (!deviceController.firmwareFetchBusy && firmwareUpdateDialog.visible) {
+                    firmwareUpdateDialog.refreshCatalog()
+                }
+            }
+        }
+
         function refreshCatalog() {
             let parsed = []
             try {
@@ -6100,14 +6653,31 @@ Kirigami.ApplicationWindow {
             }
         }
 
+        function selectedFirmwareItem() {
+            if (customFirmwarePath.length > 0) {
+                return null
+            }
+            if (selectedFirmwareIndex >= 0 && selectedFirmwareIndex < filteredFirmwares.length) {
+                return filteredFirmwares[selectedFirmwareIndex]
+            }
+            return null
+        }
+
         function selectedTargetPath() {
             if (customFirmwarePath.length > 0) {
                 return customFirmwarePath
             }
-            if (selectedFirmwareIndex >= 0 && selectedFirmwareIndex < filteredFirmwares.length) {
-                return filteredFirmwares[selectedFirmwareIndex].path || ""
+            const item = selectedFirmwareItem()
+            return item ? (item.path || "") : ""
+        }
+
+        function canInstallSelected() {
+            if (customFirmwarePath.length > 0) {
+                return true
             }
-            return ""
+            const item = selectedFirmwareItem()
+            if (!item) return false
+            return (item.path && item.path.length > 0) || (item.download_url && item.download_url.length > 0)
         }
 
         function selectedTargetLabel() {
@@ -6115,30 +6685,17 @@ Kirigami.ApplicationWindow {
                 const parts = customFirmwarePath.split("/")
                 return parts[parts.length - 1]
             }
-            if (selectedFirmwareIndex >= 0 && selectedFirmwareIndex < filteredFirmwares.length) {
-                const item = filteredFirmwares[selectedFirmwareIndex]
+            const item = selectedFirmwareItem()
+            if (item) {
                 const tag = item.is_official ? "Official dekuNukem" : "DuckyDeck Studio"
                 return "v" + item.version + " (" + tag + ")"
             }
             return ""
         }
 
-        onMinimumWidthChanged: {
-            if (firmwareUpdateDialog.width < firmwareUpdateDialog.minimumWidth) {
-                firmwareUpdateDialog.width = firmwareUpdateDialog.minimumWidth
-            }
-        }
-
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
         Kirigami.Theme.inherit: false
         color: Kirigami.Theme.backgroundColor
-
-        TextMetrics {
-            id: fwTitleMetrics
-            font.bold: true
-            font.pixelSize: Math.round(13 * root.fontScale)
-            text: firmwareUpdateDialog.title
-        }
 
         FileDialog {
             id: customFirmwareFileDialog
@@ -6155,16 +6712,14 @@ Kirigami.ApplicationWindow {
 
         function open() {
             refreshCatalog()
-            if (firmwareUpdateDialog.width < firmwareUpdateDialog.minimumWidth) {
-                firmwareUpdateDialog.width = firmwareUpdateDialog.minimumWidth
+            const hasOfficial = (availableFirmwares || []).some(function(item) { return !!item.is_official })
+            if (!hasOfficial && !deviceController.firmwareFetchBusy) {
+                deviceController.fetchOfficialFirmwaresFromSite()
             }
             firmwareUpdateDialog.show()
             firmwareUpdateDialog.raise()
             firmwareUpdateDialog.requestActivate()
             Qt.callLater(function() {
-                if (firmwareUpdateDialog.width < firmwareUpdateDialog.minimumWidth) {
-                    firmwareUpdateDialog.width = firmwareUpdateDialog.minimumWidth
-                }
                 fwDialogRootCol.forceActiveFocus()
             })
         }
@@ -6179,8 +6734,8 @@ Kirigami.ApplicationWindow {
         ColumnLayout {
             id: fwDialogRootCol
             anchors.fill: parent
-            anchors.margins: 16
-            spacing: 12
+            anchors.margins: 14
+            spacing: 10
             focus: true
             Keys.onEscapePressed: firmwareUpdateDialog.close()
 
@@ -6194,22 +6749,24 @@ Kirigami.ApplicationWindow {
 
                 ColumnLayout {
                     id: fwBannerCol
-                    anchors.fill: parent
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
                     anchors.margins: 10
-                    spacing: 4
+                    spacing: 6
 
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 12
+                        spacing: 10
 
                         QQC2.Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
                             font.bold: true
                             font.pixelSize: 13
                             text: qsTr("duckyPad Pro Firmware Manager — Switch or Update Firmware Version")
                             color: Kirigami.Theme.textColor
                         }
-
-                        Item { Layout.fillWidth: true }
 
                         Rectangle {
                             radius: 4
@@ -6248,8 +6805,8 @@ Kirigami.ApplicationWindow {
                                     font.pixelSize: 11
                                     text: deviceController.firmwareVersion !== "-"
                                         ? (root.isDuckyDeckStudioFirmware(deviceController.firmwareVersion)
-                                            ? qsTr("Installed: v%1  [DuckyDeck Studio]").arg(root.cleanFirmwareVersionLabel(deviceController.firmwareVersion))
-                                            : qsTr("Installed: v%1  [✔ Official dekuNukem]").arg(root.cleanFirmwareVersionLabel(deviceController.firmwareVersion)))
+                                            ? qsTr("Installed: v%1 [DuckyDeck Studio]").arg(root.cleanFirmwareVersionLabel(deviceController.firmwareVersion))
+                                            : qsTr("Installed: v%1 [✔ Official dekuNukem]").arg(root.cleanFirmwareVersionLabel(deviceController.firmwareVersion)))
                                         : qsTr("Device Not Connected")
                                     color: Kirigami.Theme.textColor
                                 }
@@ -6261,88 +6818,114 @@ Kirigami.ApplicationWindow {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         font.pixelSize: 11
-                        text: qsTr("DuckyDeck Studio includes its custom DuckyDeck Studio Firmware v1.0.0 (with monochrome key icons & 0°/90°/180°/270° OLED orientation). Official dekuNukem firmware binaries are not bundled in this repository — download official releases directly from dekuNukem's site (github.com/dekuNukem/duckyPad-Pro/releases) and select them via 'Browse Custom .bin...'.")
+                        text: qsTr("DuckyDeck Studio includes its custom DuckyDeck Studio Firmware v1.0.0 (with monochrome key icons & 0°/90°/180°/270° OLED orientation) and can fetch & download official dekuNukem firmware releases directly from github.com/dekuNukem/duckyPad-Pro.")
                         color: Qt.alpha(Kirigami.Theme.textColor, 0.85)
                     }
                 }
             }
 
-            RowLayout {
+            // Filter & Action Toolbar (two responsive rows to prevent overflow)
+            ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 6
 
-                QQC2.Label {
-                    font.bold: true
-                    font.pixelSize: 12
-                    text: qsTr("Filter Origin:")
-                    color: Kirigami.Theme.textColor
-                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
 
-                QQC2.Button {
-                    text: qsTr("All (%1)").arg(firmwareUpdateDialog.availableFirmwares.length)
-                    checkable: true
-                    checked: firmwareUpdateDialog.vendorFilter === "all"
-                    highlighted: firmwareUpdateDialog.vendorFilter === "all"
-                    onClicked: {
-                        firmwareUpdateDialog.vendorFilter = "all"
-                        firmwareUpdateDialog.selectedFirmwareIndex = 0
+                    QQC2.Label {
+                        font.bold: true
+                        font.pixelSize: 12
+                        text: qsTr("Filter Origin:")
+                        color: Kirigami.Theme.textColor
+                    }
+
+                    QQC2.Button {
+                        text: qsTr("All (%1)").arg(firmwareUpdateDialog.availableFirmwares.length)
+                        checkable: true
+                        checked: firmwareUpdateDialog.vendorFilter === "all"
+                        highlighted: firmwareUpdateDialog.vendorFilter === "all"
+                        onClicked: {
+                            firmwareUpdateDialog.vendorFilter = "all"
+                            firmwareUpdateDialog.selectedFirmwareIndex = 0
+                        }
+                    }
+
+                    QQC2.Button {
+                        icon.source: root.effectiveThemeMode === "light"
+                            ? "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-light.svg"
+                            : "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-dark.svg"
+                        text: qsTr("DuckyDeck Studio")
+                        checkable: true
+                        checked: firmwareUpdateDialog.vendorFilter === "studio"
+                        highlighted: firmwareUpdateDialog.vendorFilter === "studio"
+                        onClicked: {
+                            firmwareUpdateDialog.vendorFilter = "studio"
+                            firmwareUpdateDialog.selectedFirmwareIndex = 0
+                        }
+                    }
+
+                    QQC2.Button {
+                        text: qsTr("✔ Official dekuNukem")
+                        checkable: true
+                        checked: firmwareUpdateDialog.vendorFilter === "official"
+                        highlighted: firmwareUpdateDialog.vendorFilter === "official"
+                        onClicked: {
+                            firmwareUpdateDialog.vendorFilter = "official"
+                            firmwareUpdateDialog.selectedFirmwareIndex = 0
+                        }
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    QQC2.Button {
+                        icon.name: "download"
+                        text: deviceController.firmwareFetchBusy
+                            ? qsTr("Fetching Official Firmwares...")
+                            : qsTr("⬇ Fetch Official List from Site")
+                        enabled: !deviceController.firmwareFetchBusy && !deviceController.sdSyncBusy
+                        highlighted: true
+                        onClicked: deviceController.fetchOfficialFirmwaresFromSite()
+                        QQC2.ToolTip.visible: hovered
+                        QQC2.ToolTip.text: qsTr("Query dekuNukem/duckyPad-Pro on GitHub for all available official DPP_FW_*.bin firmware releases")
                     }
                 }
 
-                QQC2.Button {
-                    icon.source: root.effectiveThemeMode === "light"
-                        ? "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-light.svg"
-                        : "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-dark.svg"
-                    text: qsTr("DuckyDeck Studio")
-                    checkable: true
-                    checked: firmwareUpdateDialog.vendorFilter === "studio"
-                    highlighted: firmwareUpdateDialog.vendorFilter === "studio"
-                    onClicked: {
-                        firmwareUpdateDialog.vendorFilter = "studio"
-                        firmwareUpdateDialog.selectedFirmwareIndex = 0
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    QQC2.Button {
+                        icon.name: "internet-services"
+                        text: qsTr("Open Official Releases Page (GitHub)")
+                        onClicked: Qt.openUrlExternally("https://github.com/dekuNukem/duckyPad-Pro/releases")
+                        QQC2.ToolTip.visible: hovered
+                        QQC2.ToolTip.text: qsTr("Open https://github.com/dekuNukem/duckyPad-Pro/releases in your web browser")
                     }
-                }
 
-                QQC2.Button {
-                    text: qsTr("✔ Official dekuNukem")
-                    checkable: true
-                    checked: firmwareUpdateDialog.vendorFilter === "official"
-                    highlighted: firmwareUpdateDialog.vendorFilter === "official"
-                    onClicked: {
-                        firmwareUpdateDialog.vendorFilter = "official"
-                        firmwareUpdateDialog.selectedFirmwareIndex = 0
+                    Item { Layout.fillWidth: true }
+
+                    QQC2.Button {
+                        icon.name: "document-open"
+                        text: firmwareUpdateDialog.customFirmwarePath.length > 0
+                            ? qsTr("Custom: %1").arg(firmwareUpdateDialog.selectedTargetLabel())
+                            : qsTr("Browse Custom .bin...")
+                        onClicked: customFirmwareFileDialog.open()
                     }
-                }
 
-                QQC2.Button {
-                    icon.name: "internet-services"
-                    text: qsTr("Download Official dekuNukem Firmware...")
-                    onClicked: Qt.openUrlExternally("https://github.com/dekuNukem/duckyPad-Pro/releases")
-                    QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: qsTr("Open https://github.com/dekuNukem/duckyPad-Pro/releases to download official dekuNukem DPP_FW_*.bin files")
-                }
-
-                Item { Layout.fillWidth: true }
-
-                QQC2.Button {
-                    icon.name: "document-open"
-                    text: firmwareUpdateDialog.customFirmwarePath.length > 0
-                        ? qsTr("Custom: %1").arg(firmwareUpdateDialog.selectedTargetLabel())
-                        : qsTr("Browse Custom .bin...")
-                    onClicked: customFirmwareFileDialog.open()
-                }
-
-                QQC2.Button {
-                    visible: firmwareUpdateDialog.customFirmwarePath.length > 0
-                    icon.name: "edit-clear"
-                    text: qsTr("Clear Custom")
-                    onClicked: firmwareUpdateDialog.customFirmwarePath = ""
+                    QQC2.Button {
+                        visible: firmwareUpdateDialog.customFirmwarePath.length > 0
+                        icon.name: "edit-clear"
+                        text: qsTr("Clear Custom")
+                        onClicked: firmwareUpdateDialog.customFirmwarePath = ""
+                    }
                 }
             }
 
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                Layout.minimumHeight: 220
                 radius: 6
                 color: Kirigami.Theme.alternateBackgroundColor
                 border.color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
@@ -6361,7 +6944,9 @@ Kirigami.ApplicationWindow {
                         wrapMode: Text.WordWrap
                         font.bold: true
                         font.pixelSize: 13
-                        text: qsTr("Official dekuNukem Firmware Binaries Are Downloaded from dekuNukem's Site")
+                        text: deviceController.firmwareFetchBusy
+                            ? qsTr("Downloading Official Firmware List from dekuNukem/duckyPad-Pro...")
+                            : qsTr("No Official Firmwares Cached Yet — Click 'Fetch Official List from Site'")
                         color: Kirigami.Theme.textColor
                     }
 
@@ -6370,24 +6955,33 @@ Kirigami.ApplicationWindow {
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
                         font.pixelSize: 11
-                        text: qsTr("Official dekuNukem firmware binaries (DPP_FW_*.bin) have been removed from the DuckyDeck Studio repository. Download any release from dekuNukem's official GitHub Releases page, then click 'Browse Custom .bin...' above to install it onto your duckyPad Pro.")
+                        text: qsTr("Click 'Fetch Official List from Site' to query dekuNukem's official duckyPad-Pro repository for available firmware releases, or browse a local DPP_FW_*.bin file.")
                         color: Kirigami.Theme.disabledTextColor
                     }
 
-                    RowLayout {
-                        Layout.alignment: Qt.AlignHCenter
+                    Flow {
+                        Layout.fillWidth: true
                         spacing: 10
 
                         QQC2.Button {
-                            icon.name: "internet-services"
-                            text: qsTr("Open dekuNukem Releases Page (GitHub)")
+                            icon.name: "download"
+                            text: deviceController.firmwareFetchBusy
+                                ? qsTr("Fetching...")
+                                : qsTr("⬇ Fetch Official Firmware List from Site")
+                            enabled: !deviceController.firmwareFetchBusy
                             highlighted: true
+                            onClicked: deviceController.fetchOfficialFirmwaresFromSite()
+                        }
+
+                        QQC2.Button {
+                            icon.name: "internet-services"
+                            text: qsTr("Open dekuNukem Releases Page")
                             onClicked: Qt.openUrlExternally("https://github.com/dekuNukem/duckyPad-Pro/releases")
                         }
 
                         QQC2.Button {
                             icon.name: "document-open"
-                            text: qsTr("Browse Downloaded .bin...")
+                            text: qsTr("Browse Local .bin...")
                             onClicked: customFirmwareFileDialog.open()
                         }
                     }
@@ -6404,7 +6998,7 @@ Kirigami.ApplicationWindow {
 
                     delegate: Rectangle {
                         id: fwRowDelegate
-                        width: fwListView.width - 12
+                        width: Math.max(220, fwListView.width - 14)
                         implicitHeight: fwRowCol.implicitHeight + 16
                         radius: 6
                         readonly property bool isSelected: firmwareUpdateDialog.customFirmwarePath.length === 0
@@ -6412,6 +7006,8 @@ Kirigami.ApplicationWindow {
                         readonly property bool isCurrentInstalled: modelData.version === root.cleanFirmwareVersionLabel(deviceController.firmwareVersion)
                             && (!fwRowDelegate.isOfficialFw === root.isDuckyDeckStudioFirmware(deviceController.firmwareVersion))
                         readonly property bool isOfficialFw: modelData.is_official !== undefined ? Boolean(modelData.is_official) : !modelData.supports_monochrome_icons
+                        readonly property bool isDownloaded: modelData.is_downloaded !== undefined ? Boolean(modelData.is_downloaded) : Boolean(modelData.path && modelData.path.length > 0)
+                        readonly property string dlUrl: modelData.download_url || ""
                         color: isSelected
                             ? Qt.alpha(Kirigami.Theme.highlightColor, 0.22)
                             : (fwRowMouse.containsMouse
@@ -6424,120 +7020,177 @@ Kirigami.ApplicationWindow {
                                 : Qt.alpha(Kirigami.Theme.positiveTextColor, 0.40))
                         border.width: isSelected ? 2 : 1
 
+                        MouseArea {
+                            id: fwRowMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            z: 0
+                            onClicked: {
+                                firmwareUpdateDialog.customFirmwarePath = ""
+                                firmwareUpdateDialog.selectedFirmwareIndex = index
+                            }
+                        }
+
                         ColumnLayout {
                             id: fwRowCol
-                            anchors.fill: parent
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
                             anchors.margins: 8
                             spacing: 4
+                            z: 2
 
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 8
 
-                                QQC2.Label {
-                                    font.family: "monospace"
-                                    font.bold: true
-                                    font.pixelSize: 13
-                                    text: "v" + modelData.version
-                                    color: Kirigami.Theme.textColor
-                                }
+                                Flow {
+                                    Layout.fillWidth: true
+                                    spacing: 6
 
-                                // Prominent Origin Badge: Official dekuNukem vs DuckyDeck Studio
-                                Rectangle {
-                                    radius: 4
-                                    color: fwRowDelegate.isOfficialFw
-                                        ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.20)
-                                        : Qt.alpha("#a855f7", 0.24)
-                                    border.color: fwRowDelegate.isOfficialFw
-                                        ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.65)
-                                        : Qt.alpha("#c084fc", 0.80)
-                                    border.width: 1
-                                    implicitWidth: vendorBadgeRow.implicitWidth + 12
-                                    implicitHeight: vendorBadgeRow.implicitHeight + 4
+                                    QQC2.Label {
+                                        font.family: "monospace"
+                                        font.bold: true
+                                        font.pixelSize: 13
+                                        text: "v" + modelData.version
+                                        color: Kirigami.Theme.textColor
+                                    }
 
-                                    RowLayout {
-                                        id: vendorBadgeRow
-                                        anchors.centerIn: parent
-                                        spacing: 4
+                                    // Prominent Origin Badge: Official dekuNukem vs DuckyDeck Studio
+                                    Rectangle {
+                                        radius: 4
+                                        color: fwRowDelegate.isOfficialFw
+                                            ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.20)
+                                            : Qt.alpha("#a855f7", 0.24)
+                                        border.color: fwRowDelegate.isOfficialFw
+                                            ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.65)
+                                            : Qt.alpha("#c084fc", 0.80)
+                                        border.width: 1
+                                        implicitWidth: vendorBadgeRow.implicitWidth + 12
+                                        implicitHeight: vendorBadgeRow.implicitHeight + 4
 
-                                        Image {
-                                            visible: !fwRowDelegate.isOfficialFw
-                                            source: root.effectiveThemeMode === "light"
-                                                ? "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-light.svg"
-                                                : "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-dark.svg"
-                                            width: 12
-                                            height: 12
-                                            sourceSize.width: 24
-                                            sourceSize.height: 24
-                                            fillMode: Image.PreserveAspectFit
+                                        RowLayout {
+                                            id: vendorBadgeRow
+                                            anchors.centerIn: parent
+                                            spacing: 4
+
+                                            Image {
+                                                visible: !fwRowDelegate.isOfficialFw
+                                                source: root.effectiveThemeMode === "light"
+                                                    ? "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-light.svg"
+                                                    : "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-dark.svg"
+                                                width: 12
+                                                height: 12
+                                                sourceSize.width: 24
+                                                sourceSize.height: 24
+                                                fillMode: Image.PreserveAspectFit
+                                            }
+
+                                            QQC2.Label {
+                                                id: vendorBadgeLbl
+                                                font.bold: true
+                                                font.pixelSize: 10
+                                                text: fwRowDelegate.isOfficialFw
+                                                    ? qsTr("✔ OFFICIAL DEKUNUKEM")
+                                                    : qsTr("DUCKYDECK STUDIO")
+                                                color: Kirigami.Theme.textColor
+                                            }
                                         }
+                                    }
+
+                                    Rectangle {
+                                        radius: 4
+                                        color: modelData.supports_monochrome_icons
+                                            ? Qt.alpha("#0ea5e9", 0.20)
+                                            : Qt.alpha(Kirigami.Theme.textColor, 0.10)
+                                        border.color: modelData.supports_monochrome_icons
+                                            ? Qt.alpha("#38bdf8", 0.60)
+                                            : Qt.alpha(Kirigami.Theme.textColor, 0.25)
+                                        border.width: 1
+                                        implicitWidth: chLbl.implicitWidth + 10
+                                        implicitHeight: chLbl.implicitHeight + 4
 
                                         QQC2.Label {
-                                            id: vendorBadgeLbl
+                                            id: chLbl
+                                            anchors.centerIn: parent
+                                            font.bold: modelData.supports_monochrome_icons
+                                            font.pixelSize: 10
+                                            text: modelData.supports_monochrome_icons
+                                                ? qsTr("★ Monochrome Icons & 0°/90°/180°/270° OLED")
+                                                : (modelData.channel || qsTr("Official"))
+                                            color: Kirigami.Theme.textColor
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        radius: 4
+                                        color: fwRowDelegate.isDownloaded
+                                            ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.16)
+                                            : Qt.alpha("#f59e0b", 0.18)
+                                        border.color: fwRowDelegate.isDownloaded
+                                            ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.55)
+                                            : Qt.alpha("#f59e0b", 0.65)
+                                        border.width: 1
+                                        implicitWidth: dlStateLbl.implicitWidth + 10
+                                        implicitHeight: dlStateLbl.implicitHeight + 4
+
+                                        QQC2.Label {
+                                            id: dlStateLbl
+                                            anchors.centerIn: parent
                                             font.bold: true
                                             font.pixelSize: 10
-                                            text: fwRowDelegate.isOfficialFw
-                                                ? qsTr("✔ OFFICIAL DEKUNUKEM")
-                                                : qsTr("DUCKYDECK STUDIO")
+                                            text: fwRowDelegate.isDownloaded ? qsTr("READY LOCALLY") : qsTr("REMOTE (ON SITE)")
+                                            color: Kirigami.Theme.textColor
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        visible: fwRowDelegate.isCurrentInstalled
+                                        radius: 4
+                                        color: Qt.alpha(Kirigami.Theme.highlightColor, 0.25)
+                                        border.color: Kirigami.Theme.highlightColor
+                                        border.width: 1
+                                        implicitWidth: instLbl.implicitWidth + 10
+                                        implicitHeight: instLbl.implicitHeight + 4
+
+                                        QQC2.Label {
+                                            id: instLbl
+                                            anchors.centerIn: parent
+                                            font.bold: true
+                                            font.pixelSize: 10
+                                            text: qsTr("CURRENTLY INSTALLED")
                                             color: Kirigami.Theme.textColor
                                         }
                                     }
                                 }
 
-                                Rectangle {
-                                    radius: 4
-                                    color: modelData.supports_monochrome_icons
-                                        ? Qt.alpha("#0ea5e9", 0.20)
-                                        : Qt.alpha(Kirigami.Theme.textColor, 0.10)
-                                    border.color: modelData.supports_monochrome_icons
-                                        ? Qt.alpha("#38bdf8", 0.60)
-                                        : Qt.alpha(Kirigami.Theme.textColor, 0.25)
-                                    border.width: 1
-                                    implicitWidth: chLbl.implicitWidth + 10
-                                    implicitHeight: chLbl.implicitHeight + 4
-
-                                    QQC2.Label {
-                                        id: chLbl
-                                        anchors.centerIn: parent
-                                        font.bold: modelData.supports_monochrome_icons
-                                        font.pixelSize: 10
-                                        text: modelData.supports_monochrome_icons
-                                            ? qsTr("★ Monochrome Icons & 0°/90°/180°/270° OLED")
-                                            : modelData.channel
-                                        color: Kirigami.Theme.textColor
-                                    }
-                                }
-
-                                Rectangle {
-                                    visible: fwRowDelegate.isCurrentInstalled
-                                    radius: 4
-                                    color: Qt.alpha(Kirigami.Theme.highlightColor, 0.25)
-                                    border.color: Kirigami.Theme.highlightColor
-                                    border.width: 1
-                                    implicitWidth: instLbl.implicitWidth + 10
-                                    implicitHeight: instLbl.implicitHeight + 4
-
-                                    QQC2.Label {
-                                        id: instLbl
-                                        anchors.centerIn: parent
-                                        font.bold: true
-                                        font.pixelSize: 10
-                                        text: qsTr("CURRENTLY INSTALLED")
-                                        color: Kirigami.Theme.textColor
-                                    }
-                                }
-
-                                Item { Layout.fillWidth: true }
-
-                                QQC2.Label {
-                                    font.family: "monospace"
+                                QQC2.Button {
+                                    visible: !fwRowDelegate.isDownloaded && fwRowDelegate.dlUrl.length > 0
+                                    enabled: !deviceController.firmwareFetchBusy && !deviceController.sdSyncBusy
+                                    icon.name: "download"
+                                    text: qsTr("⬇ Download .bin")
+                                    implicitHeight: 26
                                     font.pixelSize: 11
-                                    text: qsTr("%1  •  %2 KB  •  CRC32 %3")
-                                        .arg(modelData.release_date)
-                                        .arg(Math.round((modelData.size_bytes || 0) / 1024))
-                                        .arg(modelData.crc32 || "-")
-                                    color: Kirigami.Theme.disabledTextColor
+                                    onClicked: {
+                                        firmwareUpdateDialog.customFirmwarePath = ""
+                                        firmwareUpdateDialog.selectedFirmwareIndex = index
+                                        deviceController.downloadOfficialFirmwareOnly(modelData.filename, fwRowDelegate.dlUrl)
+                                    }
                                 }
+                            }
+
+                            QQC2.Label {
+                                Layout.fillWidth: true
+                                font.family: "monospace"
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
+                                text: qsTr("%1  •  %2  •  %3 KB  •  CRC32 %4")
+                                    .arg(modelData.filename || "")
+                                    .arg(modelData.release_date || "-")
+                                    .arg(Math.max(1, Math.round((modelData.size_bytes || 0) / 1024)))
+                                    .arg(modelData.crc32 || "-")
+                                color: Kirigami.Theme.disabledTextColor
                             }
 
                             QQC2.Label {
@@ -6546,17 +7199,6 @@ Kirigami.ApplicationWindow {
                                 font.pixelSize: 11
                                 text: modelData.notes || ""
                                 color: Qt.alpha(Kirigami.Theme.textColor, 0.88)
-                            }
-                        }
-
-                        MouseArea {
-                            id: fwRowMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                firmwareUpdateDialog.customFirmwarePath = ""
-                                firmwareUpdateDialog.selectedFirmwareIndex = index
                             }
                         }
                     }
@@ -6570,10 +7212,11 @@ Kirigami.ApplicationWindow {
 
                 QQC2.Button {
                     icon.name: "view-refresh"
-                    text: qsTr("Refresh List")
-                    enabled: !deviceController.firmwareCheckBusy && !deviceController.sdSyncBusy
+                    text: qsTr("Refresh & Fetch Official")
+                    enabled: !deviceController.firmwareCheckBusy && !deviceController.firmwareFetchBusy && !deviceController.sdSyncBusy
                     onClicked: {
                         firmwareUpdateDialog.refreshCatalog()
+                        deviceController.fetchOfficialFirmwaresFromSite()
                         deviceController.checkFirmwareUpdate(true)
                     }
                 }
@@ -6588,15 +7231,30 @@ Kirigami.ApplicationWindow {
 
                 QQC2.Button {
                     icon.name: "system-software-update"
+                    readonly property var selItem: firmwareUpdateDialog.selectedFirmwareItem()
+                    readonly property bool needsDownloadFirst: firmwareUpdateDialog.customFirmwarePath.length === 0
+                        && selItem !== null
+                        && (!selItem.path || selItem.path.length === 0)
+                        && (selItem.download_url && selItem.download_url.length > 0)
                     text: firmwareUpdateDialog.selectedTargetLabel().length > 0
-                        ? qsTr("Install %1 on duckyPad Pro").arg(firmwareUpdateDialog.selectedTargetLabel())
+                        ? (needsDownloadFirst
+                            ? qsTr("Download & Install %1").arg(firmwareUpdateDialog.selectedTargetLabel())
+                            : qsTr("Install %1 on duckyPad Pro").arg(firmwareUpdateDialog.selectedTargetLabel()))
                         : qsTr("Install Selected Firmware")
-                    enabled: !deviceController.sdSyncBusy && firmwareUpdateDialog.selectedTargetPath().length > 0
+                    enabled: !deviceController.sdSyncBusy && !deviceController.firmwareFetchBusy && firmwareUpdateDialog.canInstallSelected()
                     highlighted: true
                     onClicked: {
                         const targetPath = firmwareUpdateDialog.selectedTargetPath()
                         if (targetPath.length > 0) {
                             if (deviceController.installFirmwareToDevice(targetPath)) {
+                                firmwareUpdateDialog.close()
+                                sdSyncDialog.open()
+                            }
+                            return
+                        }
+                        const item = firmwareUpdateDialog.selectedFirmwareItem()
+                        if (item && item.download_url && item.download_url.length > 0) {
+                            if (deviceController.downloadAndInstallOfficialFirmware(item.filename, item.download_url)) {
                                 firmwareUpdateDialog.close()
                                 sdSyncDialog.open()
                             }
@@ -10800,9 +11458,9 @@ Kirigami.ApplicationWindow {
     Window {
         id: webApiKeyConfigWindow
         title: qsTr("Web API / HTTP Webhook — Key %1 (%2)").arg(root.selectedSlotNumber).arg(root.selectedSlotTitle)
-        width: 760
-        height: 680
-        minimumWidth: 600
+        width: 820
+        height: 760
+        minimumWidth: 580
         minimumHeight: 500
         visible: false
         transientParent: root
@@ -10813,9 +11471,91 @@ Kirigami.ApplicationWindow {
         Kirigami.Theme.inherit: false
         color: Kirigami.Theme.backgroundColor
 
+        property var haEntitiesModel: []
+        property string haStatusText: ""
+        property bool haShowToken: false
+
+        function loadHomeAssistantSavedConfig() {
+            try {
+                const cfg = JSON.parse(deviceController.getHomeAssistantConfigJson())
+                if (cfg) {
+                    haBaseUrlField.text = cfg.base_url || "http://homeassistant.local:8123"
+                    haTokenField.text = cfg.access_token || ""
+                }
+            } catch (e) {
+                if (haBaseUrlField.text.trim().length === 0) {
+                    haBaseUrlField.text = "http://homeassistant.local:8123"
+                }
+            }
+        }
+
+        function searchHomeAssistantEntities() {
+            const baseUrl = haBaseUrlField.text.trim()
+            const token = haTokenField.text.trim()
+            if (baseUrl.length === 0 || token.length === 0) {
+                webApiKeyConfigWindow.haStatusText = qsTr("⚠ Enter your Home Assistant URL and Long-Lived Access Token first.")
+                return
+            }
+            const domainVal = haDomainCombo.currentIndex <= 0 ? "" : haDomainCombo.currentText
+            const raw = deviceController.searchHomeAssistantEntitiesJson(
+                baseUrl,
+                token,
+                haSearchQueryField.text.trim(),
+                domainVal
+            )
+            try {
+                const parsed = JSON.parse(raw)
+                if (Array.isArray(parsed)) {
+                    webApiKeyConfigWindow.haEntitiesModel = parsed
+                    webApiKeyConfigWindow.haStatusText = parsed.length > 0
+                        ? qsTr("✓ Found %1 matching Home Assistant entities. Click an action below to bind it to Key %2.")
+                            .arg(parsed.length)
+                            .arg(root.selectedSlotNumber)
+                        : qsTr("No matching entities found for that filter/query.")
+                } else {
+                    webApiKeyConfigWindow.haEntitiesModel = []
+                    webApiKeyConfigWindow.haStatusText = deviceController.statusText
+                }
+            } catch (e) {
+                webApiKeyConfigWindow.haEntitiesModel = []
+                webApiKeyConfigWindow.haStatusText = qsTr("Failed to parse Home Assistant response.")
+            }
+        }
+
+        function applyHomeAssistantEntityToKey(entityObj, serviceOverride) {
+            if (!entityObj || !entityObj.entity_id) return
+            const cleanBase = haBaseUrlField.text.trim().replace(/\/+$/, "")
+            const token = haTokenField.text.trim()
+            const domain = entityObj.domain || entityObj.entity_id.split(".")[0] || "homeassistant"
+            const service = (serviceOverride && serviceOverride.length > 0)
+                ? serviceOverride
+                : (entityObj.suggested_service || "toggle")
+
+            root.syncingWebApiScript = true
+            webApiEnabledCheck.checked = true
+            const postIdx = root.webApiMethods.indexOf("POST")
+            webApiMethodCombo.currentIndex = postIdx >= 0 ? postIdx : 1
+            webApiUrlField.text = cleanBase + "/api/services/" + domain + "/" + service
+            webApiHeadersField.text = "Authorization: Bearer " + token + "\nContent-Type: application/json"
+            webApiBodyField.text = JSON.stringify({ entity_id: entityObj.entity_id })
+            const friendly = (entityObj.friendly_name && entityObj.friendly_name.length > 0)
+                ? entityObj.friendly_name
+                : entityObj.entity_id
+            webApiOledField.text = ("HA:" + friendly).slice(0, 20)
+            root.syncingWebApiScript = false
+            root.syncWebApiBuilderToScript()
+            webApiKeyConfigWindow.haStatusText = qsTr("✓ Configured Key %1 to call %2.%3 on '%4' (%5)")
+                .arg(root.selectedSlotNumber)
+                .arg(domain)
+                .arg(service)
+                .arg(friendly)
+                .arg(entityObj.entity_id)
+        }
+
         function openWindow(slotNumber) {
             const targetSlot = (slotNumber !== undefined && slotNumber > 0) ? slotNumber : root.selectedSlotNumber
             if (targetSlot <= 0) return
+            webApiKeyConfigWindow.loadHomeAssistantSavedConfig()
             if (root.hasSelectedSlot && root.selectedSlotNumber === targetSlot) {
                 root.loadWebApiBuilderFromScript(scriptEditor.text)
             } else if (keyPropertiesWindow.visible && keyPropertiesWindow.slotNum === targetSlot) {
@@ -10832,7 +11572,7 @@ Kirigami.ApplicationWindow {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 16
+            anchors.margins: 14
             spacing: 10
 
             RowLayout {
@@ -10869,7 +11609,7 @@ Kirigami.ApplicationWindow {
                     QQC2.Label {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
-                        text: qsTr("Trigger local DuckyDeck Studio actions or send HTTP REST/Webhook requests (Home Assistant, OBS, Node-RED) when this key is pressed.")
+                        text: qsTr("Trigger Home Assistant devices/entities or send HTTP REST/Webhook requests when this key is pressed.")
                         font.pixelSize: 11
                         color: Kirigami.Theme.disabledTextColor
                         wrapMode: Text.WordWrap
@@ -10925,7 +11665,7 @@ Kirigami.ApplicationWindow {
                 Layout.preferredHeight: 1
                 clip: true
                 contentWidth: width
-                contentHeight: webApiScrollCol.implicitHeight + 8
+                contentHeight: webApiScrollCol.implicitHeight + 12
                 boundsBehavior: Flickable.StopAtBounds
                 flickableDirection: Flickable.VerticalFlick
 
@@ -10943,6 +11683,293 @@ Kirigami.ApplicationWindow {
                     id: webApiScrollCol
                     width: Math.max(200, webApiFlickable.width - (webApiFlickable.contentHeight > webApiFlickable.height ? 18 : 2))
                     spacing: 10
+
+                    // Home Assistant Web API Device & Entity Search Card
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: haCardCol.implicitHeight + 18
+                        radius: 6
+                        color: Kirigami.Theme.alternateBackgroundColor
+                        border.color: Qt.alpha("#38bdf8", 0.45)
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: haCardCol
+                            anchors.fill: parent
+                            anchors.margins: 9
+                            spacing: 8
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("🏠 Home Assistant Web API — Search Devices & Entities to Trigger")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WordWrap
+                                }
+
+                                QQC2.Button {
+                                    icon.name: "document-save"
+                                    text: qsTr("Save HA Connection")
+                                    onClicked: {
+                                        if (deviceController.saveHomeAssistantConfig(haBaseUrlField.text.trim(), haTokenField.text.trim())) {
+                                            webApiKeyConfigWindow.haStatusText = qsTr("✓ Saved Home Assistant URL and Long-Lived Access Token.")
+                                        }
+                                    }
+                                }
+                            }
+
+                            QQC2.Label {
+                                text: qsTr("Connect to your Home Assistant instance with a Long-Lived Access Token (Profile → Security → Long-Lived Access Tokens) to search and bind entities directly to this key.")
+                                font.pixelSize: 10
+                                color: Kirigami.Theme.disabledTextColor
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("HA URL:")
+                                    font.bold: true
+                                    font.pixelSize: 11
+                                    Layout.preferredWidth: 70
+                                }
+
+                                QQC2.TextField {
+                                    id: haBaseUrlField
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 140
+                                    Layout.preferredWidth: 1
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                    selectByMouse: true
+                                    text: "http://homeassistant.local:8123"
+                                    placeholderText: qsTr("http://homeassistant.local:8123")
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("HA Token:")
+                                    font.bold: true
+                                    font.pixelSize: 11
+                                    Layout.preferredWidth: 70
+                                }
+
+                                QQC2.TextField {
+                                    id: haTokenField
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 140
+                                    Layout.preferredWidth: 1
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                    selectByMouse: true
+                                    echoMode: webApiKeyConfigWindow.haShowToken ? TextInput.Normal : TextInput.Password
+                                    placeholderText: qsTr("Paste Home Assistant Long-Lived Access Token...")
+                                }
+
+                                QQC2.Button {
+                                    text: webApiKeyConfigWindow.haShowToken ? qsTr("Hide") : qsTr("Show")
+                                    onClicked: webApiKeyConfigWindow.haShowToken = !webApiKeyConfigWindow.haShowToken
+                                }
+                            }
+
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.ComboBox {
+                                    id: haDomainCombo
+                                    width: 150
+                                    model: [
+                                        "All Domains",
+                                        "light",
+                                        "switch",
+                                        "scene",
+                                        "script",
+                                        "automation",
+                                        "button",
+                                        "input_boolean",
+                                        "media_player",
+                                        "cover",
+                                        "fan",
+                                        "climate",
+                                        "lock"
+                                    ]
+                                    onActivated: {
+                                        if (haTokenField.text.trim().length > 0) {
+                                            webApiKeyConfigWindow.searchHomeAssistantEntities()
+                                        }
+                                    }
+                                }
+
+                                QQC2.TextField {
+                                    id: haSearchQueryField
+                                    width: Math.max(200, haCardCol.width - 340)
+                                    selectByMouse: true
+                                    placeholderText: qsTr("Search devices/entities (e.g. desk light, studio, scene)...")
+                                    onAccepted: webApiKeyConfigWindow.searchHomeAssistantEntities()
+                                }
+
+                                QQC2.Button {
+                                    icon.name: "edit-find"
+                                    text: qsTr("🔍 Search Entities")
+                                    highlighted: true
+                                    onClicked: webApiKeyConfigWindow.searchHomeAssistantEntities()
+                                }
+                            }
+
+                            QQC2.Label {
+                                visible: webApiKeyConfigWindow.haStatusText.length > 0
+                                text: webApiKeyConfigWindow.haStatusText
+                                font.pixelSize: 11
+                                font.bold: true
+                                color: webApiKeyConfigWindow.haStatusText.startsWith("✓")
+                                    ? Kirigami.Theme.positiveTextColor
+                                    : Kirigami.Theme.neutralTextColor
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                            }
+
+                            Rectangle {
+                                visible: webApiKeyConfigWindow.haEntitiesModel.length > 0
+                                Layout.fillWidth: true
+                                implicitHeight: Math.min(220, haEntityRepeaterCol.implicitHeight + 12)
+                                radius: 5
+                                color: Kirigami.Theme.backgroundColor
+                                border.color: Qt.alpha(Kirigami.Theme.textColor, 0.2)
+                                border.width: 1
+                                clip: true
+
+                                Flickable {
+                                    id: haEntityListFlick
+                                    anchors.fill: parent
+                                    anchors.margins: 4
+                                    clip: true
+                                    contentWidth: width
+                                    contentHeight: haEntityRepeaterCol.implicitHeight
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    flickableDirection: Flickable.VerticalFlick
+
+                                    QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                                        parent: haEntityListFlick
+                                        anchors.top: haEntityListFlick.top
+                                        anchors.right: haEntityListFlick.right
+                                        anchors.bottom: haEntityListFlick.bottom
+                                        policy: haEntityListFlick.contentHeight > haEntityListFlick.height
+                                            ? QQC2.ScrollBar.AlwaysOn
+                                            : QQC2.ScrollBar.AsNeeded
+                                    }
+
+                                    ColumnLayout {
+                                        id: haEntityRepeaterCol
+                                        width: Math.max(160, haEntityListFlick.width - 16)
+                                        spacing: 4
+
+                                        Repeater {
+                                            model: webApiKeyConfigWindow.haEntitiesModel
+                                            delegate: Rectangle {
+                                                required property var modelData
+                                                Layout.fillWidth: true
+                                                implicitHeight: haRowInnerCol.implicitHeight + 10
+                                                radius: 4
+                                                color: Kirigami.Theme.alternateBackgroundColor
+                                                border.color: Qt.alpha(Kirigami.Theme.textColor, 0.14)
+                                                border.width: 1
+
+                                                ColumnLayout {
+                                                    id: haRowInnerCol
+                                                    anchors.fill: parent
+                                                    anchors.margins: 5
+                                                    spacing: 4
+
+                                                    RowLayout {
+                                                        Layout.fillWidth: true
+                                                        spacing: 6
+
+                                                        QQC2.Label {
+                                                            text: modelData.friendly_name || modelData.entity_id
+                                                            font.bold: true
+                                                            font.pixelSize: 11
+                                                            Layout.fillWidth: true
+                                                            wrapMode: Text.WordWrap
+                                                        }
+
+                                                        Rectangle {
+                                                            radius: 3
+                                                            color: Qt.alpha(Kirigami.Theme.highlightColor, 0.18)
+                                                            implicitWidth: haStateLbl.implicitWidth + 8
+                                                            implicitHeight: 18
+                                                            QQC2.Label {
+                                                                id: haStateLbl
+                                                                anchors.centerIn: parent
+                                                                text: String(modelData.state || "unknown")
+                                                                font.family: "monospace"
+                                                                font.pixelSize: 9
+                                                                font.bold: true
+                                                            }
+                                                        }
+                                                    }
+
+                                                    Flow {
+                                                        Layout.fillWidth: true
+                                                        spacing: 6
+
+                                                        QQC2.Label {
+                                                            text: String(modelData.entity_id || "")
+                                                            font.family: "monospace"
+                                                            font.pixelSize: 10
+                                                            color: Kirigami.Theme.disabledTextColor
+                                                            height: 24
+                                                            verticalAlignment: Text.AlignVCenter
+                                                        }
+
+                                                        QQC2.Button {
+                                                            text: qsTr("⚡ %1.%2")
+                                                                .arg(modelData.domain || "ha")
+                                                                .arg(modelData.suggested_service || "toggle")
+                                                            highlighted: true
+                                                            implicitHeight: 24
+                                                            font.pixelSize: 10
+                                                            onClicked: webApiKeyConfigWindow.applyHomeAssistantEntityToKey(
+                                                                modelData,
+                                                                modelData.suggested_service || "toggle"
+                                                            )
+                                                        }
+
+                                                        QQC2.Button {
+                                                            visible: modelData.domain === "light" || modelData.domain === "switch" || modelData.domain === "input_boolean" || modelData.domain === "fan" || modelData.domain === "automation"
+                                                            text: qsTr("Turn On")
+                                                            implicitHeight: 24
+                                                            font.pixelSize: 10
+                                                            onClicked: webApiKeyConfigWindow.applyHomeAssistantEntityToKey(modelData, "turn_on")
+                                                        }
+
+                                                        QQC2.Button {
+                                                            visible: modelData.domain === "light" || modelData.domain === "switch" || modelData.domain === "input_boolean" || modelData.domain === "fan" || modelData.domain === "automation"
+                                                            text: qsTr("Turn Off")
+                                                            implicitHeight: 24
+                                                            font.pixelSize: 10
+                                                            onClicked: webApiKeyConfigWindow.applyHomeAssistantEntityToKey(modelData, "turn_off")
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     Rectangle {
                         Layout.fillWidth: true
@@ -11225,10 +12252,10 @@ Kirigami.ApplicationWindow {
     Window {
         id: profilePropertiesWindow
         title: qsTr("Profile #%1 Properties — %2").arg(profilePropertiesWindow.profNumber).arg(profilePropertiesWindow.profName)
-        width: 780
-        height: 660
-        minimumWidth: 660
-        minimumHeight: 520
+        width: 820
+        height: 740
+        minimumWidth: 560
+        minimumHeight: 480
         visible: false
         transientParent: root
         modality: Qt.NonModal
@@ -11251,6 +12278,12 @@ Kirigami.ApplicationWindow {
         property bool profIsUpperHs: false
         property string profExtraConfigLines: ""
         property int profConfiguredSlots: 0
+        property bool profWebhookEnabled: false
+        property string profWebhookMethod: "POST"
+        property string profWebhookUrl: ""
+        property string profWebhookHeaders: "Content-Type: application/json"
+        property string profWebhookBody: "{\"event\":\"profile_changed\",\"profile_number\":{{profile_number}},\"profile_name\":\"{{profile_name}}\",\"source\":\"{{source}}\"}"
+        property string webhookTestStatus: ""
         property string statusFeedback: ""
 
         function openForProfile(profileNumber) {
@@ -11276,11 +12309,22 @@ Kirigami.ApplicationWindow {
                 profilePropertiesWindow.profIsUpperHs = Boolean(obj.isUpperHs)
                 profilePropertiesWindow.profExtraConfigLines = Array.isArray(obj.extraConfigLines) ? obj.extraConfigLines.join("\n") : ""
                 profilePropertiesWindow.profConfiguredSlots = obj.configuredSlotCount || 0
+                const wh = obj.webhook || {}
+                profilePropertiesWindow.profWebhookEnabled = Boolean(wh.enabled)
+                profilePropertiesWindow.profWebhookMethod = wh.method || "POST"
+                profilePropertiesWindow.profWebhookUrl = wh.url || ""
+                profilePropertiesWindow.profWebhookHeaders = wh.headers !== undefined ? String(wh.headers) : "Content-Type: application/json"
+                profilePropertiesWindow.profWebhookBody = wh.body !== undefined
+                    ? String(wh.body)
+                    : "{\"event\":\"profile_changed\",\"profile_number\":{{profile_number}},\"profile_name\":\"{{profile_name}}\",\"source\":\"{{source}}\"}"
             } catch (e) {
                 profilePropertiesWindow.profName = deviceController.activeProfileName
                 profilePropertiesWindow.profBgColor = deviceController.activeProfileBgColor
                 profilePropertiesWindow.profOledRotation = 0
                 profilePropertiesWindow.profWidgetRotation = -1
+                profilePropertiesWindow.profWebhookEnabled = false
+                profilePropertiesWindow.profWebhookMethod = "POST"
+                profilePropertiesWindow.profWebhookUrl = ""
             }
             profNameField.text = profilePropertiesWindow.profName
             profBgColorField.text = profilePropertiesWindow.profBgColor
@@ -11289,6 +12333,13 @@ Kirigami.ApplicationWindow {
             profDimUnusedCheck.checked = profilePropertiesWindow.profDimUnusedKeys
             profUpperHsCheck.checked = profilePropertiesWindow.profIsUpperHs
             profExtraLinesArea.text = profilePropertiesWindow.profExtraConfigLines
+            profWebhookEnableCheck.checked = profilePropertiesWindow.profWebhookEnabled
+            const mIdx = profWebhookMethodCombo.indexOfValue(profilePropertiesWindow.profWebhookMethod.toUpperCase())
+            profWebhookMethodCombo.currentIndex = mIdx >= 0 ? mIdx : 1
+            profWebhookUrlField.text = profilePropertiesWindow.profWebhookUrl
+            profWebhookHeadersArea.text = profilePropertiesWindow.profWebhookHeaders
+            profWebhookBodyArea.text = profilePropertiesWindow.profWebhookBody
+            profilePropertiesWindow.webhookTestStatus = ""
             profilePropertiesWindow.statusFeedback = ""
 
             profilePropertiesWindow.show()
@@ -11311,7 +12362,14 @@ Kirigami.ApplicationWindow {
                 oledRotation: profilePropertiesWindow.profOledRotation,
                 widgetRotation: profilePropertiesWindow.profWidgetRotation,
                 isUpperHs: profUpperHsCheck.checked,
-                extraConfigLines: extraArr
+                extraConfigLines: extraArr,
+                webhook: {
+                    enabled: profWebhookEnableCheck.checked,
+                    method: profWebhookMethodCombo.currentText || "POST",
+                    url: profWebhookUrlField.text.trim(),
+                    headers: profWebhookHeadersArea.text,
+                    body: profWebhookBodyArea.text
+                }
             }
             const ok = deviceController.saveProfilePropertiesJson(
                 profilePropertiesWindow.profNumber,
@@ -11328,7 +12386,7 @@ Kirigami.ApplicationWindow {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 16
+            anchors.margins: 14
             spacing: 10
 
             RowLayout {
@@ -11364,7 +12422,7 @@ Kirigami.ApplicationWindow {
                         font.pixelSize: 11
                         color: Kirigami.Theme.disabledTextColor
                         Layout.fillWidth: true
-                        elide: Text.ElideMiddle
+                        wrapMode: Text.WrapAnywhere
                     }
                 }
             }
@@ -11377,7 +12435,7 @@ Kirigami.ApplicationWindow {
                 Layout.preferredHeight: 1
                 clip: true
                 contentWidth: width
-                contentHeight: profPropsScrollCol.implicitHeight + 8
+                contentHeight: profPropsScrollCol.implicitHeight + 12
                 boundsBehavior: Flickable.StopAtBounds
                 flickableDirection: Flickable.VerticalFlick
 
@@ -11402,52 +12460,58 @@ Kirigami.ApplicationWindow {
                     // Identity & Colors Card
                     Rectangle {
                         Layout.fillWidth: true
-                        implicitHeight: profBasicGrid.implicitHeight + 18
+                        implicitHeight: profBasicCol.implicitHeight + 18
                         radius: 6
                         color: Kirigami.Theme.alternateBackgroundColor
                         border.color: Qt.alpha(Kirigami.Theme.textColor, 0.16)
                         border.width: 1
 
-                        GridLayout {
-                            id: profBasicGrid
+                        ColumnLayout {
+                            id: profBasicCol
                             anchors.fill: parent
                             anchors.margins: 9
-                            columns: 2
-                            columnSpacing: 12
-                            rowSpacing: 8
-
-                            QQC2.Label {
-                                text: qsTr("Profile Name (max 13 chars):")
-                                font.bold: true
-                                font.pixelSize: 12
-                            }
-
-                            QQC2.TextField {
-                                id: profNameField
-                                Layout.fillWidth: true
-                                Layout.minimumWidth: 80
-                                Layout.preferredWidth: 1
-                                maximumLength: 13
-                                selectByMouse: true
-                                font.bold: true
-                                placeholderText: qsTr("Profile Name")
-                            }
-
-                            QQC2.Label {
-                                text: qsTr("Default Key Color (BG_COLOR):")
-                                font.bold: true
-                                font.pixelSize: 12
-                            }
+                            spacing: 8
 
                             RowLayout {
                                 Layout.fillWidth: true
-                                Layout.minimumWidth: 0
-                                Layout.preferredWidth: 1
+                                spacing: 10
+
+                                QQC2.Label {
+                                    text: qsTr("Profile Name (max 13 chars):")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                    Layout.preferredWidth: 195
+                                    wrapMode: Text.WordWrap
+                                }
+
+                                QQC2.TextField {
+                                    id: profNameField
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 80
+                                    Layout.preferredWidth: 1
+                                    maximumLength: 13
+                                    selectByMouse: true
+                                    font.bold: true
+                                    placeholderText: qsTr("Profile Name")
+                                }
+                            }
+
+                            Flow {
+                                Layout.fillWidth: true
                                 spacing: 8
 
+                                QQC2.Label {
+                                    text: qsTr("Default Key Color (BG_COLOR):")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                    width: 195
+                                    height: 28
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+
                                 Rectangle {
-                                    width: 24
-                                    height: 24
+                                    width: 26
+                                    height: 26
                                     radius: 4
                                     color: /^#[0-9A-Fa-f]{6}$/.test(profBgColorField.text.trim())
                                         ? profBgColorField.text.trim()
@@ -11458,7 +12522,7 @@ Kirigami.ApplicationWindow {
 
                                 QQC2.TextField {
                                     id: profBgColorField
-                                    Layout.preferredWidth: 100
+                                    width: 100
                                     maximumLength: 7
                                     font.family: "monospace"
                                     selectByMouse: true
@@ -11485,21 +12549,20 @@ Kirigami.ApplicationWindow {
                                         )
                                     }
                                 }
-
-                                Item { Layout.fillWidth: true }
                             }
 
-                            QQC2.Label {
-                                text: qsTr("Keydown Color (KEYDOWN_COLOR):")
-                                font.bold: true
-                                font.pixelSize: 12
-                            }
-
-                            RowLayout {
+                            Flow {
                                 Layout.fillWidth: true
-                                Layout.minimumWidth: 0
-                                Layout.preferredWidth: 1
                                 spacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("Keydown Color (KEYDOWN_COLOR):")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                    width: 195
+                                    height: 28
+                                    verticalAlignment: Text.AlignVCenter
+                                }
 
                                 QQC2.CheckBox {
                                     id: profKeydownEnableCheck
@@ -11509,8 +12572,8 @@ Kirigami.ApplicationWindow {
 
                                 Rectangle {
                                     visible: profKeydownEnableCheck.checked
-                                    width: 24
-                                    height: 24
+                                    width: 26
+                                    height: 26
                                     radius: 4
                                     color: /^#[0-9A-Fa-f]{6}$/.test(profKeydownColorField.text.trim())
                                         ? profKeydownColorField.text.trim()
@@ -11522,14 +12585,12 @@ Kirigami.ApplicationWindow {
                                 QQC2.TextField {
                                     id: profKeydownColorField
                                     visible: profKeydownEnableCheck.checked
-                                    Layout.preferredWidth: 100
+                                    width: 100
                                     maximumLength: 7
                                     font.family: "monospace"
                                     selectByMouse: true
                                     onEditingFinished: profilePropertiesWindow.saveAllProfileProperties()
                                 }
-
-                                Item { Layout.fillWidth: true }
                             }
                         }
                     }
@@ -11547,7 +12608,7 @@ Kirigami.ApplicationWindow {
                             id: profFlagsCol
                             anchors.fill: parent
                             anchors.margins: 9
-                            spacing: 6
+                            spacing: 8
 
                             QQC2.Label {
                                 text: qsTr("Hardware LED & Orientation Directives (config.txt):")
@@ -11573,134 +12634,142 @@ Kirigami.ApplicationWindow {
                                 }
                             }
 
-                            RowLayout {
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                spacing: 6
+                                spacing: 4
 
                                 QQC2.Label {
-                                    text: qsTr("OLED Orientation:")
+                                    text: qsTr("OLED Orientation (Physical Screen):")
                                     font.bold: true
                                     font.pixelSize: 12
-                                    Layout.preferredWidth: 165
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WordWrap
                                 }
 
-                                QQC2.Button {
-                                    text: qsTr("0° (Portrait)")
-                                    checkable: true
-                                    checked: profilePropertiesWindow.profOledRotation === 0
-                                    highlighted: profilePropertiesWindow.profOledRotation === 0
-                                    onClicked: {
-                                        profilePropertiesWindow.profOledRotation = 0
-                                        profilePropertiesWindow.saveAllProfileProperties()
+                                Flow {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    QQC2.Button {
+                                        text: qsTr("0° (Portrait)")
+                                        checkable: true
+                                        checked: profilePropertiesWindow.profOledRotation === 0
+                                        highlighted: profilePropertiesWindow.profOledRotation === 0
+                                        onClicked: {
+                                            profilePropertiesWindow.profOledRotation = 0
+                                            profilePropertiesWindow.saveAllProfileProperties()
+                                        }
+                                    }
+
+                                    QQC2.Button {
+                                        text: qsTr("90° (Landscape CW)")
+                                        checkable: true
+                                        checked: profilePropertiesWindow.profOledRotation === 90
+                                        highlighted: profilePropertiesWindow.profOledRotation === 90
+                                        onClicked: {
+                                            profilePropertiesWindow.profOledRotation = 90
+                                            profilePropertiesWindow.saveAllProfileProperties()
+                                        }
+                                    }
+
+                                    QQC2.Button {
+                                        text: qsTr("180° (Inverted)")
+                                        checkable: true
+                                        checked: profilePropertiesWindow.profOledRotation === 180
+                                        highlighted: profilePropertiesWindow.profOledRotation === 180
+                                        onClicked: {
+                                            profilePropertiesWindow.profOledRotation = 180
+                                            profilePropertiesWindow.saveAllProfileProperties()
+                                        }
+                                    }
+
+                                    QQC2.Button {
+                                        text: qsTr("270° (Landscape CCW)")
+                                        checkable: true
+                                        checked: profilePropertiesWindow.profOledRotation === 270
+                                        highlighted: profilePropertiesWindow.profOledRotation === 270
+                                        onClicked: {
+                                            profilePropertiesWindow.profOledRotation = 270
+                                            profilePropertiesWindow.saveAllProfileProperties()
+                                        }
                                     }
                                 }
-
-                                QQC2.Button {
-                                    text: qsTr("90° (Landscape CW)")
-                                    checkable: true
-                                    checked: profilePropertiesWindow.profOledRotation === 90
-                                    highlighted: profilePropertiesWindow.profOledRotation === 90
-                                    onClicked: {
-                                        profilePropertiesWindow.profOledRotation = 90
-                                        profilePropertiesWindow.saveAllProfileProperties()
-                                    }
-                                }
-
-                                QQC2.Button {
-                                    text: qsTr("180° (Inverted)")
-                                    checkable: true
-                                    checked: profilePropertiesWindow.profOledRotation === 180
-                                    highlighted: profilePropertiesWindow.profOledRotation === 180
-                                    onClicked: {
-                                        profilePropertiesWindow.profOledRotation = 180
-                                        profilePropertiesWindow.saveAllProfileProperties()
-                                    }
-                                }
-
-                                QQC2.Button {
-                                    text: qsTr("270° (Landscape CCW)")
-                                    checkable: true
-                                    checked: profilePropertiesWindow.profOledRotation === 270
-                                    highlighted: profilePropertiesWindow.profOledRotation === 270
-                                    onClicked: {
-                                        profilePropertiesWindow.profOledRotation = 270
-                                        profilePropertiesWindow.saveAllProfileProperties()
-                                    }
-                                }
-
-                                Item { Layout.fillWidth: true }
                             }
 
-                            RowLayout {
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                spacing: 6
+                                spacing: 4
 
                                 QQC2.Label {
-                                    text: qsTr("💻 Widget Orientation:")
+                                    text: qsTr("💻 Desktop Widget Orientation (Instant — No microSD Sync Required):")
                                     font.bold: true
                                     font.pixelSize: 12
-                                    Layout.preferredWidth: 165
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WordWrap
                                     QQC2.ToolTip.visible: dwRotHover.hovered
-                                    QQC2.ToolTip.text: qsTr("💻 Host App Only: Configure the Desktop OLED Widget orientation separately from the physical hardware OLED screen (stored as DW_ROTATION in config.txt).")
+                                    QQC2.ToolTip.text: qsTr("💻 Host App Only: Configure the Desktop OLED Widget orientation separately from the physical hardware OLED screen. Applies immediately without requiring a microSD card sync.")
                                     HoverHandler { id: dwRotHover }
                                 }
 
-                                QQC2.Button {
-                                    text: qsTr("Follow OLED (%1°)").arg(profilePropertiesWindow.profOledRotation)
-                                    checkable: true
-                                    checked: profilePropertiesWindow.profWidgetRotation < 0
-                                    highlighted: profilePropertiesWindow.profWidgetRotation < 0
-                                    onClicked: {
-                                        profilePropertiesWindow.profWidgetRotation = -1
-                                        profilePropertiesWindow.saveAllProfileProperties()
+                                Flow {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    QQC2.Button {
+                                        text: qsTr("Follow OLED (%1°)").arg(profilePropertiesWindow.profOledRotation)
+                                        checkable: true
+                                        checked: profilePropertiesWindow.profWidgetRotation < 0
+                                        highlighted: profilePropertiesWindow.profWidgetRotation < 0
+                                        onClicked: {
+                                            profilePropertiesWindow.profWidgetRotation = -1
+                                            profilePropertiesWindow.saveAllProfileProperties()
+                                        }
+                                    }
+
+                                    QQC2.Button {
+                                        text: qsTr("0°")
+                                        checkable: true
+                                        checked: profilePropertiesWindow.profWidgetRotation === 0
+                                        highlighted: profilePropertiesWindow.profWidgetRotation === 0
+                                        onClicked: {
+                                            profilePropertiesWindow.profWidgetRotation = 0
+                                            profilePropertiesWindow.saveAllProfileProperties()
+                                        }
+                                    }
+
+                                    QQC2.Button {
+                                        text: qsTr("90°")
+                                        checkable: true
+                                        checked: profilePropertiesWindow.profWidgetRotation === 90
+                                        highlighted: profilePropertiesWindow.profWidgetRotation === 90
+                                        onClicked: {
+                                            profilePropertiesWindow.profWidgetRotation = 90
+                                            profilePropertiesWindow.saveAllProfileProperties()
+                                        }
+                                    }
+
+                                    QQC2.Button {
+                                        text: qsTr("180°")
+                                        checkable: true
+                                        checked: profilePropertiesWindow.profWidgetRotation === 180
+                                        highlighted: profilePropertiesWindow.profWidgetRotation === 180
+                                        onClicked: {
+                                            profilePropertiesWindow.profWidgetRotation = 180
+                                            profilePropertiesWindow.saveAllProfileProperties()
+                                        }
+                                    }
+
+                                    QQC2.Button {
+                                        text: qsTr("270°")
+                                        checkable: true
+                                        checked: profilePropertiesWindow.profWidgetRotation === 270
+                                        highlighted: profilePropertiesWindow.profWidgetRotation === 270
+                                        onClicked: {
+                                            profilePropertiesWindow.profWidgetRotation = 270
+                                            profilePropertiesWindow.saveAllProfileProperties()
+                                        }
                                     }
                                 }
-
-                                QQC2.Button {
-                                    text: qsTr("0°")
-                                    checkable: true
-                                    checked: profilePropertiesWindow.profWidgetRotation === 0
-                                    highlighted: profilePropertiesWindow.profWidgetRotation === 0
-                                    onClicked: {
-                                        profilePropertiesWindow.profWidgetRotation = 0
-                                        profilePropertiesWindow.saveAllProfileProperties()
-                                    }
-                                }
-
-                                QQC2.Button {
-                                    text: qsTr("90°")
-                                    checkable: true
-                                    checked: profilePropertiesWindow.profWidgetRotation === 90
-                                    highlighted: profilePropertiesWindow.profWidgetRotation === 90
-                                    onClicked: {
-                                        profilePropertiesWindow.profWidgetRotation = 90
-                                        profilePropertiesWindow.saveAllProfileProperties()
-                                    }
-                                }
-
-                                QQC2.Button {
-                                    text: qsTr("180°")
-                                    checkable: true
-                                    checked: profilePropertiesWindow.profWidgetRotation === 180
-                                    highlighted: profilePropertiesWindow.profWidgetRotation === 180
-                                    onClicked: {
-                                        profilePropertiesWindow.profWidgetRotation = 180
-                                        profilePropertiesWindow.saveAllProfileProperties()
-                                    }
-                                }
-
-                                QQC2.Button {
-                                    text: qsTr("270°")
-                                    checkable: true
-                                    checked: profilePropertiesWindow.profWidgetRotation === 270
-                                    highlighted: profilePropertiesWindow.profWidgetRotation === 270
-                                    onClicked: {
-                                        profilePropertiesWindow.profWidgetRotation = 270
-                                        profilePropertiesWindow.saveAllProfileProperties()
-                                    }
-                                }
-
-                                Item { Layout.fillWidth: true }
                             }
 
                             QQC2.Label {
@@ -11708,7 +12777,7 @@ Kirigami.ApplicationWindow {
                                 wrapMode: Text.WordWrap
                                 font.pixelSize: 10
                                 color: Kirigami.Theme.disabledTextColor
-                                text: qsTr("Note: Physical OLED 180° & 270° require DuckyDeck Studio Firmware v1.0.0+. Desktop Widget Orientation (💻) applies to the on-screen Desktop OLED Widget while DuckyDeck Studio is running.")
+                                text: qsTr("Note: Physical OLED 180° & 270° require DuckyDeck Studio Firmware v1.0.0+. Desktop Widget Orientation (💻) is a host-only setting that updates the on-screen Desktop OLED Widget immediately without requiring a microSD card sync.")
                             }
 
                             QQC2.CheckBox {
@@ -11732,67 +12801,234 @@ Kirigami.ApplicationWindow {
                     // Related Profile Features Quick Access
                     Rectangle {
                         Layout.fillWidth: true
-                        implicitHeight: profQuickRow.implicitHeight + 16
+                        implicitHeight: profQuickCol.implicitHeight + 16
                         radius: 6
                         color: Kirigami.Theme.alternateBackgroundColor
                         border.color: Qt.alpha(Kirigami.Theme.textColor, 0.16)
                         border.width: 1
 
-                        RowLayout {
-                            id: profQuickRow
+                        ColumnLayout {
+                            id: profQuickCol
                             anchors.fill: parent
                             anchors.margins: 8
-                            spacing: 8
+                            spacing: 6
 
                             QQC2.Label {
                                 text: qsTr("Profile Integrations:")
                                 font.bold: true
                                 font.pixelSize: 12
+                                Layout.fillWidth: true
                             }
 
-                            QQC2.Button {
-                                text: qsTr("✨ Profile RGB Lighting FX...")
-                                onClicked: {
-                                    if (deviceController.activeProfile !== profilePropertiesWindow.profNumber) {
-                                        deviceController.selectProfile(profilePropertiesWindow.profNumber)
-                                        root.syncSidebarProfilesFromController()
-                                        hardwareCanvas.syncSlotsFromController()
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: 6
+
+                                QQC2.Button {
+                                    text: qsTr("✨ Profile RGB Lighting FX...")
+                                    onClicked: {
+                                        if (deviceController.activeProfile !== profilePropertiesWindow.profNumber) {
+                                            deviceController.selectProfile(profilePropertiesWindow.profNumber)
+                                            root.syncSidebarProfilesFromController()
+                                            hardwareCanvas.syncSlotsFromController()
+                                        }
+                                        lightingAnimatorDialog.openFor("profile", 0)
                                     }
-                                    lightingAnimatorDialog.openFor("profile", 0)
                                 }
-                            }
 
-                            QQC2.Button {
-                                icon.name: "bookmark-new"
-                                text: qsTr("Save as Template...")
-                                onClicked: {
-                                    profileTemplatesDialog.openSaveFromProfile(
-                                        profilePropertiesWindow.profNumber,
-                                        profNameField.text.trim()
-                                    )
-                                }
-                            }
-
-                            QQC2.Button {
-                                icon.name: "crosshairs"
-                                text: qsTr("Bind Window...")
-                                onClicked: {
-                                    if (deviceController.activeProfile !== profilePropertiesWindow.profNumber) {
-                                        deviceController.selectProfile(profilePropertiesWindow.profNumber)
-                                        root.syncSidebarProfilesFromController()
-                                        hardwareCanvas.syncSlotsFromController()
+                                QQC2.Button {
+                                    icon.name: "bookmark-new"
+                                    text: qsTr("Save as Template...")
+                                    onClicked: {
+                                        profileTemplatesDialog.openSaveFromProfile(
+                                            profilePropertiesWindow.profNumber,
+                                            profNameField.text.trim()
+                                        )
                                     }
-                                    deviceController.armWindowPicker(true)
+                                }
+
+                                QQC2.Button {
+                                    icon.name: "crosshairs"
+                                    text: qsTr("Bind Window...")
+                                    onClicked: {
+                                        if (deviceController.activeProfile !== profilePropertiesWindow.profNumber) {
+                                            deviceController.selectProfile(profilePropertiesWindow.profNumber)
+                                            root.syncSidebarProfilesFromController()
+                                            hardwareCanvas.syncSlotsFromController()
+                                        }
+                                        deviceController.armWindowPicker(true)
+                                    }
+                                }
+
+                                QQC2.Button {
+                                    icon.name: "preferences-system-windows"
+                                    text: qsTr("Auto-Switch Rules...")
+                                    onClicked: autoSwitchDrawer.open()
+                                }
+                            }
+                        }
+                    }
+
+                    // Per-Profile Change Webhook Card
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: profWebhookCol.implicitHeight + 18
+                        radius: 6
+                        color: Kirigami.Theme.alternateBackgroundColor
+                        border.color: profWebhookEnableCheck.checked
+                            ? Kirigami.Theme.highlightColor
+                            : Qt.alpha(Kirigami.Theme.textColor, 0.16)
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: profWebhookCol
+                            anchors.fill: parent
+                            anchors.margins: 9
+                            spacing: 6
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("🔔 Profile Change Webhook (On Profile Activated)")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WordWrap
+                                }
+
+                                QQC2.Button {
+                                    icon.name: "network-transmit-receive"
+                                    text: qsTr("Test Webhook")
+                                    enabled: profWebhookUrlField.text.trim().length > 0
+                                    onClicked: {
+                                        const resRaw = deviceController.testProfileWebhookJson(JSON.stringify({
+                                            enabled: true,
+                                            method: profWebhookMethodCombo.currentText || "POST",
+                                            url: profWebhookUrlField.text.trim(),
+                                            headers: profWebhookHeadersArea.text,
+                                            body: profWebhookBodyArea.text
+                                        }))
+                                        try {
+                                            const res = JSON.parse(resRaw)
+                                            profilePropertiesWindow.webhookTestStatus = res.ok
+                                                ? qsTr("✓ HTTP %1 (%2 ms)").arg(res.status).arg(res.elapsed_ms)
+                                                : qsTr("✗ %1").arg(res.error || ("HTTP " + res.status))
+                                        } catch (e) {
+                                            profilePropertiesWindow.webhookTestStatus = resRaw
+                                        }
+                                    }
                                 }
                             }
 
-                            QQC2.Button {
-                                icon.name: "preferences-system-windows"
-                                text: qsTr("Auto-Switch Rules...")
-                                onClicked: autoSwitchDrawer.open()
+                            QQC2.CheckBox {
+                                id: profWebhookEnableCheck
+                                Layout.fillWidth: true
+                                text: qsTr("Trigger this HTTP Webhook whenever Profile #%1 becomes active (UI, Hardware, Auto-Switch, or REST API)").arg(profilePropertiesWindow.profNumber)
+                                contentItem: QQC2.Label {
+                                    leftPadding: (profWebhookEnableCheck.indicator ? profWebhookEnableCheck.indicator.width : 18) + profWebhookEnableCheck.spacing
+                                    text: profWebhookEnableCheck.text
+                                    font: profWebhookEnableCheck.font
+                                    color: Kirigami.Theme.textColor
+                                    verticalAlignment: Text.AlignVCenter
+                                    wrapMode: Text.WordWrap
+                                }
                             }
 
-                            Item { Layout.fillWidth: true }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.ComboBox {
+                                    id: profWebhookMethodCombo
+                                    Layout.preferredWidth: 105
+                                    model: ["GET", "POST", "PUT", "PATCH", "DELETE"]
+                                    currentIndex: 1
+                                }
+
+                                QQC2.TextField {
+                                    id: profWebhookUrlField
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 120
+                                    Layout.preferredWidth: 1
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                    selectByMouse: true
+                                    placeholderText: qsTr("http://homeassistant.local:8123/api/webhook/duckypad_profile")
+                                }
+                            }
+
+                            QQC2.Label {
+                                text: qsTr("Headers (Optional, one 'Header-Name: Value' per line):")
+                                font.pixelSize: 10
+                                font.bold: true
+                                color: Kirigami.Theme.disabledTextColor
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                            }
+
+                            QQC2.TextArea {
+                                id: profWebhookHeadersArea
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 100
+                                Layout.preferredWidth: 1
+                                implicitHeight: 46
+                                font.family: "monospace"
+                                font.pixelSize: 11
+                                selectByMouse: true
+                                wrapMode: TextEdit.Wrap
+                                clip: true
+                                placeholderText: qsTr("Content-Type: application/json\nAuthorization: Bearer <token>")
+                                background: Rectangle {
+                                    radius: 4
+                                    color: Kirigami.Theme.backgroundColor
+                                    border.color: Qt.alpha(Kirigami.Theme.textColor, 0.2)
+                                    border.width: 1
+                                }
+                            }
+
+                            QQC2.Label {
+                                text: qsTr("Payload Body (Template placeholders: {{profile_number}}, {{profile_name}}, {{previous_profile_number}}, {{previous_profile_name}}, {{source}}, {{device_serial}}, {{timestamp}}):")
+                                font.pixelSize: 10
+                                font.bold: true
+                                color: Kirigami.Theme.disabledTextColor
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                            }
+
+                            QQC2.TextArea {
+                                id: profWebhookBodyArea
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 100
+                                Layout.preferredWidth: 1
+                                implicitHeight: 58
+                                font.family: "monospace"
+                                font.pixelSize: 11
+                                selectByMouse: true
+                                wrapMode: TextEdit.Wrap
+                                clip: true
+                                placeholderText: qsTr("{\"event\":\"profile_changed\",\"profile_number\":{{profile_number}},\"profile_name\":\"{{profile_name}}\"}")
+                                background: Rectangle {
+                                    radius: 4
+                                    color: Kirigami.Theme.backgroundColor
+                                    border.color: Qt.alpha(Kirigami.Theme.textColor, 0.2)
+                                    border.width: 1
+                                }
+                            }
+
+                            QQC2.Label {
+                                visible: profilePropertiesWindow.webhookTestStatus.length > 0
+                                text: profilePropertiesWindow.webhookTestStatus
+                                font.family: "monospace"
+                                font.pixelSize: 11
+                                font.bold: true
+                                color: profilePropertiesWindow.webhookTestStatus.startsWith("✓")
+                                    ? Kirigami.Theme.positiveTextColor
+                                    : Kirigami.Theme.neutralTextColor
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                            }
                         }
                     }
 

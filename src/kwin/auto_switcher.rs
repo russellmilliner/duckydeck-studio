@@ -70,6 +70,51 @@ pub fn default_saved_colors() -> Vec<String> {
     ]
 }
 
+pub fn default_rest_api_bind_ip() -> String {
+    "127.0.0.1".to_string()
+}
+
+pub fn default_rest_api_port() -> u16 {
+    28491
+}
+
+pub fn generate_rest_api_token() -> String {
+    let mut buf = [0u8; 20];
+    let mut filled = false;
+    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
+        use std::io::Read;
+        if f.read_exact(&mut buf).is_ok() {
+            filled = true;
+        }
+    }
+    if !filled {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0x9e3779b97f4a7c15);
+        let pid = std::process::id() as u128;
+        let mut seed = nanos ^ (pid << 32) ^ 0x517cc1b727220a95;
+        for b in &mut buf {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            *b = (seed >> 56) as u8;
+        }
+    }
+    let mut hex = String::with_capacity(44);
+    hex.push_str("ddk_");
+    for b in buf {
+        hex.push_str(&format!("{b:02x}"));
+    }
+    hex
+}
+
+fn default_webhook_method() -> String {
+    "POST".to_string()
+}
+
+fn default_webhook_headers() -> String {
+    "Content-Type: application/json".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedSwitcherConfig {
     pub enabled: bool,
@@ -101,6 +146,26 @@ pub struct PersistedSwitcherConfig {
     pub event_log_text_scale: i32,
     #[serde(default = "default_saved_colors")]
     pub saved_colors: Vec<String>,
+    #[serde(default)]
+    pub rest_api_enabled: bool,
+    #[serde(default = "default_rest_api_bind_ip")]
+    pub rest_api_bind_ip: String,
+    #[serde(default = "default_rest_api_port")]
+    pub rest_api_port: u16,
+    #[serde(default = "default_true")]
+    pub rest_api_require_auth: bool,
+    #[serde(default = "generate_rest_api_token")]
+    pub rest_api_token: String,
+    #[serde(default)]
+    pub profile_webhook_enabled: bool,
+    #[serde(default = "default_webhook_method")]
+    pub profile_webhook_method: String,
+    #[serde(default)]
+    pub profile_webhook_url: String,
+    #[serde(default = "default_webhook_headers")]
+    pub profile_webhook_headers: String,
+    #[serde(default)]
+    pub profile_webhook_body: String,
 }
 
 pub struct SwitcherState {
@@ -121,6 +186,16 @@ pub struct SwitcherState {
     pub status_bar_text_scale: i32,
     pub event_log_text_scale: i32,
     pub saved_colors: Vec<String>,
+    pub rest_api_enabled: bool,
+    pub rest_api_bind_ip: String,
+    pub rest_api_port: u16,
+    pub rest_api_require_auth: bool,
+    pub rest_api_token: String,
+    pub profile_webhook_enabled: bool,
+    pub profile_webhook_method: String,
+    pub profile_webhook_url: String,
+    pub profile_webhook_headers: String,
+    pub profile_webhook_body: String,
     pub last_switched_profile: u8,
     pub picker_armed: bool,
     pub loaded_from_disk: bool,
@@ -142,6 +217,26 @@ impl Default for SwitcherState {
             } else {
                 cfg.saved_colors
             };
+            let bind_ip = if cfg.rest_api_bind_ip.trim().is_empty() {
+                default_rest_api_bind_ip()
+            } else {
+                cfg.rest_api_bind_ip.trim().to_string()
+            };
+            let port = if cfg.rest_api_port < 1024 {
+                default_rest_api_port()
+            } else {
+                cfg.rest_api_port
+            };
+            let token = if cfg.rest_api_token.trim().is_empty() {
+                generate_rest_api_token()
+            } else {
+                cfg.rest_api_token.trim().to_string()
+            };
+            let wh_method = if cfg.profile_webhook_method.trim().is_empty() {
+                default_webhook_method()
+            } else {
+                cfg.profile_webhook_method.trim().to_ascii_uppercase()
+            };
             return Self {
                 enabled: cfg.enabled,
                 paused_for_editing: false,
@@ -160,6 +255,16 @@ impl Default for SwitcherState {
                 status_bar_text_scale: cfg.status_bar_text_scale.clamp(75, 160),
                 event_log_text_scale: cfg.event_log_text_scale.clamp(75, 160),
                 saved_colors,
+                rest_api_enabled: cfg.rest_api_enabled,
+                rest_api_bind_ip: bind_ip,
+                rest_api_port: port,
+                rest_api_require_auth: cfg.rest_api_require_auth,
+                rest_api_token: token,
+                profile_webhook_enabled: cfg.profile_webhook_enabled,
+                profile_webhook_method: wh_method,
+                profile_webhook_url: cfg.profile_webhook_url.trim().to_string(),
+                profile_webhook_headers: cfg.profile_webhook_headers.trim().to_string(),
+                profile_webhook_body: cfg.profile_webhook_body,
                 last_switched_profile: 0,
                 picker_armed: false,
                 loaded_from_disk: true,
@@ -206,6 +311,16 @@ impl Default for SwitcherState {
             status_bar_text_scale: 100,
             event_log_text_scale: 100,
             saved_colors: default_saved_colors(),
+            rest_api_enabled: false,
+            rest_api_bind_ip: default_rest_api_bind_ip(),
+            rest_api_port: default_rest_api_port(),
+            rest_api_require_auth: true,
+            rest_api_token: generate_rest_api_token(),
+            profile_webhook_enabled: false,
+            profile_webhook_method: default_webhook_method(),
+            profile_webhook_url: String::new(),
+            profile_webhook_headers: default_webhook_headers(),
+            profile_webhook_body: String::new(),
             last_switched_profile: 0,
             picker_armed: false,
             loaded_from_disk: false,
@@ -255,6 +370,16 @@ impl SwitcherState {
             status_bar_text_scale: self.status_bar_text_scale.clamp(75, 160),
             event_log_text_scale: self.event_log_text_scale.clamp(75, 160),
             saved_colors: self.saved_colors.clone(),
+            rest_api_enabled: self.rest_api_enabled,
+            rest_api_bind_ip: self.rest_api_bind_ip.clone(),
+            rest_api_port: self.rest_api_port,
+            rest_api_require_auth: self.rest_api_require_auth,
+            rest_api_token: self.rest_api_token.clone(),
+            profile_webhook_enabled: self.profile_webhook_enabled,
+            profile_webhook_method: self.profile_webhook_method.clone(),
+            profile_webhook_url: self.profile_webhook_url.clone(),
+            profile_webhook_headers: self.profile_webhook_headers.clone(),
+            profile_webhook_body: self.profile_webhook_body.clone(),
         };
         let json = serde_json::to_string_pretty(&payload)
             .map_err(|e| format!("Failed serializing KWin rules: {e}"))?;

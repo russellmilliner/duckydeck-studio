@@ -11,6 +11,7 @@ pub mod kwin {
 pub mod ai {
     pub mod shortcut_scraper;
 }
+pub mod api_server;
 pub mod vm;
 
 use std::collections::BTreeSet;

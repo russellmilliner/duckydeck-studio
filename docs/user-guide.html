@@ -844,10 +844,11 @@
             <li><strong>Apply a Template to an Existing Profile:</strong> Open <strong>📋 Templates...</strong> and click <strong>Apply to Current Profile</strong> to overwrite the active profile with that template's layout.</li>
           </ul>
         </li>
-        <li><strong>⚙ Profile Settings (OLED &amp; Desktop Widget Orientations):</strong> Click the <strong>⚙ Profile Settings</strong> button in the center toolbar (or right-click a profile → <em>Profile Settings...</em>) to configure:
+        <li><strong>⚙ Profile Settings (OLED, Instant Desktop Widget Orientation &amp; Profile Change Webhook):</strong> Click the <strong>⚙ Profile Settings</strong> button in the center toolbar (or right-click a profile → <em>Profile Properties...</em>) to configure:
           <ul>
-            <li><strong>Hardware OLED Orientation (`0°`, `90°`, `180°`, `270°`):</strong> Rotates the physical duckyPad Pro OLED screen and key grid (`270°` requires DuckyDeck Studio Firmware `v1.0.0`).</li>
-            <li><strong>💻 Desktop Widget Orientation (`Follow OLED`, `0°`, `90°`, `180°`, `270°`):</strong> Independently orient the floating on-screen Desktop Widget without changing how the physical duckyPad sits on your desk!</li>
+            <li><strong>Hardware OLED Orientation (`0°`, `90°`, `180°`, `270°`):</strong> Rotates the physical duckyPad Pro OLED screen and key grid (`180°` &amp; `270°` require DuckyDeck Studio Firmware `v1.0.0`).</li>
+            <li><strong>💻 Desktop Widget Orientation (`Follow OLED`, `0°`, `90°`, `180°`, `270°`):</strong> Independently orient the floating on-screen Desktop Widget without changing how the physical duckyPad sits on your desk! <strong>Changes apply immediately and do not require a microSD card sync.</strong></li>
+            <li><strong>🔔 Profile Change Webhook (On Profile Activated):</strong> Configure a per-profile HTTP webhook (`GET`/`POST`/`PUT`/`PATCH`/`DELETE`, URL, custom headers, and JSON body with placeholders `{{profile_number}}`, `{{profile_name}}`, `{{previous_profile_number}}`, `{{previous_profile_name}}`, `{{source}}`, `{{device_serial}}`, `{{timestamp}}`) that fires automatically whenever that profile becomes active.</li>
             <li><strong>Dim Unused Keys (`DIM_UNUSED_KEYS`):</strong> Automatically turns off LEDs on unconfigured keys.</li>
           </ul>
         </li>
@@ -876,7 +877,7 @@
         </li>
         <li><strong>Toolbar Toggles:</strong>
           <ul>
-            <li><strong>⚙ Profile Settings:</strong> Configure profile name, default LED color, Hardware OLED Orientation (`0°`, `90°`, `180°`, `270°`), and independent Desktop Widget Orientation (`Follow OLED`, `0°`, `90°`, `180°`, `270°`).</li>
+            <li><strong>⚙ Profile Settings:</strong> Configure profile name, default LED color, Hardware OLED Orientation (`0°`, `90°`, `180°`, `270°`), instant Desktop Widget Orientation (`Follow OLED`, `0°`, `90°`, `180°`, `270°`), and Per-Profile Change Webhooks.</li>
             <li><strong>⚡ 32ch:</strong> Show or hide the 4×8 (32-channel) Expansion Module panel (Slots 27–58).</li>
             <li><strong>OLED: Grid / Script:</strong> Preview either the standard 4×5 key label grid or custom `OLED_LINE` / `OLED_CIRCLE` / `OLED_RECT` drawing commands on the simulated 128×128 OLED screen.</li>
           </ul>
@@ -918,20 +919,20 @@
 
     <!-- 6. microSD Sync & Firmware -->
     <section id="sdsync">
-      <h2>💾 6. microSD Sync, Mounting &amp; Firmware (`v1.0.0`)</h2>
+      <h2>💾 6. microSD Sync, Mounting &amp; Firmware Manager (`v1.0.0` &amp; Official Catalog)</h2>
       <p>
         Edits you make in DuckyDeck Studio are saved immediately to your local profile cache (`~/.local/share/duckydeck-studio/profiles_cache/`) so you never lose work,
         even when the duckyPad is unplugged.
       </p>
       <ul>
         <li><strong>Mount SD Card (`☰ → Mount SD Card`):</strong> When an unmounted duckyPad microSD card (or USB Connected Duckypad) is detected, the `☰` menu displays <strong>Mount SD Card</strong> so you can mount it with one click without triggering a full sync.</li>
-        <li><strong>Status Bar Sync Badge:</strong> The bottom status bar shows whether your local profiles match the hardware microSD card (<strong>✓ SD Synced</strong> vs. <strong>⚠ Unsynced Changes</strong>).</li>
+        <li><strong>Status Bar Sync Badge:</strong> The bottom status bar shows whether your local profiles match the hardware microSD card (<strong>✓ SD Synced</strong> vs. <strong>⚠ Unsynced Changes</strong>). Host-only settings like Desktop Widget Orientation (`DW_ROTATION`) and Profile Change Webhooks apply immediately without requiring an SD sync.</li>
         <li><strong>📋 Changes Summary:</strong> Click the sync status badge (or <strong>📋 Summary</strong>) to inspect a per-profile diff of added, modified, or deleted keys before writing to hardware.</li>
         <li><strong>⬆ Sync to SD:</strong> Mounts the duckyPad Pro microSD card (automatically via USB Mass Storage mode `0x1B` + `udisksctl`, or direct SD mount), compiles every `keyN.txt` script into a DSVM v2 `.dsb` binary, writes `config.txt` and `profile_info.txt`, flushes the filesystem, and verifies the written files.</li>
-        <li><strong>DuckyDeck Studio Firmware (`v1.0.0`) &amp; Official dekuNukem Firmware:</strong>
+        <li><strong>DuckyDeck Studio Firmware (`v1.0.0`) &amp; Official Firmware Catalog Downloader:</strong>
           <ul>
             <li>DuckyDeck Studio includes its own custom firmware build versioned as <strong><code>1.0.0</code></strong> (`DPP_FW_1.0.0_ad2acc81.bin`, identified by the DuckyDeck Studio icon badge in the status bar and USB HID `0x00` signature bytes `'D','D','S'`), adding native **`90°`**, **`180°`**, and **`270°`** OLED rotation (`OLED_ROTATION 90|180|270` in `profile_info.txt` and `IS_LANDSCAPE 1|2|3` in `config.txt`).</li>
-            <li>Official stock <strong>dekuNukem</strong> firmware binaries are not bundled in the repository to avoid version confusion—you can download official stock releases directly from <a href="https://github.com/dekuNukem/duckyPad-Pro/releases" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">github.com/dekuNukem/duckyPad-Pro/releases</a> and flash them via <strong>☰ → Firmware Update... → Browse Custom `.bin` File...</strong>.</li>
+            <li><strong>Download Official Firmware List in Firmware Manager (`☰ → Firmware Update...`):</strong> Click <strong>⬇ Fetch Official List from Site</strong> inside the Firmware Manager window to query the official <code>dekuNukem/duckyPad-Pro</code> repository, browse all available official firmware versions, and click <strong>⬇ Download .bin</strong> or <strong>Download &amp; Install Selected Firmware</strong> (with automatic IEEE CRC32 checksum verification).</li>
           </ul>
         </li>
       </ul>
@@ -977,7 +978,7 @@
         <li>Click <strong>📦 Pick Installed App...</strong> to search all installed desktop applications (`.desktop` entries from `/usr/share/applications`, Flatpak exports, and `~/.local/share/applications`) with icons, descriptions, and categories—or type any custom command and arguments.</li>
         <li>Choose the <strong>Trigger Mode</strong>:
           <ul>
-            <li><strong>Silent Host Launch (`_GV31`) (Default — No Keyboard Shortcut Needed):</strong> Pressing the key on the duckyPad writes a unique profile+slot token to `_GV31`. DuckyDeck Studio's background HID listener detects the change and spawns the application directly on your Linux desktop!</li>
+            <li><strong>Silent Host Launch (`_GV19`) (Default — No Keyboard Shortcut Needed):</strong> Pressing the key on the duckyPad writes a unique profile+slot token to `_GV19`. DuckyDeck Studio's background HID listener detects the change and spawns the application directly on your Linux desktop!</li>
             <li><strong>F13–F24 Global Hotkey (`evdev`):</strong> Emits `F13`–`F24` over USB HID keyboard and triggers the launch via DuckyDeck Studio's background `evdev` listener.</li>
           </ul>
         </li>
@@ -989,25 +990,31 @@
       </div>
     </section>
 
-    <!-- 9. Web API / Webhook Builder -->
+    <!-- 9. Web API / Webhook Builder & Home Assistant Entity Search -->
     <section id="webapi">
-      <h2>🌐 9. Web API / Webhook Builder</h2>
+      <h2>🌐 9. Web API / Webhook Builder &amp; 🏠 Home Assistant Entity Search</h2>
       <div class="callout warn">
         <div class="callout-title">💻 Host-Dependent Feature — Requires DuckyDeck Studio Running</div>
-        The duckyPad hardware does not have a network stack. Web API / Webhook keys require DuckyDeck Studio running on your host PC to receive the USB HID trigger and execute the HTTP request over your computer's network connection.
+        The duckyPad hardware does not have a network stack. Web API / Webhook keys and Home Assistant entity triggers require DuckyDeck Studio running on your host PC to receive the USB HID trigger and execute the HTTP request over your computer's network connection.
       </div>
       <p>
-        Trigger Home Assistant webhooks, REST APIs, Miniflux, OBS, or custom HTTP endpoints directly from a duckyPad key:
+        Trigger Home Assistant devices/entities, REST APIs, Miniflux, OBS, or custom HTTP endpoints directly from a duckyPad key:
       </p>
       <ol>
-        <li>Select a key and click <strong>🌐 Web API</strong> in the inspector toolbar.</li>
-        <li>Check <strong>Trigger Web API on Key Press</strong> and configure the HTTP Method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`), URL, custom headers (`Header: Value` per line), and request body (JSON/text).</li>
-        <li>Select <strong>Silent Hardware PGV (`_GV31`)</strong> (zero keyboard interference, works on all profiles and keys) or <strong>F13–F24 Hotkey</strong>.</li>
-        <li>Click <strong>⚡ Test API Call</strong> to fire the HTTP request immediately and view status codes, latency, and errors in the <strong>System Event Log (`WEB_API`)</strong>.</li>
+        <li>Select a key and click <strong>🌐 Web API</strong> in the inspector toolbar (or open the full <strong>Web API / HTTP Webhook</strong> configurator window).</li>
+        <li><strong>🏠 Search Home Assistant Devices &amp; Entities:</strong>
+          <ul>
+            <li>Enter your <strong>Home Assistant URL</strong> (e.g. <code>http://homeassistant.local:8123</code>) and a <strong>Long-Lived Access Token</strong> (created in Home Assistant under <em>Profile → Security → Long-Lived Access Tokens</em>), then click <strong>Save HA Connection</strong>.</li>
+            <li>Select a domain filter (<code>All Domains</code>, <code>light</code>, <code>switch</code>, <code>scene</code>, <code>script</code>, <code>automation</code>, <code>button</code>, <code>input_boolean</code>, <code>media_player</code>, <code>cover</code>, <code>fan</code>, <code>climate</code>, <code>lock</code>), type a search query, and click <strong>🔍 Search Entities</strong>.</li>
+            <li>Click <strong>⚡ domain.service</strong> (or <strong>Turn On</strong> / <strong>Turn Off</strong>) next to any entity to automatically populate the HTTP <code>POST</code> endpoint (<code>/api/services/&lt;domain&gt;/&lt;service&gt;</code>), <code>Authorization: Bearer</code> header, JSON <code>{"entity_id": "..."}</code> body, and OLED feedback text for the selected key!</li>
+          </ul>
+        </li>
+        <li><strong>Custom REST / Webhook Endpoints:</strong> Configure any HTTP Method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`), URL, custom headers (`Header: Value` per line), and request body (JSON/text).</li>
+        <li>Click <strong>Test Webhook Now</strong> to fire the HTTP request immediately and view status codes, latency, and errors in the <strong>System Event Log (`WEB_API`)</strong>.</li>
       </ol>
       <div class="screenshot-frame">
         <a href="screenshots/05-obs-studio-web-api.png" target="_blank"><img src="screenshots/05-obs-studio-web-api.png" alt="Web API Builder in OBS Studio Profile" loading="lazy" /></a>
-        <div class="screenshot-caption">🌐 <strong>Web API / Webhook Builder</strong> — Triggering a Home Assistant Studio Key Light REST webhook from Key 17 of the OBS Studio profile with RGB LED status feedback.</div>
+        <div class="screenshot-caption">🌐 <strong>Web API / Webhook Builder</strong> — Triggering a Home Assistant Studio Key Light REST service from Key 17 of the OBS Studio profile with RGB LED status feedback.</div>
       </div>
     </section>
 
@@ -1025,7 +1032,7 @@
         <li><strong>🎯 Crosshair Window Picker:</strong> Right-click any profile in the sidebar and select <strong>Bind Window to This Profile (Pick Window)...</strong> (or click <strong>Pick Window</strong> inside the <em>Rules</em> dialog). Click any open window on your desktop to automatically capture its `resourceClass`, window title, and application icon.</li>
         <li><strong>Browser Tab Title Matching:</strong> When picking a web browser (Zen Browser, Firefox, Chrome, Brave, Vivaldi, etc.), DuckyDeck Studio automatically strips the browser suffix so your rule matches the specific web app or tab title (e.g. `Miniflux`, `GitHub`, `YouTube`), or you can use `*browser*` to match all web browsers.</li>
         <li><strong>Automatic Pause While Editing:</strong> Whenever the Right Key Inspector is open, the Auto-Switcher automatically pauses (`AUTO-SWITCHER (PAUSED)`) so switching to a browser or terminal to copy a URL or command won't yank the active profile away from the key you're editing!</li>
-        <li><strong>Floating OLED Desktop Widget:</strong> Mirrors the 128×128 OLED screen on your desktop with configurable scale (`1x`–`3x`), transparency (`0%`–`85%`, persisted across restarts), multi-monitor screen &amp; KWin Wayland position memory, and independent per-profile orientation (`Follow OLED`, `0°`, `90°`, `180°`, `270°`).</li>
+        <li><strong>Floating OLED Desktop Widget:</strong> Mirrors the 128×128 OLED screen on your desktop with configurable scale (`1x`–`3x`), transparency (`0%`–`85%`, persisted across restarts), multi-monitor screen &amp; KWin Wayland position memory, and instant independent per-profile orientation (`Follow OLED`, `0°`, `90°`, `180°`, `270°`) that does not require a microSD card sync.</li>
       </ul>
       <div class="screenshot-frame">
         <a href="screenshots/10-wayland-auto-switcher.png" target="_blank"><img src="screenshots/10-wayland-auto-switcher.png" alt="KWin Wayland Auto-Switcher Rules Dialog" loading="lazy" /></a>
@@ -1040,8 +1047,8 @@
         Open <strong>Variables (`_GV`)...</strong> from the `☰` menu to inspect and live-edit all 32 32-bit non-volatile Persistent Global Variables (`_GV0` through `_GV31`) over USB HID commands `0x18` (read) and `0x19` (write) in Signed Decimal, Unsigned Decimal, or Hexadecimal format.
       </p>
       <div class="callout warn">
-        <div class="callout-title">Reserved Bridge PGV (`_GV31`)</div>
-        DuckyDeck Studio uses <code>_GV31</code> for instant Web API triggers (`0x444B...`) and instant Application Launch triggers (`0x444B08...`) when using the default Silent Hardware PGV trigger mode.
+        <div class="callout-title">Reserved Bridge PGVs (`_GV18`–`_GV20`)</div>
+        DuckyDeck Studio uses <code>_GV18</code> for instant Web API triggers, <code>_GV19</code> for instant Application Launch triggers, and <code>_GV20</code> for System Actions when using the default Silent USB HID Listener trigger mode.
       </div>
     </section>
 
@@ -1066,12 +1073,12 @@
         <li><code>AUTOSWITCH</code> — KWin Wayland window focus changes and automatic profile switches</li>
         <li><code>SD_SYNC</code> — microSD mounting, `.dsb` bytecode compilation, and file validation</li>
         <li><code>SCRIPT</code> — Slot script saves and compiler diagnostics</li>
-        <li><code>WEB_API</code> — HTTP webhook triggers, status codes, latency, and response summaries</li>
+        <li><code>WEB_API</code> — HTTP webhook triggers, profile-change webhooks, status codes, latency, and response summaries</li>
         <li><code>APP_LAUNCH</code> — Application launch triggers, desktop IDs, PIDs, and error diagnostics</li>
-        <li><code>SYSTEM</code> — Startup, configuration persistence, and UI events</li>
+        <li><code>SYSTEM</code> — Startup, REST API Server events, configuration persistence, and UI events</li>
       </ul>
       <p>
-        Logs are also persisted on disk at <code>~/.local/share/duckydeck-studio/duckydeck.log</code> and can be filtered, copied, or exported to a `.log` file.
+        Logs are also persisted on disk at <code>~/.local/share/duckydeck-studio/logs/system_events.log</code> and can be filtered, copied, or exported to a `.log` file.
       </p>
       <div class="screenshot-frame">
         <a href="screenshots/11-system-event-log.png" target="_blank"><img src="screenshots/11-system-event-log.png" alt="System Event Log Dialog" loading="lazy" /></a>
@@ -1079,20 +1086,27 @@
       </div>
     </section>
 
-    <!-- 14. Settings, Text Scaling & System Tray -->
+    <!-- 14. Settings, HTTP REST API Server, Global Profile Webhook, Text Scaling & System Tray -->
     <section id="settings">
-      <h2>⚙️ 14. UI Text Scaling &amp; System Tray Integration</h2>
+      <h2>⚙️ 14. Settings, HTTP REST API Server &amp; Security Implications</h2>
+      <div class="callout warn">
+        <div class="callout-title">⚠️ Security Implications of the HTTP REST API Server — Please Read Before Enabling</div>
+        <p style="margin:6px 0 0 0;">
+          <strong>1. Full Hardware &amp; Host Control:</strong> Any client that can reach the HTTP REST API can switch, create, modify, or delete profiles and key scripts, synchronize bytecode to the microSD card, inject DuckyScript keystroke/mouse macros onto the host PC, control RGB LEDs and the OLED display, and execute host actions (<code>APP_LAUNCH</code>, <code>WEB_API</code>, <code>SYS_ACTION</code>) configured on slots.<br/>
+          <strong>2. Network Exposure (<code>127.0.0.1</code> vs <code>0.0.0.0</code>):</strong> The default listen IP <code>127.0.0.1</code> (port <code>28491</code>) restricts access strictly to local processes on your computer. Changing the listen IP to <code>0.0.0.0</code> or a LAN IP exposes an <strong>unencrypted plain-HTTP server</strong> to all devices on your local network.<br/>
+          <strong>3. Token Authentication &amp; Remote Access:</strong> Keep <strong>Require Bearer Token Authentication</strong> enabled at all times (clients must send <code>Authorization: Bearer &lt;token&gt;</code> or <code>X-API-Token: &lt;token&gt;</code>). Treat your generated 160-bit <code>ddk_...</code> token like a password, and never expose the plain-HTTP port directly to the public internet—use an HTTPS reverse proxy or SSH/WireGuard tunnel for remote access.
+        </p>
+      </div>
       <ul>
-        <li><strong>Independent Per-Area Text Scaling (`75%`–`160%`):</strong> Open <strong>Settings...</strong> from the `☰` menu to adjust text scaling across the entire app at once or independently for:
+        <li><strong>🌐 HTTP REST API Server (`Settings → HTTP REST API Server`):</strong>
           <ul>
-            <li>Left Sidebar (Profiles &amp; Auto-Switcher)</li>
-            <li>Center Hardware Canvas (Keycaps, Encoders, OLED &amp; Toolbar)</li>
-            <li>Right Key Inspector &amp; Action Builders</li>
-            <li>duckyScript 3 Code Editor &amp; Command Reference</li>
-            <li>Bottom Status Bar</li>
-            <li>System Event Log Window</li>
+            <li>Enable or disable the embedded REST API server, choose the <strong>Listen IP</strong> (default <code>127.0.0.1</code>) and <strong>Port</strong> (default <code>28491</code>), or click <strong>Reset Defaults (127.0.0.1:28491)</strong>.</li>
+            <li>Click <strong>Generate Token</strong> to generate a new 160-bit cryptographic Bearer token (<code>ddk_...</code>) and <strong>Copy Token</strong> to copy it to your clipboard.</li>
+            <li>Control all duckyPad functions via JSON endpoints under <code>/api/v1/*</code> (<code>/api/v1/status</code>, <code>/api/v1/profiles</code>, <code>/api/v1/profiles/{num}/slots/{slot}</code>, <code>/api/v1/profiles/{num}/slots/{slot}/trigger</code>, <code>/api/v1/device/sync-sd</code>, <code>/api/v1/leds</code>, <code>/api/v1/oled/text</code>, <code>/api/v1/pgv</code>, <code>/api/v1/compile</code>, etc.).</li>
           </ul>
         </li>
+        <li><strong>🔔 Global Profile Change Webhook (`Settings → Global Profile Change Webhook`):</strong> Configure an HTTP webhook that fires automatically whenever the active profile changes (via UI, physical duckyPad buttons, Window Auto-Switcher, or REST API).</li>
+        <li><strong>Independent Per-Area Text Scaling (`75%`–`160%`):</strong> Adjust text scaling across the entire app at once or independently for the Left Sidebar, Center Hardware Canvas, Right Key Inspector, duckyScript 3 Code Editor, Bottom Status Bar, and System Event Log Window.</li>
         <li><strong>System Tray (`StatusNotifierItem`):</strong> DuckyDeck Studio integrates natively with the KDE Plasma 6 System Tray, displaying a custom dynamic icon with your active profile number and color badge, quick profile switching submenu, and optional <em>Minimize / Close to System Tray</em> behavior.</li>
       </ul>
     </section>

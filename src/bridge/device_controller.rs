@@ -109,6 +109,13 @@ pub mod qobject {
         #[qproperty(i32, event_log_count)]
         #[qproperty(QString, saved_colors_json)]
         #[qproperty(QString, used_colors_json)]
+        #[qproperty(bool, rest_api_enabled)]
+        #[qproperty(QString, rest_api_bind_ip)]
+        #[qproperty(i32, rest_api_port)]
+        #[qproperty(bool, rest_api_require_auth)]
+        #[qproperty(QString, rest_api_token)]
+        #[qproperty(QString, rest_api_status)]
+        #[qproperty(bool, firmware_fetch_busy)]
         type DeviceController = super::DeviceControllerRust;
 
         #[qinvokable]
@@ -675,6 +682,86 @@ pub mod qobject {
             profile_number: i32,
             template_id: QString,
         ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "applyRestApiConfig"]
+        fn apply_rest_api_config(
+            self: Pin<&mut DeviceController>,
+            enabled: bool,
+            bind_ip: QString,
+            port: i32,
+            require_auth: bool,
+            token: QString,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "regenerateRestApiToken"]
+        fn regenerate_rest_api_token(self: Pin<&mut DeviceController>) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "resetRestApiDefaults"]
+        fn reset_rest_api_defaults(self: Pin<&mut DeviceController>) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "getGlobalProfileWebhookJson"]
+        fn get_global_profile_webhook_json(self: &DeviceController) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "saveGlobalProfileWebhookJson"]
+        fn save_global_profile_webhook_json(
+            self: Pin<&mut DeviceController>,
+            config_json: QString,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "testProfileWebhookJson"]
+        fn test_profile_webhook_json(
+            self: Pin<&mut DeviceController>,
+            config_json: QString,
+            profile_number: i32,
+        );
+
+        #[qinvokable]
+        #[cxx_name = "getHomeAssistantConfigJson"]
+        fn get_home_assistant_config_json(self: &DeviceController) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "saveHomeAssistantConfig"]
+        fn save_home_assistant_config_qinvokable(
+            self: Pin<&mut DeviceController>,
+            base_url: QString,
+            access_token: QString,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "searchHomeAssistantEntitiesJson"]
+        fn search_home_assistant_entities_json(
+            self: Pin<&mut DeviceController>,
+            base_url: QString,
+            access_token: QString,
+            query: QString,
+            domain_filter: QString,
+        ) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "fetchOfficialFirmwaresFromSite"]
+        fn fetch_official_firmwares_from_site(self: Pin<&mut DeviceController>);
+
+        #[qinvokable]
+        #[cxx_name = "downloadOfficialFirmwareOnly"]
+        fn download_official_firmware_only(
+            self: Pin<&mut DeviceController>,
+            filename: QString,
+            download_url: QString,
+        );
+
+        #[qinvokable]
+        #[cxx_name = "downloadAndInstallOfficialFirmware"]
+        fn download_and_install_official_firmware(
+            self: Pin<&mut DeviceController>,
+            filename: QString,
+            download_url: QString,
+        ) -> bool;
     }
 
     impl cxx_qt::Threading for DeviceController {}
@@ -692,34 +779,40 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
+use crate::api_server::{
+    current_rest_api_status, start_or_restart_rest_api_server, RestApiServerConfig,
+};
 use crate::hardware::storage::{
     apply_app_launch_config_to_script, apply_web_api_config_to_script,
     check_latest_duckypad_firmware, check_profile_sync_status, compute_profiles_fingerprint,
     compute_unsynced_changes_json, delete_user_profile_template,
     delete_web_api_destination_by_name, detect_unmounted_duckypad_sd,
-    discard_unsynced_change_in_profiles, encode_pgv31_trigger, execute_app_launch,
-    execute_web_api_request, extract_app_launch_config, extract_web_api_config,
-    find_duckypad_msc_block_device, find_mounted_duckypad_sd, flash_slot_led_feedback,
-    get_sd_card_space_info, has_app_launch_config, has_web_api_config,
+    discard_unsynced_change_in_profiles, download_official_firmware_binary, encode_pgv31_trigger,
+    execute_app_launch, execute_profile_webhook_request, execute_web_api_request,
+    extract_app_launch_config, extract_web_api_config, fetch_and_search_home_assistant_entities,
+    fetch_official_firmwares_from_site, find_duckypad_msc_block_device, find_mounted_duckypad_sd,
+    flash_slot_led_feedback, get_sd_card_space_info, has_app_launch_config, has_web_api_config,
     instantiate_profile_from_template, list_all_profile_templates,
-    list_available_duckypad_pro_firmwares, load_all_sd_profiles,
+    list_available_duckypad_pro_firmwares, load_all_sd_profiles, load_home_assistant_config,
     load_profiles_for_connected_device, load_web_api_destinations, mark_profiles_sd_synced,
-    mount_duckypad_sd_only, oled_label_to_hardware_ascii, poll_and_clear_pgv31_trigger,
-    poll_hardware_active_profile, profile_cache_dir_for_serial, query_connected_duckypad_info,
-    read_dpp_config, read_duckypad_pro_profiles_via_msc,
-    read_duckypad_pro_profiles_via_msc_with_progress, reboot_duckypad, save_profile_as_user_template,
-    save_profile_order_to_sd, scan_installed_desktop_apps,
+    merge_host_only_profile_settings, mount_duckypad_sd_only, oled_label_to_hardware_ascii,
+    poll_and_clear_pgv31_trigger, poll_hardware_active_profile, profile_cache_dir_for_serial,
+    query_connected_duckypad_info, read_dpp_config, read_duckypad_pro_profiles_via_msc,
+    read_duckypad_pro_profiles_via_msc_with_progress, reboot_duckypad, save_home_assistant_config,
+    save_profile_as_user_template, save_profile_order_to_sd, scan_installed_desktop_apps,
     seed_web_api_destinations_from_profiles, set_batch_key_leds_hid, set_single_key_led_hid,
     stage_duckypad_pro_firmware_via_msc_with_progress, sync_profile_web_api_triggers,
     sync_profiles_to_cache, sync_profiles_to_device_cache, unmount_mounted_duckypad_sd,
     upsert_web_api_destination, write_duckypad_pro_profiles_via_msc_with_progress,
     write_profiles_to_sd_root, AppLaunchConfig, DuckyKeySlot, DuckyProfile, DuckypadEvdevListener,
-    GlobalMacroEvdevRecorder, WebApiConfig, DUCKYPAD_VID, HID_CMD_SET_LED_SINGLE,
-    HID_REPORT_ID_OUT, MAX_INPUT_SLOTS, PID_DUCKYPAD_2020, PID_DUCKYPAD_PRO,
+    GlobalMacroEvdevRecorder, ProfileWebhookConfig, WebApiConfig, DUCKYPAD_VID,
+    HID_CMD_SET_LED_SINGLE, HID_REPORT_ID_OUT, MAX_INPUT_SLOTS, PID_DUCKYPAD_2020,
+    PID_DUCKYPAD_PRO,
 };
 use crate::kwin::auto_switcher::{
-    is_kde_autostart_enabled, is_web_browser_class, resolve_rule_icon, set_kde_autostart_enabled,
-    strip_browser_title_suffix, sync_local_desktop_and_icon, AutoSwitchRule, SwitcherState,
+    generate_rest_api_token, is_kde_autostart_enabled, is_web_browser_class, resolve_rule_icon,
+    set_kde_autostart_enabled, strip_browser_title_suffix, sync_local_desktop_and_icon,
+    AutoSwitchRule, SwitcherState,
 };
 
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -975,6 +1068,13 @@ pub struct DeviceControllerRust {
     pub(crate) event_log_count: i32,
     pub(crate) saved_colors_json: QString,
     pub(crate) used_colors_json: QString,
+    pub(crate) rest_api_enabled: bool,
+    pub(crate) rest_api_bind_ip: QString,
+    pub(crate) rest_api_port: i32,
+    pub(crate) rest_api_require_auth: bool,
+    pub(crate) rest_api_token: QString,
+    pub(crate) rest_api_status: QString,
+    pub(crate) firmware_fetch_busy: bool,
     pub(crate) copied_key_slot: Option<DuckyKeySlot>,
     pub(crate) firmware_download_url: String,
     pub(crate) sd_root_path: Option<PathBuf>,
@@ -997,9 +1097,14 @@ impl Default for DeviceControllerRust {
         let mut profiles: Vec<DuckyProfile> = Vec::new();
 
         if let Some(ref sd_dir) = mounted_sd {
-            if let Ok(loaded) = load_all_sd_profiles(sd_dir) {
+            if let Ok(mut loaded) = load_all_sd_profiles(sd_dir) {
                 if !loaded.is_empty() {
                     if let Some(ref info) = connected_info {
+                        if let Some(cached) =
+                            load_profiles_for_connected_device(info.pid, &info.serial)
+                        {
+                            merge_host_only_profile_settings(&mut loaded, &cached);
+                        }
                         sync_profiles_to_device_cache(&info.serial, &loaded);
                         mark_profiles_sd_synced(&info.serial, &loaded);
                     } else {
@@ -1121,6 +1226,16 @@ impl Default for DeviceControllerRust {
         let editor_scale = switcher.editor_text_scale.clamp(75, 160);
         let status_bar_scale = switcher.status_bar_text_scale.clamp(75, 160);
         let event_log_scale = switcher.event_log_text_scale.clamp(75, 160);
+        let rest_enabled = switcher.rest_api_enabled;
+        let rest_ip = switcher.rest_api_bind_ip.clone();
+        let rest_port = switcher.rest_api_port as i32;
+        let rest_auth = switcher.rest_api_require_auth;
+        let rest_token = switcher.rest_api_token.clone();
+        let rest_status = if rest_enabled {
+            format!("Starting on http://{rest_ip}:{rest_port}...")
+        } else {
+            "Disabled".to_string()
+        };
         let saved_colors_json =
             serde_json::to_string(&switcher.saved_colors).unwrap_or_else(|_| "[]".to_string());
         let used_colors_json = Self::collect_used_colors_json(&profiles);
@@ -1244,6 +1359,13 @@ impl Default for DeviceControllerRust {
             event_log_count: init_log_count,
             saved_colors_json: QString::from(&saved_colors_json),
             used_colors_json: QString::from(&used_colors_json),
+            rest_api_enabled: rest_enabled,
+            rest_api_bind_ip: QString::from(&rest_ip),
+            rest_api_port: rest_port,
+            rest_api_require_auth: rest_auth,
+            rest_api_token: QString::from(&rest_token),
+            rest_api_status: QString::from(&rest_status),
+            firmware_fetch_busy: false,
             copied_key_slot: None,
             firmware_download_url: String::new(),
             sd_root_path,
@@ -1748,6 +1870,16 @@ impl DeviceControllerRust {
             status_bar_text_scale: 100,
             event_log_text_scale: 100,
             saved_colors: saved_colors.clone(),
+            rest_api_enabled: false,
+            rest_api_bind_ip: "127.0.0.1".to_string(),
+            rest_api_port: 28491,
+            rest_api_require_auth: true,
+            rest_api_token: generate_rest_api_token(),
+            profile_webhook_enabled: false,
+            profile_webhook_method: "POST".to_string(),
+            profile_webhook_url: String::new(),
+            profile_webhook_headers: "Content-Type: application/json".to_string(),
+            profile_webhook_body: String::new(),
             last_switched_profile: 1,
             picker_armed: false,
             loaded_from_disk: true,
@@ -1889,6 +2021,13 @@ impl DeviceControllerRust {
             event_log_count: init_log_count,
             saved_colors_json: QString::from(&saved_colors_json),
             used_colors_json: QString::from(&used_colors_json),
+            rest_api_enabled: false,
+            rest_api_bind_ip: QString::from("127.0.0.1"),
+            rest_api_port: 28491,
+            rest_api_require_auth: true,
+            rest_api_token: QString::from("ddk_9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e"),
+            rest_api_status: QString::from("Disabled"),
+            firmware_fetch_busy: false,
             copied_key_slot: None,
             firmware_download_url: String::new(),
             sd_root_path: None,
@@ -2814,6 +2953,7 @@ impl qobject::DeviceController {
     }
 
     pub fn select_profile(mut self: Pin<&mut Self>, profile_number: i32) -> bool {
+        let prev_prof = (*self.active_profile()).clamp(1, 64) as u8;
         let clamped = profile_number.clamp(1, 64);
         self.as_mut().set_active_profile(clamped);
         if is_demo_showcase_env() {
@@ -2850,6 +2990,11 @@ impl qobject::DeviceController {
         self.as_mut().set_status_message(QString::from(&format!(
             "Loaded Profile #{clamped}: {prof_name}"
         )));
+        self.as_mut().dispatch_profile_change_webhooks_if_changed(
+            prev_prof,
+            clamped as u8,
+            "manual_select",
+        );
         true
     }
 
@@ -2860,6 +3005,7 @@ impl qobject::DeviceController {
     pub fn switch_profile_by_name(mut self: Pin<&mut Self>, profile_name: QString) -> bool {
         use crate::hardware::storage::{goto_profile_by_name, open_duckypad_hid};
         let name = profile_name.to_string();
+        let prev_prof = (*self.active_profile()).clamp(1, 64) as u8;
 
         if let Some(num) = self
             .rust()
@@ -2870,6 +3016,11 @@ impl qobject::DeviceController {
         {
             self.as_mut().set_active_profile(num);
             self.as_mut().sync_active_profile_state();
+            self.as_mut().dispatch_profile_change_webhooks_if_changed(
+                prev_prof,
+                num.clamp(1, 64) as u8,
+                "switch_by_name",
+            );
         }
 
         match open_duckypad_hid().and_then(|dev| goto_profile_by_name(&dev, &name)) {
@@ -4154,6 +4305,9 @@ impl qobject::DeviceController {
         }
         self.as_mut().rust_mut().get_mut().kwin_listener_started = true;
 
+        // Start the HTTP REST API server if enabled in persisted settings
+        self.as_mut().sync_rest_api_server_from_state();
+
         let state = self.rust().switcher_state.clone();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let qt_thread = self.qt_thread();
@@ -4316,6 +4470,11 @@ impl qobject::DeviceController {
                                         record_system_event("INFO", "PROFILE", &msg);
                                         qobject.as_mut().sync_event_log_properties();
                                         qobject.as_mut().set_status_message(QString::from(&msg));
+                                        qobject.as_mut().dispatch_profile_change_webhooks_if_changed(
+                                            current_prof,
+                                            hw_prof,
+                                            "hardware_button",
+                                        );
                                     }
                                 }
                             } else if sd_unmounted && !was_connected {
@@ -4391,7 +4550,8 @@ impl qobject::DeviceController {
 
                         if !is_paused {
                             if let Some(prof) = evt.matched_profile {
-                                if *qobject.active_profile() != prof as i32 {
+                                let prev_prof = (*qobject.active_profile()).clamp(1, 64) as u8;
+                                if prev_prof != prof {
                                     record_system_event(
                                         "INFO",
                                         "AUTOSWITCH",
@@ -4403,6 +4563,11 @@ impl qobject::DeviceController {
                                     qobject.as_mut().set_active_profile(prof as i32);
                                     qobject.as_mut().sync_active_profile_state();
                                     qobject.as_mut().sync_event_log_properties();
+                                    qobject.as_mut().dispatch_profile_change_webhooks_if_changed(
+                                        prev_prof,
+                                        prof,
+                                        "kwin_auto_switch",
+                                    );
                                 } else {
                                     qobject.as_mut().sync_tray_state();
                                 }
@@ -4441,7 +4606,8 @@ impl qobject::DeviceController {
         }
 
         if let Some(prof) = matched_now {
-            if *self.active_profile() != prof as i32 {
+            let prev_prof = (*self.active_profile()).clamp(1, 64) as u8;
+            if prev_prof != prof {
                 record_system_event(
                     "INFO",
                     "AUTOSWITCH",
@@ -4453,6 +4619,11 @@ impl qobject::DeviceController {
                 self.as_mut().set_active_profile(prof as i32);
                 self.as_mut().sync_active_profile_state();
                 self.as_mut().sync_event_log_properties();
+                self.as_mut().dispatch_profile_change_webhooks_if_changed(
+                    prev_prof,
+                    prof,
+                    "kwin_auto_switch",
+                );
             }
         }
     }
@@ -7000,6 +7171,7 @@ impl qobject::DeviceController {
         let is_landscape = oled_rotation == 90 || oled_rotation == 270;
         let is_upper_hs = prof.is_upper_hs();
         let extra_lines = prof.canonical_extra_config_lines();
+        let webhook_cfg = prof.profile_webhook();
         let configured_keys = prof
             .slots
             .values()
@@ -7020,6 +7192,7 @@ impl qobject::DeviceController {
             "isUpperHs": is_upper_hs,
             "extraConfigLines": extra_lines.join("\n"),
             "configuredSlotCount": configured_keys,
+            "webhook": webhook_cfg,
         });
         QString::from(&obj.to_string())
     }
@@ -7096,6 +7269,9 @@ impl qobject::DeviceController {
             .get("isUpperHs")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+        let webhook_opt: Option<ProfileWebhookConfig> = val
+            .get("webhook")
+            .and_then(|w| serde_json::from_value(w.clone()).ok());
         let extra_lines_vec: Vec<String> = if let Some(arr) = val
             .get("extraConfigLines")
             .and_then(|v| v.as_array())
@@ -7120,6 +7296,7 @@ impl qobject::DeviceController {
             let Some(prof) = rust.profiles.iter_mut().find(|p| p.number == target_num) else {
                 return false;
             };
+            let existing_webhook = prof.profile_webhook();
             let old_name = prof.name.clone();
             if !sanitized_name.is_empty() && sanitized_name != old_name {
                 prof.name = sanitized_name.clone();
@@ -7177,6 +7354,7 @@ impl qobject::DeviceController {
                     && !t.starts_with("OLED_ROTATION ")
                     && !t.starts_with("IS_ROTATED_180 ")
                     && !t.starts_with("DW_ROTATION ")
+                    && !t.starts_with("PROFILE_WEBHOOK ")
                     && !t.starts_with("IS_UPPER_HS ")
                     && !t.starts_with("BG_COLOR ")
                     && !t.starts_with("KEYDOWN_COLOR ")
@@ -7186,6 +7364,8 @@ impl qobject::DeviceController {
                 }
             }
             prof.preserved_config_lines = preserved;
+            let final_webhook = webhook_opt.unwrap_or(existing_webhook);
+            prof.set_profile_webhook(&final_webhook);
             let final_name = prof.name.clone();
 
             if let Ok(mut sw) = rust.switcher_state.lock() {
@@ -7610,7 +7790,10 @@ impl qobject::DeviceController {
                     "description": t.description,
                     "category": t.category,
                     "builtin": t.is_builtin,
+                    "builtIn": t.is_builtin,
                     "slotCount": slot_count,
+                    "configuredSlotCount": slot_count,
+                    "defaultProfileName": t.profile.name,
                     "bgColor": bg_hex,
                     "oledRotation": t.profile.oled_rotation_degrees(),
                     "widgetRotation": t.profile.widget_rotation_degrees(),
@@ -7811,6 +7994,1312 @@ impl qobject::DeviceController {
             false
         }
     }
+
+    fn sync_rest_api_server_from_state(mut self: Pin<&mut Self>) {
+        let cfg = RestApiServerConfig {
+            enabled: *self.rest_api_enabled(),
+            bind_ip: self.rest_api_bind_ip().to_string(),
+            port: (*self.rest_api_port()).clamp(1024, 65535) as u16,
+            require_auth: *self.rest_api_require_auth(),
+            token: self.rest_api_token().to_string(),
+        };
+        let qt_thread = self.qt_thread();
+        match start_or_restart_rest_api_server(cfg, qt_thread) {
+            Ok(status) => {
+                self.as_mut().set_rest_api_status(QString::from(&status));
+            }
+            Err(err) => {
+                self.as_mut()
+                    .set_rest_api_status(QString::from(&format!("Error: {err}")));
+            }
+        }
+    }
+
+    pub fn apply_rest_api_config(
+        mut self: Pin<&mut Self>,
+        enabled: bool,
+        bind_ip: QString,
+        port: i32,
+        require_auth: bool,
+        token: QString,
+    ) -> bool {
+        let clean_ip = {
+            let trimmed = bind_ip.to_string().trim().to_string();
+            if trimmed.is_empty() {
+                "127.0.0.1".to_string()
+            } else {
+                trimmed
+            }
+        };
+        let clean_port = port.clamp(1024, 65535) as u16;
+        let clean_token = {
+            let t = token.to_string().trim().to_string();
+            if t.is_empty() {
+                generate_rest_api_token()
+            } else {
+                t
+            }
+        };
+
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                sw.rest_api_enabled = enabled;
+                sw.rest_api_bind_ip = clean_ip.clone();
+                sw.rest_api_port = clean_port;
+                sw.rest_api_require_auth = require_auth;
+                sw.rest_api_token = clean_token.clone();
+                let _ = sw.save_to_disk();
+            }
+        }
+
+        self.as_mut().set_rest_api_enabled(enabled);
+        self.as_mut()
+            .set_rest_api_bind_ip(QString::from(&clean_ip));
+        self.as_mut().set_rest_api_port(clean_port as i32);
+        self.as_mut().set_rest_api_require_auth(require_auth);
+        self.as_mut()
+            .set_rest_api_token(QString::from(&clean_token));
+
+        let cfg = RestApiServerConfig {
+            enabled,
+            bind_ip: clean_ip.clone(),
+            port: clean_port,
+            require_auth,
+            token: clean_token,
+        };
+        let qt_thread = self.qt_thread();
+        match start_or_restart_rest_api_server(cfg, qt_thread) {
+            Ok(status) => {
+                self.as_mut().set_rest_api_status(QString::from(&status));
+                let msg = format!("✓ HTTP REST API Server: {status}");
+                record_system_event("INFO", "REST_API", &msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&msg));
+                true
+            }
+            Err(err) => {
+                let err_status = format!("Error: {err}");
+                self.as_mut()
+                    .set_rest_api_status(QString::from(&err_status));
+                let msg = format!("✗ HTTP REST API Server failed: {err}");
+                record_system_event("ERROR", "REST_API", &msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&msg));
+                false
+            }
+        }
+    }
+
+    pub fn regenerate_rest_api_token(mut self: Pin<&mut Self>) -> QString {
+        let new_tok = generate_rest_api_token();
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                sw.rest_api_token = new_tok.clone();
+                let _ = sw.save_to_disk();
+            }
+        }
+        self.as_mut().set_rest_api_token(QString::from(&new_tok));
+        if *self.rest_api_enabled() {
+            self.as_mut().sync_rest_api_server_from_state();
+        }
+        let msg = "✓ Generated new HTTP REST API authentication token";
+        record_system_event("INFO", "REST_API", msg);
+        self.as_mut().sync_event_log_properties();
+        self.as_mut().set_status_message(QString::from(msg));
+        QString::from(&new_tok)
+    }
+
+    pub fn reset_rest_api_defaults(mut self: Pin<&mut Self>) -> QString {
+        let cur_tok = self.rest_api_token().to_string();
+        let tok = if cur_tok.trim().is_empty() {
+            generate_rest_api_token()
+        } else {
+            cur_tok
+        };
+        let _ = self.as_mut().apply_rest_api_config(
+            false,
+            QString::from("127.0.0.1"),
+            28491,
+            true,
+            QString::from(&tok),
+        );
+        let obj = serde_json::json!({
+            "enabled": false,
+            "bindIp": "127.0.0.1",
+            "port": 28491,
+            "requireAuth": true,
+            "token": tok,
+        });
+        QString::from(&obj.to_string())
+    }
+
+    pub fn get_global_profile_webhook_json(&self) -> QString {
+        let rust = self.rust();
+        if let Ok(sw) = rust.switcher_state.lock() {
+            let obj = serde_json::json!({
+                "enabled": sw.profile_webhook_enabled,
+                "method": sw.profile_webhook_method,
+                "url": sw.profile_webhook_url,
+                "headers": sw.profile_webhook_headers,
+                "body": sw.profile_webhook_body,
+            });
+            return QString::from(&obj.to_string());
+        }
+        let def = ProfileWebhookConfig::default();
+        QString::from(&serde_json::to_string(&def).unwrap_or_else(|_| "{}".to_string()))
+    }
+
+    pub fn save_global_profile_webhook_json(
+        mut self: Pin<&mut Self>,
+        config_json: QString,
+    ) -> bool {
+        let raw = config_json.to_string();
+        let Ok(cfg) = serde_json::from_str::<ProfileWebhookConfig>(&raw) else {
+            return false;
+        };
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                sw.profile_webhook_enabled = cfg.enabled;
+                sw.profile_webhook_method = if cfg.method.trim().is_empty() {
+                    "POST".to_string()
+                } else {
+                    cfg.method.trim().to_ascii_uppercase()
+                };
+                sw.profile_webhook_url = cfg.url.trim().to_string();
+                sw.profile_webhook_headers = cfg.headers;
+                sw.profile_webhook_body = cfg.body;
+                let _ = sw.save_to_disk();
+            }
+        }
+        let msg = if cfg.enabled {
+            format!(
+                "✓ Saved Global Profile Change Webhook ({})",
+                cfg.url.trim()
+            )
+        } else {
+            "✓ Updated Global Profile Change Webhook settings (disabled)".to_string()
+        };
+        record_system_event("INFO", "WEBHOOK", &msg);
+        self.as_mut().sync_event_log_properties();
+        self.as_mut().set_status_message(QString::from(&msg));
+        true
+    }
+
+    pub fn test_profile_webhook_json(
+        mut self: Pin<&mut Self>,
+        config_json: QString,
+        profile_number: i32,
+    ) {
+        let raw = config_json.to_string();
+        let Ok(mut cfg) = serde_json::from_str::<ProfileWebhookConfig>(&raw) else {
+            self.as_mut()
+                .set_status_message(QString::from("Invalid webhook configuration JSON"));
+            return;
+        };
+        cfg.enabled = true;
+        if cfg.url.trim().is_empty() {
+            self.as_mut()
+                .set_status_message(QString::from("Enter a webhook URL before testing"));
+            return;
+        }
+        let target_num = if profile_number > 0 {
+            profile_number as u8
+        } else {
+            (*self.active_profile()).clamp(1, 64) as u8
+        };
+        let prof_name = self
+            .rust()
+            .profiles
+            .iter()
+            .find(|p| p.number == target_num)
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| format!("Profile {target_num}"));
+        let serial = self.serial_number().to_string();
+
+        self.as_mut().set_web_api_test_busy(true);
+        self.as_mut().set_status_message(QString::from(&format!(
+            "Testing profile change webhook → {}...",
+            cfg.url.trim()
+        )));
+
+        let qt_thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let Ok(rt) = tokio::runtime::Runtime::new() else {
+                return;
+            };
+            let res = rt.block_on(execute_profile_webhook_request(
+                &cfg,
+                target_num,
+                &prof_name,
+                target_num,
+                &prof_name,
+                "test_button",
+                &serial,
+            ));
+            let _ = qt_thread.queue(move |mut qobject| {
+                qobject.as_mut().set_web_api_test_busy(false);
+                qobject.as_mut().set_web_api_last_ok(res.ok);
+                qobject
+                    .as_mut()
+                    .set_web_api_last_result(QString::from(&res.summary));
+                let lvl = if res.ok { "INFO" } else { "WARN" };
+                let msg = format!(
+                    "Profile Webhook test (HTTP {}): {}",
+                    res.status_code, res.summary
+                );
+                record_system_event(lvl, "WEBHOOK", &msg);
+                qobject.as_mut().sync_event_log_properties();
+                qobject.as_mut().set_status_message(QString::from(&msg));
+            });
+        });
+    }
+
+    pub fn dispatch_profile_change_webhooks_if_changed(
+        self: Pin<&mut Self>,
+        previous_profile: u8,
+        new_profile: u8,
+        reason: &str,
+    ) {
+        if previous_profile == new_profile || new_profile == 0 {
+            return;
+        }
+        let (prev_name, new_name, per_prof_webhook, global_webhook) = {
+            let rust = self.rust();
+            let prev_name = rust
+                .profiles
+                .iter()
+                .find(|p| p.number == previous_profile)
+                .map(|p| p.name.clone())
+                .unwrap_or_else(|| format!("Profile {previous_profile}"));
+            let new_prof_opt = rust.profiles.iter().find(|p| p.number == new_profile);
+            let new_name = new_prof_opt
+                .map(|p| p.name.clone())
+                .unwrap_or_else(|| format!("Profile {new_profile}"));
+            let per_prof_wh = new_prof_opt
+                .map(|p| p.profile_webhook())
+                .filter(|w| w.enabled && !w.url.trim().is_empty());
+            let global_wh = rust
+                .switcher_state
+                .lock()
+                .ok()
+                .map(|sw| ProfileWebhookConfig {
+                    enabled: sw.profile_webhook_enabled,
+                    destination: String::new(),
+                    method: sw.profile_webhook_method.clone(),
+                    url: sw.profile_webhook_url.clone(),
+                    headers: sw.profile_webhook_headers.clone(),
+                    body: sw.profile_webhook_body.clone(),
+                })
+                .filter(|w| w.enabled && !w.url.trim().is_empty());
+            (prev_name, new_name, per_prof_wh, global_wh)
+        };
+
+        if per_prof_webhook.is_none() && global_webhook.is_none() {
+            return;
+        }
+
+        let serial = self.serial_number().to_string();
+        let reason_str = reason.to_string();
+        let qt_thread = self.qt_thread();
+
+        std::thread::spawn(move || {
+            let Ok(rt) = tokio::runtime::Runtime::new() else {
+                return;
+            };
+            let mut logs: Vec<(bool, String)> = Vec::new();
+            if let Some(ref g_cfg) = global_webhook {
+                let res = rt.block_on(execute_profile_webhook_request(
+                    g_cfg,
+                    new_profile,
+                    &new_name,
+                    previous_profile,
+                    &prev_name,
+                    &reason_str,
+                    &serial,
+                ));
+                logs.push((
+                    res.ok,
+                    format!(
+                        "Global profile webhook → #{} ({}) [HTTP {}]: {}",
+                        new_profile, new_name, res.status_code, res.summary
+                    ),
+                ));
+            }
+            if let Some(ref p_cfg) = per_prof_webhook {
+                let res = rt.block_on(execute_profile_webhook_request(
+                    p_cfg,
+                    new_profile,
+                    &new_name,
+                    previous_profile,
+                    &prev_name,
+                    &reason_str,
+                    &serial,
+                ));
+                logs.push((
+                    res.ok,
+                    format!(
+                        "Profile #{} ({}) webhook [HTTP {}]: {}",
+                        new_profile, new_name, res.status_code, res.summary
+                    ),
+                ));
+            }
+            if !logs.is_empty() {
+                let _ = qt_thread.queue(move |mut qobject| {
+                    for (ok, msg) in logs {
+                        record_system_event(if ok { "INFO" } else { "WARN" }, "WEBHOOK", &msg);
+                    }
+                    qobject.as_mut().sync_event_log_properties();
+                });
+            }
+        });
+    }
+
+    pub fn get_home_assistant_config_json(&self) -> QString {
+        let cfg = load_home_assistant_config();
+        let obj = serde_json::json!({
+            "baseUrl": cfg.base_url,
+            "accessToken": cfg.access_token,
+        });
+        QString::from(&obj.to_string())
+    }
+
+    pub fn save_home_assistant_config_qinvokable(
+        mut self: Pin<&mut Self>,
+        base_url: QString,
+        access_token: QString,
+    ) -> bool {
+        let b_str = base_url.to_string().trim().to_string();
+        let t_str = access_token.to_string().trim().to_string();
+        match save_home_assistant_config(&b_str, &t_str) {
+            Ok(saved) => {
+                let msg = format!("✓ Saved Home Assistant connection ({})", saved.base_url);
+                record_system_event("INFO", "HOME_ASSISTANT", &msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&msg));
+                true
+            }
+            Err(err) => {
+                let msg = format!("Failed saving Home Assistant config: {err}");
+                self.as_mut().set_status_message(QString::from(&msg));
+                false
+            }
+        }
+    }
+
+    pub fn search_home_assistant_entities_json(
+        mut self: Pin<&mut Self>,
+        base_url: QString,
+        access_token: QString,
+        query: QString,
+        domain_filter: QString,
+    ) -> QString {
+        let url_str = base_url.to_string().trim().to_string();
+        let tok_str = access_token.to_string().trim().to_string();
+        let q_str = query.to_string();
+        let dom_str = domain_filter.to_string();
+
+        if !url_str.is_empty() && !tok_str.is_empty() {
+            let _ = save_home_assistant_config(&url_str, &tok_str);
+        }
+
+        let res = std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().map_err(|e| format!("Runtime error: {e}"))?;
+            rt.block_on(fetch_and_search_home_assistant_entities(
+                &url_str, &tok_str, &q_str, &dom_str,
+            ))
+        })
+        .join()
+        .unwrap_or_else(|_| Err("Home Assistant search worker thread panicked".to_string()));
+
+        match res {
+            Ok(entities) => {
+                let msg = format!(
+                    "✓ Home Assistant: found {} matching entit{}",
+                    entities.len(),
+                    if entities.len() == 1 { "y" } else { "ies" }
+                );
+                self.as_mut().set_status_message(QString::from(&msg));
+                let resp = serde_json::json!({
+                    "ok": true,
+                    "count": entities.len(),
+                    "entities": entities,
+                });
+                QString::from(&resp.to_string())
+            }
+            Err(err) => {
+                let msg = format!("Home Assistant error: {err}");
+                record_system_event("WARN", "HOME_ASSISTANT", &msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&msg));
+                let resp = serde_json::json!({
+                    "ok": false,
+                    "error": err,
+                    "entities": [],
+                });
+                QString::from(&resp.to_string())
+            }
+        }
+    }
+
+    pub fn fetch_official_firmwares_from_site(mut self: Pin<&mut Self>) {
+        if *self.firmware_fetch_busy() {
+            return;
+        }
+        let curr_ver = self.firmware_version().to_string();
+        self.as_mut().set_firmware_fetch_busy(true);
+        self.as_mut().set_status_message(QString::from(
+            "Fetching official duckyPad Pro firmware list from dekuNukem/duckyPad-Pro...",
+        ));
+
+        let qt_thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let res = tokio::runtime::Runtime::new()
+                .map_err(|e| format!("Runtime error: {e}"))
+                .and_then(|rt| rt.block_on(fetch_official_firmwares_from_site(&curr_ver)));
+            let _ = qt_thread.queue(move |mut qobject| {
+                qobject.as_mut().set_firmware_fetch_busy(false);
+                match res {
+                    Ok(remote_list) => {
+                        let msg = format!(
+                            "✓ Fetched {} firmware version(s) including official releases from dekuNukem/duckyPad-Pro",
+                            remote_list.len()
+                        );
+                        record_system_event("INFO", "FIRMWARE", &msg);
+                        qobject.as_mut().sync_event_log_properties();
+                        qobject.as_mut().set_status_message(QString::from(&msg));
+                    }
+                    Err(err) => {
+                        let msg = format!("Failed fetching official firmwares: {err}");
+                        record_system_event("WARN", "FIRMWARE", &msg);
+                        qobject.as_mut().sync_event_log_properties();
+                        qobject.as_mut().set_status_message(QString::from(&msg));
+                    }
+                }
+            });
+        });
+    }
+
+    pub fn download_official_firmware_only(
+        mut self: Pin<&mut Self>,
+        filename: QString,
+        download_url: QString,
+    ) {
+        if *self.firmware_fetch_busy() {
+            return;
+        }
+        let fname = filename.to_string().trim().to_string();
+        let durl = download_url.to_string().trim().to_string();
+        if fname.is_empty() || durl.is_empty() {
+            return;
+        }
+        self.as_mut().set_firmware_fetch_busy(true);
+        self.as_mut().set_status_message(QString::from(&format!(
+            "Downloading official firmware {fname}..."
+        )));
+
+        let qt_thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let res = tokio::runtime::Runtime::new()
+                .map_err(|e| format!("Runtime error: {e}"))
+                .and_then(|rt| rt.block_on(download_official_firmware_binary(&fname, &durl)));
+            let _ = qt_thread.queue(move |mut qobject| {
+                qobject.as_mut().set_firmware_fetch_busy(false);
+                match res {
+                    Ok(path) => {
+                        let msg = format!(
+                            "✓ Downloaded & CRC32-verified official firmware: {}",
+                            path.display()
+                        );
+                        record_system_event("INFO", "FIRMWARE", &msg);
+                        qobject.as_mut().sync_event_log_properties();
+                        qobject.as_mut().set_status_message(QString::from(&msg));
+                    }
+                    Err(err) => {
+                        let msg = format!("Failed downloading {fname}: {err}");
+                        record_system_event("ERROR", "FIRMWARE", &msg);
+                        qobject.as_mut().sync_event_log_properties();
+                        qobject.as_mut().set_status_message(QString::from(&msg));
+                    }
+                }
+            });
+        });
+    }
+
+    pub fn download_and_install_official_firmware(
+        mut self: Pin<&mut Self>,
+        filename: QString,
+        download_url: QString,
+    ) -> bool {
+        if *self.sd_sync_busy() || *self.firmware_fetch_busy() {
+            return false;
+        }
+        let fname = filename.to_string().trim().to_string();
+        let durl = download_url.to_string().trim().to_string();
+        if fname.is_empty() || durl.is_empty() {
+            return false;
+        }
+        self.as_mut().set_firmware_fetch_busy(true);
+        self.as_mut().set_status_message(QString::from(&format!(
+            "Downloading official firmware {fname} from GitHub..."
+        )));
+        let fname_clone = fname.clone();
+        let res = std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().map_err(|e| format!("Runtime error: {e}"))?;
+            rt.block_on(download_official_firmware_binary(&fname_clone, &durl))
+        })
+        .join()
+        .unwrap_or_else(|_| Err("Firmware download thread panicked".to_string()));
+
+        match res {
+            Ok(local_path) => {
+                self.as_mut().set_firmware_fetch_busy(false);
+                let path_str = local_path.to_string_lossy().to_string();
+                self.as_mut()
+                    .install_firmware_to_device(QString::from(&path_str))
+            }
+            Err(err) => {
+                self.as_mut().set_firmware_fetch_busy(false);
+                let msg = format!("Failed downloading official firmware {fname}: {err}");
+                record_system_event("ERROR", "FIRMWARE", &msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&msg));
+                false
+            }
+        }
+    }
+
+    pub fn handle_rest_api_request(
+        mut self: Pin<&mut Self>,
+        method: &str,
+        path: &str,
+        _query: &str,
+        body: &str,
+    ) -> (u16, String) {
+        let m = method.trim().to_ascii_uppercase();
+        let clean_path = path.trim().trim_end_matches('/');
+        let clean_path = if clean_path.is_empty() { "/" } else { clean_path };
+
+        record_system_event("INFO", "REST_API", format!("{m} {clean_path}"));
+        self.as_mut().sync_event_log_properties();
+
+        let parse_json = || -> Result<serde_json::Value, (u16, String)> {
+            if body.trim().is_empty() {
+                Ok(serde_json::json!({}))
+            } else {
+                serde_json::from_str::<serde_json::Value>(body).map_err(|e| {
+                    (
+                        400,
+                        serde_json::json!({
+                            "ok": false,
+                            "error": format!("Invalid JSON body: {e}")
+                        })
+                        .to_string(),
+                    )
+                })
+            }
+        };
+
+        // 1. GET /api/v1/status
+        if m == "GET" && (clean_path == "/api/v1" || clean_path == "/api/v1/status") {
+            let profiles_val: serde_json::Value =
+                serde_json::from_str(&self.profiles_json().to_string())
+                    .unwrap_or_else(|_| serde_json::json!([]));
+            let resp = serde_json::json!({
+                "ok": true,
+                "version": APP_VERSION,
+                "connected": *self.connected(),
+                "modelName": self.model_name().to_string(),
+                "firmwareVersion": self.firmware_version().to_string(),
+                "serialNumber": self.serial_number().to_string(),
+                "activeProfile": *self.active_profile(),
+                "activeProfileName": self.active_profile_name().to_string(),
+                "activeProfileBgColor": self.active_profile_bg_color().to_string(),
+                "sdMountPath": self.sd_mount_path().to_string(),
+                "sdCardDetected": *self.sd_card_detected(),
+                "sdSpaceSummary": self.sd_space_summary().to_string(),
+                "sdSpaceUsedPercent": *self.sd_space_used_percent(),
+                "profileSyncState": self.profile_sync_state().to_string(),
+                "profileSyncDetail": self.profile_sync_detail().to_string(),
+                "autoSwitchEnabled": *self.auto_switch_enabled(),
+                "activeWindowClass": self.active_window_class().to_string(),
+                "activeWindowTitle": self.active_window_title().to_string(),
+                "statusMessage": self.status_message().to_string(),
+                "restApiStatus": current_rest_api_status(),
+                "profileCount": profiles_val.as_array().map(|a| a.len()).unwrap_or(0),
+            });
+            return (200, resp.to_string());
+        }
+
+        // 2. GET /api/v1/profiles
+        if m == "GET" && clean_path == "/api/v1/profiles" {
+            let profiles_val: serde_json::Value =
+                serde_json::from_str(&self.profiles_json().to_string())
+                    .unwrap_or_else(|_| serde_json::json!([]));
+            return (
+                200,
+                serde_json::json!({
+                    "ok": true,
+                    "activeProfile": *self.active_profile(),
+                    "activeProfileName": self.active_profile_name().to_string(),
+                    "profiles": profiles_val,
+                })
+                .to_string(),
+            );
+        }
+
+        // 3. POST /api/v1/profiles (create profile)
+        if m == "POST" && clean_path == "/api/v1/profiles" {
+            let val = match parse_json() {
+                Ok(v) => v,
+                Err(r) => return r,
+            };
+            let name = val
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("NewProfile");
+            let tpl = val
+                .get("templateId")
+                .or_else(|| val.get("template_id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let ok = if tpl.is_empty() {
+                self.as_mut().create_new_profile(QString::from(name))
+            } else {
+                self.as_mut()
+                    .create_profile_from_template(QString::from(name), QString::from(tpl))
+            };
+            return (
+                if ok { 201 } else { 400 },
+                serde_json::json!({
+                    "ok": ok,
+                    "activeProfile": *self.active_profile(),
+                    "activeProfileName": self.active_profile_name().to_string(),
+                    "statusMessage": self.status_message().to_string(),
+                })
+                .to_string(),
+            );
+        }
+
+        // 4. POST /api/v1/profiles/select
+        if m == "POST" && clean_path == "/api/v1/profiles/select" {
+            let val = match parse_json() {
+                Ok(v) => v,
+                Err(r) => return r,
+            };
+            let ok = if let Some(num) = val
+                .get("profile")
+                .or_else(|| val.get("number"))
+                .and_then(|v| v.as_i64())
+            {
+                self.as_mut().select_profile(num as i32)
+            } else if let Some(name) = val.get("name").and_then(|v| v.as_str()) {
+                self.as_mut().switch_profile_by_name(QString::from(name))
+            } else {
+                return (
+                    400,
+                    serde_json::json!({
+                        "ok": false,
+                        "error": "Provide 'profile' (number 1..64) or 'name'"
+                    })
+                    .to_string(),
+                );
+            };
+            return (
+                if ok { 200 } else { 400 },
+                serde_json::json!({
+                    "ok": ok,
+                    "activeProfile": *self.active_profile(),
+                    "activeProfileName": self.active_profile_name().to_string(),
+                })
+                .to_string(),
+            );
+        }
+
+        // 5. POST /api/v1/profiles/reorder
+        if m == "POST" && clean_path == "/api/v1/profiles/reorder" {
+            let val = match parse_json() {
+                Ok(v) => v,
+                Err(r) => return r,
+            };
+            let from_idx = val
+                .get("fromIndex")
+                .and_then(|v| v.as_i64())
+                .or_else(|| {
+                    val.get("fromProfile")
+                        .or_else(|| val.get("from"))
+                        .and_then(|v| v.as_i64())
+                        .map(|n| n - 1)
+                })
+                .unwrap_or(0) as i32;
+            let to_idx = val
+                .get("toIndex")
+                .and_then(|v| v.as_i64())
+                .or_else(|| {
+                    val.get("toProfile")
+                        .or_else(|| val.get("to"))
+                        .and_then(|v| v.as_i64())
+                        .map(|n| n - 1)
+                })
+                .unwrap_or(0) as i32;
+            let ok = self.as_mut().reorder_profile(from_idx, to_idx);
+            return (
+                if ok { 200 } else { 400 },
+                serde_json::json!({
+                    "ok": ok,
+                    "activeProfile": *self.active_profile(),
+                })
+                .to_string(),
+            );
+        }
+
+        // 6. Routes under /api/v1/profiles/<num>...
+        if let Some(rest) = clean_path.strip_prefix("/api/v1/profiles/") {
+            let parts: Vec<&str> = rest.split('/').collect();
+            if let Some(first) = parts.first() {
+                if let Ok(prof_num) = first.parse::<i32>() {
+                    if parts.len() == 1 {
+                        if m == "GET" {
+                            let props_str = self.get_profile_properties_json(prof_num).to_string();
+                            let props_val: serde_json::Value = serde_json::from_str(&props_str)
+                                .unwrap_or_else(|_| serde_json::json!({}));
+                            if props_val.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+                                return (
+                                    404,
+                                    serde_json::json!({
+                                        "ok": false,
+                                        "error": format!("Profile #{prof_num} not found")
+                                    })
+                                    .to_string(),
+                                );
+                            }
+                            let slots_val: serde_json::Value = self
+                                .rust()
+                                .profiles
+                                .iter()
+                                .find(|p| p.number == prof_num as u8)
+                                .and_then(|p| {
+                                    serde_json::from_str(
+                                        &DeviceControllerRust::serialize_profile_slots(p),
+                                    )
+                                    .ok()
+                                })
+                                .unwrap_or_else(|| serde_json::json!([]));
+                            return (
+                                200,
+                                serde_json::json!({
+                                    "ok": true,
+                                    "profile": props_val,
+                                    "slots": slots_val,
+                                })
+                                .to_string(),
+                            );
+                        } else if m == "PUT" || m == "PATCH" {
+                            let val = match parse_json() {
+                                Ok(v) => v,
+                                Err(r) => return r,
+                            };
+                            let current_str =
+                                self.get_profile_properties_json(prof_num).to_string();
+                            let mut merged: serde_json::Value = serde_json::from_str(&current_str)
+                                .unwrap_or_else(|_| serde_json::json!({}));
+                            if let (Some(dst), Some(src)) =
+                                (merged.as_object_mut(), val.as_object())
+                            {
+                                for (k, v) in src {
+                                    dst.insert(k.clone(), v.clone());
+                                }
+                            }
+                            let ok = self.as_mut().save_profile_properties_json(
+                                prof_num,
+                                QString::from(&merged.to_string()),
+                            );
+                            return (
+                                if ok { 200 } else { 400 },
+                                serde_json::json!({
+                                    "ok": ok,
+                                    "statusMessage": self.status_message().to_string(),
+                                })
+                                .to_string(),
+                            );
+                        } else if m == "DELETE" {
+                            let ok = self.as_mut().delete_profile(prof_num);
+                            return (
+                                if ok { 200 } else { 400 },
+                                serde_json::json!({
+                                    "ok": ok,
+                                    "statusMessage": self.status_message().to_string(),
+                                })
+                                .to_string(),
+                            );
+                        }
+                    } else if parts.len() == 2 && parts[1] == "slots" && m == "GET" {
+                        let slots_val: serde_json::Value = self
+                            .rust()
+                            .profiles
+                            .iter()
+                            .find(|p| p.number == prof_num as u8)
+                            .and_then(|p| {
+                                serde_json::from_str(
+                                    &DeviceControllerRust::serialize_profile_slots(p),
+                                )
+                                .ok()
+                            })
+                            .unwrap_or_else(|| serde_json::json!([]));
+                        return (
+                            200,
+                            serde_json::json!({
+                                "ok": true,
+                                "profile": prof_num,
+                                "slots": slots_val,
+                            })
+                            .to_string(),
+                        );
+                    } else if parts.len() >= 3 && parts[1] == "slots" {
+                        if let Ok(slot_num) = parts[2].parse::<i32>() {
+                            let _ = self.as_mut().select_profile(prof_num);
+                            if parts.len() == 3 && m == "GET" {
+                                let meta_str = self.get_slot_meta_json(slot_num).to_string();
+                                let mut detail_val: serde_json::Value =
+                                    serde_json::from_str(&meta_str)
+                                        .unwrap_or_else(|_| serde_json::json!({}));
+                                let on_press =
+                                    self.get_slot_script(slot_num, false).to_string();
+                                let on_release =
+                                    self.get_slot_script(slot_num, true).to_string();
+                                if let Some(obj) = detail_val.as_object_mut() {
+                                    obj.insert(
+                                        "onPressScript".to_string(),
+                                        serde_json::Value::String(on_press),
+                                    );
+                                    obj.insert(
+                                        "onReleaseScript".to_string(),
+                                        serde_json::Value::String(on_release),
+                                    );
+                                }
+                                return (
+                                    200,
+                                    serde_json::json!({
+                                        "ok": true,
+                                        "profile": prof_num,
+                                        "slot": slot_num,
+                                        "detail": detail_val,
+                                    })
+                                    .to_string(),
+                                );
+                            } else if parts.len() == 3 && (m == "PUT" || m == "POST" || m == "PATCH")
+                            {
+                                let val = match parse_json() {
+                                    Ok(v) => v,
+                                    Err(r) => return r,
+                                };
+                                let cur_str = self.get_slot_meta_json(slot_num).to_string();
+                                let cur: serde_json::Value = serde_json::from_str(&cur_str)
+                                    .unwrap_or_else(|_| serde_json::json!({}));
+                                let cur_press =
+                                    self.get_slot_script(slot_num, false).to_string();
+                                let cur_release =
+                                    self.get_slot_script(slot_num, true).to_string();
+
+                                let l1 = val
+                                    .get("label1")
+                                    .or_else(|| val.get("l1"))
+                                    .and_then(|v| v.as_str())
+                                    .or_else(|| cur.get("l1").and_then(|v| v.as_str()))
+                                    .unwrap_or("")
+                                    .to_string();
+                                let l2 = val
+                                    .get("label2")
+                                    .or_else(|| val.get("l2"))
+                                    .and_then(|v| v.as_str())
+                                    .or_else(|| cur.get("l2").and_then(|v| v.as_str()))
+                                    .unwrap_or("")
+                                    .to_string();
+                                let wl1 = val
+                                    .get("widgetLabel1")
+                                    .or_else(|| val.get("wl1"))
+                                    .and_then(|v| v.as_str())
+                                    .or_else(|| cur.get("wl1").and_then(|v| v.as_str()))
+                                    .unwrap_or("")
+                                    .to_string();
+                                let wl2 = val
+                                    .get("widgetLabel2")
+                                    .or_else(|| val.get("wl2"))
+                                    .and_then(|v| v.as_str())
+                                    .or_else(|| cur.get("wl2").and_then(|v| v.as_str()))
+                                    .unwrap_or("")
+                                    .to_string();
+                                let allow_abort = val
+                                    .get("allowAbort")
+                                    .and_then(|v| v.as_bool())
+                                    .or_else(|| cur.get("allowAbort").and_then(|v| v.as_bool()))
+                                    .unwrap_or(false);
+                                let disable_autorepeat = val
+                                    .get("disableAutorepeat")
+                                    .and_then(|v| v.as_bool())
+                                    .or_else(|| {
+                                        cur.get("disableAutorepeat").and_then(|v| v.as_bool())
+                                    })
+                                    .unwrap_or(false);
+                                let mut on_press = val
+                                    .get("onPressScript")
+                                    .or_else(|| val.get("onPress"))
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(&cur_press)
+                                    .to_string();
+                                let on_release = val
+                                    .get("onReleaseScript")
+                                    .or_else(|| val.get("onRelease"))
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(&cur_release)
+                                    .to_string();
+
+                                if let Some(web_cfg) = val.get("webApi") {
+                                    on_press = self
+                                        .apply_web_api_to_script(
+                                            QString::from(&on_press),
+                                            QString::from(&web_cfg.to_string()),
+                                            slot_num,
+                                            false,
+                                        )
+                                        .to_string();
+                                }
+                                if let Some(app_cfg) = val.get("appLaunch") {
+                                    on_press = self
+                                        .apply_app_launch_to_script(
+                                            QString::from(&on_press),
+                                            QString::from(&app_cfg.to_string()),
+                                            slot_num,
+                                            false,
+                                        )
+                                        .to_string();
+                                }
+
+                                let ok1 = self.as_mut().save_slot_config(
+                                    slot_num,
+                                    QString::from(&l1),
+                                    QString::from(&l2),
+                                    QString::from(&on_press),
+                                    QString::from(&on_release),
+                                    allow_abort,
+                                    disable_autorepeat,
+                                );
+                                let _ = self.as_mut().save_slot_widget_labels(
+                                    slot_num,
+                                    QString::from(&wl1),
+                                    QString::from(&wl2),
+                                );
+
+                                if let Some(has_rgb) =
+                                    val.get("hasCustomRgb").and_then(|v| v.as_bool())
+                                {
+                                    if has_rgb {
+                                        let r = val
+                                            .get("r")
+                                            .and_then(|v| v.as_i64())
+                                            .unwrap_or(0)
+                                            as i32;
+                                        let g = val
+                                            .get("g")
+                                            .and_then(|v| v.as_i64())
+                                            .unwrap_or(170)
+                                            as i32;
+                                        let b = val
+                                            .get("b")
+                                            .and_then(|v| v.as_i64())
+                                            .unwrap_or(255)
+                                            as i32;
+                                        let _ = self.as_mut().set_key_rgb(slot_num, r, g, b);
+                                    } else {
+                                        let _ = self.as_mut().clear_key_custom_rgb(slot_num);
+                                    }
+                                } else if val.get("r").is_some()
+                                    || val.get("g").is_some()
+                                    || val.get("b").is_some()
+                                {
+                                    let r =
+                                        val.get("r").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                                    let g = val
+                                        .get("g")
+                                        .and_then(|v| v.as_i64())
+                                        .unwrap_or(170)
+                                        as i32;
+                                    let b = val
+                                        .get("b")
+                                        .and_then(|v| v.as_i64())
+                                        .unwrap_or(255)
+                                        as i32;
+                                    let _ = self.as_mut().set_key_rgb(slot_num, r, g, b);
+                                }
+
+                                return (
+                                    if ok1 { 200 } else { 400 },
+                                    serde_json::json!({
+                                        "ok": ok1,
+                                        "profile": prof_num,
+                                        "slot": slot_num,
+                                        "statusMessage": self.status_message().to_string(),
+                                    })
+                                    .to_string(),
+                                );
+                            } else if parts.len() == 3 && m == "DELETE" {
+                                let ok = self.as_mut().clear_slot(slot_num);
+                                return (
+                                    if ok { 200 } else { 400 },
+                                    serde_json::json!({
+                                        "ok": ok,
+                                        "profile": prof_num,
+                                        "slot": slot_num,
+                                    })
+                                    .to_string(),
+                                );
+                            } else if parts.len() == 4
+                                && parts[3] == "trigger"
+                                && m == "POST"
+                            {
+                                let val = match parse_json() {
+                                    Ok(v) => v,
+                                    Err(r) => return r,
+                                };
+                                let is_rel = val
+                                    .get("release")
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
+                                self.as_mut().handle_hardware_pgv_web_api_trigger(
+                                    prof_num.clamp(1, 64) as u8,
+                                    slot_num.clamp(1, MAX_INPUT_SLOTS as i32) as usize,
+                                    is_rel,
+                                );
+                                return (
+                                    200,
+                                    serde_json::json!({
+                                        "ok": true,
+                                        "profile": prof_num,
+                                        "slot": slot_num,
+                                        "release": is_rel,
+                                        "statusMessage": self.status_message().to_string(),
+                                    })
+                                    .to_string(),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 7. POST /api/v1/dsvm/compile
+        if m == "POST" && clean_path == "/api/v1/dsvm/compile" {
+            let val = match parse_json() {
+                Ok(v) => v,
+                Err(r) => return r,
+            };
+            let script = val
+                .get("script")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let allow_abort = val
+                .get("allowAbort")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let disable_autorepeat = val
+                .get("disableAutorepeat")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let res_str = self
+                .check_script_syntax(
+                    QString::from(script),
+                    allow_abort,
+                    disable_autorepeat,
+                )
+                .to_string();
+            return (200, res_str);
+        }
+
+        // 8. GET /api/v1/templates
+        if m == "GET" && clean_path == "/api/v1/templates" {
+            let tpl_str = self.list_profile_templates_json().to_string();
+            let tpl_val: serde_json::Value =
+                serde_json::from_str(&tpl_str).unwrap_or_else(|_| serde_json::json!([]));
+            return (
+                200,
+                serde_json::json!({
+                    "ok": true,
+                    "templates": tpl_val,
+                })
+                .to_string(),
+            );
+        }
+
+        // 9. GET / PUT /api/v1/pgv
+        if clean_path == "/api/v1/pgv" {
+            if m == "GET" {
+                let pgv_str = self.as_mut().dump_all_pgvs_json().to_string();
+                let pgv_val: serde_json::Value =
+                    serde_json::from_str(&pgv_str).unwrap_or_else(|_| serde_json::json!([]));
+                return (
+                    200,
+                    serde_json::json!({
+                        "ok": true,
+                        "variables": pgv_val,
+                    })
+                    .to_string(),
+                );
+            } else if m == "PUT" || m == "POST" {
+                let val = match parse_json() {
+                    Ok(v) => v,
+                    Err(r) => return r,
+                };
+                let index = val.get("index").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                let value = val.get("value").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                let ok = self.as_mut().write_pgv(index, value);
+                return (
+                    if ok { 200 } else { 400 },
+                    serde_json::json!({
+                        "ok": ok,
+                        "index": index,
+                        "value": value,
+                    })
+                    .to_string(),
+                );
+            }
+        }
+
+        // 10. POST /api/v1/leds
+        if m == "POST" && clean_path == "/api/v1/leds" {
+            let val = match parse_json() {
+                Ok(v) => v,
+                Err(r) => return r,
+            };
+            if let Some(arr) = val.get("leds").or_else(|| val.as_array().map(|_| &val)) {
+                let ok = self.push_hardware_led_frame_json(QString::from(&arr.to_string()));
+                return (
+                    if ok { 200 } else { 400 },
+                    serde_json::json!({ "ok": ok }).to_string(),
+                );
+            }
+            let slot = val.get("slot").and_then(|v| v.as_i64()).unwrap_or(1).clamp(1, 20) as usize;
+            let r = val.get("r").and_then(|v| v.as_i64()).unwrap_or(0).clamp(0, 255) as u8;
+            let g = val.get("g").and_then(|v| v.as_i64()).unwrap_or(170).clamp(0, 255) as u8;
+            let b = val.get("b").and_then(|v| v.as_i64()).unwrap_or(255).clamp(0, 255) as u8;
+            let ok = set_single_key_led_hid(slot, [r, g, b]);
+            return (
+                if ok { 200 } else { 400 },
+                serde_json::json!({
+                    "ok": ok,
+                    "slot": slot,
+                    "r": r,
+                    "g": g,
+                    "b": b,
+                })
+                .to_string(),
+            );
+        }
+
+        // 11. Storage & Sync endpoints
+        if m == "POST" && clean_path == "/api/v1/sd/sync" {
+            let ok = self.as_mut().sync_profiles_to_device_sd();
+            return (
+                if ok { 202 } else { 400 },
+                serde_json::json!({
+                    "ok": ok,
+                    "statusMessage": self.status_message().to_string(),
+                })
+                .to_string(),
+            );
+        }
+        if m == "POST" && clean_path == "/api/v1/sd/reload" {
+            let ok = self.as_mut().reload_profiles_from_device_sd();
+            return (
+                if ok { 200 } else { 400 },
+                serde_json::json!({
+                    "ok": ok,
+                    "statusMessage": self.status_message().to_string(),
+                })
+                .to_string(),
+            );
+        }
+        if m == "POST" && clean_path == "/api/v1/sd/mount" {
+            let ok = self.as_mut().mount_sd_card();
+            return (
+                if ok { 200 } else { 400 },
+                serde_json::json!({
+                    "ok": ok,
+                    "sdMountPath": self.sd_mount_path().to_string(),
+                    "statusMessage": self.status_message().to_string(),
+                })
+                .to_string(),
+            );
+        }
+        if m == "POST" && clean_path == "/api/v1/sd/unmount" {
+            let ok = self.as_mut().unmount_sd_card();
+            return (
+                if ok { 200 } else { 400 },
+                serde_json::json!({
+                    "ok": ok,
+                    "statusMessage": self.status_message().to_string(),
+                })
+                .to_string(),
+            );
+        }
+
+        // 12. Device power/system control endpoints
+        if m == "POST" && clean_path == "/api/v1/device/sleep" {
+            let ok = self.as_mut().set_sleep_state(true);
+            return (
+                if ok { 200 } else { 400 },
+                serde_json::json!({ "ok": ok }).to_string(),
+            );
+        }
+        if m == "POST" && clean_path == "/api/v1/device/wake" {
+            let ok = self.as_mut().set_sleep_state(false);
+            return (
+                if ok { 200 } else { 400 },
+                serde_json::json!({ "ok": ok }).to_string(),
+            );
+        }
+        if m == "POST" && clean_path == "/api/v1/device/reboot" {
+            let ok = self.as_mut().reboot_device();
+            return (
+                if ok { 200 } else { 400 },
+                serde_json::json!({ "ok": ok }).to_string(),
+            );
+        }
+        if m == "POST" && clean_path == "/api/v1/device/sync-rtc" {
+            let ok = self.as_mut().sync_rtc_clock();
+            return (
+                if ok { 200 } else { 400 },
+                serde_json::json!({ "ok": ok }).to_string(),
+            );
+        }
+
+        // 13. GET /api/v1/logs
+        if m == "GET" && clean_path == "/api/v1/logs" {
+            let log_str = self.event_log_json().to_string();
+            let log_val: serde_json::Value =
+                serde_json::from_str(&log_str).unwrap_or_else(|_| serde_json::json!([]));
+            return (
+                200,
+                serde_json::json!({
+                    "ok": true,
+                    "count": *self.event_log_count(),
+                    "events": log_val,
+                })
+                .to_string(),
+            );
+        }
+
+        (
+            404,
+            serde_json::json!({
+                "ok": false,
+                "error": format!("Unknown endpoint: {m} {clean_path}"),
+            })
+            .to_string(),
+        )
+    }
 }
 
 static GLOBAL_MACRO_RECORDER: OnceLock<Mutex<Option<GlobalMacroEvdevRecorder>>> = OnceLock::new();
@@ -7818,5 +9307,6 @@ static GLOBAL_MACRO_RECORDER: OnceLock<Mutex<Option<GlobalMacroEvdevRecorder>>> 
 fn global_macro_recorder_store() -> &'static Mutex<Option<GlobalMacroEvdevRecorder>> {
     GLOBAL_MACRO_RECORDER.get_or_init(|| Mutex::new(None))
 }
+
 
 

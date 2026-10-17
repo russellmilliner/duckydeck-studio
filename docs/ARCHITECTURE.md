@@ -222,9 +222,11 @@ The custom Color Picker window (`duckyColorPickerWindow` in [`src/qml/Main.qml`]
 
 | Path | Format | Contents |
 | :--- | :--- | :--- |
-| [`~/.config/duckydeck-studio/kwin_rules.json`](file:///home/millinr/.config/duckydeck-studio/kwin_rules.json) | JSON | Auto-Switcher rules, fallback profile, UI area text scales, tray preferences, and **Saved Colors** palette. |
+| [`~/.config/duckydeck-studio/kwin_rules.json`](file:///home/millinr/.config/duckydeck-studio/kwin_rules.json) | JSON | Auto-Switcher rules, fallback profile, UI area text scales, tray preferences, **HTTP REST API Server config (`rest_api_*`)**, **Global Profile Change Webhook (`profile_webhook_*`)**, and **Saved Colors** palette. |
+| `~/.config/duckydeck-studio/home_assistant.json` | JSON | Home Assistant Web API connection (`base_url` and Long-Lived Access Token `access_token`) used for device/entity search. |
 | `~/.config/duckydeck-studio/oled_widget_geometry.json` | JSON | Multi-monitor screen name (`screen_name`), position (`x`, `y`), size (`width`, `height`), `transparency_percent`, `always_on_top`, `frameless_mode`, and `show_rgb_dots` for the Desktop OLED Widget. |
 | `~/.config/duckydeck-studio/profile_templates.json` | JSON | User-created reusable profile templates saved from existing profiles (merged with built-in templates). |
+| `~/.local/share/duckydeck-studio/firmware_cache/official/` | Directory | Downloaded official dekuNukem `.bin` firmware binaries and `official_catalog.json` metadata cache verified by IEEE CRC32. |
 | `~/.local/share/duckydeck-studio/profiles_cache/<serial>/` | Directory | Offline mirror of all hardware profiles (`profile_info.txt`, `profile_*/config.txt`, `key*.txt`, `key*.dsb`) and `.sd_baseline/` snapshot for diffing. |
 | `~/.local/share/duckydeck-studio/logs/system_events.log` | Plaintext Log | Timestamped diagnostic event log (`DEVICE`, `PROFILE`, `AUTOSWITCH`, `SD_SYNC`, `SCRIPT`, `WEB_API`, `APP_LAUNCH`, `SYSTEM`). |
 | `~/.local/share/org.kde.syntax-highlighting/syntax/duckyscript3.xml` | Kate XML | KDE `KSyntaxHighlighting` grammar definition for duckyScript 3. |
@@ -239,17 +241,30 @@ DuckyDeck Studio distinguishes between **Standalone Hardware-Portable Capabiliti
    - Compiled `.dsb` bytecode (`STRING`, `KEYDOWN`, `DELAY`, `MOUSE_MOVE`, `SWC_SET`, `OLED_PRINT`, `GOTO_PROFILE`, etc.).
    - `config.txt` hardware directives: `BG_COLOR`, `KEYDOWN_COLOR`, `SWCOLOR_<N>`, `DIM_UNUSED_KEYS`, `IS_UPPER_HS`, `IS_LANDSCAPE`, `OLED_ROTATION` (`0°/90°/180°/270°`), and 5-character `z<N>`/`x<N>` OLED labels.
 2. **Host-Dependent (`💻 Requires DuckyDeck Studio Running`):**
-   - **Application Launcher (`// @DUCKYDECK_APPLAUNCH`)** and **Web API Webhooks (`// @DUCKYDECK_WEBAPI`)**: The key script writes a trigger token to `_GV19` / `_GV18` (or emits `F13..F24`), which is polled over USB HID by `duckydeck-studio` and executed on the host PC.
+   - **Application Launcher (`// @DUCKYDECK_APPLAUNCH`)** and **Web API / Home Assistant Webhooks (`// @DUCKYDECK_WEBAPI`)**: The key script writes a trigger token to `_GV19` / `_GV18` (or emits `F13..F24`), which is polled over USB HID by `duckydeck-studio` and executed on the host PC.
+   - **Profile Change Webhooks (`PROFILE_WEBHOOK` per-profile & Global Webhook)**: Fired asynchronously by `duckydeck-studio` whenever the active profile changes via UI, hardware buttons, Auto-Switcher, or REST API. Excluded from microSD sync diffs.
    - **KWin Wayland Active-Window Auto-Switcher**: Driven by the KWin D-Bus script and `zbus` listener inside `duckydeck-studio`.
-   - **Desktop OLED Companion Widget (`OledDesktopWidget.qml`), 24-Char Extended Labels (`wz<N>`/`wx<N>`), and Independent Widget Rotation (`DW_ROTATION`)**: Rendered on the host desktop by `duckydeck-studio`.
+   - **Desktop OLED Companion Widget (`OledDesktopWidget.qml`), 24-Char Extended Labels (`wz<N>`/`wx<N>`), and Independent Widget Rotation (`DW_ROTATION`)**: Rendered on the host desktop by `duckydeck-studio`. Changing `DW_ROTATION` updates the local profile cache and live widget immediately without marking the microSD card out of sync (`compute_profiles_fingerprint` and `compute_unsynced_changes_json` exclude `DW_ROTATION` and `PROFILE_WEBHOOK`, and `merge_host_only_profile_settings` preserves them across SD reloads).
    - **Live USB HID RGB Streaming**: Pushes real-time LED frames via HID command `0x14` from `duckydeck-studio`.
 
 ---
 
-## 9.6 Firmware Versioning (`v1.0.0`) & Upstream dekuNukem Releases
+## 9.6 Firmware Versioning (`v1.0.0`) & Official Firmware Catalog Downloader
 
-- **DuckyDeck Studio Firmware (`v1.0.0`)**: Built from `firmware/duckyPad-Pro/firmware/` (`DPP_FW_1.0.0_<crc32>.bin`) and identified over USB HID `GET_INFO` (`0x01`) via the `'D', 'D', 'S'` signature at bytes `20..22`. Adds `0°/90°/180°/270°` hardware OLED orientation and `0x80..0x9F` 1-bit monochrome key icons.
-- **Upstream dekuNukem Firmware**: Official dekuNukem `.bin` files are not stored in the repository; users download official releases directly from `https://github.com/dekuNukem/duckyPad-Pro/releases` and flash them via **Browse Custom .bin...** in the Firmware Manager.
+- **DuckyDeck Studio Firmware (`v1.0.0`)**: Built from `firmware/duckyPad-Pro/firmware/` (`DPP_FW_1.0.0_<crc32>.bin`) and identified over USB HID `GET_INFO` (`0x00`) via the `'D', 'D', 'S'` signature at bytes `20..22`. Adds `0°/90°/180°/270°` hardware OLED orientation and `0x80..0x9F` 1-bit monochrome key icons.
+- **Official dekuNukem Firmware Catalog Downloader**: `fetch_official_firmwares_from_site()` queries the official `dekuNukem/duckyPad-Pro` GitHub repository (`firmware/` directory and Releases API) to list available `DPP_FW_<ver>_<crc32>.bin` releases inside the Firmware Manager window. Clicking **Download .bin** or **Download & Install** invokes `download_official_firmware_binary()`, which downloads the `.bin` into `~/.local/share/duckydeck-studio/firmware_cache/official/` and verifies its IEEE CRC32 checksum against the filename before staging or flashing.
+
+---
+
+## 9.7 Embedded HTTP REST API Server (`src/api_server.rs`) & Security Model
+
+DuckyDeck Studio embeds a stoppable/restartable HTTP/1.1 REST API server (`src/api_server.rs`) that dispatches `/api/v1/*` requests onto the Qt main thread via `CxxQtThread<qobject::DeviceController>::queue(...)` and awaits the JSON response over a bounded channel.
+
+- **Default Configuration**: Disabled by default (`rest_api_enabled = false`), bound to loopback `127.0.0.1:28491`, with Bearer Token authentication enabled (`rest_api_require_auth = true`) and a 160-bit CSPRNG/hash-derived token (`ddk_<40 hex chars>`).
+- **Constant-Time Token Verification**: All endpoints (except `/api/v1/health` and `OPTIONS` preflight) verify `Authorization: Bearer <token>` or `X-API-Token: <token>` in constant time (`constant_time_eq`) when `require_auth` is enabled.
+- **Security Implications**:
+  - Because the REST API can program arbitrary DuckyScript keystroke/mouse macros, sync to the microSD card, switch profiles, and invoke host actions (`APP_LAUNCH`, `WEB_API`, `SYS_ACTION`), binding to `0.0.0.0` exposes full device and host control over plain HTTP to the local network.
+  - Both the Settings UI and user documentation prominently warn users to keep `127.0.0.1` unless LAN access is explicitly needed, keep Bearer Token authentication enabled, and use an HTTPS reverse proxy or SSH/WireGuard tunnel for remote access.
 
 ---
 

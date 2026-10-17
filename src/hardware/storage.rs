@@ -472,6 +472,36 @@ impl DuckyProfile {
         })
     }
 
+    pub fn profile_webhook(&self) -> ProfileWebhookConfig {
+        for line in &self.preserved_config_lines {
+            let t = line.trim();
+            if let Some(json_str) = t.strip_prefix("PROFILE_WEBHOOK ") {
+                if let Ok(mut cfg) = serde_json::from_str::<ProfileWebhookConfig>(json_str.trim()) {
+                    if cfg.method.trim().is_empty() {
+                        cfg.method = "POST".to_string();
+                    }
+                    return cfg;
+                }
+            }
+        }
+        ProfileWebhookConfig::default()
+    }
+
+    pub fn set_profile_webhook(&mut self, cfg: &ProfileWebhookConfig) {
+        self.preserved_config_lines
+            .retain(|l| !l.trim().starts_with("PROFILE_WEBHOOK "));
+        let has_content = cfg.enabled
+            || !cfg.destination.trim().is_empty()
+            || !cfg.url.trim().is_empty()
+            || !cfg.body.trim().is_empty();
+        if has_content {
+            if let Ok(json_str) = serde_json::to_string(cfg) {
+                self.preserved_config_lines
+                    .push(format!("PROFILE_WEBHOOK {json_str}"));
+            }
+        }
+    }
+
     pub fn canonical_extra_config_lines(&self) -> Vec<String> {
         self.preserved_config_lines
             .iter()
@@ -483,6 +513,7 @@ impl DuckyProfile {
                     && !t.starts_with("IS_ROTATED_180 ")
                     && !t.starts_with("IS_ROTATED_270 ")
                     && !t.starts_with("DW_ROTATION ")
+                    && !t.starts_with("PROFILE_WEBHOOK ")
                     && !t.starts_with("IS_UPPER_HS ")
                     && !t.starts_with("UPPER_HS ")
                     && !t.starts_with("BG_COLOR ")
@@ -490,6 +521,36 @@ impl DuckyProfile {
                     && !t.starts_with("DIM_UNUSED_KEYS ")
             })
             .collect()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileWebhookConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub destination: String,
+    #[serde(default = "default_web_api_method")]
+    pub method: String,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub headers: String,
+    #[serde(default)]
+    pub body: String,
+}
+
+impl Default for ProfileWebhookConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            destination: String::new(),
+            method: "POST".to_string(),
+            url: String::new(),
+            headers: "Content-Type: application/json".to_string(),
+            body: String::new(),
+        }
     }
 }
 
@@ -1189,6 +1250,32 @@ pub fn load_all_sd_profiles(sd_root: &Path) -> io::Result<Vec<DuckyProfile>> {
     Ok(profiles)
 }
 
+pub fn merge_host_only_profile_settings(
+    target_profiles: &mut [DuckyProfile],
+    previous_profiles: &[DuckyProfile],
+) {
+    for target in target_profiles.iter_mut() {
+        let prev_opt = previous_profiles
+            .iter()
+            .find(|p| p.number == target.number && p.name == target.name)
+            .or_else(|| previous_profiles.iter().find(|p| p.name == target.name))
+            .or_else(|| previous_profiles.iter().find(|p| p.number == target.number));
+        if let Some(prev) = prev_opt {
+            let prev_wrot = prev.widget_rotation_degrees();
+            if prev_wrot >= 0 {
+                target.set_widget_rotation_degrees(prev_wrot);
+            }
+            let prev_wh = prev.profile_webhook();
+            if prev_wh.enabled
+                || !prev_wh.url.trim().is_empty()
+                || !prev_wh.destination.trim().is_empty()
+            {
+                target.set_profile_webhook(&prev_wh);
+            }
+        }
+    }
+}
+
 pub fn save_profile_order_to_sd(sd_root: &Path, profiles: &[DuckyProfile]) -> io::Result<()> {
     let profile_info_path = sd_root.join("profile_info.txt");
     let mut content = String::new();
@@ -1286,7 +1373,6 @@ pub fn compute_profiles_fingerprint(profiles: &[DuckyProfile]) -> String {
         }
         feed(&[u8::from(prof.dim_unused_keys)]);
         feed(&prof.oled_rotation_degrees().to_le_bytes());
-        feed(&prof.widget_rotation_degrees().to_le_bytes());
         feed(&[u8::from(prof.is_upper_hs())]);
         for line in prof.canonical_extra_config_lines() {
             feed(line.as_bytes());
@@ -2255,26 +2341,6 @@ pub fn compute_unsynced_changes_json(
             push_detail(
                 "is_landscape",
                 format!("OLED Orientation: {}° → {}°", base_rot, cur_rot),
-            );
-        }
-
-        let base_wrot = base.widget_rotation_degrees();
-        let cur_wrot = cur.widget_rotation_degrees();
-        if base_wrot != cur_wrot {
-            let fmt_wrot = |r: i32| -> String {
-                if r < 0 {
-                    "Follow OLED".to_string()
-                } else {
-                    format!("{r}°")
-                }
-            };
-            push_detail(
-                "widget_rotation",
-                format!(
-                    "Desktop Widget Orientation: {} → {}",
-                    fmt_wrot(base_wrot),
-                    fmt_wrot(cur_wrot)
-                ),
             );
         }
 
@@ -3330,6 +3396,10 @@ pub async fn check_latest_duckypad_firmware(
     })
 }
 
+fn default_true_bool() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FirmwareVersionEntry {
     pub version: String,
@@ -3344,6 +3414,48 @@ pub struct FirmwareVersionEntry {
     pub notes: String,
     pub is_installed: bool,
     pub supports_monochrome_icons: bool,
+    #[serde(default)]
+    pub download_url: String,
+    #[serde(default = "default_true_bool")]
+    pub is_downloaded: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CachedRemoteFirmwareItem {
+    pub version: String,
+    pub filename: String,
+    pub crc32: String,
+    pub size_bytes: u64,
+    pub download_url: String,
+    pub release_date: String,
+    pub notes: String,
+}
+
+pub fn official_firmware_cache_dir() -> PathBuf {
+    data_home_dir()
+        .join("duckydeck-studio")
+        .join("firmware_official")
+}
+
+pub fn official_firmware_manifest_path() -> PathBuf {
+    official_firmware_cache_dir().join("manifest.json")
+}
+
+pub fn load_cached_remote_firmwares() -> Vec<CachedRemoteFirmwareItem> {
+    let path = official_firmware_manifest_path();
+    let Ok(raw) = fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    serde_json::from_str::<Vec<CachedRemoteFirmwareItem>>(&raw).unwrap_or_default()
+}
+
+pub fn save_cached_remote_firmwares(items: &[CachedRemoteFirmwareItem]) {
+    let dir = official_firmware_cache_dir();
+    if fs::create_dir_all(&dir).is_ok() {
+        if let Ok(json) = serde_json::to_string_pretty(items) {
+            let _ = fs::write(official_firmware_manifest_path(), json);
+        }
+    }
 }
 
 pub fn is_duckydeck_studio_firmware_version(version: &str) -> bool {
@@ -3392,7 +3504,7 @@ fn firmware_release_metadata(
         "3.3.5" => (
             "Official Release",
             "Mar 15, 2026",
-            "Official dekuNukem release (download from dekuNukem's site): increased Anykey-to-Abort check frequency during script execution.",
+            "Official dekuNukem release: increased Anykey-to-Abort check frequency during script execution.",
         ),
         "3.3.4" => (
             "Official Release",
@@ -3404,10 +3516,15 @@ fn firmware_release_metadata(
             "Feb 9, 2026",
             "Official dekuNukem release: disabled PWM output; stable public release.",
         ),
+        "3.3.0" => (
+            "Official Release",
+            "Jan 2026",
+            "Official dekuNukem release: DSVM v2 bytecode engine and expanded HID command support.",
+        ),
         _ => (
             "Official dekuNukem Firmware",
-            "Release",
-            "Official dekuNukem duckyPad Pro ESP32-S3 OTA firmware binary downloaded from dekuNukem's repository.",
+            "Official Release",
+            "Official dekuNukem duckyPad Pro ESP32-S3 OTA firmware binary from dekuNukem's repository.",
         ),
     }
 }
@@ -3417,6 +3534,7 @@ pub fn list_available_duckypad_pro_firmwares(current_version: &str) -> Vec<Firmw
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     candidate_dirs.push((manifest_dir.join("firmware/releases"), true));
     candidate_dirs.push((manifest_dir.join("firmware/duckyPad-Pro/firmware"), true));
+    candidate_dirs.push((official_firmware_cache_dir(), false));
     if let Some(home) = std::env::var_os("HOME") {
         candidate_dirs.push((
             PathBuf::from(&home).join(".local/share/duckydeck-studio/firmware"),
@@ -3490,13 +3608,359 @@ pub fn list_available_duckypad_pro_firmwares(current_version: &str) -> Vec<Firmw
                 notes: notes.to_string(),
                 is_installed,
                 supports_monochrome_icons,
+                download_url: String::new(),
+                is_downloaded: true,
             });
         }
+    }
+
+    // Merge remote official firmwares fetched from dekuNukem's site
+    let official_dir = official_firmware_cache_dir();
+    for remote in load_cached_remote_firmwares() {
+        let Some((maj, min, pat)) = parse_semver(&remote.version) else {
+            continue;
+        };
+        let crc_lower = remote.crc32.to_lowercase();
+        let key = (0u8, maj, min, pat, crc_lower.clone());
+        let local_path = official_dir.join(&remote.filename);
+        let is_downloaded = local_path.is_file();
+        let size_bytes = if is_downloaded {
+            local_path.metadata().map(|m| m.len()).unwrap_or(remote.size_bytes)
+        } else {
+            remote.size_bytes
+        };
+        let (default_channel, default_date, default_notes) =
+            firmware_release_metadata(&remote.version, false);
+        let is_installed = !is_duckydeck_studio_firmware_version(current_version)
+            && current_version.trim().starts_with(&remote.version);
+
+        by_key
+            .entry(key)
+            .and_modify(|existing| {
+                if existing.download_url.is_empty() && !remote.download_url.is_empty() {
+                    existing.download_url = remote.download_url.clone();
+                }
+            })
+            .or_insert_with(|| FirmwareVersionEntry {
+                version: remote.version.clone(),
+                filename: remote.filename.clone(),
+                path: if is_downloaded {
+                    local_path.to_string_lossy().to_string()
+                } else {
+                    String::new()
+                },
+                crc32: crc_lower,
+                size_bytes,
+                vendor: "dekuNukem (Official)".to_string(),
+                is_official: true,
+                channel: default_channel.to_string(),
+                release_date: if remote.release_date.trim().is_empty() {
+                    default_date.to_string()
+                } else {
+                    remote.release_date.clone()
+                },
+                notes: if remote.notes.trim().is_empty() {
+                    default_notes.to_string()
+                } else {
+                    remote.notes.clone()
+                },
+                is_installed,
+                supports_monochrome_icons: false,
+                download_url: remote.download_url.clone(),
+                is_downloaded,
+            });
     }
 
     let mut out: Vec<FirmwareVersionEntry> = by_key.into_values().collect();
     out.reverse();
     out
+}
+
+pub async fn fetch_official_firmwares_from_site(
+    current_version: &str,
+) -> Result<Vec<FirmwareVersionEntry>, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("DuckyDeck-Studio/0.1.0")
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("HTTP client init failed: {e}"))?;
+
+    let mut discovered: std::collections::BTreeMap<(u32, u32, u32, String), CachedRemoteFirmwareItem> =
+        std::collections::BTreeMap::new();
+
+    // Seed with existing cached entries so we never lose previously discovered items
+    for item in load_cached_remote_firmwares() {
+        if let Some((maj, min, pat)) = parse_semver(&item.version) {
+            discovered.insert((maj, min, pat, item.crc32.to_lowercase()), item);
+        }
+    }
+
+    let mut parse_and_insert = |fname: &str, dl_url: &str, size_bytes: u64, date_hint: &str, note_hint: &str| {
+        if !fname.starts_with("DPP_FW_") || !fname.ends_with(".bin") {
+            return;
+        }
+        let inner = &fname["DPP_FW_".len()..fname.len() - ".bin".len()];
+        let mut parts = inner.split('_');
+        let Some(ver_str) = parts.next() else {
+            return;
+        };
+        let crc_str = parts.next().unwrap_or("").to_lowercase();
+        if crc_str.is_empty() || crc_str == "ad2acc81" {
+            return;
+        }
+        let Some((maj, min, pat)) = parse_semver(ver_str) else {
+            return;
+        };
+        let (_, meta_date, meta_notes) = firmware_release_metadata(ver_str, false);
+        let release_date = if !date_hint.trim().is_empty() {
+            date_hint.trim().to_string()
+        } else {
+            meta_date.to_string()
+        };
+        let notes = if !note_hint.trim().is_empty() {
+            note_hint.trim().to_string()
+        } else {
+            meta_notes.to_string()
+        };
+        discovered.insert(
+            (maj, min, pat, crc_str.clone()),
+            CachedRemoteFirmwareItem {
+                version: ver_str.to_string(),
+                filename: fname.to_string(),
+                crc32: crc_str,
+                size_bytes,
+                download_url: dl_url.to_string(),
+                release_date,
+                notes,
+            },
+        );
+    };
+
+    // 1. Fetch active firmware directory from dekuNukem/duckyPad-Pro
+    let contents_url = "https://api.github.com/repos/dekuNukem/duckyPad-Pro/contents/firmware?ref=master";
+    let resp = client
+        .get(contents_url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed reaching dekuNukem firmware repository: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Official firmware repository returned HTTP {}",
+            resp.status()
+        ));
+    }
+
+    if let Ok(entries) = resp.json::<serde_json::Value>().await {
+        if let Some(arr) = entries.as_array() {
+            for item in arr {
+                let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                if item_type != "file" {
+                    continue;
+                }
+                let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let size = item.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
+                let dl_url = item
+                    .get("download_url")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if !name.is_empty() && !dl_url.is_empty() {
+                    parse_and_insert(name, dl_url, size, "", "");
+                }
+            }
+        }
+    }
+
+    // 2. Also check GitHub Releases for any attached DPP_FW_*.bin assets
+    let releases_url = "https://api.github.com/repos/dekuNukem/duckyPad-Pro/releases?per_page=20";
+    if let Ok(rel_resp) = client.get(releases_url).send().await {
+        if rel_resp.status().is_success() {
+            if let Ok(rel_json) = rel_resp.json::<serde_json::Value>().await {
+                if let Some(rel_arr) = rel_json.as_array() {
+                    for rel in rel_arr {
+                        let published = rel
+                            .get("published_at")
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| s.get(..10))
+                            .unwrap_or("");
+                        let body = rel
+                            .get("body")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.lines().next().unwrap_or("").trim())
+                            .unwrap_or("");
+                        if let Some(assets) = rel.get("assets").and_then(|v| v.as_array()) {
+                            for asset in assets {
+                                let name = asset.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                                let size = asset.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
+                                let dl_url = asset
+                                    .get("browser_download_url")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("");
+                                if !name.is_empty() && !dl_url.is_empty() {
+                                    parse_and_insert(name, dl_url, size, published, body);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Also inspect recent commits to `/firmware` in dekuNukem/duckyPad-Pro so historical versions in git history are listed
+    let commits_url = "https://api.github.com/repos/dekuNukem/duckyPad-Pro/commits?path=firmware&per_page=10";
+    if let Ok(com_resp) = client.get(commits_url).send().await {
+        if com_resp.status().is_success() {
+            if let Ok(com_json) = com_resp.json::<serde_json::Value>().await {
+                if let Some(com_arr) = com_json.as_array() {
+                    for com in com_arr.iter().take(6) {
+                        let sha = com.get("sha").and_then(|v| v.as_str()).unwrap_or("");
+                        if sha.is_empty() {
+                            continue;
+                        }
+                        let commit_date = com
+                            .get("commit")
+                            .and_then(|c| c.get("committer"))
+                            .and_then(|cm| cm.get("date"))
+                            .and_then(|d| d.as_str())
+                            .and_then(|s| s.get(..10))
+                            .unwrap_or("");
+                        let commit_msg = com
+                            .get("commit")
+                            .and_then(|c| c.get("message"))
+                            .and_then(|m| m.as_str())
+                            .map(|s| s.lines().next().unwrap_or("").trim())
+                            .unwrap_or("");
+                        let tree_url = format!(
+                            "https://api.github.com/repos/dekuNukem/duckyPad-Pro/contents/firmware?ref={sha}"
+                        );
+                        if let Ok(t_resp) = client.get(&tree_url).send().await {
+                            if t_resp.status().is_success() {
+                                if let Ok(t_json) = t_resp.json::<serde_json::Value>().await {
+                                    if let Some(t_arr) = t_json.as_array() {
+                                        for item in t_arr {
+                                            let name = item
+                                                .get("name")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("");
+                                            let size = item
+                                                .get("size")
+                                                .and_then(|v| v.as_u64())
+                                                .unwrap_or(0);
+                                            let dl_url = item
+                                                .get("download_url")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("");
+                                            if !name.is_empty() && !dl_url.is_empty() {
+                                                let note = if !commit_msg.is_empty() {
+                                                    format!("Official dekuNukem release ({commit_msg})")
+                                                } else {
+                                                    String::new()
+                                                };
+                                                parse_and_insert(
+                                                    name,
+                                                    dl_url,
+                                                    size,
+                                                    commit_date,
+                                                    &note,
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let remote_list: Vec<CachedRemoteFirmwareItem> = discovered.into_values().collect();
+    save_cached_remote_firmwares(&remote_list);
+
+    Ok(list_available_duckypad_pro_firmwares(current_version))
+}
+
+pub async fn download_official_firmware_binary(
+    filename: &str,
+    download_url: &str,
+) -> Result<PathBuf, String> {
+    let clean_name = filename.trim();
+    if !clean_name.starts_with("DPP_FW_") || !clean_name.ends_with(".bin") || clean_name.contains('/') || clean_name.contains('\\') {
+        return Err(format!("Invalid official firmware filename: '{clean_name}'"));
+    }
+    let dir = official_firmware_cache_dir();
+    fs::create_dir_all(&dir)
+        .map_err(|e| format!("Failed creating firmware cache directory {}: {e}", dir.display()))?;
+    let target_path = dir.join(clean_name);
+
+    // Extract expected CRC32 from filename `DPP_FW_<ver>_<crc32>.bin`
+    let inner = &clean_name["DPP_FW_".len()..clean_name.len() - ".bin".len()];
+    let expected_crc_hex = inner.split('_').nth(1).unwrap_or("").to_lowercase();
+
+    // If already downloaded and CRC matches, return immediately
+    if target_path.is_file() {
+        if let Ok(existing_bytes) = fs::read(&target_path) {
+            if existing_bytes.len() > 64 * 1024 {
+                let crc = format!("{:08x}", compute_ieee_crc32(&existing_bytes));
+                if expected_crc_hex.is_empty() || crc == expected_crc_hex {
+                    return Ok(target_path);
+                }
+            }
+        }
+    }
+
+    let url = if !download_url.trim().is_empty() {
+        download_url.trim().to_string()
+    } else {
+        format!(
+            "https://raw.githubusercontent.com/dekuNukem/duckyPad-Pro/master/firmware/{clean_name}"
+        )
+    };
+
+    let client = reqwest::Client::builder()
+        .user_agent("DuckyDeck-Studio/0.1.0")
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))?;
+
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed downloading {clean_name} from {url}: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Download of {clean_name} failed with HTTP {}",
+            resp.status()
+        ));
+    }
+
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed reading firmware bytes: {e}"))?;
+
+    if bytes.len() < 64 * 1024 {
+        return Err(format!(
+            "Downloaded firmware file is unexpectedly small ({} bytes)",
+            bytes.len()
+        ));
+    }
+
+    let actual_crc = format!("{:08x}", compute_ieee_crc32(&bytes));
+    if !expected_crc_hex.is_empty() && actual_crc != expected_crc_hex {
+        return Err(format!(
+            "CRC32 verification failed for {clean_name}: expected {expected_crc_hex}, got {actual_crc}"
+        ));
+    }
+
+    fs::write(&target_path, &bytes)
+        .map_err(|e| format!("Failed saving firmware to {}: {e}", target_path.display()))?;
+
+    Ok(target_path)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -5858,6 +6322,366 @@ impl GlobalMacroEvdevRecorder {
     }
 }
 
+// ============================================================================
+// Home Assistant Web API Connection & Entity Discovery + Profile Change Webhook
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct HomeAssistantConfig {
+    #[serde(default)]
+    pub base_url: String,
+    #[serde(default)]
+    pub access_token: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HomeAssistantEntity {
+    pub entity_id: String,
+    pub domain: String,
+    pub friendly_name: String,
+    pub state: String,
+    pub icon: String,
+    pub area_or_device: String,
+    pub suggested_service: String,
+}
+
+pub fn home_assistant_config_path() -> PathBuf {
+    let base = std::env::var("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+            PathBuf::from(home).join(".config")
+        });
+    base.join("duckydeck-studio").join("home_assistant.json")
+}
+
+pub fn load_home_assistant_config() -> HomeAssistantConfig {
+    let path = home_assistant_config_path();
+    if let Ok(raw) = fs::read_to_string(&path) {
+        if let Ok(mut cfg) = serde_json::from_str::<HomeAssistantConfig>(&raw) {
+            cfg.base_url = cfg.base_url.trim().trim_end_matches('/').to_string();
+            cfg.access_token = cfg.access_token.trim().to_string();
+            if !cfg.base_url.is_empty() || !cfg.access_token.is_empty() {
+                return cfg;
+            }
+        }
+    }
+
+    // Fallback: try to infer base_url and Bearer token from any saved Home Assistant WebApiDestination
+    for dest in load_web_api_destinations() {
+        let u = dest.url.trim();
+        if let Some(idx) = u.find("/api/") {
+            let base_url = u[..idx].trim_end_matches('/').to_string();
+            let mut token = String::new();
+            for line in dest.headers.lines() {
+                let t = line.trim();
+                if let Some((k, v)) = t.split_once(':') {
+                    if k.trim().eq_ignore_ascii_case("authorization") {
+                        let val = v.trim();
+                        if let Some(rest) = val.strip_prefix("Bearer ").or_else(|| val.strip_prefix("bearer ")) {
+                            token = rest.trim().to_string();
+                        }
+                    }
+                }
+            }
+            if !base_url.is_empty() {
+                return HomeAssistantConfig {
+                    base_url,
+                    access_token: token,
+                };
+            }
+        }
+    }
+
+    HomeAssistantConfig {
+        base_url: "http://homeassistant.local:8123".to_string(),
+        access_token: String::new(),
+    }
+}
+
+pub fn save_home_assistant_config(base_url: &str, access_token: &str) -> Result<HomeAssistantConfig, String> {
+    let mut clean_url = base_url.trim().trim_end_matches('/').to_string();
+    if let Some(idx) = clean_url.find("/api/") {
+        clean_url = clean_url[..idx].trim_end_matches('/').to_string();
+    } else if let Some(stripped) = clean_url.strip_suffix("/api") {
+        clean_url = stripped.trim_end_matches('/').to_string();
+    }
+    let mut clean_token = access_token.trim().to_string();
+    if let Some(rest) = clean_token
+        .strip_prefix("Bearer ")
+        .or_else(|| clean_token.strip_prefix("bearer "))
+    {
+        clean_token = rest.trim().to_string();
+    }
+    let cfg = HomeAssistantConfig {
+        base_url: clean_url,
+        access_token: clean_token,
+    };
+    let path = home_assistant_config_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed creating config dir: {e}"))?;
+    }
+    let json = serde_json::to_string_pretty(&cfg)
+        .map_err(|e| format!("Failed serializing Home Assistant config: {e}"))?;
+    fs::write(&path, json).map_err(|e| format!("Failed writing {}: {e}", path.display()))?;
+    Ok(cfg)
+}
+
+pub fn suggested_ha_service_for_domain(domain: &str) -> &'static str {
+    match domain {
+        "light" => "light/toggle",
+        "switch" => "switch/toggle",
+        "input_boolean" => "input_boolean/toggle",
+        "fan" => "fan/toggle",
+        "cover" => "cover/toggle",
+        "media_player" => "media_player/media_play_pause",
+        "scene" => "scene/turn_on",
+        "script" => "script/turn_on",
+        "automation" => "automation/trigger",
+        "button" => "button/press",
+        "input_button" => "input_button/press",
+        "lock" => "lock/unlock",
+        "vacuum" => "vacuum/start",
+        "climate" => "climate/toggle",
+        _ => "homeassistant/toggle",
+    }
+}
+
+pub async fn fetch_and_search_home_assistant_entities(
+    base_url: &str,
+    access_token: &str,
+    query: &str,
+    domain_filter: &str,
+) -> Result<Vec<HomeAssistantEntity>, String> {
+    let saved = save_home_assistant_config(base_url, access_token)?;
+    if saved.base_url.is_empty() {
+        return Err("Home Assistant Base URL is required (e.g. http://homeassistant.local:8123)".to_string());
+    }
+    if saved.access_token.is_empty() {
+        return Err("Home Assistant Long-Lived Access Token is required".to_string());
+    }
+
+    let states_url = format!("{}/api/states", saved.base_url);
+    let client = reqwest::Client::builder()
+        .user_agent("DuckyDeck-Studio/0.1.0")
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))?;
+
+    let resp = client
+        .get(&states_url)
+        .header("Authorization", format!("Bearer {}", saved.access_token))
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("Failed connecting to Home Assistant at {states_url}: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Home Assistant returned HTTP {} from {}",
+            resp.status(),
+            states_url
+        ));
+    }
+
+    let raw_states: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Invalid JSON from Home Assistant /api/states: {e}"))?;
+
+    let arr = raw_states
+        .as_array()
+        .ok_or_else(|| "Unexpected response format from /api/states".to_string())?;
+
+    let q_lower = query.trim().to_ascii_lowercase();
+    let dom_lower = domain_filter.trim().to_ascii_lowercase();
+
+    let actionable_domains = [
+        "light",
+        "switch",
+        "scene",
+        "script",
+        "automation",
+        "button",
+        "input_button",
+        "input_boolean",
+        "media_player",
+        "fan",
+        "cover",
+        "climate",
+        "lock",
+        "vacuum",
+        "siren",
+        "humidifier",
+        "water_heater",
+        "remote",
+        "select",
+        "input_select",
+        "number",
+        "input_number",
+    ];
+
+    let mut results = Vec::new();
+    for item in arr {
+        let Some(entity_id) = item.get("entity_id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let domain = entity_id.split('.').next().unwrap_or("").to_ascii_lowercase();
+        if !dom_lower.is_empty() && dom_lower != "all" {
+            if domain != dom_lower {
+                continue;
+            }
+        } else if q_lower.is_empty() && !actionable_domains.contains(&domain.as_str()) {
+            // When browsing with no search query and "all" filter, prioritize controllable domains first
+            continue;
+        }
+
+        let state_str = item
+            .get("state")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let attrs = item.get("attributes");
+        let friendly_name = attrs
+            .and_then(|a| a.get("friendly_name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or(entity_id)
+            .to_string();
+        let icon = attrs
+            .and_then(|a| a.get("icon"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let device_class = attrs
+            .and_then(|a| a.get("device_class"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        if !q_lower.is_empty() {
+            let matches_id = entity_id.to_ascii_lowercase().contains(&q_lower);
+            let matches_name = friendly_name.to_ascii_lowercase().contains(&q_lower);
+            let matches_class = device_class.to_ascii_lowercase().contains(&q_lower);
+            let matches_state = state_str.to_ascii_lowercase().contains(&q_lower);
+            if !matches_id && !matches_name && !matches_class && !matches_state {
+                continue;
+            }
+        }
+
+        let suggested_service = suggested_ha_service_for_domain(&domain).to_string();
+        results.push(HomeAssistantEntity {
+            entity_id: entity_id.to_string(),
+            domain,
+            friendly_name,
+            state: state_str,
+            icon,
+            area_or_device: device_class,
+            suggested_service,
+        });
+    }
+
+    results.sort_by(|a, b| {
+        a.domain
+            .cmp(&b.domain)
+            .then_with(|| a.friendly_name.to_ascii_lowercase().cmp(&b.friendly_name.to_ascii_lowercase()))
+            .then_with(|| a.entity_id.cmp(&b.entity_id))
+    });
+
+    if results.len() > 300 {
+        results.truncate(300);
+    }
+
+    Ok(results)
+}
+
+pub fn expand_profile_webhook_template(
+    template: &str,
+    profile_number: u8,
+    profile_name: &str,
+    previous_profile_number: u8,
+    previous_profile_name: &str,
+    source: &str,
+    serial: &str,
+) -> String {
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let trimmed = template.trim();
+    if trimmed.is_empty() {
+        return serde_json::json!({
+            "event": "profile_changed",
+            "profile_number": profile_number,
+            "profile_name": profile_name,
+            "previous_profile_number": previous_profile_number,
+            "previous_profile_name": previous_profile_name,
+            "source": source,
+            "device_serial": serial,
+            "timestamp": ts
+        })
+        .to_string();
+    }
+    let escape_json = |s: &str| -> String {
+        s.replace('\\', "\\\\").replace('"', "\\\"")
+    };
+    template
+        .replace("{{profile_number}}", &profile_number.to_string())
+        .replace("{{profile_name}}", &escape_json(profile_name))
+        .replace("{{previous_profile_number}}", &previous_profile_number.to_string())
+        .replace("{{previous_profile_name}}", &escape_json(previous_profile_name))
+        .replace("{{source}}", &escape_json(source))
+        .replace("{{device_serial}}", &escape_json(serial))
+        .replace("{{timestamp}}", &ts.to_string())
+}
+
+pub async fn execute_profile_webhook_request(
+    webhook: &ProfileWebhookConfig,
+    profile_number: u8,
+    profile_name: &str,
+    previous_profile_number: u8,
+    previous_profile_name: &str,
+    source: &str,
+    serial: &str,
+) -> WebApiExecutionResult {
+    let expanded_url = expand_profile_webhook_template(
+        &webhook.url,
+        profile_number,
+        profile_name,
+        previous_profile_number,
+        previous_profile_name,
+        source,
+        serial,
+    );
+    let expanded_body = expand_profile_webhook_template(
+        &webhook.body,
+        profile_number,
+        profile_name,
+        previous_profile_number,
+        previous_profile_name,
+        source,
+        serial,
+    );
+    let web_cfg = WebApiConfig {
+        enabled: true,
+        destination: webhook.destination.clone(),
+        method: if webhook.method.trim().is_empty() {
+            "POST".to_string()
+        } else {
+            webhook.method.clone()
+        },
+        url: expanded_url,
+        headers: webhook.headers.clone(),
+        body: expanded_body,
+        oled_text: String::new(),
+        led_feedback: false,
+        trigger_mode: "pgv".to_string(),
+        fkey: "F13".to_string(),
+    };
+    execute_web_api_request(&web_cfg).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5871,17 +6695,13 @@ mod tests {
             list.len()
         );
         // First entry should be v1.0.0 (DuckyDeck Studio Firmware)
-        assert_eq!(list[0].version, "1.0.0");
-        assert_eq!(list[0].vendor, "DuckyDeck Studio");
-        assert!(!list[0].is_official);
-        assert!(list[0].supports_monochrome_icons);
-        // Ensure no official dekuNukem binaries are bundled in the repo
-        for entry in &list {
-            assert_eq!(
-                entry.vendor, "DuckyDeck Studio",
-                "Only DuckyDeck Studio firmware should be bundled in the repo, found: {}",
-                entry.filename
-            );
+        let studio_entries: Vec<&FirmwareVersionEntry> =
+            list.iter().filter(|e| !e.is_official).collect();
+        assert!(!studio_entries.is_empty());
+        assert_eq!(studio_entries[0].version, "1.0.0");
+        assert_eq!(studio_entries[0].vendor, "DuckyDeck Studio");
+        assert!(studio_entries[0].supports_monochrome_icons);
+        for entry in studio_entries {
             let bytes =
                 std::fs::read(&entry.path).expect("Bundled firmware binary should be readable");
             let crc = compute_ieee_crc32(&bytes);
@@ -5924,6 +6744,36 @@ mod tests {
             "An effectively empty DuckyKeySlot must not change the profile sync fingerprint"
         );
 
+        // Verify Desktop Widget orientation (DW_ROTATION) does NOT require a microSD sync
+        let mut widget_rot_profiles = base_profiles.clone();
+        widget_rot_profiles[0].set_widget_rotation_degrees(90);
+        assert_eq!(
+            compute_profiles_fingerprint(&widget_rot_profiles),
+            base_fp,
+            "Changing Desktop Widget orientation (DW_ROTATION) must NOT require a microSD sync"
+        );
+        widget_rot_profiles[0].set_widget_rotation_degrees(270);
+        assert_eq!(
+            compute_profiles_fingerprint(&widget_rot_profiles),
+            base_fp,
+            "Changing Desktop Widget orientation to 270 must NOT require a microSD sync"
+        );
+
+        // Verify per-profile webhook (PROFILE_WEBHOOK) does NOT require a microSD sync
+        widget_rot_profiles[0].set_profile_webhook(&ProfileWebhookConfig {
+            enabled: true,
+            destination: String::new(),
+            method: "POST".to_string(),
+            url: "http://127.0.0.1:8123/api/webhook/test".to_string(),
+            headers: "Content-Type: application/json".to_string(),
+            body: "{\"profile\":\"{{profile_name}}\"}".to_string(),
+        });
+        assert_eq!(
+            compute_profiles_fingerprint(&widget_rot_profiles),
+            base_fp,
+            "Setting a per-profile webhook must NOT require a microSD sync"
+        );
+
         let temp_sd = std::env::temp_dir().join(format!(
             "duckydeck_rotation_test_{}",
             std::process::id()
@@ -5934,6 +6784,18 @@ mod tests {
             .save_to_sd_root(&temp_sd)
             .expect("save base profile");
         save_profile_order_to_sd(&temp_sd, &base_profiles).expect("save profile_info.txt");
+
+        // Verify unsynced changes for widget_rot_profiles is 0 changes
+        let wrot_diff_json = compute_unsynced_changes_json(
+            "TEST_ROTATION_SERIAL",
+            &widget_rot_profiles,
+            Some(&temp_sd),
+            "synced",
+        );
+        assert!(
+            wrot_diff_json.contains("\"totalChanges\":0"),
+            "Desktop widget rotation should produce 0 unsynced SD changes, got: {wrot_diff_json}"
+        );
 
         let diff_json = compute_unsynced_changes_json(
             "TEST_ROTATION_SERIAL",
@@ -6009,4 +6871,5 @@ mod tests {
         let _ = fs::remove_dir_all(&temp_sd);
     }
 }
+
 
