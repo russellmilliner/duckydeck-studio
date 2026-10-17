@@ -1639,6 +1639,7 @@ Kirigami.ApplicationWindow {
         root.syncSidebarProfilesFromController()
         hardwareCanvas.syncProfilesFromController()
         root.refreshSelectedSlotFromController()
+        root.syncLightingAnimationsForActiveProfile()
         Qt.callLater(function() {
             if (deviceController.isStartMinimizedMode()) {
                 root.visible = false
@@ -1648,6 +1649,7 @@ Kirigami.ApplicationWindow {
             root.syncSidebarProfilesFromController()
             hardwareCanvas.syncProfilesFromController()
             root.refreshSelectedSlotFromController()
+            root.syncLightingAnimationsForActiveProfile()
             if (deviceController.connected) {
                 root.ensureActiveProfileVisibleInList()
             }
@@ -1993,10 +1995,10 @@ Kirigami.ApplicationWindow {
         title: pickerMode === "key"
             ? qsTr("Set Key %1 Color — DuckyDeck Studio").arg(targetSlotNumber)
             : qsTr("Set Default Color (BG_COLOR) — Profile #%1 (%2)").arg(targetProfileNumber).arg(targetProfileName)
-        width: 560
-        height: 600
-        minimumWidth: 500
-        minimumHeight: 540
+        width: Math.min(720, Screen.desktopAvailableWidth > 0 ? Screen.desktopAvailableWidth - 60 : 720)
+        height: Math.min(780, Screen.desktopAvailableHeight > 0 ? Screen.desktopAvailableHeight - 60 : 780)
+        minimumWidth: 640
+        minimumHeight: 680
         visible: false
         transientParent: root
         modality: Qt.WindowModal
@@ -2145,12 +2147,20 @@ Kirigami.ApplicationWindow {
                 if (root.selectedSlotNumber === targetSlotNumber) {
                     root.selectedSlotColor = currentHex
                 }
+                if (keyPropertiesWindow.visible && keyPropertiesWindow.slotNum === targetSlotNumber) {
+                    keyPropertiesWindow.slotColor = currentHex
+                    keyPropColorField.text = currentHex
+                }
             } else {
                 deviceController.setProfileBgColor(targetProfileNumber, redVal, greenVal, blueVal)
                 root.syncSidebarProfilesFromController()
                 hardwareCanvas.syncSlotsFromController()
                 if (root.hasSelectedSlot) {
                     root.selectedSlotColor = hardwareCanvas.slotColorFor(root.selectedSlotNumber)
+                }
+                if (profilePropertiesWindow.visible && profilePropertiesWindow.profNumber === targetProfileNumber) {
+                    profilePropertiesWindow.profBgColor = currentHex
+                    profBgColorField.text = currentHex
                 }
             }
             refreshPaletteLists()
@@ -2622,7 +2632,7 @@ Kirigami.ApplicationWindow {
 
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 82
+                    Layout.preferredHeight: Math.max(96, savedColorsFlow.implicitHeight + 16)
                     radius: 6
                     color: Kirigami.Theme.alternateBackgroundColor
                     border.color: Qt.alpha(Kirigami.Theme.textColor, 0.18)
@@ -2636,6 +2646,7 @@ Kirigami.ApplicationWindow {
                         QQC2.ScrollBar.vertical: HighContrastScrollBar {}
 
                         Flow {
+                            id: savedColorsFlow
                             width: parent.width
                             spacing: 6
 
@@ -2862,56 +2873,11 @@ Kirigami.ApplicationWindow {
         QQC2.MenuSeparator {}
 
         QQC2.MenuItem {
-            icon.name: "checkmark"
-            text: qsTr("Select Profile")
+            icon.name: "document-properties"
+            text: qsTr("Properties...")
             onTriggered: {
-                const savedY = profileSidebarList.contentY
-                root.selectingProfileFromClick = true
-                deviceController.selectProfile(root.contextMenuProfileNumber)
-                root.refreshSelectedSlotFromController()
-                profileSidebarList.contentY = savedY
-                root.selectingProfileFromClick = false
+                profilePropertiesWindow.openForProfile(root.contextMenuProfileNumber)
             }
-        }
-
-        QQC2.MenuItem {
-            icon.name: "edit-rename"
-            text: qsTr("Rename Profile...")
-            onTriggered: {
-                root.openRenameProfileDialog(root.contextMenuProfileNumber, root.contextMenuProfileName)
-            }
-        }
-
-        QQC2.MenuItem {
-            icon.name: "color-picker"
-            text: qsTr("Change Default LED Color (BG_COLOR)...")
-            onTriggered: {
-                root.openProfileDefaultColorPicker(
-                    root.contextMenuProfileNumber,
-                    root.contextMenuProfileName,
-                    ""
-                )
-            }
-        }
-
-        QQC2.MenuItem {
-            icon.name: "crosshairs"
-            text: qsTr("Bind Window to This Profile (Pick Window)...")
-            onTriggered: {
-                const savedY = profileSidebarList.contentY
-                root.selectingProfileFromClick = true
-                deviceController.selectProfile(root.contextMenuProfileNumber)
-                root.refreshSelectedSlotFromController()
-                profileSidebarList.contentY = savedY
-                root.selectingProfileFromClick = false
-                deviceController.armWindowPicker(true)
-            }
-        }
-
-        QQC2.MenuItem {
-            icon.name: "preferences-system-windows"
-            text: qsTr("Auto-Switch Rules...")
-            onTriggered: autoSwitchDrawer.open()
         }
 
         QQC2.MenuSeparator {}
@@ -6207,8 +6173,6 @@ Kirigami.ApplicationWindow {
                                     readonly property bool isRowHovered: profRowHover.hovered
                                         || profMouse.containsMouse
                                         || profSwatchMouse.containsMouse
-                                        || quickColorBtn.hovered
-                                        || quickRenameBtn.hovered
                                     readonly property color profColor: Qt.rgba(bgR / 255.0, bgG / 255.0, bgB / 255.0, 1.0)
                                     readonly property real rowStride: height + profileSidebarList.spacing
                                     readonly property real shiftOffsetY: {
@@ -6252,7 +6216,7 @@ Kirigami.ApplicationWindow {
                                         acceptedButtons: Qt.LeftButton | Qt.RightButton
                                         cursorShape: profMouse.dragging
                                             ? Qt.ClosedHandCursor
-                                            : Qt.ArrowCursor
+                                            : Qt.PointingHandCursor
 
                                         property real pressX: 0
                                         property real pressY: 0
@@ -6374,11 +6338,11 @@ Kirigami.ApplicationWindow {
                                             ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.32))
                                             : (profDelegate.isCurrent
                                                 ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.22))
-                                                : (profDelegate.isRowHovered ? Kirigami.Theme.alternateBackgroundColor : "transparent"))
-                                        border.width: (profDelegate.isCurrent || profDelegate.isBeingDragged) ? 1.5 : 1
+                                                : "transparent")
+                                        border.width: (profDelegate.isCurrent || profDelegate.isBeingDragged) ? 1.5 : 0
                                         border.color: (profDelegate.isCurrent || profDelegate.isBeingDragged)
                                             ? Kirigami.Theme.highlightColor
-                                            : (profDelegate.isRowHovered ? profilesSidebar.frameBorder : "transparent")
+                                            : "transparent"
 
                                         Behavior on y {
                                             enabled: profileSidebarList.draggedProfileIndex !== -1 && !profDelegate.isBeingDragged
@@ -6406,7 +6370,7 @@ Kirigami.ApplicationWindow {
                                                 visible: profileSidebarList.canReorder
                                                 text: "⠿"
                                                 font.pixelSize: Math.round(14 * root.sidebarScale)
-                                                color: profDelegate.isRowHovered || profDelegate.isCurrent || profDelegate.isBeingDragged
+                                                color: profDelegate.isCurrent || profDelegate.isBeingDragged
                                                     ? Kirigami.Theme.textColor
                                                     : Kirigami.Theme.disabledTextColor
                                             }
@@ -6446,53 +6410,6 @@ Kirigami.ApplicationWindow {
                                                 color: Kirigami.Theme.textColor
                                                 elide: Text.ElideRight
                                                 Layout.fillWidth: true
-                                            }
-
-                                            // Quick Color & Rename buttons on hover
-                                            RowLayout {
-                                                visible: profDelegate.isRowHovered && !profMouse.dragging
-                                                spacing: 2
-
-                                                QQC2.ToolButton {
-                                                    id: quickColorBtn
-                                                    implicitWidth: 24
-                                                    implicitHeight: 24
-                                                    padding: 0
-                                                    contentItem: Text {
-                                                        text: "🎨"
-                                                        font.pixelSize: 12
-                                                        horizontalAlignment: Text.AlignHCenter
-                                                        verticalAlignment: Text.AlignVCenter
-                                                    }
-                                                    onClicked: {
-                                                        root.openProfileDefaultColorPicker(
-                                                            profDelegate.profNumber,
-                                                            profDelegate.profName,
-                                                            profDelegate.profColor.toString()
-                                                        )
-                                                    }
-                                                    QQC2.ToolTip.visible: hovered
-                                                    QQC2.ToolTip.text: qsTr("Change Default Button Color (BG_COLOR)")
-                                                }
-
-                                                QQC2.ToolButton {
-                                                    id: quickRenameBtn
-                                                    implicitWidth: 24
-                                                    implicitHeight: 24
-                                                    padding: 0
-                                                    contentItem: Text {
-                                                        text: "✎"
-                                                        font.pixelSize: 13
-                                                        color: Kirigami.Theme.textColor
-                                                        horizontalAlignment: Text.AlignHCenter
-                                                        verticalAlignment: Text.AlignVCenter
-                                                    }
-                                                    onClicked: {
-                                                        root.openRenameProfileDialog(profDelegate.profNumber, profDelegate.profName)
-                                                    }
-                                                    QQC2.ToolTip.visible: hovered
-                                                    QQC2.ToolTip.text: qsTr("Rename Profile")
-                                                }
                                             }
 
                                             // Auto-Switch Associated Application Icon on the right side of the profile
@@ -6803,6 +6720,14 @@ Kirigami.ApplicationWindow {
                     onProfileDefaultColorPickerRequested: (profileNumber, profileName, currentColorHex) => {
                         root.openProfileDefaultColorPicker(profileNumber, profileName, currentColorHex)
                     }
+
+                    onOpenLightingAnimatorRequested: (targetScope, targetSlot) => {
+                        lightingAnimatorDialog.openFor(targetScope, targetSlot)
+                    }
+
+                    onOpenKeyPropertiesRequested: (slotNumber) => {
+                        keyPropertiesWindow.openForSlot(slotNumber)
+                    }
                 }
 
                 // Column 3: Right Inspector Card matching system View colorSet
@@ -6825,13 +6750,11 @@ Kirigami.ApplicationWindow {
                         )
                     )
                     readonly property int minContentWidth: Math.max(
-                        380,
+                        350,
                         Math.ceil(Math.max(
-                            inspectorHeaderRow.implicitWidth + 16,
                             inspectorLabelsRow.implicitWidth + 16,
                             inspectorPhaseRow.implicitWidth + 12,
-                            inspectorTabsRow.implicitWidth + 12,
-                            inspectorFooterRow.implicitWidth
+                            inspectorTabsRow.implicitWidth + 12
                         )) + Kirigami.Units.mediumSpacing * 2 + 8
                     )
                     QQC2.SplitView.fillWidth: true
@@ -6882,12 +6805,12 @@ Kirigami.ApplicationWindow {
                                 RowLayout {
                                     id: inspectorHeaderRow
                                     Layout.fillWidth: true
-                                    spacing: 8
+                                    spacing: 6
 
                                     // Interactive Mini Keycap Badge (click to pick key color on slots 1..20)
                                     Rectangle {
-                                        width: Math.round(34 * root.inspectorScale)
-                                        height: Math.round(34 * root.inspectorScale)
+                                        width: Math.round(32 * root.inspectorScale)
+                                        height: Math.round(32 * root.inspectorScale)
                                         radius: 6
                                         color: inspectorBadgeSwatchMouse.containsMouse && inspectorCard.isMechanicalKey
                                             ? Qt.lighter(Kirigami.Theme.backgroundColor, 1.2)
@@ -6911,7 +6834,7 @@ Kirigami.ApplicationWindow {
                                             anchors.verticalCenterOffset: 2
                                             text: root.selectedSlotNumber
                                             font.bold: true
-                                            font.pixelSize: Math.round(12 * root.inspectorScale)
+                                            font.pixelSize: Math.round(11 * root.inspectorScale)
                                             color: Kirigami.Theme.textColor
                                         }
 
@@ -6931,28 +6854,23 @@ Kirigami.ApplicationWindow {
                                     }
 
                                     ColumnLayout {
-                                        spacing: 2
+                                        spacing: 1
                                         Layout.fillWidth: true
-                                        Layout.minimumWidth: 80
+                                        Layout.minimumWidth: 60
 
-                                        RowLayout {
+                                        QQC2.Label {
+                                            id: inspectorTitle
+                                            font.weight: Font.Bold
+                                            font.pixelSize: Math.round(13 * root.inspectorScale)
+                                            text: root.selectedSlotTitle
+                                            color: Kirigami.Theme.textColor
+                                            elide: Text.ElideRight
                                             Layout.fillWidth: true
-                                            spacing: 6
-
-                                            QQC2.Label {
-                                                id: inspectorTitle
-                                                font.weight: Font.Bold
-                                                font.pixelSize: Math.round(14 * root.inspectorScale)
-                                                text: root.selectedSlotTitle
-                                                color: Kirigami.Theme.textColor
-                                                elide: Text.ElideRight
-                                                Layout.fillWidth: true
-                                            }
                                         }
 
                                         RowLayout {
                                             Layout.fillWidth: true
-                                            spacing: 6
+                                            spacing: 5
 
                                             // Slot Type Badge (MECHANICAL KEY / ROTARY ENCODER / EXPANSION)
                                             Rectangle {
@@ -6964,8 +6882,8 @@ Kirigami.ApplicationWindow {
                                                     ? Qt.alpha("#38bdf8", 0.5)
                                                     : (inspectorCard.isRotaryEncoder ? Qt.alpha("#a78bfa", 0.5) : Qt.alpha("#f59e0b", 0.5))
                                                 border.width: 1
-                                                implicitWidth: slotTypeBadgeLbl.implicitWidth + 10
-                                                implicitHeight: Math.round(16 * root.inspectorScale)
+                                                implicitWidth: slotTypeBadgeLbl.implicitWidth + 8
+                                                implicitHeight: Math.round(15 * root.inspectorScale)
 
                                                 QQC2.Label {
                                                     id: slotTypeBadgeLbl
@@ -6974,7 +6892,7 @@ Kirigami.ApplicationWindow {
                                                         ? qsTr("KEY %1").arg(root.selectedSlotNumber)
                                                         : (inspectorCard.isRotaryEncoder
                                                             ? qsTr("ENCODER")
-                                                            : qsTr("EXPANSION CH %1").arg(root.selectedSlotNumber - 26))
+                                                            : qsTr("CH %1").arg(root.selectedSlotNumber - 26))
                                                     font.family: "monospace"
                                                     font.bold: true
                                                     font.pixelSize: Math.round(9 * root.inspectorScale)
@@ -6985,7 +6903,7 @@ Kirigami.ApplicationWindow {
                                             }
 
                                             QQC2.Label {
-                                                text: qsTr("Profile #%1 (%2)")
+                                                text: qsTr("P%1: %2")
                                                     .arg(deviceController.activeProfile)
                                                     .arg(deviceController.activeProfileName)
                                                 font.pixelSize: Math.round(10 * root.inspectorScale)
@@ -6994,6 +6912,48 @@ Kirigami.ApplicationWindow {
                                                 Layout.fillWidth: true
                                             }
                                         }
+                                    }
+
+                                    // Interactive Key RGB FX Animation Pill (Slots 1..20)
+                                    Rectangle {
+                                        visible: inspectorCard.isMechanicalKey
+                                        readonly property bool hasKeyFx: hardwareCanvas.keyHasCustomAnimation(root.selectedSlotNumber)
+                                        radius: 5
+                                        color: keyFxPillMouse.containsMouse
+                                            ? Qt.alpha("#c084fc", 0.25)
+                                            : (hasKeyFx ? Qt.alpha("#a855f7", 0.18) : Kirigami.Theme.backgroundColor)
+                                        border.color: hasKeyFx
+                                            ? "#c084fc"
+                                            : (keyFxPillMouse.containsMouse ? "#a855f7" : Qt.alpha(Kirigami.Theme.textColor, 0.25))
+                                        border.width: 1
+                                        implicitWidth: keyFxPillRow.implicitWidth + 10
+                                        implicitHeight: Math.round(26 * root.inspectorScale)
+
+                                        RowLayout {
+                                            id: keyFxPillRow
+                                            anchors.centerIn: parent
+                                            spacing: 3
+
+                                            QQC2.Label {
+                                                text: parent.parent.hasKeyFx ? qsTr("✨ Key FX ●") : qsTr("✨ Key FX")
+                                                font.bold: true
+                                                font.pixelSize: Math.round(10 * root.inspectorScale)
+                                                color: parent.parent.hasKeyFx ? "#e9d5ff" : Kirigami.Theme.textColor
+                                            }
+                                        }
+
+                                        MouseArea {
+                                            id: keyFxPillMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: lightingAnimatorDialog.openFor("key", root.selectedSlotNumber)
+                                        }
+
+                                        QQC2.ToolTip.visible: keyFxPillMouse.containsMouse
+                                        QQC2.ToolTip.text: qsTr("Configure gaming RGB lighting animations (Pulse, Wave, Ripple, Starlight, Spectrum, Scanner) for Key %1 or Profile #%2")
+                                            .arg(root.selectedSlotNumber)
+                                            .arg(deviceController.activeProfile)
                                     }
 
                                     // Interactive Key RGB Color Swatch Button (Slots 1..20)
@@ -7007,13 +6967,13 @@ Kirigami.ApplicationWindow {
                                             ? root.selectedSlotColor
                                             : Qt.alpha(Kirigami.Theme.textColor, 0.25)
                                         border.width: 1
-                                        implicitWidth: keyColorPillRow.implicitWidth + 14
-                                        implicitHeight: Math.round(28 * root.inspectorScale)
+                                        implicitWidth: keyColorPillRow.implicitWidth + 12
+                                        implicitHeight: Math.round(26 * root.inspectorScale)
 
                                         RowLayout {
                                             id: keyColorPillRow
                                             anchors.centerIn: parent
-                                            spacing: 6
+                                            spacing: 5
 
                                             Rectangle {
                                                 width: Math.round(12 * root.inspectorScale)
@@ -7025,17 +6985,11 @@ Kirigami.ApplicationWindow {
                                             }
 
                                             QQC2.Label {
-                                                text: qsTr("Key Color")
+                                                text: String(root.selectedSlotColor).toUpperCase()
+                                                font.family: "monospace"
                                                 font.bold: true
                                                 font.pixelSize: Math.round(10 * root.inspectorScale)
                                                 color: Kirigami.Theme.textColor
-                                            }
-
-                                            QQC2.Label {
-                                                text: String(root.selectedSlotColor).toUpperCase()
-                                                font.family: "monospace"
-                                                font.pixelSize: Math.round(10 * root.inspectorScale)
-                                                color: Kirigami.Theme.disabledTextColor
                                             }
                                         }
 
@@ -7053,9 +7007,9 @@ Kirigami.ApplicationWindow {
 
                                     QQC2.ToolButton {
                                         text: "✕"
-                                        implicitWidth: Math.round(28 * root.inspectorScale)
-                                        implicitHeight: Math.round(28 * root.inspectorScale)
-                                        font.pixelSize: Math.round(12 * root.inspectorScale)
+                                        implicitWidth: Math.round(26 * root.inspectorScale)
+                                        implicitHeight: Math.round(26 * root.inspectorScale)
+                                        font.pixelSize: Math.round(11 * root.inspectorScale)
                                         onClicked: root.clearSlotSelection()
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Close Key Inspector (or click the selected key again)")
@@ -7068,38 +7022,38 @@ Kirigami.ApplicationWindow {
                                     color: Qt.alpha(Kirigami.Theme.textColor, 0.08)
                                 }
 
-                                // Row 1B: OLED Key Labels (Line 1 & Line 2 with 7-char indicators) + Clear Slot Action
+                                // Row 1B: OLED Key Labels (Line 1 & Line 2 with 5-char indicators) + Clear Slot Action
                                 RowLayout {
                                     id: inspectorLabelsRow
                                     Layout.fillWidth: true
-                                    spacing: 8
+                                    spacing: 6
 
                                     QQC2.Label {
                                         text: inspectorCard.isMechanicalKey ? qsTr("OLED Line 1:") : qsTr("OLED Label:")
                                         font.bold: true
-                                        font.pixelSize: Math.round(11 * root.inspectorScale)
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
                                         color: Kirigami.Theme.disabledTextColor
                                     }
 
                                     RowLayout {
-                                        spacing: 4
+                                        spacing: 3
                                         QQC2.TextField {
                                             id: label1Input
-                                            Layout.preferredWidth: Math.round(92 * root.inspectorScale)
-                                            Layout.minimumWidth: 68
-                                            implicitHeight: Math.round(26 * root.inspectorScale)
-                                            maximumLength: 7
-                                            placeholderText: qsTr("Top (7ch)")
+                                            Layout.preferredWidth: Math.round(70 * root.inspectorScale)
+                                            Layout.minimumWidth: 56
+                                            implicitHeight: Math.round(25 * root.inspectorScale)
+                                            maximumLength: 5
+                                            placeholderText: qsTr("Top (5ch)")
                                             selectByMouse: true
                                             font.family: "monospace"
                                             font.pixelSize: Math.round(11 * root.inspectorScale)
                                             onTextEdited: liveSlotAutoSaveTimer.restart()
                                         }
                                         QQC2.Label {
-                                            text: qsTr("%1/7").arg(label1Input.text.length)
+                                            text: qsTr("%1/5").arg(label1Input.text.length)
                                             font.family: "monospace"
                                             font.pixelSize: Math.round(9 * root.inspectorScale)
-                                            color: label1Input.text.length >= 7
+                                            color: label1Input.text.length >= 5
                                                 ? Kirigami.Theme.neutralTextColor
                                                 : Kirigami.Theme.disabledTextColor
                                         }
@@ -7109,30 +7063,30 @@ Kirigami.ApplicationWindow {
                                         visible: inspectorCard.isMechanicalKey
                                         text: qsTr("Line 2:")
                                         font.bold: true
-                                        font.pixelSize: Math.round(11 * root.inspectorScale)
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
                                         color: Kirigami.Theme.disabledTextColor
                                     }
 
                                     RowLayout {
                                         visible: inspectorCard.isMechanicalKey
-                                        spacing: 4
+                                        spacing: 3
                                         QQC2.TextField {
                                             id: label2Input
-                                            Layout.preferredWidth: Math.round(92 * root.inspectorScale)
-                                            Layout.minimumWidth: 68
-                                            implicitHeight: Math.round(26 * root.inspectorScale)
-                                            maximumLength: 7
-                                            placeholderText: qsTr("Bot (7ch)")
+                                            Layout.preferredWidth: Math.round(70 * root.inspectorScale)
+                                            Layout.minimumWidth: 56
+                                            implicitHeight: Math.round(25 * root.inspectorScale)
+                                            maximumLength: 5
+                                            placeholderText: qsTr("Bot (5ch)")
                                             selectByMouse: true
                                             font.family: "monospace"
                                             font.pixelSize: Math.round(11 * root.inspectorScale)
                                             onTextEdited: liveSlotAutoSaveTimer.restart()
                                         }
                                         QQC2.Label {
-                                            text: qsTr("%1/7").arg(label2Input.text.length)
+                                            text: qsTr("%1/5").arg(label2Input.text.length)
                                             font.family: "monospace"
                                             font.pixelSize: Math.round(9 * root.inspectorScale)
-                                            color: label2Input.text.length >= 7
+                                            color: label2Input.text.length >= 5
                                                 ? Kirigami.Theme.neutralTextColor
                                                 : Kirigami.Theme.disabledTextColor
                                         }
@@ -7142,7 +7096,7 @@ Kirigami.ApplicationWindow {
 
                                     QQC2.Button {
                                         icon.name: "edit-clear"
-                                        text: qsTr("Clear Key")
+                                        text: qsTr("Clear")
                                         implicitHeight: Math.round(24 * root.inspectorScale)
                                         font.pixelSize: Math.round(10 * root.inspectorScale)
                                         onClicked: root.clearSelectedSlotNow()
@@ -7154,42 +7108,91 @@ Kirigami.ApplicationWindow {
                         }
 
                         // =========================================================================
-                        // ZONE 2: Event Phase Selector (On Press vs On Release) & Key Hold Behavior
+                        // ZONE 2: Event Phase Tabs (On Press / On Release) & Key Hold Behavior
                         // =========================================================================
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 4
 
-                            RowLayout {
-                                id: inspectorPhaseRow
+                            Item {
                                 Layout.fillWidth: true
-                                spacing: 6
+                                implicitHeight: Math.round(30 * root.inspectorScale)
 
-                                QQC2.ButtonGroup { id: scriptPhaseGroup }
-
+                                // Bottom tab baseline
                                 Rectangle {
-                                    radius: 5
-                                    color: Kirigami.Theme.alternateBackgroundColor
-                                    border.color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
-                                    border.width: 1
-                                    implicitWidth: phaseButtonsRow.implicitWidth + 6
-                                    implicitHeight: Math.round(28 * root.inspectorScale)
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    height: 1
+                                    color: Qt.alpha(Kirigami.Theme.textColor, 0.22)
+                                }
 
-                                    RowLayout {
-                                        id: phaseButtonsRow
-                                        anchors.centerIn: parent
-                                        spacing: 2
+                                RowLayout {
+                                    id: inspectorPhaseRow
+                                    anchors.fill: parent
+                                    spacing: 2
 
-                                        QQC2.ToolButton {
-                                            QQC2.ButtonGroup.group: scriptPhaseGroup
-                                            checkable: true
-                                            checked: !root.editingReleaseScript
+                                    // On Press Tab
+                                    Rectangle {
+                                        readonly property bool isActiveTab: !root.editingReleaseScript
+                                        Layout.preferredHeight: Math.round(30 * root.inspectorScale)
+                                        implicitWidth: onPressTabLbl.implicitWidth + 24
+                                        topLeftRadius: 6
+                                        topRightRadius: 6
+                                        bottomLeftRadius: 0
+                                        bottomRightRadius: 0
+                                        color: isActiveTab
+                                            ? Kirigami.Theme.backgroundColor
+                                            : (onPressTabMouse.containsMouse
+                                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.10)
+                                                : Kirigami.Theme.alternateBackgroundColor)
+                                        border.color: isActiveTab
+                                            ? Kirigami.Theme.highlightColor
+                                            : Qt.alpha(Kirigami.Theme.textColor, 0.18)
+                                        border.width: 1
+
+                                        // Active tab top indicator bar
+                                        Rectangle {
+                                            visible: parent.isActiveTab
+                                            anchors.top: parent.top
+                                            anchors.left: parent.left
+                                            anchors.right: parent.right
+                                            height: 3
+                                            topLeftRadius: 6
+                                            topRightRadius: 6
+                                            color: Kirigami.Theme.highlightColor
+                                        }
+
+                                        // Mask bottom border when active so tab connects to panel below
+                                        Rectangle {
+                                            visible: parent.isActiveTab
+                                            anchors.bottom: parent.bottom
+                                            anchors.left: parent.left
+                                            anchors.right: parent.right
+                                            anchors.leftMargin: 1
+                                            anchors.rightMargin: 1
+                                            height: 2
+                                            color: Kirigami.Theme.backgroundColor
+                                        }
+
+                                        QQC2.Label {
+                                            id: onPressTabLbl
+                                            anchors.centerIn: parent
                                             text: root.pressScriptBuffer.trim().length > 0
-                                                ? qsTr("⬇ On Press (key%1 ●)").arg(root.selectedSlotNumber)
-                                                : qsTr("⬇ On Press (key%1)").arg(root.selectedSlotNumber)
+                                                ? qsTr("⬇ On Press ●")
+                                                : qsTr("⬇ On Press")
                                             font.pixelSize: Math.round(11 * root.inspectorScale)
-                                            font.bold: !root.editingReleaseScript
-                                            implicitHeight: Math.round(24 * root.inspectorScale)
+                                            font.bold: parent.isActiveTab
+                                            color: parent.isActiveTab
+                                                ? Kirigami.Theme.highlightColor
+                                                : Kirigami.Theme.textColor
+                                        }
+
+                                        MouseArea {
+                                            id: onPressTabMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
                                             onClicked: {
                                                 if (root.editingReleaseScript) {
                                                     root.releaseScriptBuffer = scriptEditor.text
@@ -7205,20 +7208,73 @@ Kirigami.ApplicationWindow {
                                                     root.updateCompilerStatus()
                                                 }
                                             }
-                                            QQC2.ToolTip.visible: hovered
-                                            QQC2.ToolTip.text: qsTr("Edit script executed when Slot %1 is pressed down (key%1.txt)").arg(root.selectedSlotNumber)
                                         }
 
-                                        QQC2.ToolButton {
-                                            QQC2.ButtonGroup.group: scriptPhaseGroup
-                                            checkable: true
-                                            checked: root.editingReleaseScript
+                                        QQC2.ToolTip.visible: onPressTabMouse.containsMouse
+                                        QQC2.ToolTip.text: qsTr("Edit script executed when pressed down")
+                                    }
+
+                                    // On Release Tab
+                                    Rectangle {
+                                        readonly property bool isActiveTab: root.editingReleaseScript
+                                        Layout.preferredHeight: Math.round(30 * root.inspectorScale)
+                                        implicitWidth: onReleaseTabLbl.implicitWidth + 24
+                                        topLeftRadius: 6
+                                        topRightRadius: 6
+                                        bottomLeftRadius: 0
+                                        bottomRightRadius: 0
+                                        color: isActiveTab
+                                            ? Kirigami.Theme.backgroundColor
+                                            : (onReleaseTabMouse.containsMouse
+                                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.10)
+                                                : Kirigami.Theme.alternateBackgroundColor)
+                                        border.color: isActiveTab
+                                            ? Kirigami.Theme.highlightColor
+                                            : Qt.alpha(Kirigami.Theme.textColor, 0.18)
+                                        border.width: 1
+
+                                        // Active tab top indicator bar
+                                        Rectangle {
+                                            visible: parent.isActiveTab
+                                            anchors.top: parent.top
+                                            anchors.left: parent.left
+                                            anchors.right: parent.right
+                                            height: 3
+                                            topLeftRadius: 6
+                                            topRightRadius: 6
+                                            color: Kirigami.Theme.highlightColor
+                                        }
+
+                                        // Mask bottom border when active
+                                        Rectangle {
+                                            visible: parent.isActiveTab
+                                            anchors.bottom: parent.bottom
+                                            anchors.left: parent.left
+                                            anchors.right: parent.right
+                                            anchors.leftMargin: 1
+                                            anchors.rightMargin: 1
+                                            height: 2
+                                            color: Kirigami.Theme.backgroundColor
+                                        }
+
+                                        QQC2.Label {
+                                            id: onReleaseTabLbl
+                                            anchors.centerIn: parent
                                             text: root.releaseScriptBuffer.trim().length > 0
-                                                ? qsTr("⬆ On Release (key%1-rel ●)").arg(root.selectedSlotNumber)
-                                                : qsTr("⬆ On Release (key%1-rel)").arg(root.selectedSlotNumber)
+                                                ? qsTr("⬆ On Release ●")
+                                                : qsTr("⬆ On Release")
                                             font.pixelSize: Math.round(11 * root.inspectorScale)
-                                            font.bold: root.editingReleaseScript
-                                            implicitHeight: Math.round(24 * root.inspectorScale)
+                                            font.bold: parent.isActiveTab
+                                            color: parent.isActiveTab
+                                                ? Kirigami.Theme.highlightColor
+                                                : Kirigami.Theme.textColor
+                                        }
+
+                                        MouseArea {
+                                            id: onReleaseTabMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
                                             onClicked: {
                                                 if (!root.editingReleaseScript) {
                                                     root.pressScriptBuffer = scriptEditor.text
@@ -7234,19 +7290,20 @@ Kirigami.ApplicationWindow {
                                                     root.updateCompilerStatus()
                                                 }
                                             }
-                                            QQC2.ToolTip.visible: hovered
-                                            QQC2.ToolTip.text: qsTr("Edit script executed when Slot %1 is released (key%1-release.txt)").arg(root.selectedSlotNumber)
                                         }
-                                    }
-                                }
 
-                                Item { Layout.fillWidth: true }
+                                        QQC2.ToolTip.visible: onReleaseTabMouse.containsMouse
+                                        QQC2.ToolTip.text: qsTr("Edit script executed when released")
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+                                }
                             }
 
-                            // Key Hold Behavior Bar: Prominent No Repeat on Key Held Down (Run Once) + Allow Abort
+                            // Key Hold Behavior Bar: Compact No Repeat on Key Held Down (Run Once) + Allow Abort
                             Rectangle {
                                 Layout.fillWidth: true
-                                implicitHeight: holdFlagsRow.implicitHeight + 8
+                                implicitHeight: holdFlagsRow.implicitHeight + 6
                                 radius: 5
                                 color: disableRepeatCheck.checked
                                     ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.12)
@@ -7259,17 +7316,17 @@ Kirigami.ApplicationWindow {
                                 RowLayout {
                                     id: holdFlagsRow
                                     anchors.fill: parent
-                                    anchors.leftMargin: 8
-                                    anchors.rightMargin: 8
-                                    anchors.topMargin: 4
-                                    anchors.bottomMargin: 4
-                                    spacing: 8
+                                    anchors.leftMargin: 6
+                                    anchors.rightMargin: 6
+                                    anchors.topMargin: 3
+                                    anchors.bottomMargin: 3
+                                    spacing: 6
 
                                     QQC2.CheckBox {
                                         id: disableRepeatCheck
-                                        text: qsTr("No Repeat on Key Held Down (Run Once)")
+                                        text: qsTr("No Repeat on Held (Run Once)")
                                         font.bold: checked
-                                        font.pixelSize: Math.round(11 * root.inspectorScale)
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
                                         onToggled: {
                                             root.updateCompilerStatus()
                                             liveSlotAutoSaveTimer.restart()
@@ -7278,32 +7335,12 @@ Kirigami.ApplicationWindow {
                                         QQC2.ToolTip.text: qsTr("Execute this key action only once per press even if the key is held down — essential for Delete or destructive actions (dr %1 / $_DONT_REPEAT = 1)").arg(root.selectedSlotNumber)
                                     }
 
-                                    Rectangle {
-                                        visible: disableRepeatCheck.checked
-                                        radius: 3
-                                        color: Qt.alpha(Kirigami.Theme.positiveTextColor, 0.22)
-                                        border.color: Qt.alpha(Kirigami.Theme.positiveTextColor, 0.6)
-                                        border.width: 1
-                                        implicitWidth: onceBadgeLbl.implicitWidth + 8
-                                        implicitHeight: Math.round(18 * root.inspectorScale)
-
-                                        QQC2.Label {
-                                            id: onceBadgeLbl
-                                            anchors.centerIn: parent
-                                            text: qsTr("1× ONCE")
-                                            font.family: "monospace"
-                                            font.bold: true
-                                            font.pixelSize: Math.round(9 * root.inspectorScale)
-                                            color: Kirigami.Theme.positiveTextColor
-                                        }
-                                    }
-
                                     Item { Layout.fillWidth: true }
 
                                     QQC2.CheckBox {
                                         id: allowAbortCheck
                                         text: qsTr("Allow Abort")
-                                        font.pixelSize: Math.round(11 * root.inspectorScale)
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
                                         onToggled: {
                                             root.updateCompilerStatus()
                                             liveSlotAutoSaveTimer.restart()
@@ -7316,719 +7353,335 @@ Kirigami.ApplicationWindow {
                         }
 
                         // =========================================================================
-                        // ZONE 3: Mutually Exclusive Action Mode Selector (Code / Launch App / Web API / AI)
+                        // ZONE 3: Folder-Style Action Mode Tabs (DuckyScript IDE / Launch App / Web API) + Tools
                         // =========================================================================
-                        RowLayout {
-                            id: inspectorTabsRow
+                        Item {
                             Layout.fillWidth: true
-                            spacing: 6
+                            implicitHeight: Math.round(30 * root.inspectorScale)
 
-                            QQC2.Button {
-                                id: codeModeBtn
-                                checkable: true
-                                checked: root.inspectorMode === "code"
-                                highlighted: root.inspectorMode === "code"
-                                text: qsTr("📜 DuckyScript IDE")
-                                implicitHeight: Math.round(28 * root.inspectorScale)
-                                font.pixelSize: Math.round(11 * root.inspectorScale)
-                                font.bold: root.inspectorMode === "code"
-                                onClicked: {
-                                    root.showAppLaunchBuilder = false
-                                    root.showWebApiBuilder = false
-                                    root.inspectorMode = "code"
-                                }
-                                QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: qsTr("Full-height DuckyScript 3 editor with syntax highlighting, autocomplete & command reference")
+                            // Bottom tab baseline
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                height: 1
+                                color: Qt.alpha(Kirigami.Theme.textColor, 0.22)
                             }
 
-                            QQC2.Button {
-                                id: appLaunchToggleBtn
-                                checkable: true
-                                checked: root.inspectorMode === "app_launch"
-                                highlighted: root.inspectorMode === "app_launch" || root.appLaunchEnabled
-                                text: root.appLaunchEnabled
-                                    ? qsTr("🚀 Launch App ●")
-                                    : qsTr("🚀 Launch App")
-                                implicitHeight: Math.round(28 * root.inspectorScale)
-                                font.pixelSize: Math.round(11 * root.inspectorScale)
-                                font.bold: root.inspectorMode === "app_launch" || root.appLaunchEnabled
-                                onClicked: {
-                                    if (root.inspectorMode === "app_launch") {
-                                        root.showAppLaunchBuilder = false
-                                        root.inspectorMode = "code"
-                                    } else {
-                                        root.showWebApiBuilder = false
-                                        root.showCommandReference = false
-                                        root.showAppLaunchBuilder = true
-                                        root.inspectorMode = "app_launch"
-                                        if (!root.appLaunchEnabled && scriptEditor.text.trim().length === 0) {
-                                            appLaunchEnabledCheck.checked = true
-                                            if (appLaunchOledField.text.trim().length === 0) {
-                                                const lbl = (label1Input.text.trim() + " " + label2Input.text.trim()).trim()
-                                                appLaunchOledField.text = lbl.length > 0 ? ("Run: " + lbl) : ("App Key " + root.selectedSlotNumber)
-                                            }
-                                            root.syncAppLaunchBuilderToScript()
-                                        }
-                                    }
-                                }
-                                QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: qsTr("Configure this key to launch an installed application, executable, or custom command")
-                            }
-
-                            QQC2.Button {
-                                id: webApiToggleBtn
-                                checkable: true
-                                checked: root.inspectorMode === "web_api"
-                                highlighted: root.inspectorMode === "web_api" || root.webApiEnabled
-                                text: root.webApiEnabled
-                                    ? qsTr("🌐 Web API ●")
-                                    : qsTr("🌐 Web API")
-                                implicitHeight: Math.round(28 * root.inspectorScale)
-                                font.pixelSize: Math.round(11 * root.inspectorScale)
-                                font.bold: root.inspectorMode === "web_api" || root.webApiEnabled
-                                onClicked: {
-                                    if (root.inspectorMode === "web_api") {
-                                        root.showWebApiBuilder = false
-                                        root.inspectorMode = "code"
-                                    } else {
-                                        root.showAppLaunchBuilder = false
-                                        root.showCommandReference = false
-                                        root.showWebApiBuilder = true
-                                        root.inspectorMode = "web_api"
-                                        if (!root.webApiEnabled && scriptEditor.text.trim().length === 0) {
-                                            webApiEnabledCheck.checked = true
-                                            if (webApiOledField.text.trim().length === 0) {
-                                                const lbl = (label1Input.text.trim() + " " + label2Input.text.trim()).trim()
-                                                webApiOledField.text = lbl.length > 0 ? ("API: " + lbl) : ("API Key " + root.selectedSlotNumber)
-                                            }
-                                            root.syncWebApiBuilderToScript()
-                                        }
-                                    }
-                                }
-                                QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: qsTr("Configure an HTTP / Webhook API request triggered by pressing this key")
-                            }
-
-                            Item { Layout.fillWidth: true }
-
-                            QQC2.Button {
-                                text: qsTr("✨ AI Architect")
-                                implicitHeight: Math.round(28 * root.inspectorScale)
-                                font.pixelSize: Math.round(11 * root.inspectorScale)
-                                onClicked: aiModal.open()
-                                QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: qsTr("Generate DuckyScript 3 macros from natural language using AI Macro Architect")
-                            }
-                        }
-
-                        // Collapsible Application Launch Builder
-                        Rectangle {
-                            id: appLaunchBuilderCard
-                            visible: root.showAppLaunchBuilder
-                            Layout.fillWidth: true
-                            implicitHeight: visible ? (appLaunchCol.implicitHeight + 16) : 0
-                            radius: Kirigami.Units.smallSpacing
-                            color: Qt.tint(
-                                Kirigami.Theme.alternateBackgroundColor,
-                                Qt.rgba(0.98, 0.57, 0.24, 0.08)
-                            )
-                            border.color: root.appLaunchEnabled
-                                ? Qt.alpha("#fb923c", 0.75)
-                                : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
-                            border.width: 1
-
-                            ColumnLayout {
-                                id: appLaunchCol
+                            RowLayout {
+                                id: inspectorTabsRow
                                 anchors.fill: parent
-                                anchors.margins: 8
-                                spacing: 6
+                                spacing: 2
 
-                                // Row 1: Enable Toggle, Trigger Mechanism, and Test Button
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 6
+                                // Tab 1: DuckyScript IDE
+                                Rectangle {
+                                    id: codeModeBtn
+                                    readonly property bool isActiveTab: root.inspectorMode === "code"
+                                    Layout.preferredHeight: Math.round(30 * root.inspectorScale)
+                                    implicitWidth: codeTabLbl.implicitWidth + 18
+                                    topLeftRadius: 6
+                                    topRightRadius: 6
+                                    bottomLeftRadius: 0
+                                    bottomRightRadius: 0
+                                    color: isActiveTab
+                                        ? Kirigami.Theme.backgroundColor
+                                        : (codeTabMouse.containsMouse
+                                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.10)
+                                            : Kirigami.Theme.alternateBackgroundColor)
+                                    border.color: isActiveTab
+                                        ? Kirigami.Theme.highlightColor
+                                        : Qt.alpha(Kirigami.Theme.textColor, 0.18)
+                                    border.width: 1
 
-                                    QQC2.CheckBox {
-                                        id: appLaunchEnabledCheck
-                                        text: root.editingReleaseScript
-                                            ? qsTr("Launch Application on Key Release")
-                                            : qsTr("Launch Application on Key Press")
-                                        font.bold: true
-                                        font.pixelSize: Math.round(11 * root.inspectorScale)
-                                        onToggled: {
-                                            if (checked && appLaunchOledField.text.trim().length === 0) {
-                                                const lbl = root.appLaunchAppName.length > 0
-                                                    ? root.appLaunchAppName
-                                                    : (label1Input.text.trim() + " " + label2Input.text.trim()).trim()
-                                                appLaunchOledField.text = lbl.length > 0 ? ("Run: " + lbl.substring(0, 14)) : ("App Key " + root.selectedSlotNumber)
-                                            }
-                                            root.syncAppLaunchBuilderToScript()
-                                        }
-                                    }
-
-                                    Item { Layout.fillWidth: true }
-
-                                    QQC2.Label {
-                                        text: qsTr("Trigger:")
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        color: Kirigami.Theme.disabledTextColor
-                                    }
-
-                                    QQC2.ComboBox {
-                                        id: appLaunchTriggerModeCombo
-                                        model: [
-                                            qsTr("Silent Host Launch (_GV31)"),
-                                            qsTr("Sentinel Key (Ctrl+Alt+Shift+F13–F24)"),
-                                            qsTr("Standalone OS Run (ALT+SPACE / KRunner)"),
-                                            qsTr("Standalone OS Run (GUI+R)")
-                                        ]
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        implicitHeight: Math.round(24 * root.inspectorScale)
-                                        Layout.preferredWidth: Math.round(215 * root.inspectorScale)
-                                        onActivated: root.syncAppLaunchBuilderToScript()
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: {
-                                            if (currentIndex === 0) {
-                                                return qsTr("Recommended for duckyPad Pro: signals DuckyDeck Studio silently via _GV31 over USB HID without typing anything into the active window.")
-                                            } else if (currentIndex === 1) {
-                                                return qsTr("Fallback for duckyPad (2020): sends Ctrl+Alt+Shift+F13..F24 and DuckyDeck Studio intercepts it via Linux evdev to launch the app.")
-                                            } else if (currentIndex === 2) {
-                                                return qsTr("Standalone hardware mode: types ALT+SPACE followed by the command so it works even without DuckyDeck Studio running.")
-                                            }
-                                            return qsTr("Standalone hardware mode: types GUI+R followed by the command so it works even without DuckyDeck Studio running.")
-                                        }
-                                    }
-
-                                    QQC2.ComboBox {
-                                        id: appLaunchFkeyCombo
-                                        visible: appLaunchTriggerModeCombo.currentIndex === 1
-                                        model: root.webApiFkeys
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        implicitHeight: Math.round(24 * root.inspectorScale)
-                                        Layout.preferredWidth: Math.round(68 * root.inspectorScale)
-                                        onActivated: root.syncAppLaunchBuilderToScript()
-                                    }
-
-                                    QQC2.Button {
-                                        text: qsTr("▶ Test Launch")
-                                        enabled: appLaunchCommandField.text.trim().length > 0 || root.appLaunchDesktopId.trim().length > 0
-                                        implicitHeight: Math.round(24 * root.inspectorScale)
-                                        font.pixelSize: Math.round(11 * root.inspectorScale)
-                                        font.bold: true
-                                        onClicked: {
-                                            deviceController.testAppLaunch(
-                                                root.buildAppLaunchConfigJson(),
-                                                root.selectedSlotNumber
-                                            )
-                                        }
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Launch this application right now from DuckyDeck Studio and flash Key %1's RGB LED").arg(root.selectedSlotNumber)
-                                    }
-                                }
-
-                                // Row 2: Pick Installed App + Browse Executable + Selected App Pill + Command Input
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 6
-
-                                    QQC2.Button {
-                                        text: qsTr("📦 Pick Installed App...")
-                                        implicitHeight: Math.round(28 * root.inspectorScale)
-                                        font.pixelSize: Math.round(11 * root.inspectorScale)
-                                        font.bold: true
-                                        onClicked: {
-                                            deviceController.refreshInstalledApps()
-                                            root.installedAppSearchText = ""
-                                            installedAppSearchInput.text = ""
-                                            root.refreshInstalledAppsModel()
-                                            installedAppPickerDialog.show()
-                                            installedAppPickerDialog.raise()
-                                            installedAppPickerDialog.requestActivate()
-                                            installedAppSearchInput.forceActiveFocus()
-                                        }
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Choose from installed desktop applications (.desktop entries across system, user, Flatpak, and Snap)")
-                                    }
-
-                                    QQC2.Button {
-                                        text: qsTr("📁 Browse...")
-                                        implicitHeight: Math.round(28 * root.inspectorScale)
-                                        font.pixelSize: Math.round(11 * root.inspectorScale)
-                                        onClicked: appExecutableFileDialog.open()
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Browse for a local script, AppImage, or executable binary")
+                                    Rectangle {
+                                        visible: parent.isActiveTab
+                                        anchors.top: parent.top
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        height: 3
+                                        topLeftRadius: 6
+                                        topRightRadius: 6
+                                        color: Kirigami.Theme.highlightColor
                                     }
 
                                     Rectangle {
-                                        visible: root.appLaunchAppName.length > 0
-                                        radius: 4
-                                        color: Qt.alpha("#fb923c", 0.16)
-                                        border.color: Qt.alpha("#fb923c", 0.55)
-                                        border.width: 1
-                                        implicitHeight: Math.round(26 * root.inspectorScale)
-                                        implicitWidth: Math.min(selectedAppBadgeRow.implicitWidth + 12, 220)
-
-                                        RowLayout {
-                                            id: selectedAppBadgeRow
-                                            anchors.fill: parent
-                                            anchors.leftMargin: 6
-                                            anchors.rightMargin: 4
-                                            spacing: 4
-
-                                            QQC2.Label {
-                                                Layout.fillWidth: true
-                                                text: root.appLaunchAppName
-                                                font.bold: true
-                                                font.pixelSize: Math.round(10 * root.inspectorScale)
-                                                color: "#fb923c"
-                                                elide: Text.ElideRight
-                                            }
-
-                                            QQC2.ToolButton {
-                                                text: "✕"
-                                                implicitWidth: 18
-                                                implicitHeight: 18
-                                                font.pixelSize: Math.round(9 * root.inspectorScale)
-                                                onClicked: {
-                                                    root.appLaunchAppName = ""
-                                                    root.appLaunchDesktopId = ""
-                                                    root.syncAppLaunchBuilderToScript()
-                                                }
-                                                QQC2.ToolTip.visible: hovered
-                                                QQC2.ToolTip.text: qsTr("Clear desktop application binding and use custom command only")
-                                            }
-                                        }
+                                        visible: parent.isActiveTab
+                                        anchors.bottom: parent.bottom
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.leftMargin: 1
+                                        anchors.rightMargin: 1
+                                        height: 2
+                                        color: Kirigami.Theme.backgroundColor
                                     }
-
-                                    QQC2.TextField {
-                                        id: appLaunchCommandField
-                                        Layout.fillWidth: true
-                                        implicitHeight: Math.round(28 * root.inspectorScale)
-                                        font.family: "monospace"
-                                        font.pixelSize: Math.round(11 * root.inspectorScale)
-                                        selectByMouse: true
-                                        placeholderText: qsTr("Executable or command (e.g. firefox, konsole, /usr/bin/obs, flatpak run ...)")
-                                        onTextEdited: {
-                                            // If the user edits the command manually, clear the .desktop ID so their custom command runs directly
-                                            root.appLaunchDesktopId = ""
-                                            if (!appLaunchEnabledCheck.checked && text.trim().length > 0) {
-                                                appLaunchEnabledCheck.checked = true
-                                            }
-                                            root.syncAppLaunchBuilderToScript()
-                                        }
-                                    }
-                                }
-
-                                // Row 3: Arguments + Working Directory + Run in Terminal
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 6
-
-                                    QQC2.TextField {
-                                        id: appLaunchArgsField
-                                        Layout.fillWidth: true
-                                        Layout.preferredWidth: 230
-                                        implicitHeight: Math.round(26 * root.inspectorScale)
-                                        font.family: "monospace"
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        selectByMouse: true
-                                        placeholderText: qsTr("Arguments (e.g. --new-window https://github.com)")
-                                        onTextEdited: root.syncAppLaunchBuilderToScript()
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Optional command-line arguments passed to the application")
-                                    }
-
-                                    QQC2.TextField {
-                                        id: appLaunchWorkDirField
-                                        Layout.fillWidth: true
-                                        Layout.preferredWidth: 190
-                                        implicitHeight: Math.round(26 * root.inspectorScale)
-                                        font.family: "monospace"
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        selectByMouse: true
-                                        placeholderText: qsTr("Working Dir (optional, e.g. ~/Projects)")
-                                        onTextEdited: root.syncAppLaunchBuilderToScript()
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Optional working directory (~ is expanded to your home folder)")
-                                    }
-
-                                    QQC2.CheckBox {
-                                        id: appLaunchTerminalCheck
-                                        text: qsTr("Run in Terminal")
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        onToggled: root.syncAppLaunchBuilderToScript()
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Launch inside a terminal emulator (konsole, kitty, alacritty, ptyxis, gnome-terminal, foot, wezterm, or xterm)")
-                                    }
-                                }
-
-                                // Row 4: OLED Text & RGB LED Feedback
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 8
 
                                     QQC2.Label {
-                                        text: qsTr("OLED Text:")
+                                        id: codeTabLbl
+                                        anchors.centerIn: parent
+                                        text: qsTr("📜 DuckyScript IDE")
                                         font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        color: Kirigami.Theme.disabledTextColor
+                                        font.bold: parent.isActiveTab
+                                        color: parent.isActiveTab
+                                            ? Kirigami.Theme.highlightColor
+                                            : Kirigami.Theme.textColor
                                     }
 
-                                    QQC2.TextField {
-                                        id: appLaunchOledField
-                                        Layout.preferredWidth: Math.round(160 * root.inspectorScale)
-                                        implicitHeight: Math.round(24 * root.inspectorScale)
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        selectByMouse: true
-                                        placeholderText: qsTr("Optional OLED message")
-                                        onTextEdited: root.syncAppLaunchBuilderToScript()
+                                    MouseArea {
+                                        id: codeTabMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            root.showAppLaunchBuilder = false
+                                            root.showWebApiBuilder = false
+                                            root.inspectorMode = "code"
+                                        }
                                     }
 
-                                    QQC2.CheckBox {
-                                        id: appLaunchLedCheck
-                                        checked: true
-                                        text: qsTr("RGB LED Status Flash (Green = Launched, Red = Error)")
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        onToggled: root.syncAppLaunchBuilderToScript()
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Flashes Key %1's physical RGB LED green when the application starts or red on error").arg(root.selectedSlotNumber)
-                                    }
-
-                                    Item { Layout.fillWidth: true }
+                                    QQC2.ToolTip.visible: codeTabMouse.containsMouse
+                                    QQC2.ToolTip.text: qsTr("Full-height DuckyScript 3 editor with syntax highlighting, autocomplete & command reference")
                                 }
 
-                                // Row 5: Live Test / Execution Status Pill
+                                // Tab 2: Launch App (Opens Launch App Configuration Window)
                                 Rectangle {
-                                    visible: deviceController.appLaunchLastResult.length > 0
-                                    Layout.fillWidth: true
-                                    implicitHeight: Math.round(24 * root.inspectorScale)
-                                    radius: 4
-                                    color: deviceController.appLaunchLastOk
-                                        ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.16)
-                                        : Qt.alpha(Kirigami.Theme.negativeTextColor, 0.16)
-                                    border.color: deviceController.appLaunchLastOk
-                                        ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.5)
-                                        : Qt.alpha(Kirigami.Theme.negativeTextColor, 0.5)
+                                    id: appLaunchToggleBtn
+                                    readonly property bool isActiveTab: root.inspectorMode === "app_launch" || appLaunchConfigWindow.visible
+                                    Layout.preferredHeight: Math.round(30 * root.inspectorScale)
+                                    implicitWidth: appLaunchTabLbl.implicitWidth + 18
+                                    topLeftRadius: 6
+                                    topRightRadius: 6
+                                    bottomLeftRadius: 0
+                                    bottomRightRadius: 0
+                                    color: isActiveTab
+                                        ? Kirigami.Theme.backgroundColor
+                                        : (appLaunchTabMouse.containsMouse
+                                            ? Qt.alpha("#fb923c", 0.14)
+                                            : Kirigami.Theme.alternateBackgroundColor)
+                                    border.color: isActiveTab || root.appLaunchEnabled
+                                        ? "#fb923c"
+                                        : Qt.alpha(Kirigami.Theme.textColor, 0.18)
                                     border.width: 1
 
-                                    QQC2.Label {
-                                        anchors.fill: parent
-                                        anchors.leftMargin: 8
-                                        anchors.rightMargin: 8
-                                        verticalAlignment: Text.AlignVCenter
-                                        elide: Text.ElideRight
-                                        font.family: "monospace"
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        color: deviceController.appLaunchLastOk
-                                            ? Kirigami.Theme.positiveTextColor
-                                            : Kirigami.Theme.negativeTextColor
-                                        text: deviceController.appLaunchLastResult
+                                    Rectangle {
+                                        visible: parent.isActiveTab || root.appLaunchEnabled
+                                        anchors.top: parent.top
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        height: 3
+                                        topLeftRadius: 6
+                                        topRightRadius: 6
+                                        color: "#fb923c"
                                     }
+
+                                    Rectangle {
+                                        visible: parent.isActiveTab
+                                        anchors.bottom: parent.bottom
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.leftMargin: 1
+                                        anchors.rightMargin: 1
+                                        height: 2
+                                        color: Kirigami.Theme.backgroundColor
+                                    }
+
+                                    QQC2.Label {
+                                        id: appLaunchTabLbl
+                                        anchors.centerIn: parent
+                                        text: root.appLaunchEnabled
+                                            ? qsTr("🚀 Launch App ●")
+                                            : qsTr("🚀 Launch App")
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
+                                        font.bold: parent.isActiveTab || root.appLaunchEnabled
+                                        color: parent.isActiveTab || root.appLaunchEnabled
+                                            ? "#fb923c"
+                                            : Kirigami.Theme.textColor
+                                    }
+
+                                    MouseArea {
+                                        id: appLaunchTabMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            root.showWebApiBuilder = false
+                                            root.showAppLaunchBuilder = false
+                                            root.inspectorMode = "app_launch"
+                                            appLaunchConfigWindow.openForCurrentSlot()
+                                        }
+                                    }
+
+                                    QQC2.ToolTip.visible: appLaunchTabMouse.containsMouse
+                                    QQC2.ToolTip.text: qsTr("Open Launch Application Configurator window for this key")
+                                }
+
+                                // Tab 3: Web API (Opens Web API Configuration Window)
+                                Rectangle {
+                                    id: webApiToggleBtn
+                                    readonly property bool isActiveTab: root.inspectorMode === "web_api" || webApiKeyConfigWindow.visible
+                                    Layout.preferredHeight: Math.round(30 * root.inspectorScale)
+                                    implicitWidth: webApiTabLbl.implicitWidth + 18
+                                    topLeftRadius: 6
+                                    topRightRadius: 6
+                                    bottomLeftRadius: 0
+                                    bottomRightRadius: 0
+                                    color: isActiveTab
+                                        ? Kirigami.Theme.backgroundColor
+                                        : (webApiTabMouse.containsMouse
+                                            ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.14)
+                                            : Kirigami.Theme.alternateBackgroundColor)
+                                    border.color: isActiveTab || root.webApiEnabled
+                                        ? Kirigami.Theme.positiveTextColor
+                                        : Qt.alpha(Kirigami.Theme.textColor, 0.18)
+                                    border.width: 1
+
+                                    Rectangle {
+                                        visible: parent.isActiveTab || root.webApiEnabled
+                                        anchors.top: parent.top
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        height: 3
+                                        topLeftRadius: 6
+                                        topRightRadius: 6
+                                        color: Kirigami.Theme.positiveTextColor
+                                    }
+
+                                    Rectangle {
+                                        visible: parent.isActiveTab
+                                        anchors.bottom: parent.bottom
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.leftMargin: 1
+                                        anchors.rightMargin: 1
+                                        height: 2
+                                        color: Kirigami.Theme.backgroundColor
+                                    }
+
+                                    QQC2.Label {
+                                        id: webApiTabLbl
+                                        anchors.centerIn: parent
+                                        text: root.webApiEnabled
+                                            ? qsTr("🌐 Web API ●")
+                                            : qsTr("🌐 Web API")
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
+                                        font.bold: parent.isActiveTab || root.webApiEnabled
+                                        color: parent.isActiveTab || root.webApiEnabled
+                                            ? Kirigami.Theme.positiveTextColor
+                                            : Kirigami.Theme.textColor
+                                    }
+
+                                    MouseArea {
+                                        id: webApiTabMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            root.showAppLaunchBuilder = false
+                                            root.showWebApiBuilder = false
+                                            root.inspectorMode = "web_api"
+                                            webApiKeyConfigWindow.openForCurrentSlot()
+                                        }
+                                    }
+
+                                    QQC2.ToolTip.visible: webApiTabMouse.containsMouse
+                                    QQC2.ToolTip.text: qsTr("Open Web API Call Configurator window for this key")
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                QQC2.Button {
+                                    text: qsTr("🔴 Record")
+                                    implicitHeight: Math.round(24 * root.inspectorScale)
+                                    font.pixelSize: Math.round(10 * root.inspectorScale)
+                                    font.bold: true
+                                    leftPadding: 6
+                                    rightPadding: 6
+                                    onClicked: macroRecorderDialog.openRecorder()
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: qsTr("Record live keyboard keys, mouse clicks, and mouse movements into DuckyScript 3 (with Exact Timings or As Fast As Possible)")
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("✨ AI")
+                                    implicitHeight: Math.round(24 * root.inspectorScale)
+                                    font.pixelSize: Math.round(10 * root.inspectorScale)
+                                    leftPadding: 6
+                                    rightPadding: 6
+                                    onClicked: aiModal.open()
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: qsTr("Generate DuckyScript 3 macros from natural language using AI Macro Architect")
                                 }
                             }
                         }
 
-                        // Collapsible Web API Call Action Builder (Option 4 Hybrid PGV _GV31 + F13..F24 Trigger)
+                        // Compact status strip when Launch App or Web API is configured on this key
                         Rectangle {
-                            id: webApiBuilderCard
-                            visible: root.showWebApiBuilder
+                            visible: root.appLaunchEnabled || root.inspectorMode === "app_launch"
                             Layout.fillWidth: true
-                            implicitHeight: visible ? (webApiCol.implicitHeight + 16) : 0
-                            radius: Kirigami.Units.smallSpacing
-                            color: Qt.tint(
-                                Kirigami.Theme.alternateBackgroundColor,
-                                Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.08)
-                            )
-                            border.color: root.webApiEnabled
-                                ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.65)
-                                : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                            implicitHeight: Math.round(30 * root.inspectorScale)
+                            radius: 5
+                            color: Qt.alpha("#fb923c", 0.14)
+                            border.color: Qt.alpha("#fb923c", 0.55)
                             border.width: 1
 
-                            ColumnLayout {
-                                id: webApiCol
+                            RowLayout {
                                 anchors.fill: parent
-                                anchors.margins: 8
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
                                 spacing: 6
 
-                                // Row 1: Enable Toggle, Trigger Mechanism, and Test Button
-                                RowLayout {
+                                QQC2.Label {
                                     Layout.fillWidth: true
-                                    spacing: 6
-
-                                    QQC2.CheckBox {
-                                        id: webApiEnabledCheck
-                                        text: root.editingReleaseScript
-                                            ? qsTr("Web API on Release")
-                                            : qsTr("Web API on Press")
-                                        font.bold: true
-                                        font.pixelSize: Math.round(11 * root.inspectorScale)
-                                        onToggled: {
-                                            if (checked && webApiOledField.text.trim().length === 0) {
-                                                const lbl = (label1Input.text.trim() + " " + label2Input.text.trim()).trim()
-                                                webApiOledField.text = lbl.length > 0 ? ("API: " + lbl) : ("API Key " + root.selectedSlotNumber)
-                                            }
-                                            root.syncWebApiBuilderToScript()
-                                        }
-                                    }
-
-                                    Item { Layout.fillWidth: true }
-
-                                    QQC2.Label {
-                                        text: qsTr("Trigger:")
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        color: Kirigami.Theme.disabledTextColor
-                                    }
-
-                                    QQC2.ComboBox {
-                                        id: webApiTriggerModeCombo
-                                        model: [
-                                            qsTr("PGV (_GV31)"),
-                                            qsTr("F13–F24 Key")
-                                        ]
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        implicitHeight: Math.round(24 * root.inspectorScale)
-                                        Layout.preferredWidth: Math.round(125 * root.inspectorScale)
-                                        onActivated: root.syncWebApiBuilderToScript()
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: currentIndex === 0
-                                            ? qsTr("Recommended for duckyPad Pro: signals DuckyDeck Studio silently via _GV31 over USB HID without sending any keystrokes to the OS.")
-                                            : qsTr("Fallback for duckyPad (2020) or custom hotkeys: sends Ctrl+Alt+Shift+F13..F24 and intercepts it via Linux evdev.")
-                                    }
-
-                                    QQC2.ComboBox {
-                                        id: webApiFkeyCombo
-                                        visible: webApiTriggerModeCombo.currentIndex === 1
-                                        model: root.webApiFkeys
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        implicitHeight: Math.round(24 * root.inspectorScale)
-                                        Layout.preferredWidth: Math.round(68 * root.inspectorScale)
-                                        onActivated: root.syncWebApiBuilderToScript()
-                                    }
-
-                                    QQC2.Button {
-                                        text: deviceController.webApiTestBusy
-                                            ? qsTr("⏳ Calling...")
-                                            : qsTr("⚡ Test")
-                                        enabled: !deviceController.webApiTestBusy && webApiUrlField.text.trim().length > 0
-                                        implicitHeight: Math.round(24 * root.inspectorScale)
-                                        font.pixelSize: Math.round(11 * root.inspectorScale)
-                                        font.bold: true
-                                        onClicked: {
-                                            deviceController.testWebApiCall(
-                                                root.buildWebApiConfigJson(),
-                                                root.selectedSlotNumber
-                                            )
-                                        }
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Fire this HTTP request right now from DuckyDeck Studio and flash Key %1's RGB LED on response").arg(root.selectedSlotNumber)
-                                    }
+                                    elide: Text.ElideRight
+                                    font.bold: true
+                                    font.pixelSize: Math.round(10 * root.inspectorScale)
+                                    color: "#fb923c"
+                                    text: root.appLaunchEnabled
+                                        ? qsTr("🚀 Launch App: %1").arg(root.appLaunchAppName || appLaunchCommandField.text || qsTr("Configured"))
+                                        : qsTr("🚀 Launch Application Configurator")
                                 }
 
-                                // Row 2: Named Reusable Destination Selector & Configure Window Button
-                                RowLayout {
+                                QQC2.Button {
+                                    text: qsTr("Configure Launch App...")
+                                    implicitHeight: Math.round(22 * root.inspectorScale)
+                                    font.pixelSize: Math.round(10 * root.inspectorScale)
+                                    font.bold: true
+                                    onClicked: appLaunchConfigWindow.openForCurrentSlot()
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            visible: root.webApiEnabled || root.inspectorMode === "web_api"
+                            Layout.fillWidth: true
+                            implicitHeight: Math.round(30 * root.inspectorScale)
+                            radius: 5
+                            color: Qt.alpha(Kirigami.Theme.positiveTextColor, 0.14)
+                            border.color: Qt.alpha(Kirigami.Theme.positiveTextColor, 0.55)
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+                                spacing: 6
+
+                                QQC2.Label {
                                     Layout.fillWidth: true
-                                    spacing: 6
-
-                                    QQC2.Label {
-                                        text: qsTr("Destination:")
-                                        font.bold: true
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        color: Kirigami.Theme.textColor
-                                    }
-
-                                    QQC2.ComboBox {
-                                        id: webApiDestinationCombo
-                                        Layout.fillWidth: true
-                                        implicitHeight: Math.round(26 * root.inspectorScale)
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        model: root.webApiDestinationComboItems
-                                        onActivated: function(index) {
-                                            if (index <= 0) {
-                                                root.webApiSelectedDestination = ""
-                                                root.syncWebApiBuilderToScript()
-                                                return
-                                            }
-                                            const list = root.webApiDestinationsList || []
-                                            const dest = list[index - 1]
-                                            if (!dest) return
-                                            root.syncingWebApiScript = true
-                                            root.webApiSelectedDestination = dest.name || ""
-                                            const mIdx = root.webApiMethods.indexOf((dest.method || "POST").toUpperCase())
-                                            webApiMethodCombo.currentIndex = mIdx >= 0 ? mIdx : 0
-                                            webApiUrlField.text = dest.url || ""
-                                            webApiHeadersField.text = dest.headers || ""
-                                            if (!webApiEnabledCheck.checked && (dest.url || "").trim().length > 0) {
-                                                webApiEnabledCheck.checked = true
-                                            }
-                                            root.syncingWebApiScript = false
-                                            root.syncWebApiBuilderToScript()
-                                        }
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Select a saved reusable Web API destination (shares Method, URL, and Headers across keys while each key sends its own Payload)")
-                                    }
-
-                                    QQC2.Button {
-                                        icon.name: "configure"
-                                        text: qsTr("Configure Destinations...")
-                                        implicitHeight: Math.round(26 * root.inspectorScale)
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        font.bold: true
-                                        onClicked: {
-                                            const methodIdx = Math.max(0, webApiMethodCombo.currentIndex)
-                                            const methodStr = root.webApiMethods[methodIdx] || "POST"
-                                            webApiDestinationsDialog.openForDestination(
-                                                root.webApiSelectedDestination,
-                                                methodStr,
-                                                webApiUrlField.text,
-                                                webApiHeadersField.text
-                                            )
-                                        }
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Open the Web API Destinations window to add, edit, or delete reusable HTTP endpoints")
-                                    }
+                                    elide: Text.ElideRight
+                                    font.bold: true
+                                    font.pixelSize: Math.round(10 * root.inspectorScale)
+                                    color: Kirigami.Theme.positiveTextColor
+                                    text: root.webApiEnabled
+                                        ? qsTr("🌐 Web API: %1").arg(root.webApiSelectedDestination || webApiUrlField.text || qsTr("Configured"))
+                                        : qsTr("🌐 Web API Call Configurator")
                                 }
 
-                                // Row 3: Custom One-Off Endpoint (shown only when "Custom (One-off Endpoint)" is selected)
-                                RowLayout {
-                                    visible: webApiDestinationCombo.currentIndex <= 0
-                                    Layout.fillWidth: true
-                                    spacing: 6
-
-                                    QQC2.ComboBox {
-                                        id: webApiMethodCombo
-                                        model: root.webApiMethods
-                                        font.pixelSize: Math.round(11 * root.inspectorScale)
-                                        font.bold: true
-                                        implicitHeight: Math.round(28 * root.inspectorScale)
-                                        Layout.preferredWidth: Math.round(88 * root.inspectorScale)
-                                        onActivated: root.syncWebApiBuilderToScript()
-                                    }
-
-                                    QQC2.TextField {
-                                        id: webApiUrlField
-                                        Layout.fillWidth: true
-                                        Layout.preferredWidth: 260
-                                        implicitHeight: Math.round(28 * root.inspectorScale)
-                                        font.family: "monospace"
-                                        font.pixelSize: Math.round(11 * root.inspectorScale)
-                                        selectByMouse: true
-                                        placeholderText: qsTr("https://api.example.com/webhook  or  http://localhost:8123/api/services/light/toggle")
-                                        onTextEdited: {
-                                            if (!webApiEnabledCheck.checked && text.trim().length > 0) {
-                                                webApiEnabledCheck.checked = true
-                                            }
-                                            root.syncWebApiBuilderToScript()
-                                        }
-                                    }
-
-                                    QQC2.TextField {
-                                        id: webApiHeadersField
-                                        Layout.fillWidth: true
-                                        Layout.preferredWidth: 200
-                                        implicitHeight: Math.round(28 * root.inspectorScale)
-                                        font.family: "monospace"
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        selectByMouse: true
-                                        placeholderText: qsTr("Headers (e.g. Authorization: Bearer <token>; X-Api-Key: 123)")
-                                        onTextEdited: root.syncWebApiBuilderToScript()
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Optional HTTP headers separated by ';' or newlines.")
-                                    }
-                                }
-
-                                // Row 4: Key-Specific Payload / Request Body
-                                RowLayout {
-                                    visible: webApiMethodCombo.currentIndex !== 1 // Hide on GET
-                                    Layout.fillWidth: true
-                                    spacing: 6
-
-                                    QQC2.Label {
-                                        text: qsTr("Key Payload:")
-                                        font.bold: true
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        color: Kirigami.Theme.textColor
-                                    }
-
-                                    QQC2.TextField {
-                                        id: webApiBodyField
-                                        Layout.fillWidth: true
-                                        implicitHeight: Math.round(26 * root.inspectorScale)
-                                        font.family: "monospace"
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        selectByMouse: true
-                                        placeholderText: qsTr("Per-key Request Body / JSON (e.g. {\"entity_id\": \"light.desk\"})")
-                                        onTextEdited: root.syncWebApiBuilderToScript()
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Key-specific payload sent to the destination with POST/PUT/PATCH/DELETE. Different keys can reuse the same destination with different payloads.")
-                                    }
-                                }
-
-                                // Row 4: OLED Banner & RGB LED Status Flash
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 8
-
-                                    QQC2.Label {
-                                        text: qsTr("OLED Text:")
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        color: Kirigami.Theme.disabledTextColor
-                                    }
-
-                                    QQC2.TextField {
-                                        id: webApiOledField
-                                        Layout.preferredWidth: Math.round(160 * root.inspectorScale)
-                                        implicitHeight: Math.round(24 * root.inspectorScale)
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        selectByMouse: true
-                                        placeholderText: qsTr("Optional OLED message")
-                                        onTextEdited: root.syncWebApiBuilderToScript()
-                                    }
-
-                                    QQC2.CheckBox {
-                                        id: webApiLedCheck
-                                        checked: true
-                                        text: qsTr("RGB LED Status Flash (Green = 2xx, Red = Error)")
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        onToggled: root.syncWebApiBuilderToScript()
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Flashes Key %1's physical RGB LED cyan while calling, green on HTTP 2xx, or red on error, then restores key color").arg(root.selectedSlotNumber)
-                                    }
-
-                                    Item { Layout.fillWidth: true }
-                                }
-
-                                // Row 5: Live Test / Execution Status Pill
-                                Rectangle {
-                                    visible: deviceController.webApiLastResult.length > 0
-                                    Layout.fillWidth: true
-                                    implicitHeight: Math.round(24 * root.inspectorScale)
-                                    radius: 4
-                                    color: deviceController.webApiTestBusy
-                                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.16)
-                                        : (deviceController.webApiLastOk
-                                            ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.16)
-                                            : Qt.alpha(Kirigami.Theme.negativeTextColor, 0.16))
-                                    border.color: deviceController.webApiTestBusy
-                                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.5)
-                                        : (deviceController.webApiLastOk
-                                            ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.5)
-                                            : Qt.alpha(Kirigami.Theme.negativeTextColor, 0.5))
-                                    border.width: 1
-
-                                    QQC2.Label {
-                                        anchors.fill: parent
-                                        anchors.leftMargin: 8
-                                        anchors.rightMargin: 8
-                                        verticalAlignment: Text.AlignVCenter
-                                        elide: Text.ElideRight
-                                        font.family: "monospace"
-                                        font.pixelSize: Math.round(10 * root.inspectorScale)
-                                        color: deviceController.webApiTestBusy
-                                            ? Kirigami.Theme.highlightColor
-                                            : (deviceController.webApiLastOk
-                                                ? Kirigami.Theme.positiveTextColor
-                                                : Kirigami.Theme.negativeTextColor)
-                                        text: deviceController.webApiLastResult
-                                    }
+                                QQC2.Button {
+                                    text: qsTr("Configure Web API...")
+                                    implicitHeight: Math.round(22 * root.inspectorScale)
+                                    font.pixelSize: Math.round(10 * root.inspectorScale)
+                                    font.bold: true
+                                    onClicked: webApiKeyConfigWindow.openForCurrentSlot()
                                 }
                             }
                         }
@@ -9114,19 +8767,28 @@ Kirigami.ApplicationWindow {
                     id: oledWidgetStatusBtn
                     radius: 4
                     color: oledDesktopWidget.visible
-                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.22)
+                        ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.16)
                         : Kirigami.Theme.backgroundColor
                     border.color: oledDesktopWidget.visible
-                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.65)
+                        ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.5)
                         : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
                     border.width: 1
-                    implicitWidth: oledWidgetBtnRow.implicitWidth + 14
+                    implicitWidth: oledWidgetBtnRow.implicitWidth + 16
                     implicitHeight: Math.round(26 * root.statusBarScale)
 
                     RowLayout {
                         id: oledWidgetBtnRow
                         anchors.centerIn: parent
-                        spacing: 5
+                        spacing: 6
+
+                        Rectangle {
+                            width: 9
+                            height: 9
+                            radius: 5
+                            color: oledDesktopWidget.visible
+                                ? Kirigami.Theme.positiveTextColor
+                                : Kirigami.Theme.disabledTextColor
+                        }
 
                         Image {
                             source: "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/oled-widget-icon.svg"
@@ -9141,11 +8803,9 @@ Kirigami.ApplicationWindow {
                             text: oledDesktopWidget.visible
                                 ? qsTr("Desktop OLED: Active")
                                 : qsTr("Desktop OLED Widget")
-                            font.bold: oledDesktopWidget.visible
+                            font.bold: true
                             font.pixelSize: Math.round(12 * root.statusBarScale)
-                            color: oledDesktopWidget.visible
-                                ? Kirigami.Theme.highlightColor
-                                : Kirigami.Theme.textColor
+                            color: Kirigami.Theme.textColor
                         }
                     }
 
@@ -9189,7 +8849,7 @@ Kirigami.ApplicationWindow {
                     appLaunchOledField.text = "Run: " + baseName.substring(0, 14)
                 }
                 if (label1Input.text.trim().length === 0 && label2Input.text.trim().length === 0) {
-                    label1Input.text = baseName.substring(0, 7)
+                    label1Input.text = baseName.substring(0, 5)
                 }
                 root.syncAppLaunchBuilderToScript()
             }
@@ -9221,7 +8881,7 @@ Kirigami.ApplicationWindow {
             appLaunchEnabledCheck.checked = true
             appLaunchOledField.text = "Run: " + (name || desktopId || "App").substring(0, 14)
             if (label1Input.text.trim().length === 0 && label2Input.text.trim().length === 0 && name && name.length > 0) {
-                label1Input.text = name.substring(0, 7)
+                label1Input.text = name.substring(0, 5)
             }
             root.syncAppLaunchBuilderToScript()
             installedAppPickerDialog.close()
@@ -9424,6 +9084,1585 @@ Kirigami.ApplicationWindow {
         }
     }
 
+    // =========================================================================
+    // Standalone Key Launch App Configurator Window
+    // =========================================================================
+    Window {
+        id: appLaunchConfigWindow
+        title: qsTr("Launch Desktop Application — Key %1 (%2)").arg(root.selectedSlotNumber).arg(root.selectedSlotTitle)
+        width: 720
+        height: 620
+        minimumWidth: 580
+        minimumHeight: 480
+        visible: false
+        transientParent: root
+        modality: Qt.NonModal
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
+
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
+        color: Kirigami.Theme.backgroundColor
+
+        function openWindow() {
+            if (!root.hasSelectedSlot) return
+            appLaunchConfigWindow.show()
+            appLaunchConfigWindow.raise()
+            appLaunchConfigWindow.requestActivate()
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 10
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Rectangle {
+                    width: 34
+                    height: 34
+                    radius: 8
+                    color: Qt.alpha(Kirigami.Theme.highlightColor, 0.2)
+                    border.color: Kirigami.Theme.highlightColor
+                    border.width: 1
+                    QQC2.Label {
+                        anchors.centerIn: parent
+                        text: "🚀"
+                        font.pixelSize: 18
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    QQC2.Label {
+                        text: qsTr("Desktop Application & Command Launcher — %1").arg(root.selectedSlotTitle)
+                        font.bold: true
+                        font.pixelSize: 15
+                    }
+                    QQC2.Label {
+                        text: qsTr("Launch any installed desktop application, shell script, or command when this duckyPad key is pressed.")
+                        font.pixelSize: 11
+                        color: Kirigami.Theme.disabledTextColor
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+                }
+
+                QQC2.Switch {
+                    id: appLaunchEnabledCheck
+                    text: checked ? qsTr("Enabled") : qsTr("Disabled")
+                    font.bold: true
+                    onToggled: root.syncAppLaunchBuilderToScript()
+                }
+            }
+
+            QQC2.ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                contentWidth: availableWidth
+                QQC2.ScrollBar.vertical: HighContrastScrollBar {}
+
+                ColumnLayout {
+                    width: parent.width - 14
+                    spacing: 10
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: appPickCol.implicitHeight + 16
+                        radius: 6
+                        color: Kirigami.Theme.alternateBackgroundColor
+                        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.16)
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: appPickCol
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 8
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Button {
+                                    icon.name: "applications-all"
+                                    text: qsTr("Choose Installed Application...")
+                                    highlighted: true
+                                    font.bold: true
+                                    onClicked: {
+                                        root.installedAppSearchText = ""
+                                        installedAppSearchInput.text = ""
+                                        root.refreshInstalledAppsModel()
+                                        installedAppPickerDialog.show()
+                                        installedAppPickerDialog.raise()
+                                        installedAppPickerDialog.requestActivate()
+                                    }
+                                }
+
+                                QQC2.Button {
+                                    icon.name: "document-open"
+                                    text: qsTr("Browse Script / Executable...")
+                                    onClicked: appExecutableFileDialog.open()
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                QQC2.Label {
+                                    visible: root.appLaunchAppName.length > 0
+                                    text: qsTr("Selected: %1").arg(root.appLaunchAppName)
+                                    font.bold: true
+                                    font.pixelSize: 11
+                                    color: Kirigami.Theme.positiveTextColor
+                                    elide: Text.ElideRight
+                                }
+                            }
+
+                            GridLayout {
+                                Layout.fillWidth: true
+                                columns: 2
+                                columnSpacing: 10
+                                rowSpacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("Command / Binary:")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                }
+                                QQC2.TextField {
+                                    id: appLaunchCommandField
+                                    Layout.fillWidth: true
+                                    placeholderText: qsTr("e.g. dolphin, konsole, /usr/bin/obs, ~/scripts/deploy.sh")
+                                    font.family: "monospace"
+                                    selectByMouse: true
+                                    onTextEdited: {
+                                        if (text.trim().length > 0 && !appLaunchEnabledCheck.checked) {
+                                            appLaunchEnabledCheck.checked = true
+                                        }
+                                        root.syncAppLaunchBuilderToScript()
+                                    }
+                                }
+
+                                QQC2.Label {
+                                    text: qsTr("Arguments:")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                }
+                                QQC2.TextField {
+                                    id: appLaunchArgsField
+                                    Layout.fillWidth: true
+                                    placeholderText: qsTr("Optional CLI arguments (e.g. --new-window ~/Projects)")
+                                    font.family: "monospace"
+                                    selectByMouse: true
+                                    onTextEdited: root.syncAppLaunchBuilderToScript()
+                                }
+
+                                QQC2.Label {
+                                    text: qsTr("Working Dir:")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                }
+                                QQC2.TextField {
+                                    id: appLaunchWorkDirField
+                                    Layout.fillWidth: true
+                                    placeholderText: qsTr("Optional working directory (e.g. /home/user/workspace)")
+                                    font.family: "monospace"
+                                    selectByMouse: true
+                                    onTextEdited: root.syncAppLaunchBuilderToScript()
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: appTrigCol.implicitHeight + 16
+                        radius: 6
+                        color: Kirigami.Theme.alternateBackgroundColor
+                        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.16)
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: appTrigCol
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 8
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("Trigger Mode:")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                }
+
+                                QQC2.ComboBox {
+                                    id: appLaunchTriggerModeCombo
+                                    Layout.fillWidth: true
+                                    model: [
+                                        qsTr("USB HID Listener (Instant host launch — Zero keystroke pollution)"),
+                                        qsTr("F-Key Shortcut Fallback (Emits F13–F24 + host listener)")
+                                    ]
+                                    onActivated: root.syncAppLaunchBuilderToScript()
+                                }
+
+                                QQC2.ComboBox {
+                                    id: appLaunchFkeyCombo
+                                    visible: appLaunchTriggerModeCombo.currentIndex === 1
+                                    Layout.preferredWidth: 96
+                                    model: ["F13","F14","F15","F16","F17","F18","F19","F20","F21","F22","F23","F24"]
+                                    currentIndex: 7
+                                    onActivated: root.syncAppLaunchBuilderToScript()
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 12
+
+                                QQC2.CheckBox {
+                                    id: appLaunchTerminalCheck
+                                    text: qsTr("Run inside Terminal Emulator (konsole)")
+                                    onToggled: root.syncAppLaunchBuilderToScript()
+                                }
+
+                                QQC2.CheckBox {
+                                    id: appLaunchLedCheck
+                                    checked: true
+                                    text: qsTr("Flash Key LED Green on Launch")
+                                    onToggled: root.syncAppLaunchBuilderToScript()
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("OLED Feedback Text:")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                }
+
+                                QQC2.TextField {
+                                    id: appLaunchOledField
+                                    Layout.fillWidth: true
+                                    maximumLength: 20
+                                    placeholderText: qsTr("Optional OLED status message on press (leave blank for none)")
+                                    selectByMouse: true
+                                    onTextEdited: root.syncAppLaunchBuilderToScript()
+                                }
+                            }
+                        }
+                    }
+
+                    // Quick Presets
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        QQC2.Label {
+                            text: qsTr("Quick Presets:")
+                            font.bold: true
+                            font.pixelSize: 11
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+
+                        QQC2.Button {
+                            text: qsTr("📁 Dolphin")
+                            implicitHeight: 26
+                            font.pixelSize: 11
+                            onClicked: {
+                                root.appLaunchAppName = "Dolphin"
+                                root.appLaunchDesktopId = "org.kde.dolphin.desktop"
+                                appLaunchCommandField.text = "dolphin"
+                                appLaunchArgsField.text = ""
+                                appLaunchTerminalCheck.checked = false
+                                appLaunchEnabledCheck.checked = true
+                                appLaunchOledField.text = "Run: Dolphin"
+                                root.syncAppLaunchBuilderToScript()
+                            }
+                        }
+
+                        QQC2.Button {
+                            text: qsTr("🖥 Konsole")
+                            implicitHeight: 26
+                            font.pixelSize: 11
+                            onClicked: {
+                                root.appLaunchAppName = "Konsole"
+                                root.appLaunchDesktopId = "org.kde.konsole.desktop"
+                                appLaunchCommandField.text = "konsole"
+                                appLaunchArgsField.text = ""
+                                appLaunchTerminalCheck.checked = false
+                                appLaunchEnabledCheck.checked = true
+                                appLaunchOledField.text = "Run: Konsole"
+                                root.syncAppLaunchBuilderToScript()
+                            }
+                        }
+
+                        QQC2.Button {
+                            text: qsTr("🌐 Browser")
+                            implicitHeight: 26
+                            font.pixelSize: 11
+                            onClicked: {
+                                root.appLaunchAppName = "Web Browser"
+                                root.appLaunchDesktopId = ""
+                                appLaunchCommandField.text = "xdg-open"
+                                appLaunchArgsField.text = "https://duckypad.com"
+                                appLaunchTerminalCheck.checked = false
+                                appLaunchEnabledCheck.checked = true
+                                appLaunchOledField.text = "Open Browser"
+                                root.syncAppLaunchBuilderToScript()
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                QQC2.Button {
+                    icon.name: "media-playback-start"
+                    text: qsTr("Test Launch Now")
+                    enabled: appLaunchCommandField.text.trim().length > 0
+                    onClicked: {
+                        deviceController.testKeyAppLaunch(
+                            deviceController.activeProfile,
+                            root.selectedSlotNumber,
+                            root.appLaunchAppName,
+                            root.appLaunchDesktopId,
+                            appLaunchCommandField.text.trim(),
+                            appLaunchArgsField.text.trim(),
+                            appLaunchWorkDirField.text.trim(),
+                            appLaunchTerminalCheck.checked
+                        )
+                    }
+                }
+
+                QQC2.Button {
+                    icon.name: "edit-clear"
+                    text: qsTr("Disable / Clear")
+                    onClicked: {
+                        appLaunchEnabledCheck.checked = false
+                        appLaunchCommandField.text = ""
+                        appLaunchArgsField.text = ""
+                        appLaunchWorkDirField.text = ""
+                        root.appLaunchAppName = ""
+                        root.appLaunchDesktopId = ""
+                        root.syncAppLaunchBuilderToScript()
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.Button {
+                    icon.name: "dialog-ok-apply"
+                    text: qsTr("Save & Close")
+                    highlighted: true
+                    font.bold: true
+                    onClicked: {
+                        root.syncAppLaunchBuilderToScript()
+                        appLaunchConfigWindow.close()
+                    }
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Standalone Key Web API / Webhook Configurator Window
+    // =========================================================================
+    Window {
+        id: webApiKeyConfigWindow
+        title: qsTr("Web API / HTTP Webhook — Key %1 (%2)").arg(root.selectedSlotNumber).arg(root.selectedSlotTitle)
+        width: 740
+        height: 660
+        minimumWidth: 600
+        minimumHeight: 500
+        visible: false
+        transientParent: root
+        modality: Qt.NonModal
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
+
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
+        color: Kirigami.Theme.backgroundColor
+
+        function openWindow() {
+            if (!root.hasSelectedSlot) return
+            webApiKeyConfigWindow.show()
+            webApiKeyConfigWindow.raise()
+            webApiKeyConfigWindow.requestActivate()
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 10
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Rectangle {
+                    width: 34
+                    height: 34
+                    radius: 8
+                    color: Qt.alpha(Kirigami.Theme.highlightColor, 0.2)
+                    border.color: Kirigami.Theme.highlightColor
+                    border.width: 1
+                    QQC2.Label {
+                        anchors.centerIn: parent
+                        text: "🌐"
+                        font.pixelSize: 18
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    QQC2.Label {
+                        text: qsTr("Web API & Outbound HTTP Webhook — %1").arg(root.selectedSlotTitle)
+                        font.bold: true
+                        font.pixelSize: 15
+                    }
+                    QQC2.Label {
+                        text: qsTr("Trigger local DuckyDeck Studio actions or send HTTP REST/Webhook requests (Home Assistant, OBS, Node-RED) when this key is pressed.")
+                        font.pixelSize: 11
+                        color: Kirigami.Theme.disabledTextColor
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+                }
+
+                QQC2.Button {
+                    icon.name: "network-server"
+                    text: qsTr("Global Server Settings...")
+                    onClicked: webApiDrawer.open()
+                }
+
+                QQC2.Switch {
+                    id: webApiEnabledCheck
+                    text: checked ? qsTr("Enabled") : qsTr("Disabled")
+                    font.bold: true
+                    onToggled: root.syncWebApiBuilderToScript()
+                }
+            }
+
+            QQC2.ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                contentWidth: availableWidth
+                QQC2.ScrollBar.vertical: HighContrastScrollBar {}
+
+                ColumnLayout {
+                    width: parent.width - 14
+                    spacing: 10
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: apiEndpointCol.implicitHeight + 16
+                        radius: 6
+                        color: Kirigami.Theme.alternateBackgroundColor
+                        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.16)
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: apiEndpointCol
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 8
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("Target Type:")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                }
+
+                                QQC2.ComboBox {
+                                    id: webApiDestinationCombo
+                                    Layout.fillWidth: true
+                                    model: [
+                                        qsTr("Local DuckyDeck Studio REST API (127.0.0.1:%1)").arg(deviceController.webApiPort),
+                                        qsTr("External HTTP / HTTPS Webhook (Home Assistant, OBS, Custom URL)")
+                                    ]
+                                    onActivated: {
+                                        if (currentIndex === 0 && webApiUrlField.text.indexOf("http") === 0) {
+                                            webApiUrlField.text = "/api/v1/status"
+                                        } else if (currentIndex === 1 && webApiUrlField.text.indexOf("http") !== 0) {
+                                            webApiUrlField.text = "http://127.0.0.1:8123/api/webhook/duckypad"
+                                        }
+                                        root.syncWebApiBuilderToScript()
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.ComboBox {
+                                    id: webApiMethodCombo
+                                    Layout.preferredWidth: 105
+                                    model: ["POST", "GET", "PUT", "DELETE"]
+                                    onActivated: root.syncWebApiBuilderToScript()
+                                }
+
+                                QQC2.TextField {
+                                    id: webApiUrlField
+                                    Layout.fillWidth: true
+                                    font.family: "monospace"
+                                    placeholderText: webApiDestinationCombo.currentIndex === 0
+                                        ? qsTr("/api/v1/profile/select")
+                                        : qsTr("https://example.com/api/webhook")
+                                    selectByMouse: true
+                                    onTextEdited: {
+                                        if (text.trim().length > 0 && !webApiEnabledCheck.checked) {
+                                            webApiEnabledCheck.checked = true
+                                        }
+                                        root.syncWebApiBuilderToScript()
+                                    }
+                                }
+                            }
+
+                            QQC2.Label {
+                                text: qsTr("HTTP Headers (Optional — one 'Header-Name: value' per line):")
+                                font.bold: true
+                                font.pixelSize: 11
+                            }
+
+                            QQC2.TextArea {
+                                id: webApiHeadersField
+                                Layout.fillWidth: true
+                                implicitHeight: 56
+                                font.family: "monospace"
+                                font.pixelSize: 11
+                                placeholderText: qsTr("Content-Type: application/json\nAuthorization: Bearer <token>")
+                                selectByMouse: true
+                                onTextChanged: {
+                                    if (!root.suppressWebApiSync) root.syncWebApiBuilderToScript()
+                                }
+                                background: Rectangle {
+                                    radius: 4
+                                    color: Kirigami.Theme.backgroundColor
+                                    border.color: Qt.alpha(Kirigami.Theme.textColor, 0.2)
+                                    border.width: 1
+                                }
+                            }
+
+                            QQC2.Label {
+                                text: qsTr("Request Body / JSON Payload:")
+                                font.bold: true
+                                font.pixelSize: 11
+                            }
+
+                            QQC2.TextArea {
+                                id: webApiBodyField
+                                Layout.fillWidth: true
+                                implicitHeight: 74
+                                font.family: "monospace"
+                                font.pixelSize: 11
+                                placeholderText: qsTr("{\"profile\": 1}")
+                                selectByMouse: true
+                                onTextChanged: {
+                                    if (!root.suppressWebApiSync) root.syncWebApiBuilderToScript()
+                                }
+                                background: Rectangle {
+                                    radius: 4
+                                    color: Kirigami.Theme.backgroundColor
+                                    border.color: Qt.alpha(Kirigami.Theme.textColor, 0.2)
+                                    border.width: 1
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: webTrigCol.implicitHeight + 16
+                        radius: 6
+                        color: Kirigami.Theme.alternateBackgroundColor
+                        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.16)
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: webTrigCol
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 8
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("Trigger Mode:")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                }
+
+                                QQC2.ComboBox {
+                                    id: webApiTriggerModeCombo
+                                    Layout.fillWidth: true
+                                    model: [
+                                        qsTr("USB HID Listener (Silent background HTTP call)"),
+                                        qsTr("F-Key Shortcut Fallback (Emits F13–F24 + HTTP call)"),
+                                        qsTr("Standalone Terminal curl (Types curl command on host)")
+                                    ]
+                                    onActivated: root.syncWebApiBuilderToScript()
+                                }
+
+                                QQC2.ComboBox {
+                                    id: webApiFkeyCombo
+                                    visible: webApiTriggerModeCombo.currentIndex === 1
+                                    Layout.preferredWidth: 96
+                                    model: ["F13","F14","F15","F16","F17","F18","F19","F20","F21","F22","F23","F24"]
+                                    currentIndex: 7
+                                    onActivated: root.syncWebApiBuilderToScript()
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 12
+
+                                QQC2.Label {
+                                    text: qsTr("OLED Feedback Text:")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                }
+
+                                QQC2.TextField {
+                                    id: webApiOledField
+                                    Layout.fillWidth: true
+                                    maximumLength: 20
+                                    placeholderText: qsTr("Optional OLED status text on trigger")
+                                    selectByMouse: true
+                                    onTextEdited: root.syncWebApiBuilderToScript()
+                                }
+
+                                QQC2.CheckBox {
+                                    id: webApiLedCheck
+                                    checked: true
+                                    text: qsTr("Flash Key LED Cyan")
+                                    onToggled: root.syncWebApiBuilderToScript()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                QQC2.Button {
+                    icon.name: "media-playback-start"
+                    text: qsTr("Test Webhook Now")
+                    enabled: webApiUrlField.text.trim().length > 0
+                    onClicked: {
+                        const dest = webApiDestinationCombo.currentIndex === 1 ? "external" : "local"
+                        deviceController.testKeyWebApiAction(
+                            deviceController.activeProfile,
+                            root.selectedSlotNumber,
+                            dest,
+                            webApiMethodCombo.currentText,
+                            webApiUrlField.text.trim(),
+                            webApiHeadersField.text,
+                            webApiBodyField.text
+                        )
+                    }
+                }
+
+                QQC2.Button {
+                    icon.name: "edit-clear"
+                    text: qsTr("Disable / Clear")
+                    onClicked: {
+                        webApiEnabledCheck.checked = false
+                        webApiUrlField.text = ""
+                        webApiHeadersField.text = ""
+                        webApiBodyField.text = ""
+                        root.syncWebApiBuilderToScript()
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.Button {
+                    icon.name: "dialog-ok-apply"
+                    text: qsTr("Save & Close")
+                    highlighted: true
+                    font.bold: true
+                    onClicked: {
+                        root.syncWebApiBuilderToScript()
+                        webApiKeyConfigWindow.close()
+                    }
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Profile Properties Window (Editable Fields for All Profile Properties)
+    // =========================================================================
+    Window {
+        id: profilePropertiesWindow
+        title: qsTr("Profile #%1 Properties — %2").arg(profilePropertiesWindow.profNumber).arg(profilePropertiesWindow.profName)
+        width: 680
+        height: 660
+        minimumWidth: 560
+        minimumHeight: 520
+        visible: false
+        transientParent: root
+        modality: Qt.NonModal
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
+
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
+        color: Kirigami.Theme.backgroundColor
+
+        property int profNumber: 1
+        property string profName: ""
+        property string profFolderName: ""
+        property string profBgColor: "#38bdf8"
+        property bool profHasKeydownColor: false
+        property string profKeydownColor: "#ffffff"
+        property bool profDimUnusedKeys: true
+        property bool profIsLandscape: false
+        property bool profIsUpperHs: false
+        property string profExtraConfigLines: ""
+        property int profConfiguredSlots: 0
+        property string statusFeedback: ""
+
+        function openForProfile(profileNumber) {
+            const targetNum = profileNumber > 0 ? profileNumber : deviceController.activeProfile
+            if (targetNum <= 0) return
+            profilePropertiesWindow.profNumber = targetNum
+            const rawJson = deviceController.getProfilePropertiesJson(targetNum)
+            try {
+                const obj = JSON.parse(rawJson)
+                profilePropertiesWindow.profName = obj.name || ("Profile " + targetNum)
+                profilePropertiesWindow.profFolderName = obj.folderName || ("profile" + targetNum + "_" + profilePropertiesWindow.profName)
+                profilePropertiesWindow.profBgColor = obj.bgColor || "#38bdf8"
+                profilePropertiesWindow.profHasKeydownColor = Boolean(obj.hasKeydownColor)
+                profilePropertiesWindow.profKeydownColor = obj.keydownColor || "#ffffff"
+                profilePropertiesWindow.profDimUnusedKeys = obj.dimUnusedKeys !== undefined ? Boolean(obj.dimUnusedKeys) : true
+                profilePropertiesWindow.profIsLandscape = Boolean(obj.isLandscape)
+                profilePropertiesWindow.profIsUpperHs = Boolean(obj.isUpperHs)
+                profilePropertiesWindow.profExtraConfigLines = Array.isArray(obj.extraConfigLines) ? obj.extraConfigLines.join("\n") : ""
+                profilePropertiesWindow.profConfiguredSlots = obj.configuredSlotCount || 0
+            } catch (e) {
+                profilePropertiesWindow.profName = deviceController.activeProfileName
+                profilePropertiesWindow.profBgColor = deviceController.activeProfileBgColor
+            }
+            profNameField.text = profilePropertiesWindow.profName
+            profBgColorField.text = profilePropertiesWindow.profBgColor
+            profKeydownEnableCheck.checked = profilePropertiesWindow.profHasKeydownColor
+            profKeydownColorField.text = profilePropertiesWindow.profKeydownColor
+            profDimUnusedCheck.checked = profilePropertiesWindow.profDimUnusedKeys
+            profLandscapeCheck.checked = profilePropertiesWindow.profIsLandscape
+            profUpperHsCheck.checked = profilePropertiesWindow.profIsUpperHs
+            profExtraLinesArea.text = profilePropertiesWindow.profExtraConfigLines
+            profilePropertiesWindow.statusFeedback = ""
+
+            profilePropertiesWindow.show()
+            profilePropertiesWindow.raise()
+            profilePropertiesWindow.requestActivate()
+        }
+
+        function saveAllProfileProperties() {
+            const extraArr = profExtraLinesArea.text
+                .split("\n")
+                .map(s => s.trim())
+                .filter(s => s.length > 0)
+            const payload = {
+                name: profNameField.text.trim(),
+                bgColor: profBgColorField.text.trim(),
+                hasKeydownColor: profKeydownEnableCheck.checked,
+                keydownColor: profKeydownColorField.text.trim(),
+                dimUnusedKeys: profDimUnusedCheck.checked,
+                isLandscape: profLandscapeCheck.checked,
+                isUpperHs: profUpperHsCheck.checked,
+                extraConfigLines: extraArr
+            }
+            const ok = deviceController.saveProfilePropertiesJson(
+                profilePropertiesWindow.profNumber,
+                JSON.stringify(payload)
+            )
+            if (ok) {
+                root.syncSidebarProfilesFromController()
+                hardwareCanvas.syncProfilesFromController()
+                hardwareCanvas.syncSlotsFromController()
+                profilePropertiesWindow.statusFeedback = qsTr("✓ Saved all properties for Profile #%1.").arg(profilePropertiesWindow.profNumber)
+            }
+            return ok
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 10
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Rectangle {
+                    width: 34
+                    height: 34
+                    radius: 8
+                    color: profilePropertiesWindow.profBgColor
+                    border.color: "#ffffff66"
+                    border.width: 1
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    QQC2.Label {
+                        text: qsTr("Profile #%1 Properties").arg(profilePropertiesWindow.profNumber)
+                        font.bold: true
+                        font.pixelSize: 15
+                    }
+                    QQC2.Label {
+                        text: qsTr("Folder: %1  •  Configured Slots: %2")
+                            .arg(profilePropertiesWindow.profFolderName)
+                            .arg(profilePropertiesWindow.profConfiguredSlots)
+                        font.family: "monospace"
+                        font.pixelSize: 11
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                }
+            }
+
+            QQC2.ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                contentWidth: availableWidth
+                QQC2.ScrollBar.vertical: HighContrastScrollBar {}
+
+                ColumnLayout {
+                    width: parent.width - 14
+                    spacing: 10
+
+                    // Identity & Colors Card
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: profBasicGrid.implicitHeight + 18
+                        radius: 6
+                        color: Kirigami.Theme.alternateBackgroundColor
+                        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.16)
+                        border.width: 1
+
+                        GridLayout {
+                            id: profBasicGrid
+                            anchors.fill: parent
+                            anchors.margins: 9
+                            columns: 2
+                            columnSpacing: 12
+                            rowSpacing: 8
+
+                            QQC2.Label {
+                                text: qsTr("Profile Name (max 13 chars):")
+                                font.bold: true
+                                font.pixelSize: 12
+                            }
+
+                            QQC2.TextField {
+                                id: profNameField
+                                Layout.fillWidth: true
+                                maximumLength: 13
+                                selectByMouse: true
+                                font.bold: true
+                                placeholderText: qsTr("Profile Name")
+                            }
+
+                            QQC2.Label {
+                                text: qsTr("Default Key Color (BG_COLOR):")
+                                font.bold: true
+                                font.pixelSize: 12
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                Rectangle {
+                                    width: 24
+                                    height: 24
+                                    radius: 4
+                                    color: /^#[0-9A-Fa-f]{6}$/.test(profBgColorField.text.trim())
+                                        ? profBgColorField.text.trim()
+                                        : profilePropertiesWindow.profBgColor
+                                    border.color: "#ffffff88"
+                                    border.width: 1
+                                }
+
+                                QQC2.TextField {
+                                    id: profBgColorField
+                                    Layout.preferredWidth: 100
+                                    maximumLength: 7
+                                    font.family: "monospace"
+                                    selectByMouse: true
+                                    onTextEdited: {
+                                        if (/^#[0-9A-Fa-f]{6}$/.test(text.trim())) {
+                                            profilePropertiesWindow.profBgColor = text.trim()
+                                        }
+                                    }
+                                }
+
+                                QQC2.Button {
+                                    icon.name: "color-picker"
+                                    text: qsTr("Open Color Picker...")
+                                    onClicked: {
+                                        if (deviceController.activeProfile !== profilePropertiesWindow.profNumber) {
+                                            deviceController.selectProfile(profilePropertiesWindow.profNumber)
+                                            root.syncSidebarProfilesFromController()
+                                            hardwareCanvas.syncSlotsFromController()
+                                        }
+                                        duckyColorPickerWindow.openForProfileBg(
+                                            profilePropertiesWindow.profNumber,
+                                            profNameField.text.trim(),
+                                            profBgColorField.text.trim()
+                                        )
+                                    }
+                                }
+
+                                Item { Layout.fillWidth: true }
+                            }
+
+                            QQC2.Label {
+                                text: qsTr("Keydown Color (KEYDOWN_COLOR):")
+                                font.bold: true
+                                font.pixelSize: 12
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.CheckBox {
+                                    id: profKeydownEnableCheck
+                                    text: qsTr("Enable Custom Keydown Color")
+                                }
+
+                                Rectangle {
+                                    visible: profKeydownEnableCheck.checked
+                                    width: 24
+                                    height: 24
+                                    radius: 4
+                                    color: /^#[0-9A-Fa-f]{6}$/.test(profKeydownColorField.text.trim())
+                                        ? profKeydownColorField.text.trim()
+                                        : "#ffffff"
+                                    border.color: "#ffffff88"
+                                    border.width: 1
+                                }
+
+                                QQC2.TextField {
+                                    id: profKeydownColorField
+                                    visible: profKeydownEnableCheck.checked
+                                    Layout.preferredWidth: 100
+                                    maximumLength: 7
+                                    font.family: "monospace"
+                                    selectByMouse: true
+                                }
+
+                                Item { Layout.fillWidth: true }
+                            }
+                        }
+                    }
+
+                    // Hardware Flags & Orientation Card
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: profFlagsCol.implicitHeight + 18
+                        radius: 6
+                        color: Kirigami.Theme.alternateBackgroundColor
+                        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.16)
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: profFlagsCol
+                            anchors.fill: parent
+                            anchors.margins: 9
+                            spacing: 6
+
+                            QQC2.Label {
+                                text: qsTr("Hardware LED & Orientation Directives (config.txt):")
+                                font.bold: true
+                                font.pixelSize: 12
+                            }
+
+                            QQC2.CheckBox {
+                                id: profDimUnusedCheck
+                                text: qsTr("Dim Unused Keys (DIM_UNUSED_KEYS 1 — turn off LEDs on unconfigured keys)")
+                            }
+
+                            QQC2.CheckBox {
+                                id: profLandscapeCheck
+                                text: qsTr("Landscape Orientation (IS_LANDSCAPE 1 — rotate OLED & key matrix 90°)")
+                            }
+
+                            QQC2.CheckBox {
+                                id: profUpperHsCheck
+                                text: qsTr("Inverted / Upper Hot-Swap Orientation (IS_UPPER_HS 1)")
+                            }
+                        }
+                    }
+
+                    // Related Profile Features Quick Access
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: profQuickRow.implicitHeight + 16
+                        radius: 6
+                        color: Kirigami.Theme.alternateBackgroundColor
+                        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.16)
+                        border.width: 1
+
+                        RowLayout {
+                            id: profQuickRow
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 8
+
+                            QQC2.Label {
+                                text: qsTr("Profile Integrations:")
+                                font.bold: true
+                                font.pixelSize: 12
+                            }
+
+                            QQC2.Button {
+                                text: qsTr("✨ Profile RGB Lighting FX...")
+                                onClicked: {
+                                    if (deviceController.activeProfile !== profilePropertiesWindow.profNumber) {
+                                        deviceController.selectProfile(profilePropertiesWindow.profNumber)
+                                        root.syncSidebarProfilesFromController()
+                                        hardwareCanvas.syncSlotsFromController()
+                                    }
+                                    lightingAnimatorDialog.openFor("profile", 0)
+                                }
+                            }
+
+                            QQC2.Button {
+                                icon.name: "crosshairs"
+                                text: qsTr("Bind Window...")
+                                onClicked: {
+                                    if (deviceController.activeProfile !== profilePropertiesWindow.profNumber) {
+                                        deviceController.selectProfile(profilePropertiesWindow.profNumber)
+                                        root.syncSidebarProfilesFromController()
+                                        hardwareCanvas.syncSlotsFromController()
+                                    }
+                                    deviceController.armWindowPicker(true)
+                                }
+                            }
+
+                            QQC2.Button {
+                                icon.name: "preferences-system-windows"
+                                text: qsTr("Auto-Switch Rules...")
+                                onClicked: autoSwitchDrawer.open()
+                            }
+
+                            Item { Layout.fillWidth: true }
+                        }
+                    }
+
+                    // Extra config.txt lines
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+
+                        QQC2.Label {
+                            text: qsTr("Additional Custom config.txt Directives (Optional, one per line):")
+                            font.bold: true
+                            font.pixelSize: 11
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+
+                        QQC2.TextArea {
+                            id: profExtraLinesArea
+                            Layout.fillWidth: true
+                            implicitHeight: 68
+                            font.family: "monospace"
+                            font.pixelSize: 11
+                            selectByMouse: true
+                            placeholderText: qsTr("// Optional custom config.txt directives")
+                            background: Rectangle {
+                                radius: 4
+                                color: Kirigami.Theme.alternateBackgroundColor
+                                border.color: Qt.alpha(Kirigami.Theme.textColor, 0.2)
+                                border.width: 1
+                            }
+                        }
+                    }
+
+                    QQC2.Label {
+                        visible: profilePropertiesWindow.statusFeedback.length > 0
+                        text: profilePropertiesWindow.statusFeedback
+                        color: Kirigami.Theme.positiveTextColor
+                        font.bold: true
+                        font.pixelSize: 11
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                QQC2.Button {
+                    text: qsTr("Apply")
+                    onClicked: profilePropertiesWindow.saveAllProfileProperties()
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.Button {
+                    text: qsTr("Cancel")
+                    onClicked: profilePropertiesWindow.close()
+                }
+
+                QQC2.Button {
+                    icon.name: "dialog-ok-apply"
+                    text: qsTr("Save & Close")
+                    highlighted: true
+                    font.bold: true
+                    onClicked: {
+                        if (profilePropertiesWindow.saveAllProfileProperties()) {
+                            profilePropertiesWindow.close()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Key / Slot Properties Window (Editable Fields for All Key Properties)
+    // =========================================================================
+    Window {
+        id: keyPropertiesWindow
+        title: qsTr("Key Properties — Slot %1 (%2)").arg(keyPropertiesWindow.slotNum).arg(keyPropertiesWindow.slotTitle)
+        width: 720
+        height: 680
+        minimumWidth: 580
+        minimumHeight: 540
+        visible: false
+        transientParent: root
+        modality: Qt.NonModal
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
+
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
+        color: Kirigami.Theme.backgroundColor
+
+        property int slotNum: 1
+        property string slotTitle: "Key 1"
+        property string slotColor: "#38bdf8"
+
+        function openForSlot(slotNumber) {
+            const targetSlot = slotNumber > 0 ? slotNumber : root.selectedSlotNumber
+            if (targetSlot <= 0) return
+            if (root.selectedSlotNumber !== targetSlot) {
+                hardwareCanvas.selectedSlot = targetSlot
+                root.loadSlotFromController(
+                    targetSlot,
+                    hardwareCanvas.slotTitleFor(targetSlot),
+                    hardwareCanvas.slotColorFor(targetSlot)
+                )
+            }
+            keyPropertiesWindow.slotNum = targetSlot
+            keyPropertiesWindow.slotTitle = root.selectedSlotTitle
+            keyPropertiesWindow.slotColor = root.selectedSlotColor
+
+            keyPropLabel1Field.text = label1Input.text.substring(0, 5)
+            keyPropLabel2Field.text = label2Input.text.substring(0, 5)
+            keyPropColorField.text = root.selectedSlotColor
+            keyPropDontRepeatCheck.checked = disableRepeatCheck.checked
+            keyPropAllowAbortCheck.checked = allowAbortCheck.checked
+            keyPropPressScriptArea.text = root.pressScriptBuffer
+            keyPropReleaseScriptArea.text = root.releaseScriptBuffer
+
+            keyPropertiesWindow.show()
+            keyPropertiesWindow.raise()
+            keyPropertiesWindow.requestActivate()
+        }
+
+        function applyKeyProperties() {
+            label1Input.text = keyPropLabel1Field.text.substring(0, 5)
+            label2Input.text = keyPropLabel2Field.text.substring(0, 5)
+            disableRepeatCheck.checked = keyPropDontRepeatCheck.checked
+            allowAbortCheck.checked = keyPropAllowAbortCheck.checked
+
+            const hexCandidate = keyPropColorField.text.trim()
+            if (keyPropertiesWindow.slotNum <= 20 && /^#[0-9A-Fa-f]{6}$/.test(hexCandidate)) {
+                const rVal = parseInt(hexCandidate.substring(1, 3), 16)
+                const gVal = parseInt(hexCandidate.substring(3, 5), 16)
+                const bVal = parseInt(hexCandidate.substring(5, 7), 16)
+                if (hexCandidate.toLowerCase() !== keyPropertiesWindow.slotColor.toLowerCase()) {
+                    hardwareCanvas.setKeyRgbAt(keyPropertiesWindow.slotNum, rVal, gVal, bVal)
+                }
+                root.selectedSlotColor = hexCandidate
+                keyPropertiesWindow.slotColor = hexCandidate
+            }
+
+            root.pressScriptBuffer = keyPropPressScriptArea.text
+            root.releaseScriptBuffer = keyPropReleaseScriptArea.text
+            scriptEditor.text = root.editingReleaseScript ? root.releaseScriptBuffer : root.pressScriptBuffer
+
+            root.saveCurrentSlotToController()
+            hardwareCanvas.syncSlotsFromController()
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 10
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Rectangle {
+                    width: 34
+                    height: 34
+                    radius: 8
+                    color: keyPropertiesWindow.slotColor
+                    border.color: "#ffffff66"
+                    border.width: 1
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    QQC2.Label {
+                        text: qsTr("Key Properties — %1 (Slot %2)").arg(keyPropertiesWindow.slotTitle).arg(keyPropertiesWindow.slotNum)
+                        font.bold: true
+                        font.pixelSize: 15
+                    }
+                    QQC2.Label {
+                        text: qsTr("Profile #%1 (%2) • Edit OLED labels, per-key RGB color, execution flags, and scripts.")
+                            .arg(deviceController.activeProfile)
+                            .arg(deviceController.activeProfileName)
+                        font.pixelSize: 11
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                }
+            }
+
+            QQC2.ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                contentWidth: availableWidth
+                QQC2.ScrollBar.vertical: HighContrastScrollBar {}
+
+                ColumnLayout {
+                    width: parent.width - 14
+                    spacing: 10
+
+                    // OLED Labels & Per-Key RGB Color Card
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: keyBasicGrid.implicitHeight + 18
+                        radius: 6
+                        color: Kirigami.Theme.alternateBackgroundColor
+                        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.16)
+                        border.width: 1
+
+                        GridLayout {
+                            id: keyBasicGrid
+                            anchors.fill: parent
+                            anchors.margins: 9
+                            columns: 2
+                            columnSpacing: 12
+                            rowSpacing: 8
+
+                            QQC2.Label {
+                                text: qsTr("OLED Line 1 (max 5 chars):")
+                                font.bold: true
+                                font.pixelSize: 12
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.TextField {
+                                    id: keyPropLabel1Field
+                                    Layout.fillWidth: true
+                                    maximumLength: 5
+                                    font.family: "monospace"
+                                    font.bold: true
+                                    selectByMouse: true
+                                    placeholderText: qsTr("Top line (max 5 chars)")
+                                }
+
+                                QQC2.Label {
+                                    text: qsTr("%1/5").arg(keyPropLabel1Field.text.length)
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                    color: Kirigami.Theme.disabledTextColor
+                                }
+                            }
+
+                            QQC2.Label {
+                                text: qsTr("OLED Line 2 (max 5 chars):")
+                                font.bold: true
+                                font.pixelSize: 12
+                                visible: keyPropertiesWindow.slotNum <= 20
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                visible: keyPropertiesWindow.slotNum <= 20
+
+                                QQC2.TextField {
+                                    id: keyPropLabel2Field
+                                    Layout.fillWidth: true
+                                    maximumLength: 5
+                                    font.family: "monospace"
+                                    selectByMouse: true
+                                    placeholderText: qsTr("Bottom line (max 5 chars, optional)")
+                                }
+
+                                QQC2.Label {
+                                    text: qsTr("%1/5").arg(keyPropLabel2Field.text.length)
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                    color: Kirigami.Theme.disabledTextColor
+                                }
+                            }
+
+                            QQC2.Label {
+                                text: qsTr("Key RGB Color (SWCOLOR):")
+                                font.bold: true
+                                font.pixelSize: 12
+                                visible: keyPropertiesWindow.slotNum <= 20
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                visible: keyPropertiesWindow.slotNum <= 20
+
+                                Rectangle {
+                                    width: 24
+                                    height: 24
+                                    radius: 4
+                                    color: /^#[0-9A-Fa-f]{6}$/.test(keyPropColorField.text.trim())
+                                        ? keyPropColorField.text.trim()
+                                        : keyPropertiesWindow.slotColor
+                                    border.color: "#ffffff88"
+                                    border.width: 1
+                                }
+
+                                QQC2.TextField {
+                                    id: keyPropColorField
+                                    Layout.preferredWidth: 96
+                                    maximumLength: 7
+                                    font.family: "monospace"
+                                    selectByMouse: true
+                                }
+
+                                QQC2.Button {
+                                    icon.name: "color-picker"
+                                    text: qsTr("Color Picker...")
+                                    onClicked: duckyColorPickerWindow.openForKey(keyPropertiesWindow.slotNum, keyPropColorField.text.trim())
+                                }
+
+                                QQC2.Button {
+                                    icon.name: "edit-clear"
+                                    text: qsTr("Use Profile Default")
+                                    onClicked: {
+                                        deviceController.clearKeyColor(keyPropertiesWindow.slotNum)
+                                        hardwareCanvas.syncSlotsFromController()
+                                        const defCol = hardwareCanvas.slotColorFor(keyPropertiesWindow.slotNum)
+                                        keyPropertiesWindow.slotColor = defCol
+                                        keyPropColorField.text = defCol
+                                        if (root.selectedSlotNumber === keyPropertiesWindow.slotNum) {
+                                            root.selectedSlotColor = defCol
+                                        }
+                                    }
+                                }
+
+                                Item { Layout.fillWidth: true }
+                            }
+                        }
+                    }
+
+                    // Execution Behavior Flags Card
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: keyFlagsCol.implicitHeight + 18
+                        radius: 6
+                        color: Kirigami.Theme.alternateBackgroundColor
+                        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.16)
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: keyFlagsCol
+                            anchors.fill: parent
+                            anchors.margins: 9
+                            spacing: 6
+
+                            QQC2.Label {
+                                text: qsTr("Hardware Execution Flags (config.txt):")
+                                font.bold: true
+                                font.pixelSize: 12
+                            }
+
+                            QQC2.CheckBox {
+                                id: keyPropDontRepeatCheck
+                                text: qsTr("No Repeat on Key Held Down (dr%1 — run once per physical press instead of auto-repeating)").arg(keyPropertiesWindow.slotNum)
+                            }
+
+                            QQC2.CheckBox {
+                                id: keyPropAllowAbortCheck
+                                text: qsTr("Allow Early Abort (ab%1 — pressing any key while this macro runs terminates it immediately)").arg(keyPropertiesWindow.slotNum)
+                            }
+                        }
+                    }
+
+                    // Quick Action Windows Row
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: keyQuickWinsRow.implicitHeight + 16
+                        radius: 6
+                        color: Kirigami.Theme.alternateBackgroundColor
+                        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.16)
+                        border.width: 1
+
+                        RowLayout {
+                            id: keyQuickWinsRow
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 6
+
+                            QQC2.Button {
+                                visible: keyPropertiesWindow.slotNum <= 20
+                                text: qsTr("✨ Key RGB FX...")
+                                onClicked: lightingAnimatorDialog.openFor("key", keyPropertiesWindow.slotNum)
+                            }
+
+                            QQC2.Button {
+                                text: qsTr("🚀 Launch App Window...")
+                                onClicked: appLaunchConfigWindow.openWindow()
+                            }
+
+                            QQC2.Button {
+                                text: qsTr("🌐 Web API Window...")
+                                onClicked: webApiKeyConfigWindow.openWindow()
+                            }
+
+                            QQC2.Button {
+                                text: qsTr("🔴 Record Macro...")
+                                onClicked: macroRecorderDialog.openRecorder()
+                            }
+
+                            Item { Layout.fillWidth: true }
+                        }
+                    }
+
+                    // On Press & On Release Scripts
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+
+                        QQC2.Label {
+                            text: qsTr("⬇ On Press DuckyScript 3 (key%1.txt):").arg(keyPropertiesWindow.slotNum)
+                            font.bold: true
+                            font.pixelSize: 12
+                        }
+
+                        QQC2.TextArea {
+                            id: keyPropPressScriptArea
+                            Layout.fillWidth: true
+                            implicitHeight: 110
+                            font.family: "monospace"
+                            font.pixelSize: 11
+                            selectByMouse: true
+                            placeholderText: qsTr("// On Press DuckyScript 3 commands")
+                            background: Rectangle {
+                                radius: 4
+                                color: Kirigami.Theme.alternateBackgroundColor
+                                border.color: Qt.alpha(Kirigami.Theme.textColor, 0.2)
+                                border.width: 1
+                            }
+                        }
+
+                        QQC2.Label {
+                            visible: keyPropertiesWindow.slotNum <= 20
+                            text: qsTr("⬆ On Release DuckyScript 3 (key%1-release.txt):").arg(keyPropertiesWindow.slotNum)
+                            font.bold: true
+                            font.pixelSize: 12
+                        }
+
+                        QQC2.TextArea {
+                            id: keyPropReleaseScriptArea
+                            visible: keyPropertiesWindow.slotNum <= 20
+                            Layout.fillWidth: true
+                            implicitHeight: 80
+                            font.family: "monospace"
+                            font.pixelSize: 11
+                            selectByMouse: true
+                            placeholderText: qsTr("// Optional On Release DuckyScript 3 commands")
+                            background: Rectangle {
+                                radius: 4
+                                color: Kirigami.Theme.alternateBackgroundColor
+                                border.color: Qt.alpha(Kirigami.Theme.textColor, 0.2)
+                                border.width: 1
+                            }
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                QQC2.Button {
+                    text: qsTr("Apply")
+                    onClicked: keyPropertiesWindow.applyKeyProperties()
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.Button {
+                    text: qsTr("Cancel")
+                    onClicked: keyPropertiesWindow.close()
+                }
+
+                QQC2.Button {
+                    icon.name: "dialog-ok-apply"
+                    text: qsTr("Save & Close")
+                    highlighted: true
+                    font.bold: true
+                    onClicked: {
+                        keyPropertiesWindow.applyKeyProperties()
+                        keyPropertiesWindow.close()
+                    }
+                }
+            }
+        }
+    }
+
     property int showcaseStep: 0
 
     function selectShowcaseSlot(slotNum) {
@@ -9586,6 +10825,1443 @@ Kirigami.ApplicationWindow {
                 aboutDialog.close()
                 showcaseRunnerTimer.stop()
                 deviceController.quitApplication()
+            }
+        }
+    }
+
+    // =========================================================================
+    // RGB Lighting Animator Window (Profile-Wide & Per-Key Gaming FX)
+    // =========================================================================
+    Window {
+        id: lightingAnimatorDialog
+        title: qsTr("RGB Lighting Effects & Animations — DuckyDeck Studio")
+        visible: false
+        transientParent: root
+        modality: Qt.NonModal
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
+        width: Math.min(720, Screen.desktopAvailableWidth - 80)
+        height: Math.min(680, Screen.desktopAvailableHeight - 80)
+        minimumWidth: 600
+        minimumHeight: 500
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
+        color: Kirigami.Theme.backgroundColor
+
+        property string targetScope: "profile" // "profile" or "key"
+        property int targetKeySlot: 1
+        property bool animEnabled: false
+        property string animPreset: "wave_h"
+        property string animTrigger: "both" // "idle" | "keypress" | "both"
+        property int animSpeed: 5
+        property string animColor1: "#38bdf8"
+        property string animColor2: "#a855f7"
+        property int animIdleTimeoutSec: 5
+        property bool animPushToHardware: true
+        property bool animCompileIntoScript: true
+        property string statusBannerText: ""
+
+        readonly property var presetCatalog: [
+            { id: "pulse", icon: "💓", title: qsTr("Breathing / Pulse"), desc: qsTr("Smooth sinusoidal breathing between Primary & Secondary RGB colors") },
+            { id: "wave_h", icon: "🌊", title: qsTr("Horizontal Wave"), desc: qsTr("Sweeping RGB color wave flowing left-to-right across key columns") },
+            { id: "wave_v", icon: "💧", title: qsTr("Vertical Cascade"), desc: qsTr("Cascading RGB color wave flowing top-to-bottom down key rows") },
+            { id: "ripple", icon: "💥", title: qsTr("Ripple / Shockwave"), desc: qsTr("Radial shockwave ring expanding outward from pressed or center key") },
+            { id: "starlight", icon: "✨", title: qsTr("Reactive Starlight"), desc: qsTr("Twinkling multi-speed stardust sparkles across keycaps") },
+            { id: "spectrum", icon: "🌈", title: qsTr("Rainbow Spectrum"), desc: qsTr("Continuous 360° HSV gaming rainbow cycle across all keys") },
+            { id: "scanner", icon: "🚨", title: qsTr("Knight Rider Scanner"), desc: qsTr("Sweeping Cylon/KITT beam with glowing aftertrail") }
+        ]
+
+        readonly property var quickColors: [
+            "#38bdf8", "#a855f7", "#ec4899", "#ef4444",
+            "#f97316", "#eab308", "#22c55e", "#14b8a6",
+            "#3b82f6", "#6366f1", "#ffffff", "#0f172a"
+        ]
+
+        function loadTargetConfig() {
+            let cfg = (lightingAnimatorDialog.targetScope === "key")
+                ? root.getKeyLightingConfig(lightingAnimatorDialog.targetKeySlot)
+                : root.getProfileLightingConfig()
+            if (!cfg) {
+                cfg = root.defaultLightingConfig(lightingAnimatorDialog.targetScope !== "key")
+            }
+            lightingAnimatorDialog.animEnabled = Boolean(cfg.enabled)
+            lightingAnimatorDialog.animPreset = cfg.preset ? String(cfg.preset) : "wave_h"
+            lightingAnimatorDialog.animTrigger = cfg.trigger ? String(cfg.trigger) : "both"
+            lightingAnimatorDialog.animSpeed = cfg.speed !== undefined ? Number(cfg.speed) : 5
+            lightingAnimatorDialog.animColor1 = cfg.color1 ? String(cfg.color1) : "#38bdf8"
+            lightingAnimatorDialog.animColor2 = cfg.color2 ? String(cfg.color2) : "#a855f7"
+            lightingAnimatorDialog.animIdleTimeoutSec = cfg.idleTimeoutSec !== undefined ? Number(cfg.idleTimeoutSec) : 5
+            lightingAnimatorDialog.animPushToHardware = cfg.streamToHardware !== undefined
+                ? Boolean(cfg.streamToHardware)
+                : (cfg.pushToHardware !== undefined ? Boolean(cfg.pushToHardware) : true)
+            lightingAnimatorDialog.animCompileIntoScript = cfg.embedInKeyScript !== undefined
+                ? Boolean(cfg.embedInKeyScript)
+                : (cfg.compileIntoScript !== undefined ? Boolean(cfg.compileIntoScript) : true)
+            lightingAnimatorDialog.statusBannerText = ""
+        }
+
+        function currentConfigObject() {
+            return {
+                enabled: lightingAnimatorDialog.animEnabled,
+                preset: lightingAnimatorDialog.animPreset,
+                trigger: lightingAnimatorDialog.animTrigger,
+                speed: lightingAnimatorDialog.animSpeed,
+                color1: lightingAnimatorDialog.animColor1,
+                color2: lightingAnimatorDialog.animColor2,
+                idleTimeoutSec: lightingAnimatorDialog.animIdleTimeoutSec,
+                streamToHardware: lightingAnimatorDialog.animPushToHardware,
+                embedInKeyScript: lightingAnimatorDialog.animCompileIntoScript,
+                pushToHardware: lightingAnimatorDialog.animPushToHardware,
+                compileIntoScript: lightingAnimatorDialog.animCompileIntoScript
+            }
+        }
+
+        function openFor(scope, slotNumber) {
+            lightingAnimatorDialog.targetScope = (scope === "key") ? "key" : "profile"
+            if (slotNumber >= 1 && slotNumber <= 20) {
+                lightingAnimatorDialog.targetKeySlot = slotNumber
+            } else if (root.selectedSlotNumber >= 1 && root.selectedSlotNumber <= 20) {
+                lightingAnimatorDialog.targetKeySlot = root.selectedSlotNumber
+            } else {
+                lightingAnimatorDialog.targetKeySlot = 1
+            }
+            lightingAnimatorDialog.loadTargetConfig()
+            lightingAnimatorDialog.show()
+            lightingAnimatorDialog.raise()
+            lightingAnimatorDialog.requestActivate()
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 10
+
+            // Header
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Rectangle {
+                    width: 34
+                    height: 34
+                    radius: 8
+                    color: Qt.alpha("#a855f7", 0.2)
+                    border.color: "#c084fc"
+                    border.width: 1
+                    QQC2.Label {
+                        anchors.centerIn: parent
+                        text: "✨"
+                        font.pixelSize: 18
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    QQC2.Label {
+                        text: qsTr("Gaming RGB Lighting Effects & Key Animations")
+                        font.bold: true
+                        font.pixelSize: 15
+                        color: Kirigami.Theme.textColor
+                    }
+                    QQC2.Label {
+                        text: qsTr("Attach idle or reactive keypress animations (Pulse, Waves, Ripple, Starlight, Spectrum, Scanner) to an entire profile or an individual key.")
+                        font.pixelSize: 11
+                        color: Kirigami.Theme.disabledTextColor
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+                }
+            }
+
+            // Scope Selector Bar (Profile-Wide vs Individual Key)
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: scopeRow.implicitHeight + 16
+                radius: 6
+                color: Kirigami.Theme.alternateBackgroundColor
+                border.color: Qt.alpha(Kirigami.Theme.textColor, 0.18)
+                border.width: 1
+
+                RowLayout {
+                    id: scopeRow
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 8
+
+                    QQC2.Label {
+                        text: qsTr("Attach To:")
+                        font.bold: true
+                        font.pixelSize: 12
+                    }
+
+                    QQC2.Button {
+                        text: qsTr("🎛 Entire Profile #%1 (%2)")
+                            .arg(deviceController.activeProfile)
+                            .arg(deviceController.activeProfileName)
+                        checkable: true
+                        checked: lightingAnimatorDialog.targetScope === "profile"
+                        highlighted: lightingAnimatorDialog.targetScope === "profile"
+                        font.bold: lightingAnimatorDialog.targetScope === "profile"
+                        onClicked: {
+                            lightingAnimatorDialog.targetScope = "profile"
+                            lightingAnimatorDialog.loadTargetConfig()
+                        }
+                    }
+
+                    QQC2.Button {
+                        text: qsTr("⌨ Individual Mechanical Key")
+                        checkable: true
+                        checked: lightingAnimatorDialog.targetScope === "key"
+                        highlighted: lightingAnimatorDialog.targetScope === "key"
+                        font.bold: lightingAnimatorDialog.targetScope === "key"
+                        onClicked: {
+                            lightingAnimatorDialog.targetScope = "key"
+                            lightingAnimatorDialog.loadTargetConfig()
+                        }
+                    }
+
+                    QQC2.ComboBox {
+                        id: animKeySelectorCombo
+                        visible: lightingAnimatorDialog.targetScope === "key"
+                        Layout.preferredWidth: 165
+                        model: {
+                            let arr = []
+                            for (let k = 1; k <= 20; k++) {
+                                const t = hardwareCanvas.slotTitleFor(k)
+                                arr.push(qsTr("Key %1 — %2").arg(k).arg(t))
+                            }
+                            return arr
+                        }
+                        currentIndex: Math.max(0, Math.min(19, lightingAnimatorDialog.targetKeySlot - 1))
+                        onActivated: (idx) => {
+                            lightingAnimatorDialog.targetKeySlot = idx + 1
+                            lightingAnimatorDialog.loadTargetConfig()
+                        }
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    QQC2.Switch {
+                        checked: lightingAnimatorDialog.animEnabled
+                        text: lightingAnimatorDialog.animEnabled ? qsTr("Effect Enabled") : qsTr("Effect Disabled")
+                        font.bold: true
+                        onToggled: lightingAnimatorDialog.animEnabled = checked
+                    }
+                }
+            }
+
+            // Scrollable Settings Body
+            QQC2.ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                contentWidth: availableWidth
+                QQC2.ScrollBar.vertical: HighContrastScrollBar {}
+
+                ColumnLayout {
+                    width: parent.width - 14
+                    spacing: 10
+
+                    // Trigger Condition Card
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: triggerCol.implicitHeight + 16
+                        radius: 6
+                        color: Kirigami.Theme.alternateBackgroundColor
+                        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.15)
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: triggerCol
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 6
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("Animation Trigger:")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("⚡ On Keypress + When Idle (Both)")
+                                    checkable: true
+                                    checked: lightingAnimatorDialog.animTrigger === "both"
+                                    highlighted: lightingAnimatorDialog.animTrigger === "both"
+                                    onClicked: {
+                                        lightingAnimatorDialog.animTrigger = "both"
+                                        lightingAnimatorDialog.animEnabled = true
+                                    }
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("👆 On Keypress Only")
+                                    checkable: true
+                                    checked: lightingAnimatorDialog.animTrigger === "keypress"
+                                    highlighted: lightingAnimatorDialog.animTrigger === "keypress"
+                                    onClicked: {
+                                        lightingAnimatorDialog.animTrigger = "keypress"
+                                        lightingAnimatorDialog.animEnabled = true
+                                    }
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("🌙 When Idle Only")
+                                    checkable: true
+                                    checked: lightingAnimatorDialog.animTrigger === "idle"
+                                    highlighted: lightingAnimatorDialog.animTrigger === "idle"
+                                    onClicked: {
+                                        lightingAnimatorDialog.animTrigger = "idle"
+                                        lightingAnimatorDialog.animEnabled = true
+                                    }
+                                }
+
+                                Item { Layout.fillWidth: true }
+                            }
+
+                            RowLayout {
+                                visible: lightingAnimatorDialog.animTrigger === "idle" || lightingAnimatorDialog.animTrigger === "both"
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("Start Idle Animation After:")
+                                    font.pixelSize: 11
+                                    color: Kirigami.Theme.disabledTextColor
+                                }
+
+                                QQC2.SpinBox {
+                                    from: 0
+                                    to: 300
+                                    value: lightingAnimatorDialog.animIdleTimeoutSec
+                                    onValueModified: lightingAnimatorDialog.animIdleTimeoutSec = value
+                                }
+
+                                QQC2.Label {
+                                    text: qsTr("seconds of inactivity (0 = animate continuously)")
+                                    font.pixelSize: 11
+                                    color: Kirigami.Theme.disabledTextColor
+                                }
+                            }
+                        }
+                    }
+
+                    // Preset Cards Grid
+                    QQC2.Label {
+                        text: qsTr("Select Animation Preset:")
+                        font.bold: true
+                        font.pixelSize: 12
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 2
+                        rowSpacing: 8
+                        columnSpacing: 8
+
+                        Repeater {
+                            model: lightingAnimatorDialog.presetCatalog
+
+                            delegate: Rectangle {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                implicitHeight: presetCardRow.implicitHeight + 16
+                                radius: 6
+                                readonly property bool isSelected: lightingAnimatorDialog.animPreset === modelData.id
+                                color: isSelected
+                                    ? Qt.alpha("#a855f7", 0.22)
+                                    : (presetMouse.containsMouse ? Qt.lighter(Kirigami.Theme.alternateBackgroundColor, 1.15) : Kirigami.Theme.alternateBackgroundColor)
+                                border.color: isSelected ? "#c084fc" : Qt.alpha(Kirigami.Theme.textColor, 0.16)
+                                border.width: isSelected ? 2 : 1
+
+                                RowLayout {
+                                    id: presetCardRow
+                                    anchors.fill: parent
+                                    anchors.margins: 8
+                                    spacing: 8
+
+                                    QQC2.Label {
+                                        text: modelData.icon
+                                        font.pixelSize: 20
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+                                        QQC2.Label {
+                                            text: modelData.title
+                                            font.bold: true
+                                            font.pixelSize: 12
+                                            color: isSelected ? "#f3e8ff" : Kirigami.Theme.textColor
+                                        }
+                                        QQC2.Label {
+                                            text: modelData.desc
+                                            font.pixelSize: 10
+                                            color: Kirigami.Theme.disabledTextColor
+                                            wrapMode: Text.WordWrap
+                                            Layout.fillWidth: true
+                                        }
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: presetMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        lightingAnimatorDialog.animPreset = modelData.id
+                                        lightingAnimatorDialog.animEnabled = true
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Speed & Colors Card
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: speedColorCol.implicitHeight + 16
+                        radius: 6
+                        color: Kirigami.Theme.alternateBackgroundColor
+                        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.15)
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: speedColorCol
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 8
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+
+                                QQC2.Label {
+                                    text: qsTr("Animation Speed:")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                    Layout.preferredWidth: 130
+                                }
+
+                                QQC2.Slider {
+                                    Layout.fillWidth: true
+                                    from: 1
+                                    to: 10
+                                    stepSize: 1
+                                    snapMode: QQC2.Slider.SnapAlways
+                                    value: lightingAnimatorDialog.animSpeed
+                                    onMoved: lightingAnimatorDialog.animSpeed = Math.round(value)
+                                }
+
+                                QQC2.Label {
+                                    text: qsTr("%1 / 10").arg(lightingAnimatorDialog.animSpeed)
+                                    font.family: "monospace"
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                    Layout.preferredWidth: 48
+                                }
+                            }
+
+                            // Primary Color Row
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("Primary Color:")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                    Layout.preferredWidth: 130
+                                }
+
+                                Rectangle {
+                                    width: 24
+                                    height: 24
+                                    radius: 4
+                                    color: lightingAnimatorDialog.animColor1
+                                    border.color: "#ffffff66"
+                                    border.width: 1
+                                }
+
+                                QQC2.TextField {
+                                    Layout.preferredWidth: 86
+                                    text: lightingAnimatorDialog.animColor1
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                    maximumLength: 7
+                                    onTextEdited: {
+                                        if (/^#[0-9A-Fa-f]{6}$/.test(text.trim())) {
+                                            lightingAnimatorDialog.animColor1 = text.trim()
+                                        }
+                                    }
+                                }
+
+                                Repeater {
+                                    model: lightingAnimatorDialog.quickColors
+                                    delegate: Rectangle {
+                                        required property string modelData
+                                        width: 18
+                                        height: 18
+                                        radius: 3
+                                        color: modelData
+                                        border.color: lightingAnimatorDialog.animColor1.toLowerCase() === modelData.toLowerCase()
+                                            ? "#ffffff"
+                                            : "#00000055"
+                                        border.width: lightingAnimatorDialog.animColor1.toLowerCase() === modelData.toLowerCase() ? 2 : 1
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: lightingAnimatorDialog.animColor1 = modelData
+                                        }
+                                    }
+                                }
+
+                                Item { Layout.fillWidth: true }
+                            }
+
+                            // Secondary Color Row
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("Secondary Color:")
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                    Layout.preferredWidth: 130
+                                }
+
+                                Rectangle {
+                                    width: 24
+                                    height: 24
+                                    radius: 4
+                                    color: lightingAnimatorDialog.animColor2
+                                    border.color: "#ffffff66"
+                                    border.width: 1
+                                }
+
+                                QQC2.TextField {
+                                    Layout.preferredWidth: 86
+                                    text: lightingAnimatorDialog.animColor2
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                    maximumLength: 7
+                                    onTextEdited: {
+                                        if (/^#[0-9A-Fa-f]{6}$/.test(text.trim())) {
+                                            lightingAnimatorDialog.animColor2 = text.trim()
+                                        }
+                                    }
+                                }
+
+                                Repeater {
+                                    model: lightingAnimatorDialog.quickColors
+                                    delegate: Rectangle {
+                                        required property string modelData
+                                        width: 18
+                                        height: 18
+                                        radius: 3
+                                        color: modelData
+                                        border.color: lightingAnimatorDialog.animColor2.toLowerCase() === modelData.toLowerCase()
+                                            ? "#ffffff"
+                                            : "#00000055"
+                                        border.width: lightingAnimatorDialog.animColor2.toLowerCase() === modelData.toLowerCase() ? 2 : 1
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: lightingAnimatorDialog.animColor2 = modelData
+                                        }
+                                    }
+                                }
+
+                                Item { Layout.fillWidth: true }
+                            }
+                        }
+                    }
+
+                    // Hardware Streaming & Autonomous DuckyScript Compilation Options
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: hwOptsCol.implicitHeight + 16
+                        radius: 6
+                        color: Kirigami.Theme.alternateBackgroundColor
+                        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.15)
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: hwOptsCol
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 6
+
+                            QQC2.CheckBox {
+                                checked: lightingAnimatorDialog.animPushToHardware
+                                text: qsTr("Stream live RGB animation frames to physical duckyPad LEDs over USB HID")
+                                font.bold: true
+                                font.pixelSize: 11
+                                onToggled: lightingAnimatorDialog.animPushToHardware = checked
+                            }
+
+                            QQC2.CheckBox {
+                                visible: lightingAnimatorDialog.targetScope === "key" && (lightingAnimatorDialog.animTrigger === "keypress" || lightingAnimatorDialog.animTrigger === "both")
+                                checked: lightingAnimatorDialog.animCompileIntoScript
+                                text: qsTr("Embed standalone DuckyScript 3 SWC_SET / SWC_RESET animation block into Key %1's script (runs on hardware even without PC app)")
+                                    .arg(lightingAnimatorDialog.targetKeySlot)
+                                font.pixelSize: 11
+                                onToggled: lightingAnimatorDialog.animCompileIntoScript = checked
+                            }
+                        }
+                    }
+
+                    // Status feedback banner
+                    Rectangle {
+                        visible: lightingAnimatorDialog.statusBannerText.length > 0
+                        Layout.fillWidth: true
+                        implicitHeight: statusLbl.implicitHeight + 12
+                        radius: 5
+                        color: Qt.alpha("#22c55e", 0.16)
+                        border.color: "#22c55e"
+                        border.width: 1
+
+                        QQC2.Label {
+                            id: statusLbl
+                            anchors.fill: parent
+                            anchors.margins: 6
+                            text: lightingAnimatorDialog.statusBannerText
+                            color: "#86efac"
+                            font.bold: true
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+            }
+
+            // Bottom Action Bar
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                QQC2.Button {
+                    text: qsTr("🗑 Disable / Clear Effect")
+                    onClicked: {
+                        lightingAnimatorDialog.animEnabled = false
+                        const cfg = lightingAnimatorDialog.currentConfigObject()
+                        root.saveLightingAnimationConfig(
+                            lightingAnimatorDialog.targetScope,
+                            lightingAnimatorDialog.targetKeySlot,
+                            cfg
+                        )
+                        lightingAnimatorDialog.statusBannerText = qsTr("Cleared animation effect for %1.")
+                            .arg(lightingAnimatorDialog.targetScope === "key"
+                                ? qsTr("Key %1").arg(lightingAnimatorDialog.targetKeySlot)
+                                : qsTr("Profile #%1").arg(deviceController.activeProfile))
+                    }
+                }
+
+                QQC2.Button {
+                    text: qsTr("▶ Preview Burst Now")
+                    onClicked: {
+                        lightingAnimatorDialog.animEnabled = true
+                        const cfg = lightingAnimatorDialog.currentConfigObject()
+                        root.saveLightingAnimationConfig(
+                            lightingAnimatorDialog.targetScope,
+                            lightingAnimatorDialog.targetKeySlot,
+                            cfg
+                        )
+                        const previewSlot = lightingAnimatorDialog.targetScope === "key"
+                            ? lightingAnimatorDialog.targetKeySlot
+                            : (root.selectedSlotNumber >= 1 && root.selectedSlotNumber <= 20 ? root.selectedSlotNumber : 8)
+                        hardwareCanvas.triggerKeypressBurst(previewSlot, cfg, lightingAnimatorDialog.targetScope)
+                        lightingAnimatorDialog.statusBannerText = qsTr("Previewing '%1' on Hardware Canvas%2!")
+                            .arg(lightingAnimatorDialog.animPreset)
+                            .arg(deviceController.connected && lightingAnimatorDialog.animPushToHardware ? qsTr(" and physical duckyPad") : "")
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.Button {
+                    text: qsTr("Close")
+                    onClicked: lightingAnimatorDialog.close()
+                }
+
+                QQC2.Button {
+                    text: qsTr("💾 Save & Apply Animation")
+                    highlighted: true
+                    font.bold: true
+                    onClicked: {
+                        const cfg = lightingAnimatorDialog.currentConfigObject()
+                        root.saveLightingAnimationConfig(
+                            lightingAnimatorDialog.targetScope,
+                            lightingAnimatorDialog.targetKeySlot,
+                            cfg
+                        )
+                        const previewSlot = lightingAnimatorDialog.targetScope === "key"
+                            ? lightingAnimatorDialog.targetKeySlot
+                            : (root.selectedSlotNumber >= 1 && root.selectedSlotNumber <= 20 ? root.selectedSlotNumber : 8)
+                        if (cfg.enabled) {
+                            hardwareCanvas.triggerKeypressBurst(previewSlot, cfg, lightingAnimatorDialog.targetScope)
+                        }
+                        lightingAnimatorDialog.statusBannerText = qsTr("Saved lighting animation for %1.")
+                            .arg(lightingAnimatorDialog.targetScope === "key"
+                                ? qsTr("Key %1").arg(lightingAnimatorDialog.targetKeySlot)
+                                : qsTr("Profile #%1 (%2)").arg(deviceController.activeProfile).arg(deviceController.activeProfileName))
+                    }
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Live Macro Recorder Window (Creates DuckyScript 3 with Exact Timings,
+    // As Fast As Possible, Fixed Delay, Keyboard Keys & Mouse Moves/Clicks)
+    // =========================================================================
+    Window {
+        id: macroRecorderDialog
+        title: qsTr("Live Macro Recorder (DuckyScript 3) — DuckyDeck Studio")
+        visible: false
+        transientParent: root
+        modality: Qt.NonModal
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
+        width: Math.min(780, Screen.desktopAvailableWidth - 80)
+        height: Math.min(680, Screen.desktopAvailableHeight - 80)
+        minimumWidth: 640
+        minimumHeight: 500
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
+        color: Kirigami.Theme.backgroundColor
+
+        property bool isRecording: false
+        property bool globalEvdevActive: false
+        property string timingMode: "exact" // "exact" | "fast" | "fixed"
+        property int fixedDelayMs: 35
+        property int minDelayThresholdMs: 12
+        property bool captureKeyboard: true
+        property bool captureMouseClicks: true
+        property bool captureMouseMoves: false
+        property var rawEvents: []
+        property double recordingStartMs: 0
+        property double lastInputMs: 0
+        property real lastPadMouseX: -1
+        property real lastPadMouseY: -1
+        property double lastEvdevEventMs: 0
+
+        function openRecorder() {
+            macroRecorderDialog.show()
+            macroRecorderDialog.raise()
+            macroRecorderDialog.requestActivate()
+            captureFocusPad.forceActiveFocus()
+        }
+
+        function startRecordingSession() {
+            macroRecorderDialog.rawEvents = []
+            macroRecorderDialog.recordingStartMs = Date.now()
+            macroRecorderDialog.lastInputMs = macroRecorderDialog.recordingStartMs
+            macroRecorderDialog.lastPadMouseX = -1
+            macroRecorderDialog.lastPadMouseY = -1
+            macroRecorderDialog.isRecording = true
+            macroRecorderDialog.globalEvdevActive = deviceController.startGlobalMacroCapture(
+                macroRecorderDialog.captureMouseMoves,
+                macroRecorderDialog.captureMouseClicks
+            )
+            evdevPollTimer.start()
+            macroRecorderDialog.rebuildGeneratedDuckyScript()
+            captureFocusPad.forceActiveFocus()
+        }
+
+        function stopRecordingSession() {
+            if (!macroRecorderDialog.isRecording) return
+            evdevPollTimer.stop()
+            macroRecorderDialog.pollEvdevOnce()
+            deviceController.stopGlobalMacroCapture()
+            macroRecorderDialog.isRecording = false
+            macroRecorderDialog.globalEvdevActive = false
+            macroRecorderDialog.rebuildGeneratedDuckyScript()
+        }
+
+        onClosing: {
+            if (macroRecorderDialog.isRecording) {
+                macroRecorderDialog.stopRecordingSession()
+            }
+        }
+
+        function qtKeyToDuckyName(key, text) {
+            switch (key) {
+                case Qt.Key_Return:
+                case Qt.Key_Enter: return "ENTER"
+                case Qt.Key_Escape: return "ESC"
+                case Qt.Key_Backspace: return "BACKSPACE"
+                case Qt.Key_Tab: return "TAB"
+                case Qt.Key_Space: return "SPACE"
+                case Qt.Key_CapsLock: return "CAPSLOCK"
+                case Qt.Key_Print: return "PRINTSCREEN"
+                case Qt.Key_ScrollLock: return "SCROLLLOCK"
+                case Qt.Key_Pause: return "PAUSE"
+                case Qt.Key_Insert: return "INSERT"
+                case Qt.Key_Home: return "HOME"
+                case Qt.Key_PageUp: return "PAGEUP"
+                case Qt.Key_Delete: return "DELETE"
+                case Qt.Key_End: return "END"
+                case Qt.Key_PageDown: return "PAGEDOWN"
+                case Qt.Key_Right: return "RIGHT"
+                case Qt.Key_Left: return "LEFT"
+                case Qt.Key_Down: return "DOWN"
+                case Qt.Key_Up: return "UP"
+                case Qt.Key_NumLock: return "NUMLOCK"
+                case Qt.Key_Menu: return "MENU"
+                case Qt.Key_Shift: return "SHIFT"
+                case Qt.Key_Control: return "CTRL"
+                case Qt.Key_Alt: return "ALT"
+                case Qt.Key_AltGr: return "RALT"
+                case Qt.Key_Meta:
+                case Qt.Key_Super_L:
+                case Qt.Key_Super_R: return "WIN"
+                case Qt.Key_F1: return "F1"
+                case Qt.Key_F2: return "F2"
+                case Qt.Key_F3: return "F3"
+                case Qt.Key_F4: return "F4"
+                case Qt.Key_F5: return "F5"
+                case Qt.Key_F6: return "F6"
+                case Qt.Key_F7: return "F7"
+                case Qt.Key_F8: return "F8"
+                case Qt.Key_F9: return "F9"
+                case Qt.Key_F10: return "F10"
+                case Qt.Key_F11: return "F11"
+                case Qt.Key_F12: return "F12"
+                case Qt.Key_F13: return "F13"
+                case Qt.Key_F14: return "F14"
+                case Qt.Key_F15: return "F15"
+                case Qt.Key_F16: return "F16"
+                case Qt.Key_F17: return "F17"
+                case Qt.Key_F18: return "F18"
+                case Qt.Key_F19: return "F19"
+                case Qt.Key_F20: return "F20"
+                case Qt.Key_F21: return "F21"
+                case Qt.Key_F22: return "F22"
+                case Qt.Key_F23: return "F23"
+                case Qt.Key_F24: return "F24"
+                case Qt.Key_Minus: return "MINUS"
+                case Qt.Key_Equal: return "EQUAL"
+                case Qt.Key_BracketLeft: return "LEFTBRACE"
+                case Qt.Key_BracketRight: return "RIGHTBRACE"
+                case Qt.Key_Backslash: return "BACKSLASH"
+                case Qt.Key_Semicolon: return "SEMICOLON"
+                case Qt.Key_Apostrophe: return "APOSTROPHE"
+                case Qt.Key_QuoteLeft: return "GRAVE"
+                case Qt.Key_Comma: return "COMMA"
+                case Qt.Key_Period: return "DOT"
+                case Qt.Key_Slash: return "SLASH"
+                default: break
+            }
+            if (key >= Qt.Key_A && key <= Qt.Key_Z) {
+                return String.fromCharCode(97 + (key - Qt.Key_A))
+            }
+            if (key >= Qt.Key_0 && key <= Qt.Key_9) {
+                return String.fromCharCode(48 + (key - Qt.Key_0))
+            }
+            if (text && text.length === 1) {
+                const c = text.toLowerCase()
+                if (/[a-z0-9]/.test(c)) return c
+            }
+            return ""
+        }
+
+        function appendRecordedEvent(evt) {
+            let list = macroRecorderDialog.rawEvents.slice()
+            // Coalesce consecutive mouse_move events within 25ms
+            if (evt.kind === "mouse_move" && list.length > 0) {
+                let prev = list[list.length - 1]
+                if (prev.kind === "mouse_move" && (evt.elapsed_ms - prev.elapsed_ms) <= 25) {
+                    prev.dx = (prev.dx || 0) + (evt.dx || 0)
+                    prev.dy = (prev.dy || 0) + (evt.dy || 0)
+                    prev.elapsed_ms = evt.elapsed_ms
+                    list[list.length - 1] = prev
+                    macroRecorderDialog.rawEvents = list
+                    macroRecorderDialog.rebuildGeneratedDuckyScript()
+                    return
+                }
+            }
+            list.push(evt)
+            macroRecorderDialog.rawEvents = list
+            macroRecorderDialog.rebuildGeneratedDuckyScript()
+        }
+
+        function pollEvdevOnce() {
+            if (!macroRecorderDialog.isRecording) return
+            const jsonStr = deviceController.pollGlobalMacroEventsJson()
+            if (!jsonStr || jsonStr === "[]") return
+            try {
+                const arr = JSON.parse(jsonStr)
+                if (!Array.isArray(arr) || arr.length === 0) return
+                let list = macroRecorderDialog.rawEvents.slice()
+                for (let i = 0; i < arr.length; i++) {
+                    const e = arr[i]
+                    if ((e.kind === "key_down" || e.kind === "key_up") && !macroRecorderDialog.captureKeyboard) continue
+                    if ((e.kind === "mouse_click" || e.kind === "mouse_wheel") && !macroRecorderDialog.captureMouseClicks) continue
+                    if (e.kind === "mouse_move" && !macroRecorderDialog.captureMouseMoves) continue
+                    macroRecorderDialog.lastEvdevEventMs = Date.now()
+                    if (e.kind === "mouse_move" && list.length > 0 && list[list.length - 1].kind === "mouse_move" && (e.elapsed_ms - list[list.length - 1].elapsed_ms) <= 25) {
+                        list[list.length - 1].dx += e.dx
+                        list[list.length - 1].dy += e.dy
+                        list[list.length - 1].elapsed_ms = e.elapsed_ms
+                    } else {
+                        list.push(e)
+                    }
+                }
+                macroRecorderDialog.rawEvents = list
+                macroRecorderDialog.rebuildGeneratedDuckyScript()
+            } catch (err) {}
+        }
+
+        Timer {
+            id: evdevPollTimer
+            interval: 40
+            repeat: true
+            running: false
+            onTriggered: macroRecorderDialog.pollEvdevOnce()
+        }
+
+        function rebuildGeneratedDuckyScript() {
+            const events = macroRecorderDialog.rawEvents
+            if (!events || events.length === 0) {
+                recordedScriptEditor.text = qsTr("// Click '🔴 Start Recording' above, then type keys or use the mouse.\n// Your recorded DuckyScript 3 macro will appear here in real time.")
+                return
+            }
+
+            let lines = []
+            const modeLabel = macroRecorderDialog.timingMode === "exact"
+                ? "Exact Timings"
+                : (macroRecorderDialog.timingMode === "fast" ? "As Fast As Possible" : ("Fixed Delay (" + macroRecorderDialog.fixedDelayMs + "ms)"))
+            lines.push("// Recorded Macro (" + modeLabel + " • " + events.length + " events)")
+
+            let prevElapsed = events[0].elapsed_ms || 0
+
+            for (let i = 0; i < events.length; i++) {
+                const ev = events[i]
+                const dt = Math.max(0, Math.round((ev.elapsed_ms || 0) - prevElapsed))
+                prevElapsed = ev.elapsed_ms || prevElapsed
+
+                if (i > 0) {
+                    if (macroRecorderDialog.timingMode === "exact") {
+                        if (dt >= macroRecorderDialog.minDelayThresholdMs) {
+                            lines.push("DELAY " + dt)
+                        }
+                    } else if (macroRecorderDialog.timingMode === "fixed") {
+                        if (macroRecorderDialog.fixedDelayMs > 0) {
+                            lines.push("DELAY " + macroRecorderDialog.fixedDelayMs)
+                        }
+                    }
+                }
+
+                if (ev.kind === "custom_delay") {
+                    lines.push("DELAY " + Math.max(1, Math.round(ev.dx || 100)))
+                } else if (ev.kind === "key_down") {
+                    const nextEv = (i + 1 < events.length) ? events[i + 1] : null
+                    const holdMs = nextEv ? Math.max(0, Math.round((nextEv.elapsed_ms || 0) - (ev.elapsed_ms || 0))) : 0
+                    if (nextEv && nextEv.kind === "key_up" && nextEv.key === ev.key &&
+                        (macroRecorderDialog.timingMode !== "exact" || holdMs < 95)) {
+                        lines.push(ev.key)
+                        prevElapsed = nextEv.elapsed_ms || prevElapsed
+                        i++
+                    } else {
+                        lines.push("KEYDOWN " + ev.key)
+                    }
+                } else if (ev.kind === "key_up") {
+                    lines.push("KEYUP " + ev.key)
+                } else if (ev.kind === "mouse_click") {
+                    lines.push(ev.key || "LMOUSE")
+                } else if (ev.kind === "mouse_wheel") {
+                    lines.push("MOUSE_SCROLL " + (ev.dx || 0) + " " + (ev.dy || 0))
+                } else if (ev.kind === "mouse_move") {
+                    let remX = Math.round(ev.dx || 0)
+                    let remY = Math.round(ev.dy || 0)
+                    while (remX !== 0 || remY !== 0) {
+                        const stepX = Math.max(-127, Math.min(127, remX))
+                        const stepY = Math.max(-127, Math.min(127, -remY))
+                        lines.push("MOUSE_MOVE " + stepX + " " + stepY)
+                        remX -= stepX
+                        remY -= (-stepY)
+                    }
+                }
+            }
+
+            recordedScriptEditor.text = lines.join("\n")
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 10
+
+            // Header Row
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Rectangle {
+                    width: 34
+                    height: 34
+                    radius: 8
+                    color: macroRecorderDialog.isRecording ? Qt.alpha("#ef4444", 0.25) : Qt.alpha("#38bdf8", 0.18)
+                    border.color: macroRecorderDialog.isRecording ? "#ef4444" : "#38bdf8"
+                    border.width: 1
+                    QQC2.Label {
+                        anchors.centerIn: parent
+                        text: macroRecorderDialog.isRecording ? "🔴" : "⏺"
+                        font.pixelSize: 18
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    QQC2.Label {
+                        text: qsTr("DuckyScript 3 Live Macro Recorder")
+                        font.bold: true
+                        font.pixelSize: 15
+                    }
+                    QQC2.Label {
+                        text: qsTr("Record keyboard strokes, key holds, mouse clicks, scroll wheel, and mouse movements directly into DuckyScript 3.")
+                        font.pixelSize: 11
+                        color: Kirigami.Theme.disabledTextColor
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+                }
+
+                // Start / Stop Recording Button
+                QQC2.Button {
+                    text: macroRecorderDialog.isRecording
+                        ? qsTr("⏹ Stop Recording (%1)").arg(macroRecorderDialog.rawEvents.length)
+                        : qsTr("🔴 Start Recording")
+                    highlighted: true
+                    font.bold: true
+                    implicitHeight: 34
+                    onClicked: {
+                        if (macroRecorderDialog.isRecording) {
+                            macroRecorderDialog.stopRecordingSession()
+                        } else {
+                            macroRecorderDialog.startRecordingSession()
+                        }
+                    }
+                }
+
+                QQC2.Button {
+                    text: qsTr("🧹 Clear")
+                    enabled: macroRecorderDialog.rawEvents.length > 0 && !macroRecorderDialog.isRecording
+                    implicitHeight: 34
+                    onClicked: {
+                        macroRecorderDialog.rawEvents = []
+                        macroRecorderDialog.rebuildGeneratedDuckyScript()
+                    }
+                }
+            }
+
+            // Timing & Capture Filters Card
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: recOptionsCol.implicitHeight + 16
+                radius: 6
+                color: Kirigami.Theme.alternateBackgroundColor
+                border.color: Qt.alpha(Kirigami.Theme.textColor, 0.18)
+                border.width: 1
+
+                ColumnLayout {
+                    id: recOptionsCol
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 8
+
+                    // Row 1: Timing Mode Options
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        QQC2.Label {
+                            text: qsTr("Timing Mode:")
+                            font.bold: true
+                            font.pixelSize: 12
+                        }
+
+                        QQC2.Button {
+                            text: qsTr("⏱ Exact Timings (Real Delays)")
+                            checkable: true
+                            checked: macroRecorderDialog.timingMode === "exact"
+                            highlighted: macroRecorderDialog.timingMode === "exact"
+                            font.bold: macroRecorderDialog.timingMode === "exact"
+                            onClicked: {
+                                macroRecorderDialog.timingMode = "exact"
+                                macroRecorderDialog.rebuildGeneratedDuckyScript()
+                            }
+                            QQC2.ToolTip.visible: hovered
+                            QQC2.ToolTip.text: qsTr("Inserts DELAY <ms> commands matching the exact millisecond intervals between your recorded actions")
+                        }
+
+                        QQC2.Button {
+                            text: qsTr("⚡ As Fast As Possible (No Delays)")
+                            checkable: true
+                            checked: macroRecorderDialog.timingMode === "fast"
+                            highlighted: macroRecorderDialog.timingMode === "fast"
+                            font.bold: macroRecorderDialog.timingMode === "fast"
+                            onClicked: {
+                                macroRecorderDialog.timingMode = "fast"
+                                macroRecorderDialog.rebuildGeneratedDuckyScript()
+                            }
+                            QQC2.ToolTip.visible: hovered
+                            QQC2.ToolTip.text: qsTr("Omits all DELAY commands between actions and collapses quick key taps so the macro runs at maximum hardware speed")
+                        }
+
+                        QQC2.Button {
+                            text: qsTr("📏 Fixed Step Delay")
+                            checkable: true
+                            checked: macroRecorderDialog.timingMode === "fixed"
+                            highlighted: macroRecorderDialog.timingMode === "fixed"
+                            font.bold: macroRecorderDialog.timingMode === "fixed"
+                            onClicked: {
+                                macroRecorderDialog.timingMode = "fixed"
+                                macroRecorderDialog.rebuildGeneratedDuckyScript()
+                            }
+                        }
+
+                        QQC2.SpinBox {
+                            visible: macroRecorderDialog.timingMode === "fixed"
+                            from: 5
+                            to: 2000
+                            stepSize: 5
+                            value: macroRecorderDialog.fixedDelayMs
+                            onValueModified: {
+                                macroRecorderDialog.fixedDelayMs = value
+                                macroRecorderDialog.rebuildGeneratedDuckyScript()
+                            }
+                        }
+
+                        QQC2.Label {
+                            visible: macroRecorderDialog.timingMode === "fixed"
+                            text: qsTr("ms")
+                            font.pixelSize: 11
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+
+                        Item { Layout.fillWidth: true }
+                    }
+
+                    // Row 2: Input Sources (Keyboard, Mouse Clicks/Scroll, Mouse Movements)
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 14
+
+                        QQC2.Label {
+                            text: qsTr("Include Inputs:")
+                            font.bold: true
+                            font.pixelSize: 12
+                        }
+
+                        QQC2.CheckBox {
+                            checked: macroRecorderDialog.captureKeyboard
+                            text: qsTr("⌨ Keyboard Keys (Taps & Holds)")
+                            font.bold: true
+                            font.pixelSize: 11
+                            onToggled: macroRecorderDialog.captureKeyboard = checked
+                        }
+
+                        QQC2.CheckBox {
+                            checked: macroRecorderDialog.captureMouseClicks
+                            text: qsTr("🖱 Mouse Clicks & Scroll Wheel (LMOUSE / RMOUSE / MMOUSE / SCROLL)")
+                            font.bold: true
+                            font.pixelSize: 11
+                            onToggled: macroRecorderDialog.captureMouseClicks = checked
+                        }
+
+                        QQC2.CheckBox {
+                            checked: macroRecorderDialog.captureMouseMoves
+                            text: qsTr("📐 Mouse Movements (MOUSE_MOVE dx dy)")
+                            font.bold: true
+                            font.pixelSize: 11
+                            onToggled: macroRecorderDialog.captureMouseMoves = checked
+                        }
+
+                        Item { Layout.fillWidth: true }
+                    }
+                }
+            }
+
+            // Interactive Capture Area (Captures Keyboard + Mouse inside Window & Shows Global Evdev Status)
+            Rectangle {
+                id: captureFocusPad
+                Layout.fillWidth: true
+                Layout.preferredHeight: 110
+                radius: 8
+                focus: true
+                activeFocusOnTab: true
+                color: macroRecorderDialog.isRecording
+                    ? Qt.alpha("#ef4444", 0.12)
+                    : Qt.alpha(Kirigami.Theme.highlightColor, 0.08)
+                border.color: macroRecorderDialog.isRecording
+                    ? "#ef4444"
+                    : (captureFocusPad.activeFocus ? Kirigami.Theme.highlightColor : Qt.alpha(Kirigami.Theme.textColor, 0.25))
+                border.width: macroRecorderDialog.isRecording ? 2 : 1
+
+                Keys.onPressed: (event) => {
+                    if (!macroRecorderDialog.isRecording || event.isAutoRepeat) return
+                    event.accepted = true
+                    if (!macroRecorderDialog.captureKeyboard) return
+                    if (macroRecorderDialog.globalEvdevActive && (Date.now() - macroRecorderDialog.lastEvdevEventMs) < 35) return
+                    const kName = macroRecorderDialog.qtKeyToDuckyName(event.key, event.text)
+                    if (kName.length > 0) {
+                        macroRecorderDialog.appendRecordedEvent({
+                            kind: "key_down",
+                            key: kName,
+                            dx: 0,
+                            dy: 0,
+                            elapsed_ms: Math.max(0, Date.now() - macroRecorderDialog.recordingStartMs)
+                        })
+                    }
+                }
+
+                Keys.onReleased: (event) => {
+                    if (!macroRecorderDialog.isRecording || event.isAutoRepeat) return
+                    event.accepted = true
+                    if (!macroRecorderDialog.captureKeyboard) return
+                    if (macroRecorderDialog.globalEvdevActive && (Date.now() - macroRecorderDialog.lastEvdevEventMs) < 35) return
+                    const kName = macroRecorderDialog.qtKeyToDuckyName(event.key, event.text)
+                    if (kName.length > 0) {
+                        macroRecorderDialog.appendRecordedEvent({
+                            kind: "key_up",
+                            key: kName,
+                            dx: 0,
+                            dy: 0,
+                            elapsed_ms: Math.max(0, Date.now() - macroRecorderDialog.recordingStartMs)
+                        })
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.AllButtons
+                    cursorShape: macroRecorderDialog.isRecording ? Qt.CrossCursor : Qt.PointingHandCursor
+
+                    onPressed: (mouse) => {
+                        captureFocusPad.forceActiveFocus()
+                        macroRecorderDialog.lastPadMouseX = mouse.x
+                        macroRecorderDialog.lastPadMouseY = mouse.y
+                        if (!macroRecorderDialog.isRecording || !macroRecorderDialog.captureMouseClicks) return
+                        if (macroRecorderDialog.globalEvdevActive && (Date.now() - macroRecorderDialog.lastEvdevEventMs) < 35) return
+                        let btnName = "LMOUSE"
+                        if (mouse.button === Qt.RightButton) btnName = "RMOUSE"
+                        else if (mouse.button === Qt.MiddleButton) btnName = "MMOUSE"
+                        else if (mouse.button === Qt.BackButton) btnName = "BMOUSE"
+                        else if (mouse.button === Qt.ForwardButton) btnName = "FMOUSE"
+                        macroRecorderDialog.appendRecordedEvent({
+                            kind: "mouse_click",
+                            key: btnName,
+                            dx: 0,
+                            dy: 0,
+                            elapsed_ms: Math.max(0, Date.now() - macroRecorderDialog.recordingStartMs)
+                        })
+                    }
+
+                    onWheel: (wheel) => {
+                        if (!macroRecorderDialog.isRecording || !macroRecorderDialog.captureMouseClicks) return
+                        if (macroRecorderDialog.globalEvdevActive && (Date.now() - macroRecorderDialog.lastEvdevEventMs) < 35) return
+                        const vStep = wheel.angleDelta.y > 0 ? 1 : (wheel.angleDelta.y < 0 ? -1 : 0)
+                        const hStep = wheel.angleDelta.x > 0 ? 1 : (wheel.angleDelta.x < 0 ? -1 : 0)
+                        if (vStep !== 0 || hStep !== 0) {
+                            macroRecorderDialog.appendRecordedEvent({
+                                kind: "mouse_wheel",
+                                key: "MOUSE_SCROLL",
+                                dx: hStep,
+                                dy: vStep,
+                                elapsed_ms: Math.max(0, Date.now() - macroRecorderDialog.recordingStartMs)
+                            })
+                        }
+                    }
+
+                    onPositionChanged: (mouse) => {
+                        if (!macroRecorderDialog.isRecording || !macroRecorderDialog.captureMouseMoves) {
+                            macroRecorderDialog.lastPadMouseX = mouse.x
+                            macroRecorderDialog.lastPadMouseY = mouse.y
+                            return
+                        }
+                        if (macroRecorderDialog.globalEvdevActive && (Date.now() - macroRecorderDialog.lastEvdevEventMs) < 35) return
+                        if (macroRecorderDialog.lastPadMouseX >= 0 && macroRecorderDialog.lastPadMouseY >= 0) {
+                            const dx = Math.round(mouse.x - macroRecorderDialog.lastPadMouseX)
+                            const dy = Math.round(mouse.y - macroRecorderDialog.lastPadMouseY)
+                            if (Math.abs(dx) >= 2 || Math.abs(dy) >= 2) {
+                                macroRecorderDialog.lastPadMouseX = mouse.x
+                                macroRecorderDialog.lastPadMouseY = mouse.y
+                                macroRecorderDialog.appendRecordedEvent({
+                                    kind: "mouse_move",
+                                    key: "MOUSE_MOVE",
+                                    dx: dx,
+                                    dy: dy,
+                                    elapsed_ms: Math.max(0, Date.now() - macroRecorderDialog.recordingStartMs)
+                                })
+                            }
+                        } else {
+                            macroRecorderDialog.lastPadMouseX = mouse.x
+                            macroRecorderDialog.lastPadMouseY = mouse.y
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    anchors.centerIn: parent
+                    spacing: 4
+
+                    QQC2.Label {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: macroRecorderDialog.isRecording
+                            ? qsTr("🔴 RECORDING LIVE — Type keys, click, scroll, or move the mouse here%1")
+                                .arg(macroRecorderDialog.globalEvdevActive ? qsTr(" (or anywhere on desktop via evdev)") : "")
+                            : qsTr("Click '🔴 Start Recording' then type keys or use mouse inside this Capture Pad")
+                        font.bold: true
+                        font.pixelSize: 13
+                        color: macroRecorderDialog.isRecording ? "#fca5a5" : Kirigami.Theme.textColor
+                    }
+
+                    QQC2.Label {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: qsTr("Captured Events: %1 • Mode: %2")
+                            .arg(macroRecorderDialog.rawEvents.length)
+                            .arg(macroRecorderDialog.timingMode === "exact"
+                                ? qsTr("Exact Timings")
+                                : (macroRecorderDialog.timingMode === "fast" ? qsTr("As Fast As Possible") : qsTr("Fixed %1ms Delay").arg(macroRecorderDialog.fixedDelayMs)))
+                        font.family: "monospace"
+                        font.pixelSize: 11
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                }
+            }
+
+            // Generated DuckyScript 3 Preview Header + Quick Manual Insertions
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                QQC2.Label {
+                    text: qsTr("Generated DuckyScript 3 Output (Editable):")
+                    font.bold: true
+                    font.pixelSize: 12
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.Button {
+                    text: qsTr("+ DELAY 100")
+                    implicitHeight: 26
+                    font.pixelSize: 11
+                    onClicked: {
+                        macroRecorderDialog.appendRecordedEvent({
+                            kind: "custom_delay",
+                            key: "DELAY",
+                            dx: 100,
+                            dy: 0,
+                            elapsed_ms: macroRecorderDialog.rawEvents.length > 0
+                                ? (macroRecorderDialog.rawEvents[macroRecorderDialog.rawEvents.length - 1].elapsed_ms || 0)
+                                : 0
+                        })
+                    }
+                }
+
+                QQC2.Button {
+                    text: qsTr("+ DELAY 500")
+                    implicitHeight: 26
+                    font.pixelSize: 11
+                    onClicked: {
+                        macroRecorderDialog.appendRecordedEvent({
+                            kind: "custom_delay",
+                            key: "DELAY",
+                            dx: 500,
+                            dy: 0,
+                            elapsed_ms: macroRecorderDialog.rawEvents.length > 0
+                                ? (macroRecorderDialog.rawEvents[macroRecorderDialog.rawEvents.length - 1].elapsed_ms || 0)
+                                : 0
+                        })
+                    }
+                }
+            }
+
+            // Scrollable DuckyScript Preview Editor
+            QQC2.ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                QQC2.ScrollBar.vertical: HighContrastScrollBar {}
+
+                QQC2.TextArea {
+                    id: recordedScriptEditor
+                    font.family: "monospace"
+                    font.pixelSize: 12
+                    selectByMouse: true
+                    wrapMode: TextEdit.NoWrap
+                    text: qsTr("// Click '🔴 Start Recording' above, then type keys or use the mouse.\n// Your recorded DuckyScript 3 macro will appear here in real time.")
+                    background: Rectangle {
+                        radius: 6
+                        color: Kirigami.Theme.alternateBackgroundColor
+                        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.2)
+                        border.width: 1
+                    }
+                }
+            }
+
+            // Footer Actions (Insert into Key Script / Replace Key Script)
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                QQC2.Label {
+                    text: root.hasSelectedSlot
+                        ? qsTr("Target: %1 (%2)")
+                            .arg(root.selectedSlotTitle)
+                            .arg(root.editingReleaseScript ? qsTr("On Release") : qsTr("On Press"))
+                        : qsTr("Select a key on the canvas to insert directly")
+                    font.pixelSize: 11
+                    color: Kirigami.Theme.disabledTextColor
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.Button {
+                    text: qsTr("Close")
+                    onClicked: macroRecorderDialog.close()
+                }
+
+                QQC2.Button {
+                    text: qsTr("📥 Append to Key Script")
+                    enabled: root.hasSelectedSlot && recordedScriptEditor.text.trim().length > 0
+                    onClicked: {
+                        if (macroRecorderDialog.isRecording) {
+                            macroRecorderDialog.stopRecordingSession()
+                        }
+                        const cur = scriptEditor.text.trim()
+                        scriptEditor.text = cur.length > 0
+                            ? (cur + "\n\n" + recordedScriptEditor.text.trim() + "\n")
+                            : (recordedScriptEditor.text.trim() + "\n")
+                        root.inspectorMode = "code"
+                        macroRecorderDialog.close()
+                    }
+                }
+
+                QQC2.Button {
+                    text: qsTr("⚡ Replace Key Script")
+                    highlighted: true
+                    font.bold: true
+                    enabled: root.hasSelectedSlot && recordedScriptEditor.text.trim().length > 0
+                    onClicked: {
+                        if (macroRecorderDialog.isRecording) {
+                            macroRecorderDialog.stopRecordingSession()
+                        }
+                        scriptEditor.text = recordedScriptEditor.text.trim() + "\n"
+                        root.inspectorMode = "code"
+                        macroRecorderDialog.close()
+                    }
+                }
             }
         }
     }

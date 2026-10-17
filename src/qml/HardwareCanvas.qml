@@ -30,6 +30,7 @@ Item {
     signal keyColorPickerRequested(int slotNumber, string currentColorHex)
     signal profileDefaultColorPickerRequested(int profileNumber, string profileName, string currentColorHex)
     signal openLightingAnimatorRequested(string targetScope, int targetSlot)
+    signal openKeyPropertiesRequested(int slotNumber)
 
     // Gaming-Keyboard RGB Animation Engine State (Profile-level + Individual Key-level)
     property var profileAnimationConfig: ({
@@ -361,6 +362,7 @@ Item {
 
     property var profileLabels: []
     property var profileNumbers: []
+    property int currentProfileIndex: 0
     property var expansionLabels: ({})
 
     ListModel {
@@ -415,8 +417,8 @@ Item {
     function syncActiveProfileSelection() {
         if (!controller || !profileNumbers || profileNumbers.length === 0) return
         const idx = profileNumbers.indexOf(controller.activeProfile)
-        if (idx >= 0 && profileCombo.currentIndex !== idx) {
-            profileCombo.currentIndex = idx
+        if (idx >= 0 && canvasRoot.currentProfileIndex !== idx) {
+            canvasRoot.currentProfileIndex = idx
         }
     }
 
@@ -438,7 +440,7 @@ Item {
             }
             canvasRoot.profileNumbers = nums
             canvasRoot.profileLabels = labels
-            profileCombo.currentIndex = activeIdx
+            canvasRoot.currentProfileIndex = activeIdx
         } catch (e) {}
     }
 
@@ -624,6 +626,17 @@ Item {
         id: slotContextMenu
 
         QQC2.MenuItem {
+            icon.name: "document-properties"
+            text: qsTr("Properties...")
+            onTriggered: {
+                canvasRoot.selectedSlot = canvasRoot.contextMenuSlot
+                canvasRoot.openKeyPropertiesRequested(canvasRoot.contextMenuSlot)
+            }
+        }
+
+        QQC2.MenuSeparator {}
+
+        QQC2.MenuItem {
             icon.name: "edit-copy"
             text: canvasRoot.contextMenuSlot >= 1 && canvasRoot.contextMenuSlot <= 20
                 ? qsTr("Copy Key %1").arg(canvasRoot.contextMenuSlot)
@@ -688,56 +701,12 @@ Item {
             Layout.fillWidth: true
             spacing: 4
 
-            QQC2.ComboBox {
-                id: profileCombo
-                Layout.preferredWidth: 165
-                Layout.fillWidth: true
-                Layout.maximumWidth: 215
-                model: canvasRoot.profileLabels
-                onActivated: (index) => {
-                    if (index >= 0 && index < canvasRoot.profileNumbers.length && canvasRoot.controller) {
-                        const profNum = canvasRoot.profileNumbers[index]
-                        canvasRoot.controller.selectProfile(profNum)
-                        if (canvasRoot.selectedSlot >= 1 && canvasRoot.selectedSlot <= 58) {
-                            canvasRoot.slotSelected(
-                                canvasRoot.selectedSlot,
-                                canvasRoot.slotTitleFor(canvasRoot.selectedSlot),
-                                canvasRoot.slotColorFor(canvasRoot.selectedSlot)
-                            )
-                        }
-                    }
-                }
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: canvasRoot.controller && canvasRoot.controller.sdMountPath.length > 0
-                    ? qsTr("SD Path: %1 (%2 profiles)").arg(canvasRoot.controller.sdMountPath).arg(canvasRoot.profileNumbers.length)
-                    : (canvasRoot.controller && canvasRoot.controller.connected
-                        ? qsTr("%1 (%2 profiles loaded)").arg(canvasRoot.controller.modelName).arg(canvasRoot.profileNumbers.length)
-                        : qsTr("Active Profile (Connect duckyPad or Load SD Card)"))
-            }
-
-            QQC2.ToolButton {
-                icon.name: "edit-rename"
-                display: QQC2.AbstractButton.IconOnly
-                enabled: canvasRoot.controller !== null
-                onClicked: {
-                    if (canvasRoot.controller) {
-                        canvasRoot.renameProfileRequested(
-                            canvasRoot.controller.activeProfile,
-                            canvasRoot.controller.activeProfileName
-                        )
-                    }
-                }
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: canvasRoot.controller
-                    ? qsTr("Rename Profile #%1 (%2)...").arg(canvasRoot.controller.activeProfile).arg(canvasRoot.controller.activeProfileName)
-                    : qsTr("Rename Profile...")
-            }
-
-            QQC2.ToolButton {
+            QQC2.Button {
                 text: canvasRoot.profileAnimationConfig && canvasRoot.profileAnimationConfig.enabled
                     ? qsTr("✨ RGB FX ●")
                     : qsTr("✨ RGB FX")
                 highlighted: !!(canvasRoot.profileAnimationConfig && canvasRoot.profileAnimationConfig.enabled)
+                font.bold: true
                 onClicked: canvasRoot.openLightingAnimatorRequested(
                     canvasRoot.selectedSlot >= 1 && canvasRoot.selectedSlot <= 20 ? "key" : "profile",
                     canvasRoot.selectedSlot >= 1 && canvasRoot.selectedSlot <= 20 ? canvasRoot.selectedSlot : 1
@@ -1365,9 +1334,9 @@ Item {
                             }
                             onClicked: {
                                 if (canvasRoot.controller) {
-                                    if (canvasRoot.profileNumbers.length > 1 && profileCombo.currentIndex > 0) {
-                                        profileCombo.currentIndex -= 1
-                                        const profNum = canvasRoot.profileNumbers[profileCombo.currentIndex]
+                                    if (canvasRoot.profileNumbers.length > 1 && canvasRoot.currentProfileIndex > 0) {
+                                        canvasRoot.currentProfileIndex -= 1
+                                        const profNum = canvasRoot.profileNumbers[canvasRoot.currentProfileIndex]
                                         canvasRoot.controller.selectProfile(profNum)
                                     } else {
                                         const next = Math.max(1, canvasRoot.controller.activeProfile - 1)
@@ -1417,9 +1386,9 @@ Item {
                             }
                             onClicked: {
                                 if (canvasRoot.controller) {
-                                    if (canvasRoot.profileNumbers.length > 1 && profileCombo.currentIndex + 1 < canvasRoot.profileNumbers.length) {
-                                        profileCombo.currentIndex += 1
-                                        const profNum = canvasRoot.profileNumbers[profileCombo.currentIndex]
+                                    if (canvasRoot.profileNumbers.length > 1 && canvasRoot.currentProfileIndex + 1 < canvasRoot.profileNumbers.length) {
+                                        canvasRoot.currentProfileIndex += 1
+                                        const profNum = canvasRoot.profileNumbers[canvasRoot.currentProfileIndex]
                                         canvasRoot.controller.selectProfile(profNum)
                                     } else {
                                         const next = Math.min(64, canvasRoot.controller.activeProfile + 1)

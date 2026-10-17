@@ -4551,7 +4551,7 @@ impl GlobalMacroEvdevRecorder {
 
                         if ev_type == 1 {
                             // EV_KEY: 1 = press, 0 = release (ignore 2 = autorepeat)
-                            if (ev_value == 1 || ev_value == 0) {
+                            if ev_value == 1 || ev_value == 0 {
                                 if let Some(duck_key) = evdev_code_to_duckyscript_key(ev_code) {
                                     // Flush pending mouse moves before key/click
                                     if accum_dx != 0 || accum_dy != 0 {

@@ -565,6 +565,18 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "pushHardwareLedFrameJson"]
         fn push_hardware_led_frame_json(self: &DeviceController, frame_json: QString) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "getProfilePropertiesJson"]
+        fn get_profile_properties_json(self: &DeviceController, profile_number: i32) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "saveProfilePropertiesJson"]
+        fn save_profile_properties_json(
+            self: Pin<&mut DeviceController>,
+            profile_number: i32,
+            props_json: QString,
+        ) -> bool;
     }
 
     impl cxx_qt::Threading for DeviceController {}
@@ -3812,8 +3824,8 @@ impl qobject::DeviceController {
         let slot_idx = slot_number.clamp(1, MAX_INPUT_SLOTS as i32) as usize;
         let active_num = *self.active_profile() as u8;
 
-        let l1 = label1.to_string();
-        let l2 = label2.to_string();
+        let l1: String = label1.to_string().chars().take(5).collect();
+        let l2: String = label2.to_string().chars().take(5).collect();
         let press = on_press_script.to_string();
         let release = on_release_script.to_string();
 
@@ -6750,6 +6762,211 @@ impl qobject::DeviceController {
             let _ = set_batch_key_leds_hid(&updates);
         });
         true
+    }
+
+    pub fn get_profile_properties_json(&self, profile_number: i32) -> QString {
+        let target_num = if profile_number > 0 {
+            profile_number as u8
+        } else {
+            (*self.active_profile()).max(1) as u8
+        };
+        let rust = self.rust();
+        let Some(prof) = rust.profiles.iter().find(|p| p.number == target_num) else {
+            return QString::from("{}");
+        };
+        let bg_hex = format!(
+            "#{:02x}{:02x}{:02x}",
+            prof.bg_color[0], prof.bg_color[1], prof.bg_color[2]
+        );
+        let (has_kd, kd_hex) = match prof.keydown_color {
+            Some(kd) => (true, format!("#{:02x}{:02x}{:02x}", kd[0], kd[1], kd[2])),
+            None => (false, "#ffffff".to_string()),
+        };
+        let mut is_landscape = false;
+        let mut is_upper_hs = false;
+        let mut extra_lines: Vec<String> = Vec::new();
+        for line in &prof.preserved_config_lines {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("IS_LANDSCAPE ") {
+                is_landscape = rest.trim() != "0";
+            } else if let Some(rest) = trimmed.strip_prefix("IS_UPPER_HS ") {
+                is_upper_hs = rest.trim() != "0";
+            } else if !trimmed.is_empty() {
+                extra_lines.push(trimmed.to_string());
+            }
+        }
+        let configured_keys = prof
+            .slots
+            .values()
+            .filter(|s| {
+                !s.label_line1.is_empty()
+                    || !s.label_line2.is_empty()
+                    || !s.on_press_script.trim().is_empty()
+                    || !s.on_release_script.trim().is_empty()
+                    || s.custom_rgb.is_some()
+            })
+            .count();
+        let obj = serde_json::json!({
+            "number": prof.number,
+            "name": prof.name,
+            "folderName": prof.folder_name(),
+            "bgColor": bg_hex,
+            "hasKeydownColor": has_kd,
+            "keydownColor": kd_hex,
+            "dimUnusedKeys": prof.dim_unused_keys,
+            "isLandscape": is_landscape,
+            "isUpperHs": is_upper_hs,
+            "extraConfigLines": extra_lines.join("\n"),
+            "configuredSlotCount": configured_keys,
+        });
+        QString::from(&obj.to_string())
+    }
+
+    pub fn save_profile_properties_json(
+        mut self: Pin<&mut Self>,
+        profile_number: i32,
+        props_json: QString,
+    ) -> bool {
+        let target_num = if profile_number > 0 {
+            profile_number as u8
+        } else {
+            (*self.active_profile()).max(1) as u8
+        };
+        let raw = props_json.to_string();
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            return false;
+        };
+
+        let parse_hex = |hex_str: &str, default_rgb: [u8; 3]| -> [u8; 3] {
+            let clean = hex_str.trim().trim_start_matches('#');
+            if clean.len() == 6 {
+                if let (Ok(r), Ok(g), Ok(b)) = (
+                    u8::from_str_radix(&clean[0..2], 16),
+                    u8::from_str_radix(&clean[2..4], 16),
+                    u8::from_str_radix(&clean[4..6], 16),
+                ) {
+                    return [r, g, b];
+                }
+            }
+            default_rgb
+        };
+
+        let new_name_raw = val
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        let sanitized_name: String = new_name_raw
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-' || *c == ' ')
+            .take(16)
+            .collect::<String>()
+            .trim()
+            .to_string();
+
+        let bg_hex = val.get("bgColor").and_then(|v| v.as_str()).unwrap_or("#103060");
+        let has_kd = val
+            .get("hasKeydownColor")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let kd_hex = val
+            .get("keydownColor")
+            .and_then(|v| v.as_str())
+            .unwrap_or("#ffffff");
+        let dim_unused = val
+            .get("dimUnusedKeys")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let is_landscape = val
+            .get("isLandscape")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let is_upper_hs = val
+            .get("isUpperHs")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let extra_raw = val
+            .get("extraConfigLines")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        let updated = {
+            let rust = self.as_mut().rust_mut().get_mut();
+            let Some(prof) = rust.profiles.iter_mut().find(|p| p.number == target_num) else {
+                return false;
+            };
+            let old_name = prof.name.clone();
+            if !sanitized_name.is_empty() && sanitized_name != old_name {
+                prof.name = sanitized_name.clone();
+                prof.folder_name_override = Some(format!(
+                    "profile{}_{}",
+                    prof.number, sanitized_name
+                ));
+            }
+            let new_bg = parse_hex(bg_hex, prof.bg_color);
+            let old_bg = prof.bg_color;
+            prof.bg_color = new_bg;
+            for slot in prof.slots.values_mut() {
+                if slot.custom_rgb == Some(old_bg) {
+                    slot.custom_rgb = None;
+                }
+            }
+            prof.keydown_color = if has_kd {
+                Some(parse_hex(kd_hex, [255, 255, 255]))
+            } else {
+                None
+            };
+            prof.dim_unused_keys = dim_unused;
+
+            let mut preserved: Vec<String> = Vec::new();
+            if is_landscape {
+                preserved.push("IS_LANDSCAPE 1".to_string());
+            }
+            if is_upper_hs {
+                preserved.push("IS_UPPER_HS 1".to_string());
+            }
+            for line in extra_raw.lines() {
+                let t = line.trim();
+                if !t.is_empty()
+                    && !t.starts_with("IS_LANDSCAPE ")
+                    && !t.starts_with("IS_UPPER_HS ")
+                    && !t.starts_with("BG_COLOR ")
+                    && !t.starts_with("KEYDOWN_COLOR ")
+                    && !t.starts_with("DIM_UNUSED_KEYS ")
+                {
+                    preserved.push(t.to_string());
+                }
+            }
+            prof.preserved_config_lines = preserved;
+            let final_name = prof.name.clone();
+
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                sw.align_rules_with_profiles(&rust.profiles);
+                let _ = sw.save_to_disk();
+            }
+            let sn = rust.serial_number.to_string();
+            if sn != "-" && !sn.is_empty() {
+                sync_profiles_to_device_cache(&sn, &rust.profiles);
+            } else {
+                sync_profiles_to_cache(&rust.profiles);
+            }
+            Some(final_name)
+        };
+
+        if let Some(final_name) = updated {
+            self.as_mut().sync_active_profile_state();
+            self.as_mut().refresh_color_palettes();
+            let msg = format!(
+                "✓ Updated Profile #{} ({}) properties",
+                target_num, final_name
+            );
+            record_system_event("INFO", "PROFILE", &msg);
+            self.as_mut().sync_event_log_properties();
+            self.as_mut().set_status_message(QString::from(&msg));
+            true
+        } else {
+            false
+        }
     }
 }
 
