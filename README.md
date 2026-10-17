@@ -96,6 +96,24 @@ DuckyDeck Studio clearly badges capabilities in the UI as either **✅ Hardware-
 
 ---
 
+## 🔧 DuckyDeck Studio Firmware (`v1.0.0`) vs. Standard Firmware (`3.3.5`)
+
+**DuckyDeck Studio Firmware `v1.0.0` (`DPP_FW_1.0.0_ad2acc81.bin`)** is an optional, 100% backwards-compatible custom firmware build for **duckyPad Pro (2024)**. All existing `.dsb` bytecode scripts, profiles, and official features work identically to upstream firmware `3.3.5`, while unlocking the following hardware enhancements:
+
+- **📦 Download from GitHub Releases:** [`DPP_FW_1.0.0_ad2acc81.bin` (`v1.0.0`)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.0.0)
+- **🌐 Direct Website Download:** [`https://duckydeckstudio.com/firmware/DPP_FW_1.0.0_ad2acc81.bin`](https://duckydeckstudio.com/firmware/DPP_FW_1.0.0_ad2acc81.bin)
+- **📁 Bundled in Repository:** [`firmware/releases/DPP_FW_1.0.0_ad2acc81.bin`](firmware/releases/DPP_FW_1.0.0_ad2acc81.bin)
+- **🔢 Checksums:** IEEE CRC32 `ad2acc81` · SHA-256 `d558e6b20d6add543822837acec73e2900a1823f7522b13c03ee44c9de7647dd`
+
+| Feature / Capability | Standard Firmware (`3.3.5`) | DuckyDeck Studio Firmware (`1.0.0`) |
+| :--- | :--- | :--- |
+| **1-Bit Monochrome OLED Key Icons** (`oled_icons.c` / `ui_task.c`) | ❌ ASCII text only (`0x20..0x7E`); Unicode/emoji symbols are stripped or ignored on hardware. | ✅ **3-Tier Crisp Pixel-Art Icon Rendering** (`35+` built-in icons across Media, Dev, Arrows, System, Browser & Editing):<br>• **Full-Cell `16×16` Icon**: Centered in the key box when Line 1 is a single icon and Line 2 is empty.<br>• **Top-Line `10×10` Icon + Caption**: Centered `10×10` icon on Line 1 above a `7×10` or `6×8` text label on Line 2.<br>• **Inline `7×10` / `6×8` Glyphs**: Mixed inline with ASCII text labels. |
+| **UTF-8 Key Label Decoding & Buffer Size** (`profiles.h` / `profiles.c`) | ❌ `KEYNAME_SIZE = 8` bytes with raw byte truncation (`str[5] = 0`), which slices multi-byte UTF-8 characters. | ✅ **Expanded `KEYNAME_SIZE = 24` bytes** with glyph-aware UTF-8 truncation (`oled_utf8_truncate_glyphs` — 5 glyphs in `0°/180°`, 4 glyphs in `90°/270°`). Reads `ui_z<N>` / `ui_x<N>` directives for icons while keeping `z<N>` / `x<N>` ASCII fallbacks for backwards compatibility. |
+| **Physical OLED Screen Orientations** (`ssd1306.c` / `ui_task.c`) | ⚠️ **2 Orientations Only**: `0°` Standard Portrait (`IS_LANDSCAPE 0`) and `90°` Clockwise (`IS_LANDSCAPE 1`). | ✅ **Full 4-Way Hardware Rotation (`0°`, `90°`, `180°`, `270°`)**:<br>• Adds **`180°` Inverted Portrait** (`IS_LANDSCAPE 2` / `OLED_ROTATION 180` via `SSD1306_ROTATE_180`).<br>• Adds **`270°` Counter-Clockwise Landscape** (`IS_LANDSCAPE 3` / `OLED_ROTATION 270` via `SSD1306_ROTATE_CCW90` & `draw_profile_rotated_ccw` with `sw_idx = (4 - col) * 4 + row` key grid remapping). |
+| **USB HID Capability Signature** (`hid_task.c`) | Standard `GET_INFO` (`0x00`) response (`fw 3.3.5`). | ✅ Reports `fw 1.0.0` (`dsvm 2`) + **`'D','D','S'` capability signature** at HID bytes `19..21` so DuckyDeck Studio automatically badges the status bar and enables `180°/270°` & hardware icon sync. |
+
+---
+
 ## 🔌 HTTP REST API Server & Security Implications
 
 DuckyDeck Studio includes a full-featured **HTTP REST API Server** (configurable in **Settings → HTTP REST API Server**) for remotely controlling and programming all functions of the duckyPad from scripts, Home Assistant, Node-RED, Stream Deck bridges, or custom tools.

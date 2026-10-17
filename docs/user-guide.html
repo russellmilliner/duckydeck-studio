@@ -1001,13 +1001,57 @@ install -Dm644 docs/user-guide.html \
         <li><strong>Status Bar Sync Badge:</strong> The bottom status bar shows whether your local profiles match the hardware microSD card (<strong>✓ SD Synced</strong> vs. <strong>⚠ Unsynced Changes</strong>). Host-only settings like Desktop Widget Orientation (`DW_ROTATION`) and Profile Change Webhooks apply immediately without requiring an SD sync.</li>
         <li><strong>📋 Changes Summary:</strong> Click the sync status badge (or <strong>📋 Summary</strong>) to inspect a per-profile diff of added, modified, or deleted keys before writing to hardware.</li>
         <li><strong>⬆ Sync to SD:</strong> Mounts the duckyPad Pro microSD card (automatically via USB Mass Storage mode `0x1B` + `udisksctl`, or direct SD mount), compiles every `keyN.txt` script into a DSVM v2 `.dsb` binary, writes `config.txt` and `profile_info.txt`, flushes the filesystem, and verifies the written files.</li>
-        <li><strong>DuckyDeck Studio Firmware (`v1.0.0`) &amp; Official Firmware Catalog Downloader:</strong>
+        <li><strong>DuckyDeck Studio Firmware (<code>v1.0.0</code> — <code>DPP_FW_1.0.0_ad2acc81.bin</code>) &amp; Official Firmware Catalog Downloader:</strong>
           <ul>
-            <li>DuckyDeck Studio includes its own custom firmware build versioned as <strong><code>1.0.0</code></strong> (`DPP_FW_1.0.0_ad2acc81.bin`, identified by the DuckyDeck Studio icon badge in the status bar and USB HID `0x00` signature bytes `'D','D','S'`), adding native **`90°`**, **`180°`**, and **`270°`** OLED rotation (`OLED_ROTATION 90|180|270` in `profile_info.txt` and `IS_LANDSCAPE 1|2|3` in `config.txt`).</li>
-            <li><strong>Download Official Firmware List in Firmware Manager (`☰ → Firmware Update...`):</strong> Click <strong>⬇ Fetch Official List from Site</strong> inside the Firmware Manager window to query the official <code>dekuNukem/duckyPad-Pro</code> repository, browse all available official firmware versions, and click <strong>⬇ Download .bin</strong> or <strong>Download &amp; Install Selected Firmware</strong> (with automatic IEEE CRC32 checksum verification).</li>
+            <li>
+              <strong>Download Firmware Binary:</strong>
+              <a href="https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.0.0" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-weight:700;">⬇ GitHub Release (<code>DPP_FW_1.0.0_ad2acc81.bin</code>)</a>
+              &nbsp;|&nbsp;
+              <a href="firmware/DPP_FW_1.0.0_ad2acc81.bin" style="color:var(--accent);font-weight:700;">⬇ Direct Download (<code>DPP_FW_1.0.0_ad2acc81.bin</code>, IEEE CRC32: <code>ad2acc81</code>)</a>
+            </li>
+            <li>DuckyDeck Studio includes its own custom firmware build versioned as <strong><code>1.0.0</code></strong> (based on upstream <code>duckyPad-Pro 3.3.5</code> / DSVM v2, identified by the DuckyDeck Studio icon badge in the status bar and USB HID <code>0x00</code> signature bytes <code>'D','D','S'</code>).</li>
+            <li><strong>Download Official Firmware List in Firmware Manager (<code>☰ → Firmware Update...</code>):</strong> Click <strong>⬇ Fetch Official List from Site</strong> inside the Firmware Manager window to query the official <code>dekuNukem/duckyPad-Pro</code> repository, browse all available official firmware versions, and click <strong>⬇ Download .bin</strong> or <strong>Download &amp; Install Selected Firmware</strong> (with automatic IEEE CRC32 checksum verification).</li>
           </ul>
         </li>
       </ul>
+
+      <h3>🔧 What DuckyDeck Studio Firmware <code>v1.0.0</code> Adds Over Standard duckyPad Pro Firmware (<code>3.3.5</code>)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Capability</th>
+            <th>Standard Official Firmware (<code>3.3.5</code>)</th>
+            <th>DuckyDeck Studio Firmware (<code>1.0.0</code> — <code>DPP_FW_1.0.0_ad2acc81.bin</code>)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>1-Bit Monochrome OLED Key Icons</strong></td>
+            <td>ASCII <code>32..126</code> text only (<code>?</code> for non-ASCII)</td>
+            <td>✅ <strong>Adaptive 1-bit pixel-art icons</strong>: full-cell <code>16×16</code> icon when Line 2 is empty, top-line <code>10×10</code> icon above a Line 2 text caption, and inline <code>7×10</code> / <code>6×8</code> icon glyphs mixed with text</td>
+          </tr>
+          <tr>
+            <td><strong>UTF-8 Key Labels &amp; Buffer Size</strong></td>
+            <td>8-byte buffer (<code>KEYNAME_SIZE 8</code>), raw byte truncation at 5 bytes</td>
+            <td>✅ <strong>24-byte UTF-8 buffer (<code>KEYNAME_SIZE 24</code>)</strong> with multi-byte UTF-8 codepoint decoding, glyph-aware truncation (5 glyphs in <code>0°/180°</code>, 4 glyphs in <code>90°/270°</code>), and dual <code>ui_z&lt;N&gt;</code>/<code>ui_x&lt;N&gt;</code> + ASCII fallback <code>z&lt;N&gt;</code>/<code>x&lt;N&gt;</code> directives</td>
+          </tr>
+          <tr>
+            <td><strong>Hardware OLED Screen Orientation</strong></td>
+            <td><code>0°</code> (Portrait) and <code>90°</code> CW (<code>IS_LANDSCAPE 1</code>) only</td>
+            <td>✅ <strong>Full 4-Way Rotation (<code>0°</code>, <code>90°</code>, <code>180°</code>, <code>270°</code>)</strong>: adds <code>180°</code> Inverted Portrait (<code>IS_LANDSCAPE 2</code> / <code>OLED_ROTATION 180</code>) and <code>270°</code> Counter-Clockwise Landscape (<code>IS_LANDSCAPE 3</code> / <code>OLED_ROTATION 270</code>) with automatic CCW 4×5 grid coordinate remapping</td>
+          </tr>
+          <tr>
+            <td><strong>USB HID Firmware Identification (<code>0x00</code>)</strong></td>
+            <td>Reports version <code>3.3.5</code>, no custom capability signature</td>
+            <td>✅ <strong>Reports <code>1.0.0</code> + <code>'D','D','S'</code> signature bytes (offsets <code>19..21</code>)</strong> so DuckyDeck Studio automatically detects custom firmware support</td>
+          </tr>
+          <tr>
+            <td><strong>DSVM v2 Bytecode &amp; SD Compatibility</strong></td>
+            <td>DSVM v2 (<code>.dsb</code>)</td>
+            <td>✅ <strong>100% compatible with all DSVM v2 <code>.dsb</code> scripts and standard microSD profiles</strong></td>
+          </tr>
+        </tbody>
+      </table>
     </section>
 
     <!-- 7. duckyScript 3 & DSVM v2 Compiler -->
