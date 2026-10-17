@@ -11,6 +11,7 @@ pub mod qobject {
             icon_mode: &QString,
             status_header: &QString,
             profile_header: &QString,
+            sd_space_header: &QString,
             tooltip_text: &QString,
             auto_switch_enabled: bool,
             autostart_enabled: bool,
@@ -18,6 +19,10 @@ pub mod qobject {
         fn duckydeck_show_main_window();
         fn duckydeck_hide_main_window();
         fn duckydeck_quit_app();
+        fn duckydeck_restart_app();
+        fn duckydeck_toggle_oled_widget();
+        fn duckydeck_restore_oled_widget_geometry();
+        fn duckydeck_record_oled_geometry(x: i32, y: i32, width: i32, height: i32);
         fn duckydeck_apply_app_theme(theme_mode: &QString);
         fn duckydeck_run_app(start_minimized: bool) -> i32;
         fn duckydeck_capture_composite_frame(
@@ -39,6 +44,9 @@ pub mod qobject {
         #[qproperty(i32, active_profile)]
         #[qproperty(QString, active_profile_name)]
         #[qproperty(QString, sd_mount_path)]
+        #[qproperty(QString, sd_space_summary)]
+        #[qproperty(QString, sd_space_detail)]
+        #[qproperty(i32, sd_space_used_percent)]
         #[qproperty(QString, profiles_json)]
         #[qproperty(QString, active_profile_slots_json)]
         #[qproperty(QString, status_message)]
@@ -73,6 +81,7 @@ pub mod qobject {
         #[qproperty(bool, web_api_test_busy)]
         #[qproperty(bool, web_api_last_ok)]
         #[qproperty(QString, web_api_last_result)]
+        #[qproperty(QString, web_api_destinations_json)]
         #[qproperty(bool, app_launch_last_ok)]
         #[qproperty(QString, app_launch_last_result)]
         #[qproperty(QString, installed_apps_json)]
@@ -375,6 +384,18 @@ pub mod qobject {
         fn quit_application(self: Pin<&mut DeviceController>);
 
         #[qinvokable]
+        fn restart_application(self: Pin<&mut DeviceController>);
+
+        #[qinvokable]
+        fn toggle_oled_desktop_widget(self: Pin<&mut DeviceController>);
+
+        #[qinvokable]
+        fn set_oled_widget_keep_above(self: Pin<&mut DeviceController>, keep_above: bool);
+
+        #[qinvokable]
+        fn restore_oled_widget_placement(self: Pin<&mut DeviceController>, keep_above: bool);
+
+        #[qinvokable]
         fn generate_ai_macro(
             self: Pin<&mut DeviceController>,
             app_name: QString,
@@ -412,6 +433,27 @@ pub mod qobject {
             config_json: QString,
             slot_number: i32,
         );
+
+        #[qinvokable]
+        #[cxx_name = "reloadWebApiDestinations"]
+        fn reload_web_api_destinations(self: Pin<&mut DeviceController>) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "saveWebApiDestination"]
+        fn save_web_api_destination(
+            self: Pin<&mut DeviceController>,
+            name: QString,
+            method: QString,
+            url: QString,
+            headers: QString,
+        ) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "deleteWebApiDestination"]
+        fn delete_web_api_destination(
+            self: Pin<&mut DeviceController>,
+            name: QString,
+        ) -> QString;
 
         #[qinvokable]
         fn refresh_installed_apps(self: Pin<&mut DeviceController>) -> QString;
@@ -480,12 +522,49 @@ pub mod qobject {
         fn is_demo_showcase_mode(self: &DeviceController) -> bool;
 
         #[qinvokable]
+        fn is_start_minimized_mode(self: &DeviceController) -> bool;
+
+        #[qinvokable]
+        fn startup_profile_arg(self: &DeviceController) -> QString;
+
+        #[qinvokable]
+        fn is_startup_sync_sd_requested(self: &DeviceController) -> bool;
+
+        #[qinvokable]
+        fn apply_ipc_command(self: Pin<&mut DeviceController>, command: QString);
+
+        #[qinvokable]
         fn capture_showcase_frame(
             self: &DeviceController,
             output_path: QString,
             banner_title: QString,
             banner_subtitle: QString,
         ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "discardUnsyncedChange"]
+        fn discard_unsynced_change(
+            self: Pin<&mut DeviceController>,
+            profile_number: i32,
+            profile_name: QString,
+            change_key: QString,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "startGlobalMacroCapture"]
+        fn start_global_macro_capture(self: Pin<&mut DeviceController>) -> i32;
+
+        #[qinvokable]
+        #[cxx_name = "stopGlobalMacroCapture"]
+        fn stop_global_macro_capture(self: Pin<&mut DeviceController>);
+
+        #[qinvokable]
+        #[cxx_name = "pollGlobalMacroEventsJson"]
+        fn poll_global_macro_events_json(self: Pin<&mut DeviceController>) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "pushHardwareLedFrameJson"]
+        fn push_hardware_led_frame_json(self: &DeviceController, frame_json: QString) -> bool;
     }
 
     impl cxx_qt::Threading for DeviceController {}
@@ -506,19 +585,22 @@ use std::sync::{Arc, Mutex, OnceLock};
 use crate::hardware::storage::{
     apply_app_launch_config_to_script, apply_web_api_config_to_script,
     check_latest_duckypad_firmware, check_profile_sync_status, compute_profiles_fingerprint,
-    compute_unsynced_changes_json, encode_pgv31_trigger, execute_app_launch,
-    execute_web_api_request, extract_app_launch_config, extract_web_api_config,
-    find_mounted_duckypad_sd, flash_slot_led_feedback, has_app_launch_config, has_web_api_config,
-    load_all_sd_profiles, load_profiles_for_connected_device, mark_profiles_sd_synced,
-    poll_and_clear_pgv31_trigger, profile_cache_dir_for_serial, query_connected_duckypad_info,
-    read_dpp_config, read_duckypad_pro_profiles_via_msc,
-    read_duckypad_pro_profiles_via_msc_with_progress, reboot_duckypad, save_profile_order_to_sd,
-    scan_installed_desktop_apps, set_single_key_led_hid, sync_profile_web_api_triggers,
-    sync_profiles_to_cache, sync_profiles_to_device_cache,
-    write_duckypad_pro_profiles_via_msc_with_progress, write_profiles_to_sd_root,
-    AppLaunchConfig, DuckyKeySlot, DuckyProfile, DuckypadEvdevListener, WebApiConfig,
-    DUCKYPAD_VID, HID_CMD_SET_LED_SINGLE, HID_REPORT_ID_OUT, MAX_INPUT_SLOTS, PID_DUCKYPAD_2020,
-    PID_DUCKYPAD_PRO,
+    compute_unsynced_changes_json, delete_web_api_destination_by_name,
+    discard_unsynced_change_in_profiles, encode_pgv31_trigger,
+    execute_app_launch, execute_web_api_request, extract_app_launch_config, extract_web_api_config,
+    find_mounted_duckypad_sd, flash_slot_led_feedback, get_sd_card_space_info,
+    has_app_launch_config, has_web_api_config, load_all_sd_profiles,
+    load_profiles_for_connected_device, load_web_api_destinations, mark_profiles_sd_synced,
+    poll_and_clear_pgv31_trigger, poll_hardware_active_profile, profile_cache_dir_for_serial,
+    query_connected_duckypad_info, read_dpp_config, read_duckypad_pro_profiles_via_msc,
+    read_duckypad_pro_profiles_via_msc_with_progress, reboot_duckypad,
+    save_profile_order_to_sd, scan_installed_desktop_apps,
+    seed_web_api_destinations_from_profiles, set_batch_key_leds_hid, set_single_key_led_hid,
+    sync_profile_web_api_triggers, sync_profiles_to_cache, sync_profiles_to_device_cache,
+    upsert_web_api_destination, write_duckypad_pro_profiles_via_msc_with_progress,
+    write_profiles_to_sd_root, AppLaunchConfig, DuckyKeySlot, DuckyProfile, DuckypadEvdevListener,
+    GlobalMacroEvdevRecorder, WebApiConfig, DUCKYPAD_VID, HID_CMD_SET_LED_SINGLE,
+    HID_REPORT_ID_OUT, MAX_INPUT_SLOTS, PID_DUCKYPAD_2020, PID_DUCKYPAD_PRO,
 };
 use crate::kwin::auto_switcher::{
     is_kde_autostart_enabled, is_web_browser_class, resolve_rule_icon, set_kde_autostart_enabled,
@@ -670,27 +752,27 @@ fn default_bundle_version() -> u32 {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct ProfileExportBundle {
+pub struct ProfileExportBundle {
     #[serde(default = "default_bundle_version")]
-    version: u32,
-    profile: DuckyProfile,
+    pub version: u32,
+    pub profile: DuckyProfile,
     #[serde(default)]
-    auto_switch_rules: Vec<AutoSwitchRule>,
+    pub auto_switch_rules: Vec<AutoSwitchRule>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct ProfileGroupBundle {
+pub struct ProfileGroupBundle {
     #[serde(default = "default_bundle_version")]
-    version: u32,
+    pub version: u32,
     #[serde(default)]
-    group_name: String,
+    pub group_name: String,
     #[serde(default)]
-    active_profile: u8,
+    pub active_profile: u8,
     #[serde(default)]
-    default_fallback_profile: Option<u8>,
-    profiles: Vec<DuckyProfile>,
+    pub default_fallback_profile: Option<u8>,
+    pub profiles: Vec<DuckyProfile>,
     #[serde(default)]
-    auto_switch_rules: Vec<AutoSwitchRule>,
+    pub auto_switch_rules: Vec<AutoSwitchRule>,
 }
 
 pub fn run_application(start_minimized: bool) -> i32 {
@@ -715,6 +797,9 @@ pub struct DeviceControllerRust {
     pub(crate) active_profile: i32,
     pub(crate) active_profile_name: QString,
     pub(crate) sd_mount_path: QString,
+    pub(crate) sd_space_summary: QString,
+    pub(crate) sd_space_detail: QString,
+    pub(crate) sd_space_used_percent: i32,
     pub(crate) profiles_json: QString,
     pub(crate) active_profile_slots_json: QString,
     pub(crate) status_message: QString,
@@ -749,6 +834,7 @@ pub struct DeviceControllerRust {
     pub(crate) web_api_test_busy: bool,
     pub(crate) web_api_last_ok: bool,
     pub(crate) web_api_last_result: QString,
+    pub(crate) web_api_destinations_json: QString,
     pub(crate) app_launch_last_ok: bool,
     pub(crate) app_launch_last_result: QString,
     pub(crate) installed_apps_json: QString,
@@ -827,6 +913,10 @@ impl Default for DeviceControllerRust {
         if profiles.is_empty() {
             profiles = vec![Self::create_default_demo_profile()];
         }
+
+        let initial_destinations = seed_web_api_destinations_from_profiles(&profiles);
+        let destinations_json = serde_json::to_string(&initial_destinations)
+            .unwrap_or_else(|_| "[]".to_string());
 
         if sync_profile_web_api_triggers(&mut profiles) {
             if let Some(ref info) = connected_info {
@@ -915,6 +1005,9 @@ impl Default for DeviceControllerRust {
             serde_json::to_string(&switcher.saved_colors).unwrap_or_else(|_| "[]".to_string());
         let used_colors_json = Self::collect_used_colors_json(&profiles);
         let autostart = is_kde_autostart_enabled();
+        if autostart {
+            let _ = set_kde_autostart_enabled(true);
+        }
         let rules_json = Self::serialize_rules(&switcher.rules, &profiles);
         let profiles_json = Self::serialize_profiles_summary(&profiles, &switcher.rules);
         let active_prof_obj = profiles
@@ -947,6 +1040,7 @@ impl Default for DeviceControllerRust {
             sd_root_path.as_deref(),
             &sync_state_str,
         );
+        let sd_space = get_sd_card_space_info(&sn_str, sd_root_path.as_deref());
 
         let (init_lvl, init_cat) = classify_status_message(&status_str);
         record_system_event(init_lvl, init_cat, &status_str);
@@ -962,6 +1056,9 @@ impl Default for DeviceControllerRust {
             active_profile: active_prof,
             active_profile_name: QString::from(&active_prof_name),
             sd_mount_path: QString::from(&sd_mount_str),
+            sd_space_summary: QString::from(&sd_space.summary_text),
+            sd_space_detail: QString::from(&sd_space.detail_tooltip),
+            sd_space_used_percent: sd_space.used_percent,
             profiles_json: QString::from(&profiles_json),
             active_profile_slots_json: QString::from(&slots_json),
             status_message: QString::from(&status_str),
@@ -1000,6 +1097,7 @@ impl Default for DeviceControllerRust {
             web_api_test_busy: false,
             web_api_last_ok: true,
             web_api_last_result: QString::from(""),
+            web_api_destinations_json: QString::from(&destinations_json),
             app_launch_last_ok: true,
             app_launch_last_result: QString::from(""),
             installed_apps_json: QString::from("[]"),
@@ -1257,6 +1355,7 @@ impl DeviceControllerRust {
             "",
             &WebApiConfig {
                 enabled: true,
+                destination: "Home Assistant — Light Toggle".to_string(),
                 method: "POST".to_string(),
                 url: "http://homeassistant.local:8123/api/services/light/toggle".to_string(),
                 headers: "Authorization: Bearer eyJhbGciOiJIUzI1NiIs...\nContent-Type: application/json".to_string(),
@@ -1274,6 +1373,7 @@ impl DeviceControllerRust {
             "",
             &WebApiConfig {
                 enabled: true,
+                destination: "Home Assistant — Switch Turn On".to_string(),
                 method: "POST".to_string(),
                 url: "http://homeassistant.local:8123/api/services/switch/turn_on".to_string(),
                 headers: "Authorization: Bearer eyJhbGciOiJIUzI1NiIs...\nContent-Type: application/json".to_string(),
@@ -1584,6 +1684,11 @@ impl DeviceControllerRust {
             active_profile: 1,
             active_profile_name: QString::from("Dolphin"),
             sd_mount_path: QString::from("/run/media/ducky/DUCKYPAD"),
+            sd_space_summary: QString::from("SD: 1.42 MB used • 3.74 GB free"),
+            sd_space_detail: QString::from(
+                "duckyPad microSD Card Capacity\n• Used Space: 1.42 MB (0.04%)\n• Free Space: 3.74 GB (99.96%)\n• Total Capacity: 3.74 GB\n• Source: Mounted at /run/media/ducky/DUCKYPAD",
+            ),
+            sd_space_used_percent: 1,
             profiles_json: QString::from(&profiles_json),
             active_profile_slots_json: QString::from(&slots_json),
             status_message: QString::from(
@@ -1626,6 +1731,9 @@ impl DeviceControllerRust {
             web_api_test_busy: false,
             web_api_last_ok: true,
             web_api_last_result: QString::from("HTTP 200 OK (18 ms) — light.studio_key_light toggled"),
+            web_api_destinations_json: QString::from(
+                "[{\"name\":\"Home Assistant — Light Toggle\",\"method\":\"POST\",\"url\":\"http://homeassistant.local:8123/api/services/light/toggle\",\"headers\":\"Authorization: Bearer eyJhbGciOiJIUzI1NiIs...\\nContent-Type: application/json\"},{\"name\":\"Home Assistant — Switch Turn On\",\"method\":\"POST\",\"url\":\"http://homeassistant.local:8123/api/services/switch/turn_on\",\"headers\":\"Authorization: Bearer eyJhbGciOiJIUzI1NiIs...\\nContent-Type: application/json\"}]",
+            ),
             app_launch_last_ok: true,
             app_launch_last_result: QString::from("Launched Dolphin (PID 48210)"),
             installed_apps_json: QString::from(&demo_apps.to_string()),
@@ -1823,10 +1931,32 @@ impl qobject::DeviceController {
             "Selected Profile: #{prof_num}/{total_profiles} — {prof_name}"
         ));
 
+        let sd_mount_opt = if sd_path.is_empty() {
+            None
+        } else {
+            Some(Path::new(&sd_path))
+        };
+        let sd_space = get_sd_card_space_info(&sn, sd_mount_opt);
+        if self.sd_space_summary().to_string() != sd_space.summary_text {
+            self.as_mut()
+                .set_sd_space_summary(QString::from(&sd_space.summary_text));
+        }
+        if self.sd_space_detail().to_string() != sd_space.detail_tooltip {
+            self.as_mut()
+                .set_sd_space_detail(QString::from(&sd_space.detail_tooltip));
+        }
+        if *self.sd_space_used_percent() != sd_space.used_percent {
+            self.as_mut()
+                .set_sd_space_used_percent(sd_space.used_percent);
+        }
+        let sd_space_header = QString::from(&format!("💾 {}", sd_space.tray_text));
+
         let mut tooltip = format!(
             "DuckyDeck Studio — {model}\n\
              Selected Profile: #{prof_num} ({prof_name}) [{total_profiles} loaded]\n\
-             Connection: {conn_badge}"
+             Connection: {conn_badge}\n\
+             {}",
+            sd_space.tray_text
         );
         if fw != "-" || sn != "-" {
             tooltip.push_str(&format!("\nFirmware: v{fw} • Serial: {sn}"));
@@ -1850,10 +1980,35 @@ impl qobject::DeviceController {
             &mode_qstr,
             &status_header,
             &profile_header,
+            &sd_space_header,
             &tooltip_qstr,
             auto_enabled,
             autostart,
         );
+
+        let slots_raw = self.active_profile_slots_json().to_string();
+        let bg_color_str = self.active_profile_bg_color().to_string();
+        let slots_val: serde_json::Value =
+            serde_json::from_str(&slots_raw).unwrap_or_else(|_| json!([]));
+        let oled_snapshot = json!({
+            "connected": connected,
+            "modelName": model,
+            "firmwareVersion": fw,
+            "serialNumber": sn,
+            "activeProfile": prof_num,
+            "activeProfileName": prof_name,
+            "activeProfileBgColor": bg_color_str,
+            "totalProfiles": total_profiles,
+            "sdSpaceSummary": sd_space.summary_text,
+            "slots": slots_val,
+        });
+        if let Some(home) = std::env::var_os("HOME") {
+            let state_dir = PathBuf::from(home).join(".local/share/duckydeck-studio");
+            let _ = fs::create_dir_all(&state_dir);
+            if let Ok(serialized) = serde_json::to_string(&oled_snapshot) {
+                let _ = fs::write(state_dir.join("oled_state.json"), serialized);
+            }
+        }
     }
 
     fn sync_active_profile_state(mut self: Pin<&mut Self>) {
@@ -3880,7 +4035,7 @@ impl qobject::DeviceController {
 
                 tokio::spawn(async move {
                     let mut interval =
-                        tokio::time::interval(std::time::Duration::from_millis(800));
+                        tokio::time::interval(std::time::Duration::from_millis(400));
                     loop {
                         interval.tick().await;
                         if crate::hardware::storage::MSC_SYNC_IN_PROGRESS
@@ -3889,6 +4044,11 @@ impl qobject::DeviceController {
                             continue;
                         }
                         let hid_present = crate::hardware::storage::is_duckypad_hid_present();
+                        let hw_active_prof = if hid_present {
+                            poll_hardware_active_profile()
+                        } else {
+                            None
+                        };
                         let _ = hotplug_qt_thread.queue(move |mut qobject| {
                             if crate::hardware::storage::MSC_SYNC_IN_PROGRESS
                                 .load(std::sync::atomic::Ordering::SeqCst)
@@ -3932,6 +4092,34 @@ impl qobject::DeviceController {
                                 qobject.as_mut().sync_tray_state();
                             } else if !was_connected && hid_present {
                                 qobject.as_mut().refresh_device();
+                            } else if was_connected && hid_present {
+                                if let Some(hw_prof) = hw_active_prof {
+                                    let current_prof = *qobject.active_profile() as u8;
+                                    let max_prof = qobject.rust().profiles.len() as u8;
+                                    if hw_prof != current_prof
+                                        && hw_prof >= 1
+                                        && (max_prof == 0 || hw_prof <= max_prof)
+                                    {
+                                        if let Ok(mut sw) = qobject.rust().switcher_state.lock() {
+                                            sw.last_switched_profile = hw_prof;
+                                        }
+                                        let prof_name = qobject
+                                            .rust()
+                                            .profiles
+                                            .iter()
+                                            .find(|p| p.number == hw_prof)
+                                            .map(|p| p.name.clone())
+                                            .unwrap_or_else(|| format!("Profile {hw_prof}"));
+                                        qobject.as_mut().set_active_profile(hw_prof as i32);
+                                        qobject.as_mut().sync_active_profile_state();
+                                        let msg = format!(
+                                            "Followed hardware profile switch → Profile #{hw_prof} ({prof_name})"
+                                        );
+                                        record_system_event("INFO", "PROFILE", &msg);
+                                        qobject.as_mut().sync_event_log_properties();
+                                        qobject.as_mut().set_status_message(QString::from(&msg));
+                                    }
+                                }
                             } else if sd_unmounted && !was_connected {
                                 qobject
                                     .as_mut()
@@ -5400,6 +5588,23 @@ impl qobject::DeviceController {
         qobject::duckydeck_quit_app();
     }
 
+    pub fn restart_application(self: Pin<&mut Self>) {
+        qobject::duckydeck_restart_app();
+    }
+
+    pub fn toggle_oled_desktop_widget(self: Pin<&mut Self>) {
+        qobject::duckydeck_toggle_oled_widget();
+    }
+
+    pub fn set_oled_widget_keep_above(self: Pin<&mut Self>, keep_above: bool) {
+        crate::kwin::auto_switcher::apply_kwin_oled_keep_above(keep_above, false);
+    }
+
+    pub fn restore_oled_widget_placement(self: Pin<&mut Self>, keep_above: bool) {
+        qobject::duckydeck_restore_oled_widget_geometry();
+        crate::kwin::auto_switcher::apply_kwin_oled_keep_above(keep_above, true);
+    }
+
     pub fn generate_ai_macro(mut self: Pin<&mut Self>, app_name: QString, prompt: QString) {
         self.as_mut().set_ai_busy(true);
         let app = app_name.to_string();
@@ -5582,6 +5787,95 @@ impl qobject::DeviceController {
             restore_rgb,
             &source_label,
         );
+    }
+
+    pub fn reload_web_api_destinations(mut self: Pin<&mut Self>) -> QString {
+        let list = load_web_api_destinations();
+        let json_str = serde_json::to_string(&list).unwrap_or_else(|_| "[]".to_string());
+        let qstr = QString::from(&json_str);
+        self.as_mut().set_web_api_destinations_json(qstr.clone());
+        qstr
+    }
+
+    pub fn save_web_api_destination(
+        mut self: Pin<&mut Self>,
+        name: QString,
+        method: QString,
+        url: QString,
+        headers: QString,
+    ) -> QString {
+        let name_str = name.to_string();
+        let method_str = method.to_string();
+        let url_str = url.to_string();
+        let headers_str = headers.to_string();
+
+        match upsert_web_api_destination(&name_str, &method_str, &url_str, &headers_str) {
+            Ok(list) => {
+                let json_str = serde_json::to_string(&list).unwrap_or_else(|_| "[]".to_string());
+                let qstr = QString::from(&json_str);
+                self.as_mut().set_web_api_destinations_json(qstr.clone());
+
+                // Propagate updated destination method/url/headers to any slots referencing this destination
+                let any_updated = {
+                    let mut rust = self.as_mut().rust_mut();
+                    sync_profile_web_api_triggers(&mut rust.profiles)
+                };
+                if any_updated {
+                    let sn = self.serial_number().to_string();
+                    let profiles_clone = self.rust().profiles.clone();
+                    if sn != "-" && !sn.is_empty() {
+                        sync_profiles_to_device_cache(&sn, &profiles_clone);
+                    } else {
+                        sync_profiles_to_cache(&profiles_clone);
+                    }
+                    self.as_mut().sync_active_profile_state();
+                }
+
+                let msg = format!(
+                    "Saved reusable Web API destination '{}' ({} {})",
+                    name_str.trim(),
+                    method_str.trim().to_ascii_uppercase(),
+                    url_str.trim()
+                );
+                record_system_event("INFO", "WEB_API", &msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&msg));
+                qstr
+            }
+            Err(e) => {
+                let msg = format!("Failed saving Web API destination: {e}");
+                record_system_event("ERROR", "WEB_API", &msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&msg));
+                self.web_api_destinations_json().clone()
+            }
+        }
+    }
+
+    pub fn delete_web_api_destination(
+        mut self: Pin<&mut Self>,
+        name: QString,
+    ) -> QString {
+        let name_str = name.to_string();
+        match delete_web_api_destination_by_name(&name_str) {
+            Ok(list) => {
+                let json_str = serde_json::to_string(&list).unwrap_or_else(|_| "[]".to_string());
+                let qstr = QString::from(&json_str);
+                self.as_mut().set_web_api_destinations_json(qstr.clone());
+                let msg = format!("Deleted Web API destination '{}'", name_str.trim());
+                record_system_event("INFO", "WEB_API", &msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&msg));
+                qstr
+            }
+            Err(e) => {
+                let msg = format!("Failed deleting Web API destination: {e}");
+                record_system_event("ERROR", "WEB_API", &msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&msg));
+                self.web_api_destinations_json().clone()
+            }
+        }
     }
 
     pub fn refresh_installed_apps(mut self: Pin<&mut Self>) -> QString {
@@ -6285,6 +6579,54 @@ impl qobject::DeviceController {
         is_demo_showcase_env()
     }
 
+    pub fn is_start_minimized_mode(&self) -> bool {
+        std::env::var("DUCKYDECK_START_MINIMIZED").as_deref() == Ok("1")
+    }
+
+    pub fn startup_profile_arg(&self) -> QString {
+        QString::from(
+            std::env::var("DUCKYDECK_STARTUP_PROFILE")
+                .unwrap_or_default()
+                .trim(),
+        )
+    }
+
+    pub fn is_startup_sync_sd_requested(&self) -> bool {
+        std::env::var("DUCKYDECK_STARTUP_SYNC_SD").as_deref() == Ok("1")
+    }
+
+    pub fn apply_ipc_command(mut self: Pin<&mut Self>, command: QString) {
+        let raw = command.to_string();
+        let cmd = raw.trim();
+        match cmd {
+            "auto-switch:on" => {
+                let fb = *self.default_fallback_profile();
+                self.as_mut().set_auto_switch_config(true, fb);
+                self.as_mut()
+                    .set_status_message(QString::from("Auto-Switcher enabled via CLI"));
+            }
+            "auto-switch:off" => {
+                let fb = *self.default_fallback_profile();
+                self.as_mut().set_auto_switch_config(false, fb);
+                self.as_mut()
+                    .set_status_message(QString::from("Auto-Switcher disabled via CLI"));
+            }
+            "auto-switch:toggle" => {
+                self.as_mut().toggle_auto_switch_from_tray();
+            }
+            "reload" => {
+                self.as_mut().refresh_device();
+            }
+            _ => {
+                if let Some(path) = cmd.strip_prefix("import-group:") {
+                    let _ = self.as_mut().load_profile_group(QString::from(path));
+                } else if let Some(path) = cmd.strip_prefix("import-profile:") {
+                    let _ = self.as_mut().import_profile_from_path(QString::from(path));
+                }
+            }
+        }
+    }
+
     pub fn capture_showcase_frame(
         &self,
         output_path: QString,
@@ -6293,5 +6635,128 @@ impl qobject::DeviceController {
     ) -> bool {
         qobject::duckydeck_capture_composite_frame(&output_path, &banner_title, &banner_subtitle)
     }
+
+    pub fn discard_unsynced_change(
+        mut self: Pin<&mut Self>,
+        profile_number: i32,
+        profile_name: QString,
+        change_key: QString,
+    ) -> bool {
+        let p_num = profile_number.clamp(1, 64) as u8;
+        let p_name = profile_name.to_string();
+        let key = change_key.to_string();
+
+        let res = {
+            let rust = self.as_mut().rust_mut().get_mut();
+            let sn = rust.serial_number.to_string();
+            let sd_root = rust.sd_root_path.clone();
+            let out = discard_unsynced_change_in_profiles(
+                &sn,
+                &mut rust.profiles,
+                sd_root.as_deref(),
+                p_num,
+                &p_name,
+                &key,
+            );
+            if out.is_ok() {
+                if let Ok(mut sw) = rust.switcher_state.lock() {
+                    sw.align_rules_with_profiles(&rust.profiles);
+                }
+                if sn != "-" && !sn.is_empty() {
+                    sync_profiles_to_device_cache(&sn, &rust.profiles);
+                } else {
+                    sync_profiles_to_cache(&rust.profiles);
+                }
+            }
+            out
+        };
+
+        match res {
+            Ok(msg) => {
+                let max_prof = self.rust().profiles.len().max(1) as i32;
+                let cur_active = *self.active_profile();
+                if cur_active > max_prof {
+                    self.as_mut().set_active_profile(max_prof);
+                }
+                self.as_mut().sync_active_profile_state();
+                let status = format!("↩ {msg}");
+                record_system_event("INFO", "SD_SYNC", &status);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&status));
+                true
+            }
+            Err(err) => {
+                let status = format!("⚠ Could not discard change: {err}");
+                record_system_event("WARN", "SD_SYNC", &status);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&status));
+                false
+            }
+        }
+    }
+
+    pub fn start_global_macro_capture(self: Pin<&mut Self>) -> i32 {
+        let recorder = GlobalMacroEvdevRecorder::new();
+        let count = recorder.device_count() as i32;
+        if let Ok(mut guard) = global_macro_recorder_store().lock() {
+            *guard = Some(recorder);
+        }
+        count
+    }
+
+    pub fn stop_global_macro_capture(self: Pin<&mut Self>) {
+        if let Ok(mut guard) = global_macro_recorder_store().lock() {
+            *guard = None;
+        }
+    }
+
+    pub fn poll_global_macro_events_json(self: Pin<&mut Self>) -> QString {
+        if let Ok(mut guard) = global_macro_recorder_store().lock() {
+            if let Some(ref mut recorder) = *guard {
+                let evts = recorder.poll_events();
+                if !evts.is_empty() {
+                    if let Ok(s) = serde_json::to_string(&evts) {
+                        return QString::from(&s);
+                    }
+                }
+            }
+        }
+        QString::from("[]")
+    }
+
+    pub fn push_hardware_led_frame_json(&self, frame_json: QString) -> bool {
+        if !*self.connected() {
+            return false;
+        }
+        let raw = frame_json.to_string();
+        let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&raw) else {
+            return false;
+        };
+        let mut updates: Vec<(usize, [u8; 3])> = Vec::with_capacity(arr.len());
+        for item in arr {
+            let slot = item.get("slot").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            if !(1..=20).contains(&slot) {
+                continue;
+            }
+            let r = item.get("r").and_then(|v| v.as_i64()).unwrap_or(0).clamp(0, 255) as u8;
+            let g = item.get("g").and_then(|v| v.as_i64()).unwrap_or(0).clamp(0, 255) as u8;
+            let b = item.get("b").and_then(|v| v.as_i64()).unwrap_or(0).clamp(0, 255) as u8;
+            updates.push((slot, [r, g, b]));
+        }
+        if updates.is_empty() {
+            return false;
+        }
+        std::thread::spawn(move || {
+            let _ = set_batch_key_leds_hid(&updates);
+        });
+        true
+    }
 }
+
+static GLOBAL_MACRO_RECORDER: OnceLock<Mutex<Option<GlobalMacroEvdevRecorder>>> = OnceLock::new();
+
+fn global_macro_recorder_store() -> &'static Mutex<Option<GlobalMacroEvdevRecorder>> {
+    GLOBAL_MACRO_RECORDER.get_or_init(|| Mutex::new(None))
+}
+
 

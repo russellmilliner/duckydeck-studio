@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Outer OLED Display Module Bezel -->
+  <rect x="4" y="3" width="56" height="58" rx="7" fill="#0b0f19" stroke="#38bdf8" stroke-width="2.5"/>
+
+  <!-- Inner 128x128 OLED Glass Screen Area -->
+  <rect x="8" y="7" width="48" height="42" rx="3" fill="#020617" stroke="#1e293b" stroke-width="1"/>
+
+  <!-- OLED Inverted Cyan Profile Header Bar -->
+  <rect x="9" y="8" width="46" height="7" rx="1.5" fill="#38bdf8"/>
+  <!-- Profile Title Pixel Bars ("P1: PROFILE") -->
+  <rect x="13" y="10.2" width="6" height="2.6" rx="0.8" fill="#020617"/>
+  <rect x="21" y="10.2" width="18" height="2.6" rx="0.8" fill="#020617"/>
+  <circle cx="51" cy="11.5" r="1.4" fill="#020617"/>
+
+  <!-- 4x4 OLED Key Matrix Grid Lines & Cells -->
+  <!-- Row 1 -->
+  <!-- Highlighted Active Key Cell (Col 1, Row 1) -->
+  <rect x="9.5" y="16.5" width="10.5" height="7.2" rx="1" fill="#38bdf8"/>
+  <rect x="11.5" y="19.1" width="6.5" height="2" rx="0.6" fill="#020617"/>
+
+  <rect x="21" y="16.5" width="10.5" height="7.2" rx="1" fill="#050b14" stroke="#334155" stroke-width="0.9"/>
+  <rect x="23" y="19.1" width="6.5" height="2" rx="0.6" fill="#e2e8f0"/>
+
+  <rect x="32.5" y="16.5" width="10.5" height="7.2" rx="1" fill="#050b14" stroke="#334155" stroke-width="0.9"/>
+  <rect x="34.5" y="19.1" width="6.5" height="2" rx="0.6" fill="#e2e8f0"/>
+
+  <rect x="44" y="16.5" width="10.5" height="7.2" rx="1" fill="#050b14" stroke="#334155" stroke-width="0.9"/>
+  <rect x="46" y="19.1" width="6.5" height="2" rx="0.6" fill="#38bdf8"/>
+
+  <!-- Row 2 -->
+  <rect x="9.5" y="24.8" width="10.5" height="7.2" rx="1" fill="#050b14" stroke="#334155" stroke-width="0.9"/>
+  <rect x="11.5" y="27.4" width="6.5" height="2" rx="0.6" fill="#e2e8f0"/>
+
+  <rect x="21" y="24.8" width="10.5" height="7.2" rx="1" fill="#050b14" stroke="#334155" stroke-width="0.9"/>
+  <rect x="23" y="27.4" width="6.5" height="2" rx="0.6" fill="#38bdf8"/>
+
+  <rect x="32.5" y="24.8" width="10.5" height="7.2" rx="1" fill="#050b14" stroke="#334155" stroke-width="0.9"/>
+  <rect x="34.5" y="27.4" width="6.5" height="2" rx="0.6" fill="#e2e8f0"/>
+
+  <rect x="44" y="24.8" width="10.5" height="7.2" rx="1" fill="#050b14" stroke="#334155" stroke-width="0.9"/>
+  <rect x="46" y="27.4" width="6.5" height="2" rx="0.6" fill="#e2e8f0"/>
+
+  <!-- Row 3 -->
+  <rect x="9.5" y="33.1" width="10.5" height="7.2" rx="1" fill="#050b14" stroke="#334155" stroke-width="0.9"/>
+  <rect x="11.5" y="35.7" width="6.5" height="2" rx="0.6" fill="#38bdf8"/>
+
+  <rect x="21" y="33.1" width="10.5" height="7.2" rx="1" fill="#050b14" stroke="#334155" stroke-width="0.9"/>
+  <rect x="23" y="35.7" width="6.5" height="2" rx="0.6" fill="#e2e8f0"/>
+
+  <rect x="32.5" y="33.1" width="10.5" height="7.2" rx="1" fill="#050b14" stroke="#334155" stroke-width="0.9"/>
+  <rect x="34.5" y="35.7" width="6.5" height="2" rx="0.6" fill="#e2e8f0"/>
+
+  <rect x="44" y="33.1" width="10.5" height="7.2" rx="1" fill="#050b14" stroke="#334155" stroke-width="0.9"/>
+  <rect x="46" y="35.7" width="6.5" height="2" rx="0.6" fill="#38bdf8"/>
+
+  <!-- Row 4 -->
+  <rect x="9.5" y="41.4" width="10.5" height="6.4" rx="1" fill="#050b14" stroke="#334155" stroke-width="0.9"/>
+  <rect x="11.5" y="43.6" width="6.5" height="2" rx="0.6" fill="#94a3b8"/>
+
+  <rect x="21" y="41.4" width="10.5" height="6.4" rx="1" fill="#050b14" stroke="#334155" stroke-width="0.9"/>
+  <rect x="23" y="43.6" width="6.5" height="2" rx="0.6" fill="#94a3b8"/>
+
+  <rect x="32.5" y="41.4" width="10.5" height="6.4" rx="1" fill="#050b14" stroke="#334155" stroke-width="0.9"/>
+  <rect x="34.5" y="43.6" width="6.5" height="2" rx="0.6" fill="#94a3b8"/>
+
+  <rect x="44" y="41.4" width="10.5" height="6.4" rx="1" fill="#050b14" stroke="#334155" stroke-width="0.9"/>
+  <rect x="46" y="43.6" width="6.5" height="2" rx="0.6" fill="#94a3b8"/>
+
+  <!-- Bottom Encoder Status Strip (Knobs 1 & 2) -->
+  <circle cx="13" cy="54.5" r="3.4" fill="#111827" stroke="#38bdf8" stroke-width="1.3"/>
+  <rect x="18.5" y="53.3" width="11" height="2.4" rx="1" fill="#64748b"/>
+
+  <circle cx="36" cy="54.5" r="3.4" fill="#111827" stroke="#22c55e" stroke-width="1.3"/>
+  <rect x="41.5" y="53.3" width="11" height="2.4" rx="1" fill="#64748b"/>
+</svg>

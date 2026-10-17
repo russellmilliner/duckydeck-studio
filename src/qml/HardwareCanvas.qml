@@ -29,6 +29,312 @@ Item {
     signal renameProfileRequested(int profileNumber, string currentName)
     signal keyColorPickerRequested(int slotNumber, string currentColorHex)
     signal profileDefaultColorPickerRequested(int profileNumber, string profileName, string currentColorHex)
+    signal openLightingAnimatorRequested(string targetScope, int targetSlot)
+
+    // Gaming-Keyboard RGB Animation Engine State (Profile-level + Individual Key-level)
+    property var profileAnimationConfig: ({
+        enabled: false,
+        trigger: "idle",       // "idle", "keypress", "both"
+        preset: "wave_h",      // "pulse", "wave_h", "wave_v", "ripple", "starlight", "spectrum", "scanner"
+        speed: 5,              // 1..10
+        color1: "#00f0ff",
+        color2: "#a855f7",
+        idleTimeoutSec: 5,
+        streamToHardware: true
+    })
+    property var keyAnimationConfigs: ({}) // map of slot ("1".."20") -> config object
+    property real animPhase: 0.0
+    property real lastActivityMs: Date.now()
+    property bool idleAnimationActive: false
+    property var activeKeyBursts: ([]) // [{ slot: 1..20, startMs: ..., preset: ..., color1: ..., color2: ..., speed: ..., scope: "key"|"profile" }]
+    property int hwStreamTickCounter: 0
+
+    function notifyUserActivity(pressedSlot) {
+        const now = Date.now()
+        const wasIdle = canvasRoot.idleAnimationActive
+        canvasRoot.lastActivityMs = now
+        canvasRoot.idleAnimationActive = false
+
+        if (pressedSlot >= 1 && pressedSlot <= 20) {
+            const keyCfg = canvasRoot.keyAnimationConfigs[String(pressedSlot)]
+            const profCfg = canvasRoot.profileAnimationConfig
+            if (keyCfg && keyCfg.enabled && (keyCfg.trigger === "keypress" || keyCfg.trigger === "both")) {
+                canvasRoot.triggerKeypressBurst(pressedSlot, keyCfg, "key")
+            } else if (profCfg && profCfg.enabled && (profCfg.trigger === "keypress" || profCfg.trigger === "both")) {
+                canvasRoot.triggerKeypressBurst(pressedSlot, profCfg, "profile")
+            }
+        }
+        if (wasIdle) {
+            canvasRoot.resetAnimatedKeyColors()
+        }
+    }
+
+    function triggerKeypressBurst(slotNum, cfg, scope) {
+        if (!cfg) return
+        const list = (canvasRoot.activeKeyBursts || []).slice()
+        list.push({
+            slot: slotNum,
+            startMs: Date.now(),
+            preset: cfg.preset || "ripple",
+            color1: cfg.color1 || "#00f0ff",
+            color2: cfg.color2 || "#a855f7",
+            speed: cfg.speed || 5,
+            scope: scope || "profile",
+            streamToHardware: cfg.streamToHardware !== false
+        })
+        if (list.length > 8) list.shift()
+        canvasRoot.activeKeyBursts = list
+        if (!rgbAnimTimer.running) rgbAnimTimer.start()
+    }
+
+    function parseHexRgb(hexStr, fallbackR, fallbackG, fallbackB) {
+        const s = String(hexStr || "").trim().replace(/^#/, "")
+        if (s.length === 6) {
+            const r = parseInt(s.slice(0, 2), 16)
+            const g = parseInt(s.slice(2, 4), 16)
+            const b = parseInt(s.slice(4, 6), 16)
+            if (!isNaN(r) && !isNaN(g) && !isNaN(b)) return [r, g, b]
+        }
+        return [fallbackR, fallbackG, fallbackB]
+    }
+
+    function hsvToRgb(h, s, v) {
+        const hh = ((h % 1.0) + 1.0) % 1.0
+        const i = Math.floor(hh * 6)
+        const f = hh * 6 - i
+        const p = v * (1 - s)
+        const q = v * (1 - f * s)
+        const t = v * (1 - (1 - f) * s)
+        let r = 0, g = 0, b = 0
+        switch (i % 6) {
+            case 0: r = v; g = t; b = p; break
+            case 1: r = q; g = v; b = p; break
+            case 2: r = p; g = v; b = t; break
+            case 3: r = p; g = q; b = v; break
+            case 4: r = t; g = p; b = v; break
+            case 5: r = v; g = p; b = q; break
+        }
+        return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)]
+    }
+
+    function evalPresetRgb(preset, col, row, phase, c1, c2, baseR, baseG, baseB, originCol, originRow, progress01) {
+        if (preset === "pulse") {
+            const w = 0.5 + 0.5 * Math.sin(phase * Math.PI * 2.0)
+            return [
+                Math.round(c2[0] + (c1[0] - c2[0]) * w),
+                Math.round(c2[1] + (c1[1] - c2[1]) * w),
+                Math.round(c2[2] + (c1[2] - c2[2]) * w)
+            ]
+        } else if (preset === "wave_h") {
+            const w = 0.5 + 0.5 * Math.sin((phase - col * 0.22) * Math.PI * 2.0)
+            return [
+                Math.round(c2[0] + (c1[0] - c2[0]) * w),
+                Math.round(c2[1] + (c1[1] - c2[1]) * w),
+                Math.round(c2[2] + (c1[2] - c2[2]) * w)
+            ]
+        } else if (preset === "wave_v") {
+            const w = 0.5 + 0.5 * Math.sin((phase - row * 0.20) * Math.PI * 2.0)
+            return [
+                Math.round(c2[0] + (c1[0] - c2[0]) * w),
+                Math.round(c2[1] + (c1[1] - c2[1]) * w),
+                Math.round(c2[2] + (c1[2] - c2[2]) * w)
+            ]
+        } else if (preset === "spectrum") {
+            const hue = (phase + col * 0.08 + row * 0.06) % 1.0
+            return canvasRoot.hsvToRgb(hue, 0.92, 1.0)
+        } else if (preset === "scanner") {
+            const pingPong = 1.5 + 1.5 * Math.sin(phase * Math.PI * 2.0)
+            const dist = Math.abs(col - pingPong)
+            const intensity = Math.max(0.0, 1.0 - dist * 0.65)
+            return [
+                Math.round(baseR * (1.0 - intensity) + c1[0] * intensity),
+                Math.round(baseG * (1.0 - intensity) + c1[1] * intensity),
+                Math.round(baseB * (1.0 - intensity) + c1[2] * intensity)
+            ]
+        } else if (preset === "ripple") {
+            const dist = Math.hypot(col - originCol, row - originRow)
+            const ringRadius = progress01 * 5.2
+            const ringDist = Math.abs(dist - ringRadius)
+            const band = Math.max(0.0, 1.0 - ringDist / 1.15) * (1.0 - progress01 * 0.35)
+            return [
+                Math.round(baseR * (1.0 - band) + c1[0] * band),
+                Math.round(baseG * (1.0 - band) + c1[1] * band),
+                Math.round(baseB * (1.0 - band) + c1[2] * band)
+            ]
+        } else if (preset === "starlight") {
+            const decay = Math.max(0.0, 1.0 - progress01)
+            const seed = Math.sin((col * 7 + row * 13) * 1.7 + phase * 6.28)
+            const sparkle = progress01 < 1.0 ? decay : Math.max(0.0, (seed - 0.35) / 0.65)
+            return [
+                Math.round(baseR * (1.0 - sparkle) + c1[0] * sparkle),
+                Math.round(baseG * (1.0 - sparkle) + c1[1] * sparkle),
+                Math.round(baseB * (1.0 - sparkle) + c1[2] * sparkle)
+            ]
+        }
+        return [baseR, baseG, baseB]
+    }
+
+    function resetAnimatedKeyColors() {
+        const hwFrame = []
+        for (let i = 0; i < keyModel.count; ++i) {
+            const it = keyModel.get(i)
+            keyModel.setProperty(i, "animR", it.r)
+            keyModel.setProperty(i, "animG", it.g)
+            keyModel.setProperty(i, "animB", it.b)
+            keyModel.setProperty(i, "animActive", false)
+            hwFrame.push({ slot: i + 1, r: it.r, g: it.g, b: it.b })
+        }
+        if (canvasRoot.controller && canvasRoot.controller.connected) {
+            canvasRoot.controller.pushHardwareLedFrameJson(JSON.stringify(hwFrame))
+        }
+    }
+
+    Timer {
+        id: rgbAnimTimer
+        interval: 55
+        repeat: true
+        running: true
+        onTriggered: {
+            if (keyModel.count < 20) return
+            const now = Date.now()
+            const profCfg = canvasRoot.profileAnimationConfig || {}
+            const keyCfgs = canvasRoot.keyAnimationConfigs || {}
+
+            // Check if any idle animation is configured on the profile or any key
+            let anyIdleConfigured = !!(profCfg.enabled && (profCfg.trigger === "idle" || profCfg.trigger === "both"))
+            let minIdleTimeoutMs = Math.max(1, (profCfg.idleTimeoutSec !== undefined ? profCfg.idleTimeoutSec : 5)) * 1000
+            for (let k in keyCfgs) {
+                const kc = keyCfgs[k]
+                if (kc && kc.enabled && (kc.trigger === "idle" || kc.trigger === "both")) {
+                    anyIdleConfigured = true
+                    const kt = Math.max(1, (kc.idleTimeoutSec !== undefined ? kc.idleTimeoutSec : 5)) * 1000
+                    if (kt < minIdleTimeoutMs) minIdleTimeoutMs = kt
+                }
+            }
+
+            if (anyIdleConfigured && (now - canvasRoot.lastActivityMs >= minIdleTimeoutMs)) {
+                canvasRoot.idleAnimationActive = true
+            } else if (!anyIdleConfigured) {
+                canvasRoot.idleAnimationActive = false
+            }
+
+            // Prune expired keypress bursts
+            const activeBursts = []
+            const bursts = canvasRoot.activeKeyBursts || []
+            for (let b = 0; b < bursts.length; ++b) {
+                const item = bursts[b]
+                const durMs = Math.max(350, 1400 - (item.speed || 5) * 95)
+                if (now - item.startMs < durMs) {
+                    activeBursts.push(item)
+                }
+            }
+            if (activeBursts.length !== bursts.length) {
+                canvasRoot.activeKeyBursts = activeBursts
+                if (activeBursts.length === 0 && !canvasRoot.idleAnimationActive) {
+                    canvasRoot.resetAnimatedKeyColors()
+                    return
+                }
+            }
+
+            if (!canvasRoot.idleAnimationActive && activeBursts.length === 0) {
+                return
+            }
+
+            const speedMult = (profCfg.speed || 5) * 0.012
+            canvasRoot.animPhase = (canvasRoot.animPhase + speedMult) % 100.0
+
+            const profC1 = canvasRoot.parseHexRgb(profCfg.color1, 0, 240, 255)
+            const profC2 = canvasRoot.parseHexRgb(profCfg.color2, 168, 85, 247)
+            let shouldStreamHw = false
+            const hwFrame = []
+
+            for (let i = 0; i < 20; ++i) {
+                const slot = i + 1
+                const col = i % 4
+                const row = Math.floor(i / 4)
+                const baseItem = keyModel.get(i)
+                let outR = baseItem.r
+                let outG = baseItem.g
+                let outB = baseItem.b
+                let isAnim = false
+
+                // 1. Idle layer (Profile idle, then Key-specific idle override)
+                if (canvasRoot.idleAnimationActive) {
+                    if (profCfg.enabled && (profCfg.trigger === "idle" || profCfg.trigger === "both")) {
+                        const rgb = canvasRoot.evalPresetRgb(
+                            profCfg.preset || "wave_h",
+                            col, row,
+                            canvasRoot.animPhase,
+                            profC1, profC2,
+                            baseItem.r, baseItem.g, baseItem.b,
+                            1.5, 2.0,
+                            (canvasRoot.animPhase % 1.0)
+                        )
+                        outR = rgb[0]; outG = rgb[1]; outB = rgb[2]
+                        isAnim = true
+                        if (profCfg.streamToHardware !== false) shouldStreamHw = true
+                    }
+                    const kc = keyCfgs[String(slot)]
+                    if (kc && kc.enabled && (kc.trigger === "idle" || kc.trigger === "both")) {
+                        const kc1 = canvasRoot.parseHexRgb(kc.color1, 0, 240, 255)
+                        const kc2 = canvasRoot.parseHexRgb(kc.color2, baseItem.r, baseItem.g, baseItem.b)
+                        const kPhase = (now * 0.001 * (kc.speed || 5) * 0.45) % 100.0
+                        const rgb = canvasRoot.evalPresetRgb(
+                            kc.preset || "pulse",
+                            col, row,
+                            kPhase,
+                            kc1, kc2,
+                            baseItem.r, baseItem.g, baseItem.b,
+                            col, row,
+                            (kPhase % 1.0)
+                        )
+                        outR = rgb[0]; outG = rgb[1]; outB = rgb[2]
+                        isAnim = true
+                        if (kc.streamToHardware !== false) shouldStreamHw = true
+                    }
+                }
+
+                // 2. Active Keypress Bursts layer
+                for (let b = 0; b < activeBursts.length; ++b) {
+                    const burst = activeBursts[b]
+                    if (burst.scope === "key" && burst.slot !== slot && burst.preset !== "ripple") {
+                        continue
+                    }
+                    const durMs = Math.max(350, 1400 - (burst.speed || 5) * 95)
+                    const prog = Math.min(1.0, Math.max(0.0, (now - burst.startMs) / durMs))
+                    const oCol = (burst.slot - 1) % 4
+                    const oRow = Math.floor((burst.slot - 1) / 4)
+                    const bc1 = canvasRoot.parseHexRgb(burst.color1, 0, 240, 255)
+                    const bc2 = canvasRoot.parseHexRgb(burst.color2, baseItem.r, baseItem.g, baseItem.b)
+                    const rgb = canvasRoot.evalPresetRgb(
+                        burst.preset || "ripple",
+                        col, row,
+                        prog * 2.0,
+                        bc1, bc2,
+                        outR, outG, outB,
+                        oCol, oRow,
+                        prog
+                    )
+                    outR = rgb[0]; outG = rgb[1]; outB = rgb[2]
+                    isAnim = true
+                    if (burst.streamToHardware !== false) shouldStreamHw = true
+                }
+
+                keyModel.setProperty(i, "animR", outR)
+                keyModel.setProperty(i, "animG", outG)
+                keyModel.setProperty(i, "animB", outB)
+                keyModel.setProperty(i, "animActive", isAnim)
+                hwFrame.push({ slot: slot, r: outR, g: outG, b: outB })
+            }
+
+            if (shouldStreamHw && canvasRoot.controller && canvasRoot.controller.connected) {
+                canvasRoot.hwStreamTickCounter = (canvasRoot.hwStreamTickCounter + 1) % 3
+                if (canvasRoot.hwStreamTickCounter === 0) {
+                    canvasRoot.controller.pushHardwareLedFrameJson(JSON.stringify(hwFrame))
+                }
+            }
+        }
+    }
 
     property int contextMenuSlot: 1
     property int draggingSlot: -1
@@ -68,6 +374,11 @@ Item {
                     r: 0,
                     g: 170,
                     b: 255,
+                    animR: 0,
+                    animG: 170,
+                    animB: 255,
+                    animActive: false,
+                    hasAnim: false,
                     hasRel: false,
                     hasLoop: false,
                     hasWebApi: false,
@@ -148,11 +459,21 @@ Item {
                 const item = arr[i]
                 const s = item.slot
                 if (s >= 1 && s <= 20) {
+                    const br = item.r !== undefined ? item.r : 0
+                    const bg = item.g !== undefined ? item.g : 170
+                    const bb = item.b !== undefined ? item.b : 255
+                    const kc = canvasRoot.keyAnimationConfigs ? canvasRoot.keyAnimationConfigs[String(s)] : null
                     keyModel.setProperty(s - 1, "l1", item.l1 || "")
                     keyModel.setProperty(s - 1, "l2", item.l2 || "")
-                    keyModel.setProperty(s - 1, "r", item.r !== undefined ? item.r : 0)
-                    keyModel.setProperty(s - 1, "g", item.g !== undefined ? item.g : 170)
-                    keyModel.setProperty(s - 1, "b", item.b !== undefined ? item.b : 255)
+                    keyModel.setProperty(s - 1, "r", br)
+                    keyModel.setProperty(s - 1, "g", bg)
+                    keyModel.setProperty(s - 1, "b", bb)
+                    if (!keyModel.get(s - 1).animActive) {
+                        keyModel.setProperty(s - 1, "animR", br)
+                        keyModel.setProperty(s - 1, "animG", bg)
+                        keyModel.setProperty(s - 1, "animB", bb)
+                    }
+                    keyModel.setProperty(s - 1, "hasAnim", !!(kc && kc.enabled))
                     keyModel.setProperty(s - 1, "hasRel", !!item.hasRel)
                     keyModel.setProperty(s - 1, "hasLoop", !!item.hasLoop)
                     keyModel.setProperty(s - 1, "hasWebApi", !!item.hasWebApi)
@@ -224,6 +545,9 @@ Item {
             keyModel.setProperty(slotNum - 1, "r", r)
             keyModel.setProperty(slotNum - 1, "g", g)
             keyModel.setProperty(slotNum - 1, "b", b)
+            keyModel.setProperty(slotNum - 1, "animR", r)
+            keyModel.setProperty(slotNum - 1, "animG", g)
+            keyModel.setProperty(slotNum - 1, "animB", b)
             if (controller) {
                 controller.setKeyRgb(slotNum - 1, r, g, b)
             }
@@ -333,6 +657,16 @@ Item {
             }
         }
 
+        QQC2.MenuItem {
+            visible: canvasRoot.contextMenuSlot >= 1 && canvasRoot.contextMenuSlot <= 20
+            icon.name: "preferences-desktop-color"
+            text: qsTr("✨ Key %1 RGB Lighting Animation...").arg(canvasRoot.contextMenuSlot)
+            onTriggered: {
+                canvasRoot.selectedSlot = canvasRoot.contextMenuSlot
+                canvasRoot.openLightingAnimatorRequested("key", canvasRoot.contextMenuSlot)
+            }
+        }
+
         QQC2.MenuSeparator {}
 
         QQC2.MenuItem {
@@ -356,9 +690,9 @@ Item {
 
             QQC2.ComboBox {
                 id: profileCombo
-                Layout.preferredWidth: 170
+                Layout.preferredWidth: 165
                 Layout.fillWidth: true
-                Layout.maximumWidth: 220
+                Layout.maximumWidth: 215
                 model: canvasRoot.profileLabels
                 onActivated: (index) => {
                     if (index >= 0 && index < canvasRoot.profileNumbers.length && canvasRoot.controller) {
@@ -397,6 +731,19 @@ Item {
                 QQC2.ToolTip.text: canvasRoot.controller
                     ? qsTr("Rename Profile #%1 (%2)...").arg(canvasRoot.controller.activeProfile).arg(canvasRoot.controller.activeProfileName)
                     : qsTr("Rename Profile...")
+            }
+
+            QQC2.ToolButton {
+                text: canvasRoot.profileAnimationConfig && canvasRoot.profileAnimationConfig.enabled
+                    ? qsTr("✨ RGB FX ●")
+                    : qsTr("✨ RGB FX")
+                highlighted: !!(canvasRoot.profileAnimationConfig && canvasRoot.profileAnimationConfig.enabled)
+                onClicked: canvasRoot.openLightingAnimatorRequested(
+                    canvasRoot.selectedSlot >= 1 && canvasRoot.selectedSlot <= 20 ? "key" : "profile",
+                    canvasRoot.selectedSlot >= 1 && canvasRoot.selectedSlot <= 20 ? canvasRoot.selectedSlot : 1
+                )
+                QQC2.ToolTip.visible: hovered
+                QQC2.ToolTip.text: qsTr("Configure Gaming-Keyboard RGB Animations (Pulsing, Waves, Ripple, Spectrum, Starlight) for this Profile or Individual Keys")
             }
 
             QQC2.ButtonGroup { id: modeGroup }
@@ -505,6 +852,11 @@ Item {
                             required property int r
                             required property int g
                             required property int b
+                            required property int animR
+                            required property int animG
+                            required property int animB
+                            required property bool animActive
+                            required property bool hasAnim
                             required property bool hasRel
                             required property bool hasLoop
                             required property bool hasWebApi
@@ -516,7 +868,10 @@ Item {
                                 && canvasRoot.draggingSlot >= 1
                                 && canvasRoot.draggingSlot <= 20
                                 && canvasRoot.draggingSlot !== slot
-                            readonly property color ledColor: Qt.rgba(r / 255.0, g / 255.0, b / 255.0, 1.0)
+                            readonly property color baseLedColor: Qt.rgba(r / 255.0, g / 255.0, b / 255.0, 1.0)
+                            readonly property color ledColor: animActive
+                                ? Qt.rgba(animR / 255.0, animG / 255.0, animB / 255.0, 1.0)
+                                : baseLedColor
                             property real dragOffsetX: 0
                             property real dragOffsetY: 0
 
@@ -553,7 +908,7 @@ Item {
                                     anchors.top: parent.top
                                     anchors.topMargin: 3
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    width: 28
+                                    width: keycapItem.animActive ? 34 : 28
                                     height: 4
                                     radius: 2
                                     color: keycapItem.ledColor
@@ -566,17 +921,19 @@ Item {
                                     radius: 6
                                     color: keycapItem.isDropTarget
                                         ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(Kirigami.Theme.positiveTextColor.r, Kirigami.Theme.positiveTextColor.g, Kirigami.Theme.positiveTextColor.b, 0.28))
-                                        : (keyMouse.pressed
-                                            ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(keycapItem.ledColor.r, keycapItem.ledColor.g, keycapItem.ledColor.b, 0.35))
+                                        : (keyMouse.pressed || keycapItem.animActive
+                                            ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(keycapItem.ledColor.r, keycapItem.ledColor.g, keycapItem.ledColor.b, keyMouse.pressed ? 0.38 : 0.22))
                                             : (keycapItem.isSelected
                                                 ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.18))
                                                 : Kirigami.Theme.alternateBackgroundColor))
-                                    border.width: 1
+                                    border.width: keycapItem.animActive ? 1.5 : 1
                                     border.color: keycapItem.isDropTarget
                                         ? Kirigami.Theme.positiveTextColor
                                         : (keycapItem.isSelected
                                             ? Kirigami.Theme.highlightColor
-                                            : Qt.rgba(r / 255.0, g / 255.0, b / 255.0, 0.5))
+                                            : (keycapItem.animActive
+                                                ? Qt.rgba(keycapItem.ledColor.r, keycapItem.ledColor.g, keycapItem.ledColor.b, 0.85)
+                                                : Qt.rgba(r / 255.0, g / 255.0, b / 255.0, 0.5)))
 
                                     QQC2.Label {
                                         anchors.top: parent.top
@@ -594,6 +951,24 @@ Item {
                                         anchors.margins: 3
                                         spacing: 2
 
+                                        Rectangle {
+                                            visible: keycapItem.hasAnim
+                                            radius: 3
+                                            color: Qt.alpha("#a855f7", 0.24)
+                                            border.color: Qt.alpha("#a855f7", 0.75)
+                                            border.width: 1
+                                            width: fxBadgeLbl.implicitWidth + 4
+                                            height: 12
+
+                                            QQC2.Label {
+                                                id: fxBadgeLbl
+                                                anchors.centerIn: parent
+                                                text: "FX"
+                                                font.pixelSize: 7
+                                                font.bold: true
+                                                color: "#c084fc"
+                                            }
+                                        }
                                         Rectangle {
                                             visible: keycapItem.hasAppLaunch
                                             radius: 3
@@ -648,13 +1023,14 @@ Item {
 
                                     Column {
                                         anchors.centerIn: parent
-                                        anchors.verticalCenterOffset: 3
+                                        anchors.verticalCenterOffset: keycapItem.l2.length > 0 ? 2 : 0
                                         width: parent.width - 4
                                         spacing: 1
 
                                         QQC2.Label {
                                             width: parent.width
                                             horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
                                             text: keycapItem.l1
                                             font.pixelSize: Math.round(12 * canvasRoot.canvasScale)
                                             fontSizeMode: Text.HorizontalFit
@@ -663,8 +1039,10 @@ Item {
                                             color: Kirigami.Theme.textColor
                                         }
                                         QQC2.Label {
+                                            visible: keycapItem.l2.length > 0
                                             width: parent.width
                                             horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
                                             text: keycapItem.l2
                                             font.pixelSize: Math.round(10 * canvasRoot.canvasScale)
                                             fontSizeMode: Text.HorizontalFit
@@ -707,6 +1085,7 @@ Item {
                                 property bool didDrag: false
 
                                 onPressed: (mouse) => {
+                                    canvasRoot.notifyUserActivity(keycapItem.slot)
                                     if (mouse.button === Qt.LeftButton) {
                                         pressX = mouse.x
                                         pressY = mouse.y
@@ -864,6 +1243,7 @@ Item {
 
                             onPaint: {
                                 const ctx = getContext("2d")
+                                ctx.save()
                                 ctx.fillStyle = "#000000"
                                 ctx.fillRect(0, 0, 128, 128)
 
@@ -872,15 +1252,17 @@ Item {
                                     ctx.fillRect(0, 0, 128, 13)
                                     ctx.fillStyle = "#020617"
                                     ctx.font = "bold 9px sans-serif"
+                                    ctx.textAlign = "center"
                                     const profNum = canvasRoot.controller ? canvasRoot.controller.activeProfile : 1
                                     const profName = (canvasRoot.controller && canvasRoot.controller.activeProfileName)
                                         ? canvasRoot.controller.activeProfileName
                                         : "Default"
-                                    ctx.fillText("P" + profNum + ": " + profName.slice(0, 16), 3, 10)
+                                    ctx.fillText("P" + profNum + ": " + profName.slice(0, 16), 64, 10)
 
                                     const cellW = 32
                                     const cellH = 23
                                     ctx.font = "bold 8px monospace"
+                                    ctx.textAlign = "center"
 
                                     for (let i = 0; i < keyModel.count; ++i) {
                                         const item = keyModel.get(i)
@@ -900,10 +1282,21 @@ Item {
                                             ctx.fillStyle = "#f8fafc"
                                         }
 
-                                        ctx.fillText(item.l1.slice(0, 5), x + 2, y + 9)
-                                        ctx.fillText(item.l2.slice(0, 5), x + 2, y + 19)
+                                        const s1 = (item.l1 || "").slice(0, 5)
+                                        const s2 = (item.l2 || "").slice(0, 5)
+                                        const cx = x + cellW / 2
+                                        if (s1.length > 0 && s2.length > 0) {
+                                            ctx.fillText(s1, cx, y + 10)
+                                            ctx.fillText(s2, cx, y + 19)
+                                        } else if (s1.length > 0) {
+                                            ctx.fillText(s1, cx, y + 14)
+                                        } else if (s2.length > 0) {
+                                            ctx.fillText(s2, cx, y + 14)
+                                        }
                                     }
+                                    ctx.restore()
                                 } else {
+                                    ctx.restore()
                                     ctx.strokeStyle = "#38bdf8"
                                     ctx.lineWidth = 1
                                     ctx.strokeRect(2, 2, 124, 124)
@@ -947,6 +1340,18 @@ Item {
                             rightPadding: 2
                             topPadding: 2
                             bottomPadding: 2
+                            background: Rectangle {
+                                radius: 5
+                                color: prevProfileBtn.down
+                                    ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.25))
+                                    : (prevProfileBtn.hovered
+                                        ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.12))
+                                        : Kirigami.Theme.backgroundColor)
+                                border.width: 1
+                                border.color: prevProfileBtn.hovered || prevProfileBtn.down
+                                    ? Kirigami.Theme.highlightColor
+                                    : pcbChassis.frameBorderColor
+                            }
                             contentItem: Text {
                                 text: "− Profile"
                                 font.pixelSize: Math.min(10, Math.round(9 * canvasRoot.canvasScale))
@@ -987,6 +1392,18 @@ Item {
                             rightPadding: 2
                             topPadding: 2
                             bottomPadding: 2
+                            background: Rectangle {
+                                radius: 5
+                                color: nextProfileBtn.down
+                                    ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.25))
+                                    : (nextProfileBtn.hovered
+                                        ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.12))
+                                        : Kirigami.Theme.backgroundColor)
+                                border.width: 1
+                                border.color: nextProfileBtn.hovered || nextProfileBtn.down
+                                    ? Kirigami.Theme.highlightColor
+                                    : pcbChassis.frameBorderColor
+                            }
                             contentItem: Text {
                                 text: "+ Profile"
                                 font.pixelSize: Math.min(10, Math.round(9 * canvasRoot.canvasScale))

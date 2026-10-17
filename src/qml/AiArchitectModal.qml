@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
+import QtQuick.Templates as T
 import org.kde.kirigami as Kirigami
 
 Kirigami.Dialog {
@@ -38,11 +39,25 @@ Kirigami.Dialog {
                 text: qsTr("Scrape ~/.config/kglobalshortcutsrc for local KDE keybindings")
             }
 
-            QQC2.TextArea {
+            T.TextArea {
                 id: promptInput
                 Kirigami.FormData.label: qsTr("Macro / Layout Goal:")
                 Layout.fillWidth: true
                 implicitHeight: 90
+                padding: 6
+                wrapMode: TextEdit.Wrap
+                selectByMouse: true
+                color: Kirigami.Theme.textColor
+                selectionColor: Kirigami.Theme.highlightColor
+                selectedTextColor: Kirigami.Theme.highlightedTextColor
+                background: Rectangle {
+                    radius: 4
+                    color: Kirigami.Theme.backgroundColor
+                    border.width: 1
+                    border.color: promptInput.activeFocus
+                        ? Kirigami.Theme.highlightColor
+                        : Qt.alpha(Kirigami.Theme.textColor, 0.25)
+                }
                 text: "Create a timeline razor cut & ripple delete macro with OLED HUD confirmation."
             }
         }

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
+import QtQuick.Templates as T
 import QtQuick.Dialogs
 import org.kde.kirigami as Kirigami
 import org.kde.syntaxhighlighting as KSyntax
@@ -40,6 +41,7 @@ Kirigami.ApplicationWindow {
     readonly property int requiredWindowWidth: root.hasSelectedSlot
         ? root.expandedWindowWidth
         : root.compactWindowWidth
+    visible: false
     width: (deviceController && deviceController.isDemoShowcaseMode()) ? 1920 : compactWindowWidth
     height: (deviceController && deviceController.isDemoShowcaseMode()) ? 1080 : 800
     minimumWidth: root.hasSelectedSlot ? root.expandedWindowWidth : root.compactWindowWidth
@@ -146,6 +148,25 @@ Kirigami.ApplicationWindow {
     }
     property bool syncingWebApiScript: false
     property bool webApiEnabled: false
+    property string webApiSelectedDestination: ""
+    property var webApiDestinationsList: {
+        if (!deviceController || !deviceController.webApiDestinationsJson) return []
+        try {
+            const parsed = JSON.parse(deviceController.webApiDestinationsJson)
+            return Array.isArray(parsed) ? parsed : []
+        } catch (e) {
+            return []
+        }
+    }
+    readonly property var webApiDestinationComboItems: {
+        const items = [qsTr("Custom")]
+        const list = root.webApiDestinationsList || []
+        for (let i = 0; i < list.length; ++i) {
+            const d = list[i]
+            items.push(d.name)
+        }
+        return items
+    }
     readonly property var webApiMethods: ["POST", "GET", "PUT", "PATCH", "DELETE"]
     readonly property var webApiFkeys: ["F13", "F14", "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23", "F24"]
 
@@ -676,17 +697,33 @@ Kirigami.ApplicationWindow {
             for (let i = 0; i < items.length; ++i) {
                 const it = items[i]
                 const detailsArr = Array.isArray(it.details) ? it.details : []
+                const detailItemsArr = Array.isArray(it.detailItems)
+                    ? it.detailItems
+                    : detailsArr.map(function(d) { return { changeKey: "", text: d } })
                 unsyncedItemsModel.append({
                     kind: it.kind || "modified",
                     profileNumber: it.profileNumber || 0,
                     profileName: it.profileName || "",
                     summary: it.summary || "",
-                    detailsText: detailsArr.map(function(d) { return "  • " + d }).join("\n")
+                    detailsText: detailsArr.map(function(d) { return "  • " + d }).join("\n"),
+                    detailItemsJson: JSON.stringify(detailItemsArr)
                 })
             }
         } catch (e) {
             root.unsyncedHeadline = qsTr("Unable to parse unsynced changes summary.")
             root.unsyncedTotalChanges = 0
+        }
+    }
+
+    function discardSingleUnsyncedChange(profileNumber, profileName, changeKey) {
+        if (!deviceController || !changeKey) return
+        root.flushPendingSlotEditsIfModified()
+        if (deviceController.discardUnsyncedChange(profileNumber, profileName, changeKey)) {
+            hardwareCanvas.syncSlotsFromController()
+            if (root.hasSelectedSlot) {
+                root.loadSlotIntoInspector(root.selectedSlotNumber)
+            }
+            root.refreshUnsyncedSummaryModel()
         }
     }
 
@@ -719,11 +756,37 @@ Kirigami.ApplicationWindow {
         unsyncedChangesDialog.open()
     }
 
+    function findWebApiDestinationIndex(nameStr, methodStr, urlStr, headersStr) {
+        const list = root.webApiDestinationsList || []
+        const cleanName = (nameStr || "").trim().toLowerCase()
+        if (cleanName.length > 0) {
+            for (let i = 0; i < list.length; ++i) {
+                if ((list[i].name || "").trim().toLowerCase() === cleanName) {
+                    return i
+                }
+            }
+        }
+        const cleanUrl = (urlStr || "").trim().toLowerCase()
+        const cleanMethod = ((methodStr || "POST").trim().toUpperCase())
+        const cleanHeaders = (headersStr || "").trim()
+        if (cleanUrl.length > 0) {
+            for (let i = 0; i < list.length; ++i) {
+                if ((list[i].url || "").trim().toLowerCase() === cleanUrl
+                    && ((list[i].method || "POST").trim().toUpperCase()) === cleanMethod
+                    && (list[i].headers || "").trim() === cleanHeaders) {
+                    return i
+                }
+            }
+        }
+        return -1
+    }
+
     function buildWebApiConfigJson() {
         const methodIdx = Math.max(0, webApiMethodCombo.currentIndex)
         const fkeyIdx = Math.max(0, webApiFkeyCombo.currentIndex)
         const cfg = {
             enabled: webApiEnabledCheck.checked,
+            destination: (root.webApiSelectedDestination || "").trim(),
             method: root.webApiMethods[methodIdx] || "POST",
             url: webApiUrlField.text.trim(),
             headers: webApiHeadersField.text.trim(),
@@ -755,12 +818,30 @@ Kirigami.ApplicationWindow {
             webApiTriggerModeCombo.currentIndex = cfg.triggerMode === "fkey" ? 1 : 0
             const fIdx = root.webApiFkeys.indexOf((cfg.fkey || "F13").toUpperCase())
             webApiFkeyCombo.currentIndex = fIdx >= 0 ? fIdx : ((root.selectedSlotNumber - 1) % 12)
+
+            const matchedIdx = root.findWebApiDestinationIndex(
+                cfg.destination || "",
+                cfg.method || "POST",
+                cfg.url || "",
+                cfg.headers || ""
+            )
+            if (matchedIdx >= 0 && matchedIdx < root.webApiDestinationsList.length) {
+                const d = root.webApiDestinationsList[matchedIdx]
+                root.webApiSelectedDestination = d.name
+                webApiDestinationCombo.currentIndex = matchedIdx + 1
+            } else {
+                root.webApiSelectedDestination = (cfg.destination || "").trim()
+                webApiDestinationCombo.currentIndex = 0
+            }
+
             if (isEnabled) {
                 root.showWebApiBuilder = true
             }
         } catch (e) {
             root.webApiEnabled = false
+            root.webApiSelectedDestination = ""
             webApiEnabledCheck.checked = false
+            webApiDestinationCombo.currentIndex = 0
         }
         root.syncingWebApiScript = false
     }
@@ -900,6 +981,291 @@ Kirigami.ApplicationWindow {
                 })
             }
         } catch (e) {}
+    }
+
+    property var allProfileAnimationsStore: ({}) // { "P1": { profile: {...}, keys: { "1": {...} } } }
+
+    function lightingStoreFilePath() {
+        return (deviceController && deviceController.logFilePath)
+            ? String(deviceController.logFilePath).replace(/duckydeck\.log$/, "lighting_animations.json")
+            : ""
+    }
+
+    function defaultLightingConfig(isProfileScope) {
+        return {
+            enabled: false,
+            trigger: isProfileScope ? "idle" : "keypress",
+            preset: isProfileScope ? "wave_h" : "ripple",
+            speed: 5,
+            color1: "#00f0ff",
+            color2: "#a855f7",
+            idleTimeoutSec: 5,
+            streamToHardware: true,
+            embedInKeyScript: !isProfileScope
+        }
+    }
+
+    function currentProfileAnimBucketKey() {
+        const pnum = deviceController ? deviceController.activeProfile : 1
+        const pname = (deviceController && deviceController.activeProfileName)
+            ? String(deviceController.activeProfileName).trim()
+            : ("Profile" + pnum)
+        return "P" + pnum + ":" + pname
+    }
+
+    function getProfileLightingConfig() {
+        const key = root.currentProfileAnimBucketKey()
+        const bucket = (root.allProfileAnimationsStore || {})[key]
+        if (bucket && bucket.profile) {
+            return Object.assign(root.defaultLightingConfig(true), bucket.profile)
+        }
+        return root.defaultLightingConfig(true)
+    }
+
+    function getKeyLightingConfig(slotNum) {
+        const key = root.currentProfileAnimBucketKey()
+        const bucket = (root.allProfileAnimationsStore || {})[key]
+        const sKey = String(slotNum)
+        if (bucket && bucket.keys && bucket.keys[sKey]) {
+            return Object.assign(root.defaultLightingConfig(false), bucket.keys[sKey])
+        }
+        // Also check if current slot script has an embedded // @DUCKYDECK_ANIM {...} comment
+        if (slotNum === root.selectedSlotNumber && scriptEditor && scriptEditor.text) {
+            const parsed = root.extractLightingAnimFromScript(scriptEditor.text)
+            if (parsed) {
+                return Object.assign(root.defaultLightingConfig(false), parsed)
+            }
+        }
+        return root.defaultLightingConfig(false)
+    }
+
+    function extractLightingAnimFromScript(scriptText) {
+        const lines = String(scriptText || "").split("\n")
+        for (let i = 0; i < lines.length; ++i) {
+            const trimmed = lines[i].trim()
+            if (trimmed.indexOf("// @DUCKYDECK_ANIM ") === 0) {
+                try {
+                    const obj = JSON.parse(trimmed.slice(19).trim())
+                    if (obj && typeof obj === "object") return obj
+                } catch (e) {}
+            }
+        }
+        return null
+    }
+
+    function buildKeypressDuckyScriptAnimationBlock(cfg, slotNum) {
+        if (!cfg || !cfg.enabled) return ""
+        const c1 = hardwareCanvas.parseHexRgb(cfg.color1 || "#00f0ff", 0, 240, 255)
+        const c2 = hardwareCanvas.parseHexRgb(cfg.color2 || "#a855f7", 168, 85, 247)
+        const stepDelay = Math.max(20, Math.round(135 - (cfg.speed || 5) * 11))
+        const targetKey = (slotNum >= 1 && slotNum <= 20) ? slotNum : 1
+        const originCol = (targetKey - 1) % 4
+        const originRow = Math.floor((targetKey - 1) / 4)
+        const preset = cfg.preset || "ripple"
+        const metaJson = JSON.stringify({
+            enabled: true,
+            trigger: cfg.trigger || "keypress",
+            preset: preset,
+            speed: cfg.speed || 5,
+            color1: cfg.color1 || "#00f0ff",
+            color2: cfg.color2 || "#a855f7",
+            idleTimeoutSec: cfg.idleTimeoutSec || 5,
+            streamToHardware: cfg.streamToHardware !== false,
+            embedInKeyScript: cfg.embedInKeyScript !== false
+        })
+
+        const out = [
+            "// @DUCKYDECK_ANIM " + metaJson,
+            "// --- DuckyDeck Studio RGB Keypress Animation (" + preset + ") ---"
+        ]
+
+        if (preset === "pulse" || preset === "starlight") {
+            const steps = [1.0, 0.75, 0.45, 0.2, 0.65, 1.0, 0.35]
+            for (let s = 0; s < steps.length; ++s) {
+                const w = steps[s]
+                const r = Math.round(c2[0] + (c1[0] - c2[0]) * w)
+                const g = Math.round(c2[1] + (c1[1] - c2[1]) * w)
+                const b = Math.round(c2[2] + (c1[2] - c2[2]) * w)
+                out.push("SWC_SET " + targetKey + " " + r + " " + g + " " + b)
+                out.push("DELAY " + stepDelay)
+            }
+            out.push("SWC_RESET " + targetKey)
+        } else if (preset === "ripple") {
+            for (let ring = 0; ring <= 3; ++ring) {
+                for (let k = 1; k <= 20; ++k) {
+                    const kc = (k - 1) % 4
+                    const kr = Math.floor((k - 1) / 4)
+                    const d = Math.round(Math.hypot(kc - originCol, kr - originRow))
+                    if (d === ring) {
+                        out.push("SWC_SET " + k + " " + c1[0] + " " + c1[1] + " " + c1[2])
+                    }
+                }
+                out.push("DELAY " + stepDelay)
+                if (ring > 0) {
+                    for (let k = 1; k <= 20; ++k) {
+                        const kc = (k - 1) % 4
+                        const kr = Math.floor((k - 1) / 4)
+                        const d = Math.round(Math.hypot(kc - originCol, kr - originRow))
+                        if (d === ring - 1) {
+                            out.push("SWC_RESET " + k)
+                        }
+                    }
+                }
+            }
+            out.push("SWC_RESET 0")
+        } else if (preset === "wave_h" || preset === "scanner") {
+            for (let col = 0; col < 4; ++col) {
+                for (let row = 0; row < 5; ++row) {
+                    const k = row * 4 + col + 1
+                    out.push("SWC_SET " + k + " " + c1[0] + " " + c1[1] + " " + c1[2])
+                }
+                out.push("DELAY " + stepDelay)
+                for (let row = 0; row < 5; ++row) {
+                    const k = row * 4 + col + 1
+                    out.push("SWC_RESET " + k)
+                }
+            }
+            out.push("SWC_RESET 0")
+        } else if (preset === "wave_v") {
+            for (let row = 0; row < 5; ++row) {
+                for (let col = 0; col < 4; ++col) {
+                    const k = row * 4 + col + 1
+                    out.push("SWC_SET " + k + " " + c1[0] + " " + c1[1] + " " + c1[2])
+                }
+                out.push("DELAY " + stepDelay)
+                for (let col = 0; col < 4; ++col) {
+                    const k = row * 4 + col + 1
+                    out.push("SWC_RESET " + k)
+                }
+            }
+            out.push("SWC_RESET 0")
+        } else if (preset === "spectrum") {
+            for (let f = 0; f < 6; ++f) {
+                const rgb = hardwareCanvas.hsvToRgb(f / 6.0, 0.95, 1.0)
+                out.push("SWC_SET " + targetKey + " " + rgb[0] + " " + rgb[1] + " " + rgb[2])
+                out.push("DELAY " + stepDelay)
+            }
+            out.push("SWC_RESET " + targetKey)
+        }
+        out.push("// --- End DuckyDeck Studio RGB Animation ---")
+        return out.join("\n")
+    }
+
+    function applyLightingAnimBlockToScript(existingScript, cfg, slotNum) {
+        const lines = String(existingScript || "").split("\n")
+        const cleaned = []
+        let skippingBlock = false
+        for (let i = 0; i < lines.length; ++i) {
+            const t = lines[i].trim()
+            if (t.indexOf("// @DUCKYDECK_ANIM ") === 0) {
+                continue
+            }
+            if (t.indexOf("// --- DuckyDeck Studio RGB Keypress Animation") === 0) {
+                skippingBlock = true
+                continue
+            }
+            if (skippingBlock && t.indexOf("// --- End DuckyDeck Studio RGB Animation ---") === 0) {
+                skippingBlock = false
+                continue
+            }
+            if (!skippingBlock) {
+                cleaned.push(lines[i])
+            }
+        }
+        while (cleaned.length > 0 && cleaned[0].trim() === "") {
+            cleaned.shift()
+        }
+        const body = cleaned.join("\n")
+        if (!cfg || !cfg.enabled || cfg.embedInKeyScript === false) {
+            return body
+        }
+        const block = root.buildKeypressDuckyScriptAnimationBlock(cfg, slotNum)
+        return body.length > 0 ? (block + "\n\n" + body) : block
+    }
+
+    function syncLightingAnimationsForActiveProfile() {
+        if (!hardwareCanvas) return
+        const bKey = root.currentProfileAnimBucketKey()
+        const store = Object.assign({}, root.allProfileAnimationsStore || {})
+        if (!store[bKey]) {
+            store[bKey] = { profile: root.defaultLightingConfig(true), keys: {} }
+        }
+        // Scan active profile slots for any embedded // @DUCKYDECK_ANIM metadata
+        if (deviceController) {
+            for (let s = 1; s <= 20; ++s) {
+                const script = deviceController.getSlotScript(s, false)
+                const embedded = root.extractLightingAnimFromScript(script)
+                if (embedded && !store[bKey].keys[String(s)]) {
+                    store[bKey].keys[String(s)] = embedded
+                }
+            }
+        }
+        root.allProfileAnimationsStore = store
+        hardwareCanvas.profileAnimationConfig = Object.assign(root.defaultLightingConfig(true), store[bKey].profile || {})
+        hardwareCanvas.keyAnimationConfigs = Object.assign({}, store[bKey].keys || {})
+        hardwareCanvas.syncSlotsFromController()
+    }
+
+    function saveLightingAnimationConfig(scope, slotNum, cfg) {
+        const bKey = root.currentProfileAnimBucketKey()
+        const store = Object.assign({}, root.allProfileAnimationsStore || {})
+        if (!store[bKey]) {
+            store[bKey] = { profile: root.defaultLightingConfig(true), keys: {} }
+        }
+        if (scope === "profile") {
+            store[bKey].profile = Object.assign({}, cfg)
+            hardwareCanvas.profileAnimationConfig = Object.assign({}, cfg)
+        } else {
+            const sNum = (slotNum >= 1 && slotNum <= 20) ? slotNum : (root.selectedSlotNumber >= 1 && root.selectedSlotNumber <= 20 ? root.selectedSlotNumber : 1)
+            const keysMap = Object.assign({}, store[bKey].keys || {})
+            keysMap[String(sNum)] = Object.assign({}, cfg)
+            store[bKey].keys = keysMap
+            hardwareCanvas.keyAnimationConfigs = keysMap
+
+            // If embedInKeyScript is enabled (or disabled to remove previous block), update the slot's press script
+            if (deviceController) {
+                const existingPress = (root.hasSelectedSlot && root.selectedSlotNumber === sNum && !root.editingReleaseScript)
+                    ? scriptEditor.text
+                    : deviceController.getSlotScript(sNum, false)
+                const updatedPress = root.applyLightingAnimBlockToScript(existingPress, cfg, sNum)
+                if (updatedPress !== existingPress) {
+                    if (root.hasSelectedSlot && root.selectedSlotNumber === sNum) {
+                        root.pressScriptBuffer = updatedPress
+                        if (!root.editingReleaseScript) {
+                            scriptEditor.text = updatedPress
+                        }
+                        root.updateCompilerStatus()
+                        root.saveCurrentSlotToController()
+                    } else {
+                        const meta = JSON.parse(deviceController.getSlotMetaJson(sNum) || "{}")
+                        const rel = deviceController.getSlotScript(sNum, true)
+                        deviceController.saveSlotConfig(
+                            sNum,
+                            meta.l1 || "",
+                            meta.l2 || "",
+                            updatedPress,
+                            rel,
+                            !!meta.allowAbort,
+                            !!meta.disableAutorepeat
+                        )
+                    }
+                }
+            }
+        }
+        root.allProfileAnimationsStore = store
+        hardwareCanvas.syncSlotsFromController()
+        hardwareCanvas.notifyUserActivity(scope === "key" ? slotNum : 1)
+        if (cfg.enabled && (cfg.trigger === "keypress" || cfg.trigger === "both")) {
+            hardwareCanvas.triggerKeypressBurst(
+                scope === "key" ? slotNum : 10,
+                cfg,
+                scope
+            )
+        } else if (cfg.enabled && cfg.trigger === "idle") {
+            hardwareCanvas.idleAnimationActive = true
+        } else if (!cfg.enabled) {
+            hardwareCanvas.resetAnimatedKeyColors()
+        }
     }
 
     function openRenameProfileDialog(profileNumber, currentName) {
@@ -1250,19 +1616,43 @@ Kirigami.ApplicationWindow {
     }
 
     Component.onCompleted: {
+        if (deviceController.isStartMinimizedMode()) {
+            root.visible = false
+            root.hide()
+            deviceController.minimizeToTray()
+        }
         root.isDarkSystemTheme = Kirigami.Theme.backgroundColor.hslLightness < 0.5
         deviceController.notifySystemDarkTheme(root.isDarkSystemTheme)
         root.refreshCommandReferenceModel()
         deviceController.refreshDevice()
+
+        const startProf = deviceController.startupProfileArg()
+        if (startProf.length > 0) {
+            const parsedNum = parseInt(startProf, 10)
+            if (!isNaN(parsedNum) && parsedNum >= 1 && parsedNum <= 64) {
+                deviceController.switchProfile(parsedNum)
+            } else {
+                deviceController.switchProfileByName(startProf)
+            }
+        }
+
         root.syncSidebarProfilesFromController()
         hardwareCanvas.syncProfilesFromController()
         root.refreshSelectedSlotFromController()
         Qt.callLater(function() {
+            if (deviceController.isStartMinimizedMode()) {
+                root.visible = false
+                root.hide()
+                deviceController.minimizeToTray()
+            }
             root.syncSidebarProfilesFromController()
             hardwareCanvas.syncProfilesFromController()
             root.refreshSelectedSlotFromController()
             if (deviceController.connected) {
                 root.ensureActiveProfileVisibleInList()
+            }
+            if (deviceController.isStartupSyncSdRequested()) {
+                root.triggerSyncToDeviceSd()
             }
         })
     }
@@ -1290,10 +1680,11 @@ Kirigami.ApplicationWindow {
             }
         }
         onActiveProfileChanged: {
-            if (!root.selectingProfileFromClick && deviceController.autoSwitchEnabled) {
+            if (!root.selectingProfileFromClick) {
                 root.ensureActiveProfileVisibleInList()
                 Qt.callLater(root.ensureActiveProfileVisibleInList)
             }
+            root.syncLightingAnimationsForActiveProfile()
         }
         onActiveWindowClassChanged: {
             if (deviceController.autoSwitchEnabled) {
@@ -2242,6 +2633,7 @@ Kirigami.ApplicationWindow {
                         anchors.fill: parent
                         anchors.margins: 6
                         clip: true
+                        QQC2.ScrollBar.vertical: HighContrastScrollBar {}
 
                         Flow {
                             width: parent.width
@@ -2353,6 +2745,7 @@ Kirigami.ApplicationWindow {
                         anchors.fill: parent
                         anchors.margins: 6
                         clip: true
+                        QQC2.ScrollBar.vertical: HighContrastScrollBar {}
 
                         Flow {
                             width: parent.width
@@ -2736,6 +3129,37 @@ Kirigami.ApplicationWindow {
         controller: deviceController
     }
 
+    component HighContrastScrollBar: QQC2.ScrollBar {
+        id: hcBar
+        policy: QQC2.ScrollBar.AsNeeded
+        minimumSize: 0.14
+        implicitWidth: orientation === Qt.Vertical ? 11 : 40
+        implicitHeight: orientation === Qt.Horizontal ? 11 : 40
+        padding: 1
+        background: Rectangle {
+            visible: hcBar.size < 1.0
+            implicitWidth: hcBar.orientation === Qt.Vertical ? 11 : 40
+            implicitHeight: hcBar.orientation === Qt.Horizontal ? 11 : 40
+            radius: 5
+            color: Qt.alpha(Kirigami.Theme.textColor, 0.14)
+            border.color: Qt.alpha(Kirigami.Theme.textColor, 0.28)
+            border.width: 1
+        }
+        contentItem: Rectangle {
+            visible: hcBar.size < 1.0
+            implicitWidth: hcBar.orientation === Qt.Vertical ? 7 : 28
+            implicitHeight: hcBar.orientation === Qt.Horizontal ? 7 : 28
+            radius: 4
+            color: hcBar.pressed
+                ? Kirigami.Theme.highlightColor
+                : (hcBar.hovered
+                    ? Qt.tint(Kirigami.Theme.highlightColor, Qt.rgba(1, 1, 1, 0.22))
+                    : Qt.alpha(Kirigami.Theme.textColor, 0.62))
+            border.color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.55)
+            border.width: 1
+        }
+    }
+
     component AreaTextScaleRow: Rectangle {
         id: scaleRow
         required property string areaKey
@@ -2861,10 +3285,14 @@ Kirigami.ApplicationWindow {
     Window {
         id: settingsDialog
         title: qsTr("Settings — DuckyDeck Studio")
-        width: 660
-        height: 620
-        minimumWidth: 580
-        minimumHeight: 540
+        readonly property int availScreenHeight: (root.screen && root.screen.desktopAvailableHeight > 0)
+            ? root.screen.desktopAvailableHeight
+            : (Screen.desktopAvailableHeight > 0 ? Screen.desktopAvailableHeight : 960)
+        readonly property int targetFullHeight: Math.max(700, settingsContentCol.implicitHeight + 132)
+        width: 680
+        height: Math.min(availScreenHeight - 48, targetFullHeight)
+        minimumWidth: 540
+        minimumHeight: 380
         visible: false
         transientParent: root
         modality: Qt.WindowModal
@@ -2875,6 +3303,7 @@ Kirigami.ApplicationWindow {
         color: Kirigami.Theme.backgroundColor
 
         function open() {
+            settingsDialog.height = Math.min(settingsDialog.availScreenHeight - 48, settingsDialog.targetFullHeight)
             settingsDialog.show()
             settingsDialog.raise()
             settingsDialog.requestActivate()
@@ -2914,13 +3343,33 @@ Kirigami.ApplicationWindow {
                 }
             }
 
-            QQC2.ScrollView {
+            Flickable {
+                id: settingsFlickable
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
+                contentWidth: width
+                contentHeight: settingsContentCol.implicitHeight + 8
+                boundsBehavior: Flickable.StopAtBounds
+                flickableDirection: Flickable.VerticalFlick
+
+                QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                    id: settingsVerticalScrollBar
+                    parent: settingsFlickable
+                    anchors.top: settingsFlickable.top
+                    anchors.right: settingsFlickable.right
+                    anchors.bottom: settingsFlickable.bottom
+                    policy: settingsFlickable.contentHeight > settingsFlickable.height
+                        ? QQC2.ScrollBar.AlwaysOn
+                        : QQC2.ScrollBar.AsNeeded
+                }
 
                 ColumnLayout {
-                    width: Math.max(520, settingsDialog.width - 48)
+                    id: settingsContentCol
+                    width: Math.max(
+                        480,
+                        settingsFlickable.width - (settingsFlickable.contentHeight > settingsFlickable.height ? 18 : 2)
+                    )
                     spacing: 12
 
                     // Section 1: Text Sizes by Application Area
@@ -3111,19 +3560,11 @@ Kirigami.ApplicationWindow {
                                     spacing: 6
 
                                     QQC2.Button {
-                                        text: qsTr("◐ Auto (KDE)")
+                                        text: qsTr("◐ System")
                                         checkable: true
                                         checked: deviceController.trayIconMode === "auto"
                                         highlighted: checked
                                         onClicked: deviceController.applyTrayIconMode("auto")
-                                    }
-
-                                    QQC2.Button {
-                                        text: qsTr("🌙 Dark Panel")
-                                        checkable: true
-                                        checked: deviceController.trayIconMode === "dark"
-                                        highlighted: checked
-                                        onClicked: deviceController.applyTrayIconMode("dark")
                                     }
 
                                     QQC2.Button {
@@ -3132,6 +3573,14 @@ Kirigami.ApplicationWindow {
                                         checked: deviceController.trayIconMode === "light"
                                         highlighted: checked
                                         onClicked: deviceController.applyTrayIconMode("light")
+                                    }
+
+                                    QQC2.Button {
+                                        text: qsTr("🌙 Dark Panel")
+                                        checkable: true
+                                        checked: deviceController.trayIconMode === "dark"
+                                        highlighted: checked
+                                        onClicked: deviceController.applyTrayIconMode("dark")
                                     }
 
                                     Item { Layout.fillWidth: true }
@@ -3144,23 +3593,23 @@ Kirigami.ApplicationWindow {
                                 color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
                             }
 
-                            RowLayout {
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                spacing: 16
+                                spacing: 4
 
                                 QQC2.CheckBox {
-                                    text: qsTr("Start on KDE System Login (Autostart)")
+                                    Layout.fillWidth: true
+                                    text: qsTr("Start on KDE System Login (Autostart, Minimized to Tray)")
                                     checked: deviceController.autostartEnabled
                                     onToggled: deviceController.applyAutostartEnabled(checked)
                                 }
 
                                 QQC2.CheckBox {
+                                    Layout.fillWidth: true
                                     text: qsTr("Keep Running in Taskbar on Window Close")
                                     checked: deviceController.closeToTray
                                     onToggled: deviceController.setCloseToTrayEnabled(checked)
                                 }
-
-                                Item { Layout.fillWidth: true }
                             }
                         }
                     }
@@ -3178,6 +3627,474 @@ Kirigami.ApplicationWindow {
                     text: qsTr("Close")
                     highlighted: true
                     onClicked: settingsDialog.close()
+                }
+            }
+        }
+    }
+
+    // Dedicated Window for Configuring Named Reusable Web API Destinations
+    Window {
+        id: webApiDestinationsDialog
+        title: qsTr("Web API Destinations — DuckyDeck Studio")
+        width: 740
+        height: 560
+        minimumWidth: 580
+        minimumHeight: 420
+        visible: false
+        transientParent: root
+        modality: Qt.WindowModal
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint
+
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
+        color: Kirigami.Theme.backgroundColor
+
+        property string editingOriginalName: ""
+
+        function openForDestination(destName, fallbackMethod, fallbackUrl, fallbackHeaders) {
+            const clean = (destName || "").trim()
+            const list = root.webApiDestinationsList || []
+            let found = null
+            if (clean.length > 0) {
+                for (let i = 0; i < list.length; ++i) {
+                    if ((list[i].name || "").trim().toLowerCase() === clean.toLowerCase()) {
+                        found = list[i]
+                        break
+                    }
+                }
+            }
+            if (found) {
+                webApiDestinationsDialog.loadEntryIntoForm(found)
+            } else {
+                webApiDestinationsDialog.editingOriginalName = ""
+                destManagerNameField.text = clean
+                const mIdx = root.webApiMethods.indexOf(((fallbackMethod || "POST").trim().toUpperCase()))
+                destManagerMethodCombo.currentIndex = mIdx >= 0 ? mIdx : 0
+                destManagerUrlField.text = (fallbackUrl || "").trim()
+                destManagerHeadersField.text = (fallbackHeaders || "").trim()
+            }
+            webApiDestinationsDialog.show()
+            webApiDestinationsDialog.raise()
+            webApiDestinationsDialog.requestActivate()
+        }
+
+        function loadEntryIntoForm(entry) {
+            if (!entry) return
+            webApiDestinationsDialog.editingOriginalName = entry.name || ""
+            destManagerNameField.text = entry.name || ""
+            const mIdx = root.webApiMethods.indexOf(((entry.method || "POST").trim().toUpperCase()))
+            destManagerMethodCombo.currentIndex = mIdx >= 0 ? mIdx : 0
+            destManagerUrlField.text = entry.url || ""
+            destManagerHeadersField.text = entry.headers || ""
+        }
+
+        function clearForm() {
+            webApiDestinationsDialog.editingOriginalName = ""
+            destManagerNameField.text = ""
+            destManagerMethodCombo.currentIndex = 0
+            destManagerUrlField.text = ""
+            destManagerHeadersField.text = ""
+            destManagerNameField.forceActiveFocus()
+        }
+
+        Shortcut {
+            sequence: "Escape"
+            onActivated: webApiDestinationsDialog.close()
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 12
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Kirigami.Heading {
+                        level: 2
+                        text: qsTr("Reusable Web API Destinations")
+                        color: Kirigami.Theme.textColor
+                    }
+
+                    QQC2.Label {
+                        text: qsTr("Configure named HTTP endpoints (Method, URL, and Headers) once and reuse them across keys with different payloads.")
+                        font.pixelSize: 11
+                        color: Kirigami.Theme.disabledTextColor
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+                }
+
+                QQC2.Button {
+                    icon.name: "list-add"
+                    text: qsTr("New Destination")
+                    onClicked: webApiDestinationsDialog.clearForm()
+                }
+            }
+
+            // Saved Destinations List
+            Rectangle {
+                Kirigami.Theme.colorSet: Kirigami.Theme.View
+                Kirigami.Theme.inherit: false
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: 8
+                color: Kirigami.Theme.alternateBackgroundColor
+                border.color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                border.width: 1
+
+                Flickable {
+                    id: destListFlickable
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    clip: true
+                    contentWidth: width
+                    contentHeight: destListCol.implicitHeight + 4
+                    boundsBehavior: Flickable.StopAtBounds
+                    flickableDirection: Flickable.VerticalFlick
+
+                    QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                        policy: destListFlickable.contentHeight > destListFlickable.height
+                            ? QQC2.ScrollBar.AlwaysOn
+                            : QQC2.ScrollBar.AsNeeded
+                    }
+
+                    ColumnLayout {
+                        id: destListCol
+                        width: destListFlickable.width - (destListFlickable.contentHeight > destListFlickable.height ? 16 : 0)
+                        spacing: 6
+
+                        QQC2.Label {
+                            visible: (root.webApiDestinationsList || []).length === 0
+                            Layout.fillWidth: true
+                            Layout.topMargin: 28
+                            horizontalAlignment: Text.AlignHCenter
+                            text: qsTr("No saved Web API destinations yet.\nEnter a Name, HTTP Method, URL, and optional Headers below and click Save Destination.")
+                            color: Kirigami.Theme.disabledTextColor
+                            font.pixelSize: 12
+                        }
+
+                        Repeater {
+                            model: root.webApiDestinationsList || []
+
+                            delegate: Rectangle {
+                                required property var modelData
+                                required property int index
+                                readonly property bool isBeingEdited: (webApiDestinationsDialog.editingOriginalName || "").toLowerCase() === (modelData.name || "").toLowerCase()
+                                readonly property bool isSelectedOnCurrentKey: root.hasSelectedSlot && (root.webApiSelectedDestination || "").toLowerCase() === (modelData.name || "").toLowerCase()
+
+                                Layout.fillWidth: true
+                                implicitHeight: destRowLayout.implicitHeight + 14
+                                radius: 6
+                                color: isBeingEdited
+                                    ? Qt.alpha(Kirigami.Theme.highlightColor, 0.16)
+                                    : Qt.rgba(Kirigami.Theme.backgroundColor.r, Kirigami.Theme.backgroundColor.g, Kirigami.Theme.backgroundColor.b, 0.85)
+                                border.color: isBeingEdited
+                                    ? Kirigami.Theme.highlightColor
+                                    : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                                border.width: 1
+
+                                RowLayout {
+                                    id: destRowLayout
+                                    anchors.fill: parent
+                                    anchors.margins: 7
+                                    spacing: 8
+
+                                    Rectangle {
+                                        radius: 4
+                                        color: Qt.alpha(Kirigami.Theme.highlightColor, 0.2)
+                                        border.color: Qt.alpha(Kirigami.Theme.highlightColor, 0.55)
+                                        border.width: 1
+                                        implicitWidth: Math.max(48, methodBadgeLbl.implicitWidth + 12)
+                                        implicitHeight: 22
+
+                                        QQC2.Label {
+                                            id: methodBadgeLbl
+                                            anchors.centerIn: parent
+                                            text: (modelData.method || "POST").toUpperCase()
+                                            font.family: "monospace"
+                                            font.bold: true
+                                            font.pixelSize: 10
+                                            color: Kirigami.Theme.highlightColor
+                                        }
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 6
+
+                                            QQC2.Label {
+                                                text: modelData.name || ""
+                                                font.bold: true
+                                                font.pixelSize: 12
+                                                color: Kirigami.Theme.textColor
+                                                elide: Text.ElideRight
+                                            }
+
+                                            Rectangle {
+                                                visible: isSelectedOnCurrentKey
+                                                radius: 3
+                                                color: Qt.alpha(Kirigami.Theme.positiveTextColor, 0.18)
+                                                implicitWidth: activeBadgeText.implicitWidth + 10
+                                                implicitHeight: 18
+
+                                                QQC2.Label {
+                                                    id: activeBadgeText
+                                                    anchors.centerIn: parent
+                                                    text: qsTr("Active on Key %1").arg(root.selectedSlotNumber)
+                                                    font.pixelSize: 9
+                                                    font.bold: true
+                                                    color: Kirigami.Theme.positiveTextColor
+                                                }
+                                            }
+
+                                            Item { Layout.fillWidth: true }
+                                        }
+
+                                        QQC2.Label {
+                                            Layout.fillWidth: true
+                                            text: modelData.url || ""
+                                            font.family: "monospace"
+                                            font.pixelSize: 10
+                                            color: Kirigami.Theme.disabledTextColor
+                                            elide: Text.ElideMiddle
+                                        }
+                                    }
+
+                                    QQC2.Button {
+                                        visible: root.hasSelectedSlot
+                                        text: isSelectedOnCurrentKey ? qsTr("✓ Selected") : qsTr("Use on Key %1").arg(root.selectedSlotNumber)
+                                        highlighted: isSelectedOnCurrentKey
+                                        implicitHeight: 26
+                                        font.pixelSize: 11
+                                        onClicked: {
+                                            root.syncingWebApiScript = true
+                                            root.webApiSelectedDestination = modelData.name || ""
+                                            const mIdx = root.webApiMethods.indexOf((modelData.method || "POST").toUpperCase())
+                                            webApiMethodCombo.currentIndex = mIdx >= 0 ? mIdx : 0
+                                            webApiUrlField.text = modelData.url || ""
+                                            webApiHeadersField.text = modelData.headers || ""
+                                            webApiDestinationCombo.currentIndex = index + 1
+                                            if (!webApiEnabledCheck.checked) {
+                                                webApiEnabledCheck.checked = true
+                                            }
+                                            root.syncingWebApiScript = false
+                                            root.syncWebApiBuilderToScript()
+                                        }
+                                    }
+
+                                    QQC2.Button {
+                                        icon.name: "document-edit"
+                                        text: qsTr("Edit")
+                                        implicitHeight: 26
+                                        font.pixelSize: 11
+                                        onClicked: webApiDestinationsDialog.loadEntryIntoForm(modelData)
+                                    }
+
+                                    QQC2.Button {
+                                        icon.name: "edit-delete"
+                                        implicitHeight: 26
+                                        implicitWidth: 30
+                                        onClicked: {
+                                            const delName = (modelData.name || "").trim()
+                                            if (delName.length === 0) return
+                                            deviceController.deleteWebApiDestination(delName)
+                                            if ((root.webApiSelectedDestination || "").toLowerCase() === delName.toLowerCase()) {
+                                                root.webApiSelectedDestination = ""
+                                                webApiDestinationCombo.currentIndex = 0
+                                                root.syncWebApiBuilderToScript()
+                                            }
+                                            if ((webApiDestinationsDialog.editingOriginalName || "").toLowerCase() === delName.toLowerCase()) {
+                                                webApiDestinationsDialog.clearForm()
+                                            }
+                                        }
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Delete destination '%1'").arg(modelData.name || "")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Destination Editor Card
+            Rectangle {
+                Kirigami.Theme.colorSet: Kirigami.Theme.View
+                Kirigami.Theme.inherit: false
+                Layout.fillWidth: true
+                implicitHeight: destEditorFormCol.implicitHeight + 20
+                radius: 8
+                color: Kirigami.Theme.alternateBackgroundColor
+                border.color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                border.width: 1
+
+                ColumnLayout {
+                    id: destEditorFormCol
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 8
+
+                    QQC2.Label {
+                        text: webApiDestinationsDialog.editingOriginalName.length > 0
+                            ? qsTr("EDIT DESTINATION: %1").arg(webApiDestinationsDialog.editingOriginalName)
+                            : qsTr("ADD / UPDATE DESTINATION")
+                        font.bold: true
+                        font.pixelSize: 11
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        QQC2.Label {
+                            text: qsTr("Name:")
+                            font.bold: true
+                            font.pixelSize: 11
+                            Layout.preferredWidth: 64
+                        }
+
+                        QQC2.TextField {
+                            id: destManagerNameField
+                            Layout.fillWidth: true
+                            selectByMouse: true
+                            placeholderText: qsTr("e.g. Home Assistant — Light Toggle, OBS Webhook, Discord Bot")
+                        }
+
+                        QQC2.Label {
+                            text: qsTr("Method:")
+                            font.bold: true
+                            font.pixelSize: 11
+                        }
+
+                        QQC2.ComboBox {
+                            id: destManagerMethodCombo
+                            model: root.webApiMethods
+                            font.bold: true
+                            Layout.preferredWidth: 100
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        QQC2.Label {
+                            text: qsTr("URL:")
+                            font.bold: true
+                            font.pixelSize: 11
+                            Layout.preferredWidth: 64
+                        }
+
+                        QQC2.TextField {
+                            id: destManagerUrlField
+                            Layout.fillWidth: true
+                            font.family: "monospace"
+                            selectByMouse: true
+                            placeholderText: qsTr("https://api.example.com/webhook  or  http://homeassistant.local:8123/api/services/light/toggle")
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        QQC2.Label {
+                            text: qsTr("Headers:")
+                            font.bold: true
+                            font.pixelSize: 11
+                            Layout.preferredWidth: 64
+                        }
+
+                        QQC2.TextField {
+                            id: destManagerHeadersField
+                            Layout.fillWidth: true
+                            font.family: "monospace"
+                            selectByMouse: true
+                            placeholderText: qsTr("Optional HTTP headers separated by ';' (e.g. Authorization: Bearer <token>; X-Api-Key: 123)")
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Item { Layout.fillWidth: true }
+
+                        QQC2.Button {
+                            text: qsTr("Clear")
+                            enabled: destManagerNameField.text.length > 0 || destManagerUrlField.text.length > 0 || destManagerHeadersField.text.length > 0
+                            onClicked: webApiDestinationsDialog.clearForm()
+                        }
+
+                        QQC2.Button {
+                            icon.name: "document-save"
+                            text: webApiDestinationsDialog.editingOriginalName.length > 0
+                                ? qsTr("Save Changes to Destination")
+                                : qsTr("Save Destination")
+                            highlighted: true
+                            enabled: destManagerNameField.text.trim().length > 0 && destManagerUrlField.text.trim().length > 0
+                            onClicked: {
+                                const newName = destManagerNameField.text.trim()
+                                const oldName = webApiDestinationsDialog.editingOriginalName.trim()
+                                const mIdx = Math.max(0, destManagerMethodCombo.currentIndex)
+                                const methodStr = root.webApiMethods[mIdx] || "POST"
+                                const urlStr = destManagerUrlField.text.trim()
+                                const headersStr = destManagerHeadersField.text.trim()
+
+                                if (oldName.length > 0 && oldName.toLowerCase() !== newName.toLowerCase()) {
+                                    deviceController.deleteWebApiDestination(oldName)
+                                }
+                                deviceController.saveWebApiDestination(newName, methodStr, urlStr, headersStr)
+                                webApiDestinationsDialog.editingOriginalName = newName
+
+                                if (root.hasSelectedSlot && (
+                                    root.webApiSelectedDestination.trim().length === 0
+                                    || root.webApiSelectedDestination.trim().toLowerCase() === oldName.toLowerCase()
+                                    || root.webApiSelectedDestination.trim().toLowerCase() === newName.toLowerCase()
+                                )) {
+                                    root.syncingWebApiScript = true
+                                    root.webApiSelectedDestination = newName
+                                    webApiMethodCombo.currentIndex = mIdx
+                                    webApiUrlField.text = urlStr
+                                    webApiHeadersField.text = headersStr
+                                    const matchedIdx = root.findWebApiDestinationIndex(newName, methodStr, urlStr, headersStr)
+                                    if (matchedIdx >= 0) {
+                                        webApiDestinationCombo.currentIndex = matchedIdx + 1
+                                    }
+                                    if (!webApiEnabledCheck.checked && urlStr.length > 0) {
+                                        webApiEnabledCheck.checked = true
+                                    }
+                                    root.syncingWebApiScript = false
+                                    root.syncWebApiBuilderToScript()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.Button {
+                    icon.name: "window-close"
+                    text: qsTr("Close")
+                    highlighted: true
+                    onClicked: webApiDestinationsDialog.close()
                 }
             }
         }
@@ -3639,6 +4556,11 @@ Kirigami.ApplicationWindow {
                     anchors.fill: parent
                     anchors.margins: 4
                     clip: true
+                    QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                        policy: eventLogListView.contentHeight > eventLogListView.height
+                            ? QQC2.ScrollBar.AlwaysOn
+                            : QQC2.ScrollBar.AsNeeded
+                    }
 
                     ListView {
                         id: eventLogListView
@@ -4218,14 +5140,14 @@ Kirigami.ApplicationWindow {
             Math.ceil(unsyncedTitleMetrics.width + 180),
             Math.ceil(unsyncedBannerTitle.implicitWidth + 72)
         )
-        height: 480
+        height: Math.min(680, Screen.desktopAvailableHeight > 0 ? Screen.desktopAvailableHeight - 80 : 680)
         minimumWidth: Math.max(
             700,
             Math.ceil(unsyncedFooterRow.implicitWidth + 56),
             Math.ceil(unsyncedTitleMetrics.width + 160),
             Math.ceil(unsyncedBannerTitle.implicitWidth + 64)
         )
-        minimumHeight: 360
+        minimumHeight: 480
         visible: false
         transientParent: root
         modality: Qt.WindowModal
@@ -4251,6 +5173,10 @@ Kirigami.ApplicationWindow {
         function open() {
             if (unsyncedChangesDialog.width < unsyncedChangesDialog.minimumWidth) {
                 unsyncedChangesDialog.width = unsyncedChangesDialog.minimumWidth
+            }
+            const targetH = Math.min(680, Screen.desktopAvailableHeight > 0 ? Screen.desktopAvailableHeight - 80 : 680)
+            if (unsyncedChangesDialog.height < targetH) {
+                unsyncedChangesDialog.height = targetH
             }
             unsyncedChangesDialog.show()
             unsyncedChangesDialog.raise()
@@ -4335,14 +5261,29 @@ Kirigami.ApplicationWindow {
                     spacing: 8
                     clip: true
                     model: unsyncedItemsModel
-                    QQC2.ScrollBar.vertical: QQC2.ScrollBar { policy: QQC2.ScrollBar.AsNeeded }
+                    QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                        policy: unsyncedListView.contentHeight > unsyncedListView.height
+                            ? QQC2.ScrollBar.AlwaysOn
+                            : QQC2.ScrollBar.AsNeeded
+                    }
 
                     delegate: Rectangle {
+                        id: diffCardDelegate
                         required property string kind
                         required property int profileNumber
                         required property string profileName
                         required property string summary
                         required property string detailsText
+                        required property string detailItemsJson
+
+                        readonly property var parsedDetailItems: {
+                            try {
+                                const arr = JSON.parse(detailItemsJson || "[]")
+                                return Array.isArray(arr) ? arr : []
+                            } catch (e) {
+                                return []
+                            }
+                        }
 
                         width: unsyncedListView.width - 14
                         implicitHeight: diffCardCol.implicitHeight + 16
@@ -4359,7 +5300,7 @@ Kirigami.ApplicationWindow {
                             id: diffCardCol
                             anchors.fill: parent
                             anchors.margins: 8
-                            spacing: 4
+                            spacing: 6
 
                             RowLayout {
                                 Layout.fillWidth: true
@@ -4400,15 +5341,77 @@ Kirigami.ApplicationWindow {
                                     text: summary
                                     color: Kirigami.Theme.textColor
                                 }
+
+                                QQC2.Button {
+                                    visible: kind === "modified" && diffCardDelegate.parsedDetailItems.length > 1
+                                    icon.name: "edit-delete"
+                                    text: qsTr("Delete All in Profile")
+                                    implicitHeight: Math.round(24 * root.fontScale)
+                                    font.pixelSize: Math.round(10 * root.fontScale)
+                                    onClicked: root.discardSingleUnsyncedChange(
+                                        diffCardDelegate.profileNumber,
+                                        diffCardDelegate.profileName,
+                                        "profile_all"
+                                    )
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: qsTr("Discard all unsynced changes in Profile #%1 and restore its microSD card state").arg(diffCardDelegate.profileNumber)
+                                }
                             }
 
-                            QQC2.Label {
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                wrapMode: Text.WordWrap
-                                font.family: "monospace"
-                                font.pixelSize: Math.round(11 * root.fontScale)
-                                text: detailsText
-                                color: Kirigami.Theme.textColor
+                                spacing: 4
+
+                                Repeater {
+                                    model: diffCardDelegate.parsedDetailItems
+
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        readonly property string itemKey: (modelData && modelData.changeKey) ? String(modelData.changeKey) : ""
+                                        readonly property string itemText: (modelData && modelData.text) ? String(modelData.text) : ""
+
+                                        Layout.fillWidth: true
+                                        implicitHeight: detailRowLayout.implicitHeight + 8
+                                        radius: 4
+                                        color: Qt.alpha(Kirigami.Theme.alternateBackgroundColor, 0.7)
+                                        border.width: 1
+                                        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.08)
+
+                                        RowLayout {
+                                            id: detailRowLayout
+                                            anchors.fill: parent
+                                            anchors.leftMargin: 8
+                                            anchors.rightMargin: 6
+                                            anchors.topMargin: 4
+                                            anchors.bottomMargin: 4
+                                            spacing: 8
+
+                                            QQC2.Label {
+                                                Layout.fillWidth: true
+                                                wrapMode: Text.WordWrap
+                                                font.family: "monospace"
+                                                font.pixelSize: Math.round(11 * root.fontScale)
+                                                text: "• " + itemText
+                                                color: Kirigami.Theme.textColor
+                                            }
+
+                                            QQC2.Button {
+                                                visible: itemKey.length > 0
+                                                icon.name: "edit-delete"
+                                                text: qsTr("Delete")
+                                                implicitHeight: Math.round(24 * root.fontScale)
+                                                font.pixelSize: Math.round(10 * root.fontScale)
+                                                onClicked: root.discardSingleUnsyncedChange(
+                                                    diffCardDelegate.profileNumber,
+                                                    diffCardDelegate.profileName,
+                                                    itemKey
+                                                )
+                                                QQC2.ToolTip.visible: hovered
+                                                QQC2.ToolTip.text: qsTr("Delete this unsynced change and revert it back to the microSD card state")
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -4847,14 +5850,18 @@ Kirigami.ApplicationWindow {
                     anchors.fill: parent
                     anchors.margins: 8
                     clip: true
+                    QQC2.ScrollBar.vertical: HighContrastScrollBar {}
 
-                    QQC2.TextArea {
+                    T.TextArea {
                         id: syncLogArea
                         readOnly: true
+                        selectByMouse: true
                         wrapMode: TextEdit.Wrap
                         font.family: "monospace"
                         font.pixelSize: Math.round(12 * root.fontScale)
                         color: Kirigami.Theme.textColor
+                        selectionColor: Kirigami.Theme.highlightColor
+                        selectedTextColor: Kirigami.Theme.highlightedTextColor
                         background: null
                         text: deviceController.sdSyncLog.length > 0
                             ? deviceController.sdSyncLog
@@ -5162,6 +6169,11 @@ Kirigami.ApplicationWindow {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
+                            QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                                policy: profileSidebarList.contentHeight > profileSidebarList.height
+                                    ? QQC2.ScrollBar.AlwaysOn
+                                    : QQC2.ScrollBar.AsNeeded
+                            }
 
                             ListView {
                                 id: profileSidebarList
@@ -5813,14 +6825,14 @@ Kirigami.ApplicationWindow {
                         )
                     )
                     readonly property int minContentWidth: Math.max(
-                        480,
+                        380,
                         Math.ceil(Math.max(
-                            inspectorHeaderRow.implicitWidth + 20,
-                            inspectorLabelsRow.implicitWidth + 20,
-                            inspectorPhaseRow.implicitWidth + 16,
-                            inspectorTabsRow.implicitWidth + 16,
+                            inspectorHeaderRow.implicitWidth + 16,
+                            inspectorLabelsRow.implicitWidth + 16,
+                            inspectorPhaseRow.implicitWidth + 12,
+                            inspectorTabsRow.implicitWidth + 12,
                             inspectorFooterRow.implicitWidth
-                        )) + Kirigami.Units.mediumSpacing * 2 + 12
+                        )) + Kirigami.Units.mediumSpacing * 2 + 8
                     )
                     QQC2.SplitView.fillWidth: true
                     QQC2.SplitView.fillHeight: true
@@ -6142,112 +7154,164 @@ Kirigami.ApplicationWindow {
                         }
 
                         // =========================================================================
-                        // ZONE 2: Event Phase Selector (On Press vs On Release) & Hardware Flags
+                        // ZONE 2: Event Phase Selector (On Press vs On Release) & Key Hold Behavior
                         // =========================================================================
-                        RowLayout {
-                            id: inspectorPhaseRow
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 6
+                            spacing: 4
 
-                            QQC2.ButtonGroup { id: scriptPhaseGroup }
+                            RowLayout {
+                                id: inspectorPhaseRow
+                                Layout.fillWidth: true
+                                spacing: 6
 
+                                QQC2.ButtonGroup { id: scriptPhaseGroup }
+
+                                Rectangle {
+                                    radius: 5
+                                    color: Kirigami.Theme.alternateBackgroundColor
+                                    border.color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                                    border.width: 1
+                                    implicitWidth: phaseButtonsRow.implicitWidth + 6
+                                    implicitHeight: Math.round(28 * root.inspectorScale)
+
+                                    RowLayout {
+                                        id: phaseButtonsRow
+                                        anchors.centerIn: parent
+                                        spacing: 2
+
+                                        QQC2.ToolButton {
+                                            QQC2.ButtonGroup.group: scriptPhaseGroup
+                                            checkable: true
+                                            checked: !root.editingReleaseScript
+                                            text: root.pressScriptBuffer.trim().length > 0
+                                                ? qsTr("⬇ On Press (key%1 ●)").arg(root.selectedSlotNumber)
+                                                : qsTr("⬇ On Press (key%1)").arg(root.selectedSlotNumber)
+                                            font.pixelSize: Math.round(11 * root.inspectorScale)
+                                            font.bold: !root.editingReleaseScript
+                                            implicitHeight: Math.round(24 * root.inspectorScale)
+                                            onClicked: {
+                                                if (root.editingReleaseScript) {
+                                                    root.releaseScriptBuffer = scriptEditor.text
+                                                    root.editingReleaseScript = false
+                                                    root.loadingSlotData = true
+                                                    scriptEditor.text = root.pressScriptBuffer
+                                                    root.showWebApiBuilder = false
+                                                    root.showAppLaunchBuilder = false
+                                                    root.inspectorMode = "code"
+                                                    root.loadWebApiBuilderFromScript(scriptEditor.text)
+                                                    root.loadAppLaunchBuilderFromScript(scriptEditor.text)
+                                                    root.loadingSlotData = false
+                                                    root.updateCompilerStatus()
+                                                }
+                                            }
+                                            QQC2.ToolTip.visible: hovered
+                                            QQC2.ToolTip.text: qsTr("Edit script executed when Slot %1 is pressed down (key%1.txt)").arg(root.selectedSlotNumber)
+                                        }
+
+                                        QQC2.ToolButton {
+                                            QQC2.ButtonGroup.group: scriptPhaseGroup
+                                            checkable: true
+                                            checked: root.editingReleaseScript
+                                            text: root.releaseScriptBuffer.trim().length > 0
+                                                ? qsTr("⬆ On Release (key%1-rel ●)").arg(root.selectedSlotNumber)
+                                                : qsTr("⬆ On Release (key%1-rel)").arg(root.selectedSlotNumber)
+                                            font.pixelSize: Math.round(11 * root.inspectorScale)
+                                            font.bold: root.editingReleaseScript
+                                            implicitHeight: Math.round(24 * root.inspectorScale)
+                                            onClicked: {
+                                                if (!root.editingReleaseScript) {
+                                                    root.pressScriptBuffer = scriptEditor.text
+                                                    root.editingReleaseScript = true
+                                                    root.loadingSlotData = true
+                                                    scriptEditor.text = root.releaseScriptBuffer
+                                                    root.showWebApiBuilder = false
+                                                    root.showAppLaunchBuilder = false
+                                                    root.inspectorMode = "code"
+                                                    root.loadWebApiBuilderFromScript(scriptEditor.text)
+                                                    root.loadAppLaunchBuilderFromScript(scriptEditor.text)
+                                                    root.loadingSlotData = false
+                                                    root.updateCompilerStatus()
+                                                }
+                                            }
+                                            QQC2.ToolTip.visible: hovered
+                                            QQC2.ToolTip.text: qsTr("Edit script executed when Slot %1 is released (key%1-release.txt)").arg(root.selectedSlotNumber)
+                                        }
+                                    }
+                                }
+
+                                Item { Layout.fillWidth: true }
+                            }
+
+                            // Key Hold Behavior Bar: Prominent No Repeat on Key Held Down (Run Once) + Allow Abort
                             Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: holdFlagsRow.implicitHeight + 8
                                 radius: 5
-                                color: Kirigami.Theme.alternateBackgroundColor
-                                border.color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                                color: disableRepeatCheck.checked
+                                    ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.12)
+                                    : Kirigami.Theme.alternateBackgroundColor
+                                border.color: disableRepeatCheck.checked
+                                    ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.55)
+                                    : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
                                 border.width: 1
-                                implicitWidth: phaseButtonsRow.implicitWidth + 6
-                                implicitHeight: Math.round(28 * root.inspectorScale)
 
                                 RowLayout {
-                                    id: phaseButtonsRow
-                                    anchors.centerIn: parent
-                                    spacing: 2
+                                    id: holdFlagsRow
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 8
+                                    anchors.rightMargin: 8
+                                    anchors.topMargin: 4
+                                    anchors.bottomMargin: 4
+                                    spacing: 8
 
-                                    QQC2.ToolButton {
-                                        QQC2.ButtonGroup.group: scriptPhaseGroup
-                                        checkable: true
-                                        checked: !root.editingReleaseScript
-                                        text: root.pressScriptBuffer.trim().length > 0
-                                            ? qsTr("⬇ On Press (key%1 ●)").arg(root.selectedSlotNumber)
-                                            : qsTr("⬇ On Press (key%1)").arg(root.selectedSlotNumber)
+                                    QQC2.CheckBox {
+                                        id: disableRepeatCheck
+                                        text: qsTr("No Repeat on Key Held Down (Run Once)")
+                                        font.bold: checked
                                         font.pixelSize: Math.round(11 * root.inspectorScale)
-                                        font.bold: !root.editingReleaseScript
-                                        implicitHeight: Math.round(24 * root.inspectorScale)
-                                        onClicked: {
-                                            if (root.editingReleaseScript) {
-                                                root.releaseScriptBuffer = scriptEditor.text
-                                                root.editingReleaseScript = false
-                                                root.loadingSlotData = true
-                                                scriptEditor.text = root.pressScriptBuffer
-                                                root.showWebApiBuilder = false
-                                                root.showAppLaunchBuilder = false
-                                                root.inspectorMode = "code"
-                                                root.loadWebApiBuilderFromScript(scriptEditor.text)
-                                                root.loadAppLaunchBuilderFromScript(scriptEditor.text)
-                                                root.loadingSlotData = false
-                                                root.updateCompilerStatus()
-                                            }
+                                        onToggled: {
+                                            root.updateCompilerStatus()
+                                            liveSlotAutoSaveTimer.restart()
                                         }
                                         QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Edit script executed when Slot %1 is pressed down (key%1.txt)").arg(root.selectedSlotNumber)
+                                        QQC2.ToolTip.text: qsTr("Execute this key action only once per press even if the key is held down — essential for Delete or destructive actions (dr %1 / $_DONT_REPEAT = 1)").arg(root.selectedSlotNumber)
                                     }
 
-                                    QQC2.ToolButton {
-                                        QQC2.ButtonGroup.group: scriptPhaseGroup
-                                        checkable: true
-                                        checked: root.editingReleaseScript
-                                        text: root.releaseScriptBuffer.trim().length > 0
-                                            ? qsTr("⬆ On Release (key%1-rel ●)").arg(root.selectedSlotNumber)
-                                            : qsTr("⬆ On Release (key%1-rel)").arg(root.selectedSlotNumber)
+                                    Rectangle {
+                                        visible: disableRepeatCheck.checked
+                                        radius: 3
+                                        color: Qt.alpha(Kirigami.Theme.positiveTextColor, 0.22)
+                                        border.color: Qt.alpha(Kirigami.Theme.positiveTextColor, 0.6)
+                                        border.width: 1
+                                        implicitWidth: onceBadgeLbl.implicitWidth + 8
+                                        implicitHeight: Math.round(18 * root.inspectorScale)
+
+                                        QQC2.Label {
+                                            id: onceBadgeLbl
+                                            anchors.centerIn: parent
+                                            text: qsTr("1× ONCE")
+                                            font.family: "monospace"
+                                            font.bold: true
+                                            font.pixelSize: Math.round(9 * root.inspectorScale)
+                                            color: Kirigami.Theme.positiveTextColor
+                                        }
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    QQC2.CheckBox {
+                                        id: allowAbortCheck
+                                        text: qsTr("Allow Abort")
                                         font.pixelSize: Math.round(11 * root.inspectorScale)
-                                        font.bold: root.editingReleaseScript
-                                        implicitHeight: Math.round(24 * root.inspectorScale)
-                                        onClicked: {
-                                            if (!root.editingReleaseScript) {
-                                                root.pressScriptBuffer = scriptEditor.text
-                                                root.editingReleaseScript = true
-                                                root.loadingSlotData = true
-                                                scriptEditor.text = root.releaseScriptBuffer
-                                                root.showWebApiBuilder = false
-                                                root.showAppLaunchBuilder = false
-                                                root.inspectorMode = "code"
-                                                root.loadWebApiBuilderFromScript(scriptEditor.text)
-                                                root.loadAppLaunchBuilderFromScript(scriptEditor.text)
-                                                root.loadingSlotData = false
-                                                root.updateCompilerStatus()
-                                            }
+                                        onToggled: {
+                                            root.updateCompilerStatus()
+                                            liveSlotAutoSaveTimer.restart()
                                         }
                                         QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Edit script executed when Slot %1 is released (key%1-release.txt)").arg(root.selectedSlotNumber)
+                                        QQC2.ToolTip.text: qsTr("Allow any key press to abort this script early (ab %1 / $_ALLOW_ABORT = 1)").arg(root.selectedSlotNumber)
                                     }
                                 }
-                            }
-
-                            Item { Layout.fillWidth: true }
-
-                            QQC2.CheckBox {
-                                id: allowAbortCheck
-                                text: qsTr("Allow Abort")
-                                font.pixelSize: Math.round(11 * root.inspectorScale)
-                                onToggled: {
-                                    root.updateCompilerStatus()
-                                    liveSlotAutoSaveTimer.restart()
-                                }
-                                QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: qsTr("Allow any key press to abort this script early (ab %1 / $_ALLOW_ABORT = 1)").arg(root.selectedSlotNumber)
-                            }
-
-                            QQC2.CheckBox {
-                                id: disableRepeatCheck
-                                text: qsTr("No Repeat")
-                                font.pixelSize: Math.round(11 * root.inspectorScale)
-                                onToggled: {
-                                    root.updateCompilerStatus()
-                                    liveSlotAutoSaveTimer.restart()
-                                }
-                                QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: qsTr("Disable auto-repeat while key is held down (dr %1 / $_DONT_REPEAT = 1)").arg(root.selectedSlotNumber)
                             }
                         }
 
@@ -6693,8 +7757,8 @@ Kirigami.ApplicationWindow {
                                     QQC2.CheckBox {
                                         id: webApiEnabledCheck
                                         text: root.editingReleaseScript
-                                            ? qsTr("Trigger Web API on Key Release")
-                                            : qsTr("Trigger Web API on Key Press")
+                                            ? qsTr("Web API on Release")
+                                            : qsTr("Web API on Press")
                                         font.bold: true
                                         font.pixelSize: Math.round(11 * root.inspectorScale)
                                         onToggled: {
@@ -6717,12 +7781,12 @@ Kirigami.ApplicationWindow {
                                     QQC2.ComboBox {
                                         id: webApiTriggerModeCombo
                                         model: [
-                                            qsTr("Silent Hardware PGV (_GV31)"),
-                                            qsTr("Sentinel Key (Ctrl+Alt+Shift+F13–F24)")
+                                            qsTr("PGV (_GV31)"),
+                                            qsTr("F13–F24 Key")
                                         ]
                                         font.pixelSize: Math.round(10 * root.inspectorScale)
                                         implicitHeight: Math.round(24 * root.inspectorScale)
-                                        Layout.preferredWidth: Math.round(195 * root.inspectorScale)
+                                        Layout.preferredWidth: Math.round(125 * root.inspectorScale)
                                         onActivated: root.syncWebApiBuilderToScript()
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: currentIndex === 0
@@ -6743,7 +7807,7 @@ Kirigami.ApplicationWindow {
                                     QQC2.Button {
                                         text: deviceController.webApiTestBusy
                                             ? qsTr("⏳ Calling...")
-                                            : qsTr("⚡ Test API Call")
+                                            : qsTr("⚡ Test")
                                         enabled: !deviceController.webApiTestBusy && webApiUrlField.text.trim().length > 0
                                         implicitHeight: Math.round(24 * root.inspectorScale)
                                         font.pixelSize: Math.round(11 * root.inspectorScale)
@@ -6759,8 +7823,73 @@ Kirigami.ApplicationWindow {
                                     }
                                 }
 
-                                // Row 2: HTTP Method + URL
+                                // Row 2: Named Reusable Destination Selector & Configure Window Button
                                 RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    QQC2.Label {
+                                        text: qsTr("Destination:")
+                                        font.bold: true
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
+                                        color: Kirigami.Theme.textColor
+                                    }
+
+                                    QQC2.ComboBox {
+                                        id: webApiDestinationCombo
+                                        Layout.fillWidth: true
+                                        implicitHeight: Math.round(26 * root.inspectorScale)
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
+                                        model: root.webApiDestinationComboItems
+                                        onActivated: function(index) {
+                                            if (index <= 0) {
+                                                root.webApiSelectedDestination = ""
+                                                root.syncWebApiBuilderToScript()
+                                                return
+                                            }
+                                            const list = root.webApiDestinationsList || []
+                                            const dest = list[index - 1]
+                                            if (!dest) return
+                                            root.syncingWebApiScript = true
+                                            root.webApiSelectedDestination = dest.name || ""
+                                            const mIdx = root.webApiMethods.indexOf((dest.method || "POST").toUpperCase())
+                                            webApiMethodCombo.currentIndex = mIdx >= 0 ? mIdx : 0
+                                            webApiUrlField.text = dest.url || ""
+                                            webApiHeadersField.text = dest.headers || ""
+                                            if (!webApiEnabledCheck.checked && (dest.url || "").trim().length > 0) {
+                                                webApiEnabledCheck.checked = true
+                                            }
+                                            root.syncingWebApiScript = false
+                                            root.syncWebApiBuilderToScript()
+                                        }
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Select a saved reusable Web API destination (shares Method, URL, and Headers across keys while each key sends its own Payload)")
+                                    }
+
+                                    QQC2.Button {
+                                        icon.name: "configure"
+                                        text: qsTr("Configure Destinations...")
+                                        implicitHeight: Math.round(26 * root.inspectorScale)
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
+                                        font.bold: true
+                                        onClicked: {
+                                            const methodIdx = Math.max(0, webApiMethodCombo.currentIndex)
+                                            const methodStr = root.webApiMethods[methodIdx] || "POST"
+                                            webApiDestinationsDialog.openForDestination(
+                                                root.webApiSelectedDestination,
+                                                methodStr,
+                                                webApiUrlField.text,
+                                                webApiHeadersField.text
+                                            )
+                                        }
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Open the Web API Destinations window to add, edit, or delete reusable HTTP endpoints")
+                                    }
+                                }
+
+                                // Row 3: Custom One-Off Endpoint (shown only when "Custom (One-off Endpoint)" is selected)
+                                RowLayout {
+                                    visible: webApiDestinationCombo.currentIndex <= 0
                                     Layout.fillWidth: true
                                     spacing: 6
 
@@ -6777,6 +7906,7 @@ Kirigami.ApplicationWindow {
                                     QQC2.TextField {
                                         id: webApiUrlField
                                         Layout.fillWidth: true
+                                        Layout.preferredWidth: 260
                                         implicitHeight: Math.round(28 * root.inspectorScale)
                                         font.family: "monospace"
                                         font.pixelSize: Math.round(11 * root.inspectorScale)
@@ -6789,40 +7919,46 @@ Kirigami.ApplicationWindow {
                                             root.syncWebApiBuilderToScript()
                                         }
                                     }
-                                }
-
-                                // Row 3: Headers & JSON Body
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 6
 
                                     QQC2.TextField {
                                         id: webApiHeadersField
                                         Layout.fillWidth: true
-                                        Layout.preferredWidth: 220
-                                        implicitHeight: Math.round(26 * root.inspectorScale)
+                                        Layout.preferredWidth: 200
+                                        implicitHeight: Math.round(28 * root.inspectorScale)
                                         font.family: "monospace"
                                         font.pixelSize: Math.round(10 * root.inspectorScale)
                                         selectByMouse: true
                                         placeholderText: qsTr("Headers (e.g. Authorization: Bearer <token>; X-Api-Key: 123)")
                                         onTextEdited: root.syncWebApiBuilderToScript()
                                         QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Optional HTTP headers separated by ';' or newlines. Tip: 'Bearer <token>' automatically sets Authorization.")
+                                        QQC2.ToolTip.text: qsTr("Optional HTTP headers separated by ';' or newlines.")
+                                    }
+                                }
+
+                                // Row 4: Key-Specific Payload / Request Body
+                                RowLayout {
+                                    visible: webApiMethodCombo.currentIndex !== 1 // Hide on GET
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    QQC2.Label {
+                                        text: qsTr("Key Payload:")
+                                        font.bold: true
+                                        font.pixelSize: Math.round(10 * root.inspectorScale)
+                                        color: Kirigami.Theme.textColor
                                     }
 
                                     QQC2.TextField {
                                         id: webApiBodyField
-                                        visible: webApiMethodCombo.currentIndex !== 1 // Hide on GET
                                         Layout.fillWidth: true
-                                        Layout.preferredWidth: 260
                                         implicitHeight: Math.round(26 * root.inspectorScale)
                                         font.family: "monospace"
                                         font.pixelSize: Math.round(10 * root.inspectorScale)
                                         selectByMouse: true
-                                        placeholderText: qsTr("Request Body / JSON (e.g. {\"entity_id\": \"light.desk\"})")
+                                        placeholderText: qsTr("Per-key Request Body / JSON (e.g. {\"entity_id\": \"light.desk\"})")
                                         onTextEdited: root.syncWebApiBuilderToScript()
                                         QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Request payload sent with POST/PUT/PATCH/DELETE. JSON objects automatically set Content-Type: application/json.")
+                                        QQC2.ToolTip.text: qsTr("Key-specific payload sent to the destination with POST/PUT/PATCH/DELETE. Different keys can reuse the same destination with different payloads.")
                                     }
                                 }
 
@@ -7002,6 +8138,11 @@ Kirigami.ApplicationWindow {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     clip: true
+                                    QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                                        policy: commandReferenceListView.contentHeight > commandReferenceListView.height
+                                            ? QQC2.ScrollBar.AlwaysOn
+                                            : QQC2.ScrollBar.AsNeeded
+                                    }
 
                                     ListView {
                                         id: commandReferenceListView
@@ -7254,8 +8395,8 @@ Kirigami.ApplicationWindow {
                                                 if (!editorContainer.editorExpanded) {
                                                     root.showScriptPreviewInBuilder = true
                                                 }
-                                                root.rebuildCommandReferenceModel()
-                                                commandReferenceSearchField.forceActiveFocus()
+                                                root.refreshCommandReferenceModel()
+                                                commandRefSearchField.forceActiveFocus()
                                             }
                                         }
                                         QQC2.ToolTip.visible: hovered
@@ -7273,8 +8414,12 @@ Kirigami.ApplicationWindow {
                                 anchors.bottom: parent.bottom
                                 anchors.margins: 2
                                 clip: true
+                                QQC2.ScrollBar.vertical: HighContrastScrollBar {}
+                                QQC2.ScrollBar.horizontal: HighContrastScrollBar {
+                                    orientation: Qt.Horizontal
+                                }
 
-                                QQC2.TextArea {
+                                T.TextArea {
                                     id: scriptEditor
                                     font.family: "monospace"
                                     font.pixelSize: Math.round(13 * root.editorScale)
@@ -7692,13 +8837,13 @@ Kirigami.ApplicationWindow {
         }
     }
 
-    // Bottom Status Bar (Connection Status, Firmware Version, Serial Number, SD Card Path & Live Status)
+    // Bottom Status Bar (2-Line Layout: Line 1 = Connection, Sync & Live Status; Line 2 = Firmware Version, SD Card Space & OLED Widget Toggle)
     footer: Rectangle {
         id: bottomStatusBar
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
         Kirigami.Theme.inherit: false
         width: parent.width
-        implicitHeight: Math.round(40 * root.statusBarScale)
+        implicitHeight: Math.round(72 * root.statusBarScale)
         color: Kirigami.Theme.alternateBackgroundColor
 
         Rectangle {
@@ -7709,222 +8854,314 @@ Kirigami.ApplicationWindow {
             color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
         }
 
-        RowLayout {
+        ColumnLayout {
             anchors.fill: parent
             anchors.leftMargin: Kirigami.Units.largeSpacing
             anchors.rightMargin: Kirigami.Units.largeSpacing
-            spacing: 10
+            anchors.topMargin: 4
+            anchors.bottomMargin: 4
+            spacing: 4
 
-            // Connection Status Pill
-            Rectangle {
-                radius: 4
-                color: deviceController.connected
-                    ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.16)
-                    : (deviceController.sdMountPath.length > 0
-                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.16)
-                        : Qt.alpha(Kirigami.Theme.neutralTextColor, 0.16))
-                border.color: deviceController.connected
-                    ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.5)
-                    : (deviceController.sdMountPath.length > 0
-                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.5)
-                        : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast))
-                border.width: 1
-                implicitWidth: connRow.implicitWidth + 16
-                implicitHeight: Math.round(26 * root.statusBarScale)
+            // Status Bar Line 1: Connection Status Pill, Sync Status Badge & Live Status Message
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
 
-                RowLayout {
-                    id: connRow
-                    anchors.centerIn: parent
-                    spacing: 6
-
-                    Rectangle {
-                        width: 9
-                        height: 9
-                        radius: 5
-                        color: deviceController.connected
-                            ? Kirigami.Theme.positiveTextColor
-                            : (deviceController.sdMountPath.length > 0
-                                ? Kirigami.Theme.highlightColor
-                                : Kirigami.Theme.neutralTextColor)
-                    }
-
-                    QQC2.Label {
-                        text: deviceController.connected
-                            ? qsTr("USB HID Connected — %1").arg(deviceController.modelName)
-                            : (deviceController.sdMountPath.length > 0
-                                ? qsTr("SD Card Mode — %1").arg(deviceController.modelName)
-                                : qsTr("Disconnected"))
-                        font.bold: true
-                        font.pixelSize: Math.round(12 * root.statusBarScale)
-                        color: Kirigami.Theme.textColor
-                    }
-                }
-            }
-
-            // Firmware Version & Serial Number Badge (Click to check for firmware updates)
-            Rectangle {
-                id: fwBadgeRect
-                radius: 4
-                color: deviceController.firmwareUpdateAvailable
-                    ? Qt.alpha(Kirigami.Theme.neutralTextColor, 0.18)
-                    : Kirigami.Theme.backgroundColor
-                border.color: deviceController.firmwareUpdateAvailable
-                    ? Qt.alpha(Kirigami.Theme.neutralTextColor, 0.55)
-                    : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
-                border.width: 1
-                implicitWidth: fwLabel.implicitWidth + 16
-                implicitHeight: Math.round(26 * root.statusBarScale)
-
-                QQC2.Label {
-                    id: fwLabel
-                    anchors.centerIn: parent
-                    text: {
-                        const base = (deviceController.serialNumber && deviceController.serialNumber !== "-")
-                            ? qsTr("FW: %1  •  SN: %2")
-                                .arg(deviceController.firmwareVersion)
-                                .arg(deviceController.serialNumber)
-                            : qsTr("Firmware: %1").arg(deviceController.firmwareVersion)
-                        return deviceController.firmwareUpdateAvailable
-                            ? qsTr("%1  (⬆ v%2)").arg(base).arg(deviceController.latestFirmwareVersion)
-                            : base
-                    }
-                    font.family: "monospace"
-                    font.pixelSize: Math.round(12 * root.statusBarScale)
-                    color: Kirigami.Theme.textColor
-                }
-
-                MouseArea {
-                    id: fwBadgeMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        deviceController.checkFirmwareUpdate(true)
-                        firmwareUpdateDialog.open()
-                    }
-                }
-
-                QQC2.ToolTip.visible: fwBadgeMouse.containsMouse
-                QQC2.ToolTip.text: deviceController.firmwareUpdateAvailable
-                    ? qsTr("Firmware update v%1 is available! Click for details.").arg(deviceController.latestFirmwareVersion)
-                    : qsTr("Click to check for official duckyPad firmware updates")
-            }
-
-            // Profile Sync / Mismatch Status Indicator Badge
-            Rectangle {
-                id: syncStatusBadge
-                radius: 4
-                color: deviceController.sdSyncBusy
-                    ? Qt.alpha(Kirigami.Theme.highlightColor, 0.2)
-                    : (deviceController.profileSyncState === "synced"
+                // Connection Status Pill
+                Rectangle {
+                    radius: 4
+                    color: deviceController.connected
                         ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.16)
-                        : (deviceController.profileSyncState === "unsynced"
-                            ? Qt.alpha(Kirigami.Theme.neutralTextColor, 0.18)
-                            : Qt.alpha(Kirigami.Theme.negativeTextColor, 0.18)))
-                border.color: deviceController.sdSyncBusy
-                    ? Qt.alpha(Kirigami.Theme.highlightColor, 0.6)
-                    : (deviceController.profileSyncState === "synced"
+                        : (deviceController.sdMountPath.length > 0
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.16)
+                            : Qt.alpha(Kirigami.Theme.neutralTextColor, 0.16))
+                    border.color: deviceController.connected
                         ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.5)
-                        : (deviceController.profileSyncState === "unsynced"
-                            ? Qt.alpha(Kirigami.Theme.neutralTextColor, 0.55)
-                            : Qt.alpha(Kirigami.Theme.negativeTextColor, 0.55)))
-                border.width: 1
-                implicitWidth: syncRow.implicitWidth + 16
-                implicitHeight: Math.round(26 * root.statusBarScale)
+                        : (deviceController.sdMountPath.length > 0
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.5)
+                            : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast))
+                    border.width: 1
+                    implicitWidth: connRow.implicitWidth + 16
+                    implicitHeight: Math.round(26 * root.statusBarScale)
 
-                RowLayout {
-                    id: syncRow
-                    anchors.centerIn: parent
-                    spacing: 6
+                    RowLayout {
+                        id: connRow
+                        anchors.centerIn: parent
+                        spacing: 6
 
-                    Rectangle {
-                        width: 9
-                        height: 9
-                        radius: 5
-                        color: deviceController.sdSyncBusy
-                            ? Kirigami.Theme.highlightColor
-                            : (deviceController.profileSyncState === "synced"
+                        Rectangle {
+                            width: 9
+                            height: 9
+                            radius: 5
+                            color: deviceController.connected
                                 ? Kirigami.Theme.positiveTextColor
-                                : (deviceController.profileSyncState === "unsynced"
-                                    ? Kirigami.Theme.neutralTextColor
-                                    : Kirigami.Theme.negativeTextColor))
-                    }
+                                : (deviceController.sdMountPath.length > 0
+                                    ? Kirigami.Theme.highlightColor
+                                    : Kirigami.Theme.neutralTextColor)
+                        }
 
-                    QQC2.Label {
-                        text: deviceController.sdSyncBusy
-                            ? qsTr("⟳ Syncing (%1%)").arg(deviceController.sdSyncProgress)
-                            : (deviceController.profileSyncState === "synced"
-                                ? qsTr("✓ SD Validated & Synced")
-                                : (deviceController.profileSyncState === "unsynced"
-                                    ? qsTr("⚠ Unsynced Changes")
-                                    : qsTr("⚠ Profile Mismatch")))
-                        font.bold: true
-                        font.pixelSize: Math.round(12 * root.statusBarScale)
-                        color: Kirigami.Theme.textColor
-                    }
-                }
-
-                MouseArea {
-                    id: syncBadgeMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: (mouse) => {
-                        if (deviceController.sdSyncBusy) {
-                            sdSyncDialog.open()
-                        } else if (mouse.button === Qt.RightButton) {
-                            profileSyncMenu.popup(syncStatusBadge, 0, -profileSyncMenu.implicitHeight)
-                        } else {
-                            root.openUnsyncedChangesDialog()
+                        QQC2.Label {
+                            text: deviceController.connected
+                                ? qsTr("USB HID Connected — %1").arg(deviceController.modelName)
+                                : (deviceController.sdMountPath.length > 0
+                                    ? qsTr("SD Card Mode — %1").arg(deviceController.modelName)
+                                    : qsTr("Disconnected"))
+                            font.bold: true
+                            font.pixelSize: Math.round(12 * root.statusBarScale)
+                            color: Kirigami.Theme.textColor
                         }
                     }
                 }
 
-                QQC2.ToolTip.visible: syncBadgeMouse.containsMouse
-                QQC2.ToolTip.text: deviceController.sdSyncBusy
-                    ? deviceController.sdSyncStep
-                    : (deviceController.profileSyncDetail + "\n" + qsTr("Click to open Unsynced Changes Summary (Right-click for Sync Menu)"))
-            }
+                // Profile Sync / Mismatch Status Indicator Badge
+                Rectangle {
+                    id: syncStatusBadge
+                    radius: 4
+                    color: deviceController.sdSyncBusy
+                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.2)
+                        : (deviceController.profileSyncState === "synced"
+                            ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.16)
+                            : (deviceController.profileSyncState === "unsynced"
+                                ? Qt.alpha(Kirigami.Theme.neutralTextColor, 0.18)
+                                : Qt.alpha(Kirigami.Theme.negativeTextColor, 0.18)))
+                    border.color: deviceController.sdSyncBusy
+                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.6)
+                        : (deviceController.profileSyncState === "synced"
+                            ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.5)
+                            : (deviceController.profileSyncState === "unsynced"
+                                ? Qt.alpha(Kirigami.Theme.neutralTextColor, 0.55)
+                                : Qt.alpha(Kirigami.Theme.negativeTextColor, 0.55)))
+                    border.width: 1
+                    implicitWidth: syncRow.implicitWidth + 16
+                    implicitHeight: Math.round(26 * root.statusBarScale)
 
-            // Mounted SD Card Badge (when loaded)
-            Rectangle {
-                visible: deviceController.sdMountPath.length > 0
-                radius: 4
-                color: Kirigami.Theme.backgroundColor
-                border.color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
-                border.width: 1
-                implicitWidth: Math.min(sdPathLabel.implicitWidth + 16, 280)
-                implicitHeight: Math.round(26 * root.statusBarScale)
+                    RowLayout {
+                        id: syncRow
+                        anchors.centerIn: parent
+                        spacing: 6
 
+                        Rectangle {
+                            width: 9
+                            height: 9
+                            radius: 5
+                            color: deviceController.sdSyncBusy
+                                ? Kirigami.Theme.highlightColor
+                                : (deviceController.profileSyncState === "synced"
+                                    ? Kirigami.Theme.positiveTextColor
+                                    : (deviceController.profileSyncState === "unsynced"
+                                        ? Kirigami.Theme.neutralTextColor
+                                        : Kirigami.Theme.negativeTextColor))
+                        }
+
+                        QQC2.Label {
+                            text: deviceController.sdSyncBusy
+                                ? qsTr("⟳ Syncing (%1%)").arg(deviceController.sdSyncProgress)
+                                : (deviceController.profileSyncState === "synced"
+                                    ? qsTr("✓ SD Validated & Synced")
+                                    : (deviceController.profileSyncState === "unsynced"
+                                        ? qsTr("⚠ Unsynced Changes")
+                                        : qsTr("⚠ Profile Mismatch")))
+                            font.bold: true
+                            font.pixelSize: Math.round(12 * root.statusBarScale)
+                            color: Kirigami.Theme.textColor
+                        }
+                    }
+
+                    MouseArea {
+                        id: syncBadgeMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: (mouse) => {
+                            if (deviceController.sdSyncBusy) {
+                                sdSyncDialog.open()
+                            } else if (mouse.button === Qt.RightButton) {
+                                profileSyncMenu.popup(syncStatusBadge, 0, -profileSyncMenu.implicitHeight)
+                            } else {
+                                root.openUnsyncedChangesDialog()
+                            }
+                        }
+                    }
+
+                    QQC2.ToolTip.visible: syncBadgeMouse.containsMouse
+                    QQC2.ToolTip.text: deviceController.sdSyncBusy
+                        ? deviceController.sdSyncStep
+                        : (deviceController.profileSyncDetail + "\n" + qsTr("Click to open Unsynced Changes Summary (Right-click for Sync Menu)"))
+                }
+
+                Rectangle {
+                    width: 1
+                    height: Math.round(18 * root.statusBarScale)
+                    color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                }
+
+                // Live Status Message
                 QQC2.Label {
-                    id: sdPathLabel
-                    anchors.fill: parent
-                    anchors.leftMargin: 8
-                    anchors.rightMargin: 8
-                    verticalAlignment: Text.AlignVCenter
-                    text: qsTr("SD: %1").arg(deviceController.sdMountPath)
-                    font.family: "monospace"
-                    font.pixelSize: Math.round(12 * root.statusBarScale)
-                    elide: Text.ElideMiddle
-                    color: Kirigami.Theme.disabledTextColor
+                    text: deviceController.statusMessage
+                    font.pixelSize: Math.round(13 * root.statusBarScale)
+                    color: Kirigami.Theme.textColor
+                    opacity: 0.92
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
                 }
             }
 
             Rectangle {
-                width: 1
-                height: Math.round(18 * root.statusBarScale)
-                color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                Layout.fillWidth: true
+                height: 1
+                color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast * 0.65)
             }
 
-            // Live Status Message
-            QQC2.Label {
-                text: deviceController.statusMessage
-                font.pixelSize: Math.round(13 * root.statusBarScale)
-                color: Kirigami.Theme.textColor
-                opacity: 0.92
-                elide: Text.ElideRight
+            // Status Bar Line 2: Firmware Version & Serial Number, microSD Card Space Data & Desktop OLED Widget Toggle
+            RowLayout {
                 Layout.fillWidth: true
+                spacing: 10
+
+                // Firmware Version & Serial Number Badge (Click to check for firmware updates)
+                Rectangle {
+                    id: fwBadgeRect
+                    radius: 4
+                    color: deviceController.firmwareUpdateAvailable
+                        ? Qt.alpha(Kirigami.Theme.neutralTextColor, 0.18)
+                        : Kirigami.Theme.backgroundColor
+                    border.color: deviceController.firmwareUpdateAvailable
+                        ? Qt.alpha(Kirigami.Theme.neutralTextColor, 0.55)
+                        : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                    border.width: 1
+                    implicitWidth: fwLabel.implicitWidth + 16
+                    implicitHeight: Math.round(26 * root.statusBarScale)
+
+                    QQC2.Label {
+                        id: fwLabel
+                        anchors.centerIn: parent
+                        text: {
+                            const base = (deviceController.serialNumber && deviceController.serialNumber !== "-")
+                                ? qsTr("FW: %1  •  SN: %2")
+                                    .arg(deviceController.firmwareVersion)
+                                    .arg(deviceController.serialNumber)
+                                : qsTr("Firmware: %1").arg(deviceController.firmwareVersion)
+                            return deviceController.firmwareUpdateAvailable
+                                ? qsTr("%1  (⬆ v%2)").arg(base).arg(deviceController.latestFirmwareVersion)
+                                : base
+                        }
+                        font.family: "monospace"
+                        font.pixelSize: Math.round(12 * root.statusBarScale)
+                        color: Kirigami.Theme.textColor
+                    }
+
+                    MouseArea {
+                        id: fwBadgeMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            deviceController.checkFirmwareUpdate(true)
+                            firmwareUpdateDialog.open()
+                        }
+                    }
+
+                    QQC2.ToolTip.visible: fwBadgeMouse.containsMouse
+                    QQC2.ToolTip.text: deviceController.firmwareUpdateAvailable
+                        ? qsTr("Firmware update v%1 is available! Click for details.").arg(deviceController.latestFirmwareVersion)
+                        : qsTr("Click to check for official duckyPad firmware updates")
+                }
+
+                // microSD Card Used / Free Space Badge
+                Rectangle {
+                    id: sdSpaceBadge
+                    visible: deviceController.sdSpaceSummary.length > 0
+                    radius: 4
+                    color: Kirigami.Theme.backgroundColor
+                    border.color: deviceController.sdSpaceUsedPercent >= 90
+                        ? Qt.alpha(Kirigami.Theme.negativeTextColor, 0.55)
+                        : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                    border.width: 1
+                    implicitWidth: sdSpaceRow.implicitWidth + 16
+                    implicitHeight: Math.round(26 * root.statusBarScale)
+
+                    RowLayout {
+                        id: sdSpaceRow
+                        anchors.centerIn: parent
+                        spacing: 6
+
+                        QQC2.Label {
+                            text: "💾 " + deviceController.sdSpaceSummary
+                            font.family: "monospace"
+                            font.pixelSize: Math.round(12 * root.statusBarScale)
+                            color: Kirigami.Theme.textColor
+                        }
+                    }
+
+                    MouseArea {
+                        id: sdSpaceMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                    }
+
+                    QQC2.ToolTip.visible: sdSpaceMouse.containsMouse
+                    QQC2.ToolTip.text: deviceController.sdMountPath.length > 0
+                        ? (deviceController.sdSpaceDetail + "\n" + qsTr("Mount Path: %1").arg(deviceController.sdMountPath))
+                        : deviceController.sdSpaceDetail
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+                // Desktop OLED Widget Toggle Badge
+                Rectangle {
+                    id: oledWidgetStatusBtn
+                    radius: 4
+                    color: oledDesktopWidget.visible
+                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.22)
+                        : Kirigami.Theme.backgroundColor
+                    border.color: oledDesktopWidget.visible
+                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.65)
+                        : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                    border.width: 1
+                    implicitWidth: oledWidgetBtnRow.implicitWidth + 14
+                    implicitHeight: Math.round(26 * root.statusBarScale)
+
+                    RowLayout {
+                        id: oledWidgetBtnRow
+                        anchors.centerIn: parent
+                        spacing: 5
+
+                        Image {
+                            source: "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/oled-widget-icon.svg"
+                            Layout.preferredWidth: Math.round(16 * root.statusBarScale)
+                            Layout.preferredHeight: Math.round(16 * root.statusBarScale)
+                            sourceSize.width: 32
+                            sourceSize.height: 32
+                            fillMode: Image.PreserveAspectFit
+                        }
+
+                        QQC2.Label {
+                            text: oledDesktopWidget.visible
+                                ? qsTr("Desktop OLED: Active")
+                                : qsTr("Desktop OLED Widget")
+                            font.bold: oledDesktopWidget.visible
+                            font.pixelSize: Math.round(12 * root.statusBarScale)
+                            color: oledDesktopWidget.visible
+                                ? Kirigami.Theme.highlightColor
+                                : Kirigami.Theme.textColor
+                        }
+                    }
+
+                    MouseArea {
+                        id: oledWidgetBtnMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            deviceController.toggleOledDesktopWidget()
+                        }
+                    }
+
+                    QQC2.ToolTip.visible: oledWidgetBtnMouse.containsMouse
+                    QQC2.ToolTip.text: qsTr("Toggle the floating, resizable, always-on-top KDE Desktop OLED Widget")
+                }
             }
         }
     }
@@ -8047,6 +9284,11 @@ Kirigami.ApplicationWindow {
                 QQC2.ScrollView {
                     anchors.fill: parent
                     anchors.margins: 2
+                    QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                        policy: installedAppsListView.contentHeight > installedAppsListView.height
+                            ? QQC2.ScrollBar.AlwaysOn
+                            : QQC2.ScrollBar.AsNeeded
+                    }
 
                     ListView {
                         id: installedAppsListView
@@ -8347,4 +9589,11 @@ Kirigami.ApplicationWindow {
             }
         }
     }
+
+    OledDesktopWidget {
+        id: oledDesktopWidget
+        controller: deviceController
+        selectedSlot: root.selectedSlotNumber
+    }
 }
+

@@ -1,0 +1,20 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "russellmilliner@users.noreply.github.com",
+                "Name": "Russell Milliner"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "Live resizable duckyPad Pro / duckyPad 2020 128x128 OLED screen preview and profile switcher for KDE Plasma 6",
+        "Icon": "io.github.duckydeck.oled",
+        "Id": "io.github.duckydeck.oled",
+        "License": "GPL-3.0-or-later",
+        "Name": "DuckyDeck OLED Display",
+        "Version": "1.0.0",
+        "Website": "https://github.com/russellmilliner/duckydeck-studio"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

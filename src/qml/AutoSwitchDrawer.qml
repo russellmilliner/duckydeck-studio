@@ -676,6 +676,33 @@ Window {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
+                QQC2.ScrollBar.vertical: QQC2.ScrollBar {
+                    policy: rulesListView.contentHeight > rulesListView.height
+                        ? QQC2.ScrollBar.AlwaysOn
+                        : QQC2.ScrollBar.AsNeeded
+                    minimumSize: 0.14
+                    implicitWidth: 11
+                    background: Rectangle {
+                        visible: parent.size < 1.0
+                        implicitWidth: 11
+                        radius: 5
+                        color: Qt.alpha(Kirigami.Theme.textColor, 0.12)
+                        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.25)
+                        border.width: 1
+                    }
+                    contentItem: Rectangle {
+                        visible: parent.size < 1.0
+                        implicitWidth: 7
+                        radius: 4
+                        color: parent.pressed
+                            ? Kirigami.Theme.highlightColor
+                            : (parent.hovered
+                                ? Qt.tint(Kirigami.Theme.highlightColor, Qt.rgba(1, 1, 1, 0.2))
+                                : Qt.alpha(Kirigami.Theme.textColor, 0.58))
+                        border.color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.5)
+                        border.width: 1
+                    }
+                }
 
                 ListView {
                     id: rulesListView

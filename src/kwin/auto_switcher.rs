@@ -391,9 +391,10 @@ pub fn rule_matches_window_class(rule_class_raw: &str, active_window_class_lower
     false
 }
 
-pub fn strip_browser_title_suffix(caption: &str) -> String {
-    let mut s = caption.trim().to_string();
-    let suffixes = [
+pub fn extract_browser_title_suffix(caption: &str) -> Option<&'static str> {
+    let trimmed = caption.trim();
+    let lower = trimmed.to_lowercase();
+    let suffixes: [&'static str; 38] = [
         " — Zen Browser",
         " - Zen Browser",
         " — Zen Twilight",
@@ -434,12 +435,19 @@ pub fn strip_browser_title_suffix(caption: &str) -> String {
         " - qutebrowser",
     ];
     for suf in suffixes {
-        if s.len() > suf.len() && s.to_lowercase().ends_with(&suf.to_lowercase()) {
-            let new_len = s.len() - suf.len();
-            s.truncate(new_len);
-            s = s.trim().to_string();
-            break;
+        if trimmed.len() > suf.len() && lower.ends_with(&suf.to_lowercase()) {
+            return Some(suf);
         }
+    }
+    None
+}
+
+pub fn strip_browser_title_suffix(caption: &str) -> String {
+    let mut s = caption.trim().to_string();
+    if let Some(suf) = extract_browser_title_suffix(&s) {
+        let new_len = s.len() - suf.len();
+        s.truncate(new_len);
+        s = s.trim().to_string();
     }
     // Also strip leading unread notification badge like "(3) YouTube" -> "YouTube"
     if let Some(rest) = s.strip_prefix('(') {
@@ -453,6 +461,270 @@ pub fn strip_browser_title_suffix(caption: &str) -> String {
         }
     }
     s
+}
+
+static RESOLVED_BROWSER_TITLES: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, String>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+static LAST_BROWSER_SITE_SUFFIX: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, String>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+fn decompress_mozlz4(data: &[u8]) -> Option<Vec<u8>> {
+    if data.len() < 12 || &data[..8] != b"mozLz40\0" {
+        return None;
+    }
+    let uncomp_len = u32::from_le_bytes([data[8], data[9], data[10], data[11]]) as usize;
+    if uncomp_len == 0 || uncomp_len > 64 * 1024 * 1024 {
+        return None;
+    }
+    let src = &data[12..];
+    let mut out = Vec::with_capacity(uncomp_len);
+    let mut i = 0usize;
+    let n = src.len();
+    while i < n {
+        let token = src[i] as usize;
+        i += 1;
+        let mut lit_len = token >> 4;
+        if lit_len == 15 {
+            while i < n {
+                let b = src[i] as usize;
+                i += 1;
+                lit_len += b;
+                if b != 255 {
+                    break;
+                }
+            }
+        }
+        if i + lit_len > n {
+            break;
+        }
+        out.extend_from_slice(&src[i..i + lit_len]);
+        i += lit_len;
+        if i >= n {
+            break;
+        }
+        if i + 2 > n {
+            break;
+        }
+        let offset = (src[i] as usize) | ((src[i + 1] as usize) << 8);
+        i += 2;
+        if offset == 0 || offset > out.len() {
+            return None;
+        }
+        let mut match_len = (token & 0x0f) + 4;
+        if (token & 0x0f) == 15 {
+            while i < n {
+                let b = src[i] as usize;
+                i += 1;
+                match_len += b;
+                if b != 255 {
+                    break;
+                }
+            }
+        }
+        let start = out.len() - offset;
+        for j in 0..match_len {
+            let b = out[start + j];
+            out.push(b);
+        }
+    }
+    Some(out)
+}
+
+fn clean_sqlite_extracted_title(raw: &str) -> String {
+    let mut s = raw.trim().to_string();
+    // In Firefox/Zen moz_places records, the `rev_host` column (e.g. `moc.elgoog.liam.`)
+    // immediately follows `title` in the raw row payload.
+    if let Some(pos) = s.find("moc.elgoog.liam.") {
+        s.truncate(pos);
+        if !s.to_lowercase().contains("gmail") {
+            s.push_str(" - Gmail");
+        }
+        return s.trim().to_string();
+    }
+    for rev_marker in [
+        "moc.elgoog.",
+        "moc.ebotuoy.",
+        "moc.kooltuo.",
+        "moc.tfosorcim.",
+        "moc.buhtig.",
+    ] {
+        if let Some(pos) = s.find(rev_marker) {
+            s.truncate(pos);
+            return s.trim().to_string();
+        }
+    }
+    // Strip any generic trailing reversed hostname like `moc.elpmaxe.www.` if glued to "- Gmail"
+    if let Some(gmail_end) = s.rfind(" - Gmail") {
+        let after = &s[gmail_end + " - Gmail".len()..];
+        if after.ends_with('.')
+            && after
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '-')
+        {
+            s.truncate(gmail_end + " - Gmail".len());
+        }
+    }
+    s.trim().to_string()
+}
+
+fn lookup_full_title_in_browser_storage(search_prefix: &str) -> Option<String> {
+    let home = std::env::var("HOME").ok()?;
+    let home_path = PathBuf::from(&home);
+    let roots = [
+        home_path.join(".var/app/app.zen_browser.zen/.zen"),
+        home_path.join(".zen"),
+        home_path.join(".mozilla/firefox"),
+        home_path.join(".var/app/org.mozilla.firefox/.mozilla/firefox"),
+    ];
+
+    let prefix_bytes = search_prefix.as_bytes();
+    if prefix_bytes.len() < 32 {
+        return None;
+    }
+
+    let mut profile_dirs: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
+    for root in &roots {
+        let Ok(entries) = fs::read_dir(root) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if !p.is_dir() {
+                continue;
+            }
+            let mtime = p
+                .join("places.sqlite-wal")
+                .metadata()
+                .or_else(|_| p.join("places.sqlite").metadata())
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            profile_dirs.push((mtime, p));
+        }
+    }
+    profile_dirs.sort_by(|a, b| b.0.cmp(&a.0));
+
+    // 1. Check recovery.jsonlz4 first (live sessionstore with exact tab title & URL)
+    for (_, prof_dir) in &profile_dirs {
+        let recovery_path = prof_dir.join("sessionstore-backups/recovery.jsonlz4");
+        if let Ok(compressed) = fs::read(&recovery_path) {
+            if let Some(raw_json) = decompress_mozlz4(&compressed) {
+                if let Some(pos) = raw_json
+                    .windows(prefix_bytes.len())
+                    .rposition(|w| w == prefix_bytes)
+                {
+                    let slice = &raw_json[pos..raw_json.len().min(pos + 1024)];
+                    let mut end = 0usize;
+                    while end < slice.len() {
+                        if slice[end] == b'"' && (end == 0 || slice[end - 1] != b'\\') {
+                            break;
+                        }
+                        if slice[end] < 0x20 {
+                            break;
+                        }
+                        end += 1;
+                    }
+                    let extracted = String::from_utf8_lossy(&slice[..end]).to_string();
+                    if extracted.len() > search_prefix.len() {
+                        return Some(extracted);
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Check places.sqlite-wal and places.sqlite (contains full untruncated moz_places title & rev_host)
+    for (_, prof_dir) in &profile_dirs {
+        for fname in ["places.sqlite-wal", "places.sqlite"] {
+            let db_path = prof_dir.join(fname);
+            let Ok(data) = fs::read(&db_path) else {
+                continue;
+            };
+            if let Some(pos) = data
+                .windows(prefix_bytes.len())
+                .rposition(|w| w == prefix_bytes)
+            {
+                let slice = &data[pos..data.len().min(pos + 1024)];
+                let text = String::from_utf8_lossy(slice);
+                let printable: String = text.chars().take_while(|&c| (c as u32) >= 0x20).collect();
+                let cleaned = clean_sqlite_extracted_title(&printable);
+                if cleaned.len() > search_prefix.len() {
+                    return Some(cleaned);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Resolves the full untruncated title of a browser window when the browser (e.g. Zen Browser / Firefox)
+/// truncates `<title>` at 255/256 UTF-8 bytes before appending the site name (such as `- russell.milliner@gmail.com - Gmail`).
+pub fn resolve_full_browser_caption(resource_class: &str, caption: &str) -> String {
+    if !is_web_browser_class(resource_class) {
+        return caption.to_string();
+    }
+    let stripped = strip_browser_title_suffix(caption);
+    let browser_suffix = extract_browser_title_suffix(caption).unwrap_or("");
+    let lower_class = resource_class.trim().to_ascii_lowercase();
+
+    // If this normal (non-truncated) browser title explicitly shows Gmail, remember that this browser window
+    // is currently on a Gmail tab in case the user clicks an email with a 256+ byte subject next.
+    if stripped.len() < 200 {
+        if let Ok(mut last_map) = LAST_BROWSER_SITE_SUFFIX.lock() {
+            if stripped.to_ascii_lowercase().contains("gmail") {
+                last_map.insert(lower_class, " - Gmail".to_string());
+            } else if !stripped.is_empty()
+                && !stripped.eq_ignore_ascii_case("zen browser")
+                && !stripped.eq_ignore_ascii_case("mozilla firefox")
+            {
+                last_map.remove(&lower_class);
+            }
+        }
+        return caption.to_string();
+    }
+
+    // Build a stable 96-character search prefix from the truncated title
+    let search_prefix: String = stripped.chars().take(96).collect();
+    if search_prefix.len() < 40 {
+        return caption.to_string();
+    }
+
+    if let Ok(cache) = RESOLVED_BROWSER_TITLES.lock() {
+        if let Some(full_stripped) = cache.get(&search_prefix) {
+            return format!("{full_stripped}{browser_suffix}");
+        }
+    }
+
+    if let Some(full_stripped) = lookup_full_title_in_browser_storage(&search_prefix) {
+        if let Ok(mut cache) = RESOLVED_BROWSER_TITLES.lock() {
+            cache.insert(search_prefix, full_stripped.clone());
+        }
+        if full_stripped.to_ascii_lowercase().contains("gmail") {
+            if let Ok(mut last_map) = LAST_BROWSER_SITE_SUFFIX.lock() {
+                last_map.insert(lower_class, " - Gmail".to_string());
+            }
+        }
+        return format!("{full_stripped}{browser_suffix}");
+    }
+
+    // Fallback for brand-new long email clicked while already inside Gmail before SQLite WAL flushes to disk:
+    // Gecko truncates long `<title>` strings at ~254-256 UTF-8 bytes.
+    if stripped.len() >= 230 {
+        if let Ok(last_map) = LAST_BROWSER_SITE_SUFFIX.lock() {
+            if let Some(site_suf) = last_map.get(&lower_class) {
+                let augmented = format!("{stripped} …{site_suf}");
+                if let Ok(mut cache) = RESOLVED_BROWSER_TITLES.lock() {
+                    cache.insert(search_prefix, augmented.clone());
+                }
+                return format!("{augmented}{browser_suffix}");
+            }
+        }
+    }
+
+    caption.to_string()
 }
 
 fn site_icon_cache_dir() -> PathBuf {
@@ -1446,9 +1718,17 @@ pub fn sync_local_desktop_and_icon(use_light_on_dark_icon: bool) {
 
     let apps_dir = data_home.join("applications");
     if fs::create_dir_all(&apps_dir).is_ok() {
-        let exe_path = std::env::current_exe()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|_| "duckydeck-studio".to_string());
+        let exe_path = {
+            let home = std::env::var("HOME").unwrap_or_default();
+            let local_bin = PathBuf::from(&home).join(".local/bin/duckydeck-studio");
+            if !home.is_empty() && local_bin.exists() {
+                local_bin.to_string_lossy().to_string()
+            } else {
+                std::env::current_exe()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| "duckydeck-studio".to_string())
+            }
+        };
         let desktop_content = format!(
             "[Desktop Entry]\n\
              Type=Application\n\
@@ -1475,19 +1755,29 @@ pub fn set_kde_autostart_enabled(enabled: bool) -> Result<PathBuf, String> {
             fs::create_dir_all(parent)
                 .map_err(|e| format!("Failed creating autostart directory: {e}"))?;
         }
-        let exe_path = std::env::current_exe()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|_| "duckydeck-studio".to_string());
+        let exe_path = {
+            let home = std::env::var("HOME").unwrap_or_default();
+            let local_bin = PathBuf::from(&home).join(".local/bin/duckydeck-studio");
+            if !home.is_empty() && local_bin.exists() {
+                local_bin.to_string_lossy().to_string()
+            } else {
+                std::env::current_exe()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| "duckydeck-studio".to_string())
+            }
+        };
         let desktop_entry = format!(
             "[Desktop Entry]\n\
              Type=Application\n\
              Name=DuckyDeck Studio\n\
              Comment=KDE Plasma 6 Configurator & Auto-Switcher for duckyPad Pro\n\
-             Exec=\"{exe_path}\" --minimized\n\
+             Exec=\"{exe_path}\" --autostart --minimized --foreground\n\
              Icon=io.github.duckydeck.Studio\n\
              Terminal=false\n\
              Categories=Utility;HardwareSettings;Qt;KDE;\n\
              StartupWMClass=io.github.duckydeck.Studio\n\
+             X-GNOME-Autostart-enabled=true\n\
+             X-KDE-StartupNotify=false\n\
              X-KDE-AutostartScript=false\n\
              X-KDE-autostart-after=panel\n"
         );
@@ -1555,7 +1845,8 @@ impl SwitcherState {
         if lower_class.is_empty() || lower_class == "none" {
             return None;
         }
-        let caption_lower = caption.to_lowercase();
+        let resolved_caption = resolve_full_browser_caption(resource_class, caption);
+        let caption_lower = resolved_caption.to_lowercase();
 
         let mut best_match: Option<(usize, u8)> = None;
 
@@ -1612,6 +1903,7 @@ impl KWinBridgeService {
             return;
         }
 
+        let resolved_caption = resolve_full_browser_caption(&resource_class, &caption);
         let mut matched_profile: Option<u8> = None;
 
         if let Ok(mut state) = self.state.lock() {
@@ -1620,7 +1912,7 @@ impl KWinBridgeService {
                 let _ = self.ui_event_tx.send(WindowChangeEvent {
                     resource_class,
                     resource_name,
-                    caption,
+                    caption: resolved_caption,
                     matched_profile: None,
                     picked: true,
                 });
@@ -1628,7 +1920,8 @@ impl KWinBridgeService {
             }
 
             if state.enabled && !state.paused_for_editing {
-                matched_profile = state.match_profile_for_window(&resource_class, &caption);
+                matched_profile =
+                    state.match_profile_for_window(&resource_class, &resolved_caption);
 
                 if let Some(target) = matched_profile {
                     if send_hid_switch_profile(target) {
@@ -1641,10 +1934,24 @@ impl KWinBridgeService {
         let _ = self.ui_event_tx.send(WindowChangeEvent {
             resource_class,
             resource_name,
-            caption,
+            caption: resolved_caption,
             matched_profile,
             picked: false,
         });
+    }
+
+    fn notify_main_window_minimized(&mut self) {
+        crate::bridge::device_controller::qobject::duckydeck_hide_main_window();
+    }
+
+    fn notify_oled_widget_geometry(&mut self, x: i32, y: i32, width: i32, height: i32) {
+        crate::bridge::device_controller::qobject::duckydeck_record_oled_geometry(
+            x, y, width, height,
+        );
+    }
+
+    fn notify_oled_widget_mapped(&mut self, is_pinned: bool) {
+        apply_kwin_oled_keep_above(is_pinned, true);
     }
 }
 
@@ -1722,18 +2029,21 @@ pub async fn pick_window_via_kwin_dbus() -> std::result::Result<WindowChangeEven
 
     let resource_class = extract_str("resourceClass");
     let resource_name = extract_str("resourceName");
-    let caption = extract_str("caption");
+    let raw_caption = extract_str("caption");
 
     if resource_class.is_empty() && resource_name.is_empty() {
         return Err("Window picker canceled".to_string());
     }
 
+    let effective_class = if !resource_class.is_empty() {
+        resource_class
+    } else {
+        resource_name.clone()
+    };
+    let caption = resolve_full_browser_caption(&effective_class, &raw_caption);
+
     Ok(WindowChangeEvent {
-        resource_class: if !resource_class.is_empty() {
-            resource_class
-        } else {
-            resource_name.clone()
-        },
+        resource_class: effective_class,
         resource_name,
         caption,
         matched_profile: None,
@@ -1802,9 +2112,133 @@ pub async fn run_kwin_auto_switcher(
 fn write_kwin6_hook_script() -> std::io::Result<String> {
     let js_code = r#"
 var trackedWindow = null;
+var hookedWindows = [];
+
+function isWindowHooked(win) {
+    for (var i = 0; i < hookedWindows.length; ++i) {
+        if (hookedWindows[i] === win) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function isOledWidgetWindow(win) {
+    if (!win) return false;
+    var cap = win.caption ? win.caption.toString() : "";
+    return cap.indexOf("duckyPad OLED —") === 0;
+}
+
+function isDuckyDeckMainWindow(win) {
+    if (!win || isOledWidgetWindow(win)) return false;
+    var cls = (win.resourceClass ? win.resourceClass.toString() : "").toLowerCase();
+    var cap = win.caption ? win.caption.toString() : "";
+    return cls.indexOf("duckydeck") !== -1 || cap.indexOf("DuckyDeck Studio") === 0;
+}
+
+function checkOledKeepAbove(win) {
+    if (!win) return;
+    if (isOledWidgetWindow(win)) {
+        var cap = win.caption ? win.caption.toString() : "";
+        var isPinned = (cap.indexOf("[Unpinned]") === -1);
+        win.keepAbove = isPinned;
+        win.skipTaskbar = isPinned;
+        win.skipPager = isPinned;
+        if (isPinned && win.minimized) {
+            win.minimized = false;
+        }
+        if (!isWindowHooked(win)) {
+            hookedWindows.push(win);
+            try {
+                callDBus(
+                    "io.github.duckydeck.Studio",
+                    "/KWinBridge",
+                    "io.github.duckydeck.KWinBridge",
+                    "NotifyOledWidgetMapped",
+                    isPinned
+                );
+                if (win.minimizedChanged) {
+                    win.minimizedChanged.connect(function() {
+                        var c = win.caption ? win.caption.toString() : "";
+                        var pinnedNow = (c.indexOf("[Unpinned]") === -1);
+                        if (pinnedNow && win.minimized) {
+                            win.minimized = false;
+                            win.keepAbove = true;
+                        }
+                    });
+                }
+                if (win.captionChanged) {
+                    win.captionChanged.connect(function() {
+                        checkOledKeepAbove(win);
+                    });
+                }
+                if (win.frameGeometryChanged) {
+                    win.frameGeometryChanged.connect(function() {
+                        if (!win.minimized && win.frameGeometry && win.frameGeometry.width >= 180 && win.frameGeometry.height >= 220) {
+                            callDBus(
+                                "io.github.duckydeck.Studio",
+                                "/KWinBridge",
+                                "io.github.duckydeck.KWinBridge",
+                                "NotifyOledWidgetGeometry",
+                                Math.round(win.frameGeometry.x),
+                                Math.round(win.frameGeometry.y),
+                                Math.round(win.frameGeometry.width),
+                                Math.round(win.frameGeometry.height)
+                            );
+                        }
+                    });
+                }
+            } catch (e) {}
+        }
+        return;
+    }
+
+    if (isDuckyDeckMainWindow(win)) {
+        if (!isWindowHooked(win)) {
+            hookedWindows.push(win);
+            try {
+                if (win.minimizedChanged) {
+                    win.minimizedChanged.connect(function() {
+                        if (win.minimized) {
+                            win.skipTaskbar = true;
+                            win.skipPager = true;
+                            win.skipSwitcher = true;
+                            callDBus(
+                                "io.github.duckydeck.Studio",
+                                "/KWinBridge",
+                                "io.github.duckydeck.KWinBridge",
+                                "NotifyMainWindowMinimized"
+                            );
+                        } else {
+                            win.skipTaskbar = false;
+                            win.skipPager = false;
+                            win.skipSwitcher = false;
+                        }
+                    });
+                }
+            } catch (e) {}
+        }
+        if (win.minimized) {
+            win.skipTaskbar = true;
+            win.skipPager = true;
+            win.skipSwitcher = true;
+            callDBus(
+                "io.github.duckydeck.Studio",
+                "/KWinBridge",
+                "io.github.duckydeck.KWinBridge",
+                "NotifyMainWindowMinimized"
+            );
+        } else {
+            win.skipTaskbar = false;
+            win.skipPager = false;
+            win.skipSwitcher = false;
+        }
+    }
+}
 
 function isIgnoredWindow(win) {
     if (!win) return true;
+    checkOledKeepAbove(win);
     var cls = (win.resourceClass ? win.resourceClass.toString() : "").toLowerCase();
     return cls === "" || cls === "plasmashell" || cls.indexOf("duckydeck") !== -1;
 }
@@ -1847,11 +2281,16 @@ function onWindowActivated(win) {
 }
 
 function sendInitialTopWindow() {
+    var order = workspace.stackingOrder || workspace.windowList();
+    if (order && order.length) {
+        for (var j = 0; j < order.length; ++j) {
+            checkOledKeepAbove(order[j]);
+        }
+    }
     if (workspace.activeWindow && !isIgnoredWindow(workspace.activeWindow)) {
         onWindowActivated(workspace.activeWindow);
         return;
     }
-    var order = workspace.stackingOrder;
     if (order && order.length) {
         for (var i = order.length - 1; i >= 0; --i) {
             var w = order[i];
@@ -1863,6 +2302,9 @@ function sendInitialTopWindow() {
     }
 }
 
+if (workspace.windowAdded) {
+    workspace.windowAdded.connect(checkOledKeepAbove);
+}
 if (workspace.windowActivated) {
     workspace.windowActivated.connect(onWindowActivated);
     sendInitialTopWindow();
@@ -1878,4 +2320,131 @@ if (workspace.windowActivated) {
     let mut file = std::fs::File::create(&file_path)?;
     file.write_all(js_code.as_bytes())?;
     Ok(file_path)
+}
+
+fn load_saved_oled_geometry_tuple() -> Option<(i32, i32, i32, i32)> {
+    let base = std::env::var("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+            PathBuf::from(home).join(".config")
+        });
+    let path = base
+        .join("duckydeck-studio")
+        .join("oled_widget_geometry.json");
+    let raw = fs::read_to_string(path).ok()?;
+    let val: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    if !val.get("has_position").and_then(|v| v.as_bool()).unwrap_or(false) {
+        return None;
+    }
+    let x = val.get("x").and_then(|v| v.as_i64())? as i32;
+    let y = val.get("y").and_then(|v| v.as_i64())? as i32;
+    let w = (val.get("width").and_then(|v| v.as_i64()).unwrap_or(284) as i32).clamp(184, 1600);
+    let h = (val.get("height").and_then(|v| v.as_i64()).unwrap_or(356) as i32).clamp(240, 1600);
+    Some((x, y, w, h))
+}
+
+static OLED_PIN_SCRIPT_LOCK: std::sync::LazyLock<std::sync::Mutex<()>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(()));
+
+pub fn apply_kwin_oled_keep_above(keep_above: bool, restore_geometry: bool) {
+    std::thread::spawn(move || {
+        let _guard = OLED_PIN_SCRIPT_LOCK.lock().ok();
+        let geom_opt = if restore_geometry {
+            load_saved_oled_geometry_tuple()
+        } else {
+            None
+        };
+        let rt = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(r) => r,
+            Err(_) => return,
+        };
+        rt.block_on(async move {
+            let Ok(conn) = zbus::Connection::session().await else {
+                return;
+            };
+            let Ok(kwin_scripting) = zbus::Proxy::new(
+                &conn,
+                "org.kde.KWin",
+                "/Scripting",
+                "org.kde.kwin.Scripting",
+            )
+            .await
+            else {
+                return;
+            };
+
+            let runtime_dir =
+                std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_string());
+            let script_path = format!("{runtime_dir}/duckydeck-kwin6-oled-pin.js");
+            let flag_str = if keep_above { "true" } else { "false" };
+            let geom_js = if let Some((gx, gy, gw, gh)) = geom_opt {
+                format!(
+                    "w.frameGeometry = {{ x: {gx}, y: {gy}, width: {gw}, height: {gh} }};"
+                )
+            } else {
+                String::new()
+            };
+            let js = format!(
+                r#"
+var list = workspace.stackingOrder || workspace.windowList();
+if (list) {{
+    for (var i = 0; i < list.length; ++i) {{
+        var w = list[i];
+        var cap = w && w.caption ? w.caption.toString() : "";
+        if (cap.indexOf("duckyPad OLED —") === 0) {{
+            w.keepAbove = {flag_str};
+            w.skipTaskbar = {flag_str};
+            w.skipPager = {flag_str};
+            if ({flag_str} && w.minimized) {{
+                w.minimized = false;
+            }}
+            {geom_js}
+        }}
+    }}
+}}
+"#
+            );
+            if std::fs::write(&script_path, js.as_bytes()).is_err() {
+                return;
+            }
+            let plugin_name = "duckydeck_oled_keep_above_oneshot";
+            let delays_ms: &[u64] = if geom_opt.is_some() {
+                &[0, 50, 140]
+            } else {
+                &[0]
+            };
+            for &delay in delays_ms {
+                if delay > 0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                }
+                let _: std::result::Result<bool, _> =
+                    kwin_scripting.call("unloadScript", &(plugin_name,)).await;
+                if let Ok(script_id) = kwin_scripting
+                    .call::<_, _, i32>("loadScript", &(&script_path, plugin_name))
+                    .await
+                {
+                    if script_id >= 0 {
+                        let obj_path = format!("/Scripting/Script{script_id}");
+                        if let Ok(script_proxy) = zbus::Proxy::new(
+                            &conn,
+                            "org.kde.KWin",
+                            obj_path.as_str(),
+                            "org.kde.kwin.Script",
+                        )
+                        .await
+                        {
+                            let _ = script_proxy.call_noreply("run", &()).await;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(35)).await;
+                        let _: std::result::Result<bool, _> =
+                            kwin_scripting.call("unloadScript", &(plugin_name,)).await;
+                    }
+                }
+            }
+        });
+    });
 }

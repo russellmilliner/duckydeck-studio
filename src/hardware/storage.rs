@@ -141,6 +141,31 @@ pub fn query_connected_duckypad_info() -> Result<ConnectedDuckyPadInfo, String> 
     })
 }
 
+pub fn poll_hardware_active_profile() -> Option<u8> {
+    if MSC_SYNC_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst) {
+        return None;
+    }
+    let _guard = HID_IO_LOCK.try_lock().ok()?;
+    let device = open_duckypad_hid().ok()?;
+
+    let mut tx = [0u8; 64];
+    tx[0] = HID_REPORT_ID_OUT;
+    tx[1] = 0x2E;
+    tx[2] = HID_CMD_QUERY_INFO;
+
+    if device.write(&tx).is_err() {
+        return None;
+    }
+
+    let mut rx = [0u8; 64];
+    let len = device.read_timeout(&mut rx, 120).ok()?;
+    if len >= 12 && rx[2] == 0 && rx[6] != 0 && rx[11] > 0 {
+        return Some(rx[11]);
+    }
+    None
+}
+
+
 pub fn read_all_pgvs(device: &HidDevice) -> Result<[i32; PGV_COUNT], String> {
     let mut pgvs = [0i32; PGV_COUNT];
 
@@ -977,6 +1002,243 @@ pub fn mark_profiles_sd_synced(serial: &str, profiles: &[DuckyProfile]) {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PersistedSdSpaceSnapshot {
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+    pub free_bytes: u64,
+    pub baseline_cache_bytes: u64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SdCardSpaceInfo {
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+    pub free_bytes: u64,
+    pub used_percent: i32,
+    pub is_live_mount: bool,
+    pub summary_text: String,
+    pub tray_text: String,
+    pub detail_tooltip: String,
+}
+
+pub fn format_storage_bytes(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = 1024.0 * 1024.0;
+    const GB: f64 = 1024.0 * 1024.0 * 1024.0;
+    let b = bytes as f64;
+    if b >= GB {
+        format!("{:.2} GB", b / GB)
+    } else if b >= 10.0 * MB {
+        format!("{:.1} MB", b / MB)
+    } else if b >= MB {
+        format!("{:.2} MB", b / MB)
+    } else if b >= KB {
+        format!("{:.0} KB", (b / KB).max(1.0))
+    } else {
+        format!("{bytes} B")
+    }
+}
+
+pub fn query_filesystem_space(path: &Path) -> Option<(u64, u64, u64)> {
+    if !path.exists() {
+        return None;
+    }
+    let out = std::process::Command::new("df")
+        .args(["-B1", "--output=size,used,avail"])
+        .arg(path)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let data_line = stdout.lines().nth(1)?.trim();
+    let mut parts = data_line.split_whitespace();
+    let total = parts.next()?.parse::<u64>().ok()?;
+    let used = parts.next()?.parse::<u64>().ok()?;
+    let avail = parts.next()?.parse::<u64>().ok()?;
+    if total == 0 {
+        return None;
+    }
+    Some((total, used, avail))
+}
+
+pub fn compute_dir_fat32_used_bytes(dir: &Path) -> u64 {
+    const CLUSTER_SIZE: u64 = 4096;
+    fn walk(p: &Path) -> u64 {
+        let Ok(entries) = fs::read_dir(p) else {
+            return 0;
+        };
+        let mut total = CLUSTER_SIZE; // 1 cluster for directory entry table
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str.starts_with(".sd_") {
+                continue;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                total = total.saturating_add(walk(&path));
+            } else if let Ok(meta) = entry.metadata() {
+                let len = meta.len();
+                let clusters = if len == 0 {
+                    1
+                } else {
+                    len.div_ceil(CLUSTER_SIZE)
+                };
+                total = total.saturating_add(clusters * CLUSTER_SIZE);
+            }
+        }
+        total
+    }
+    if !dir.is_dir() {
+        return 0;
+    }
+    walk(dir)
+}
+
+pub fn record_mounted_sd_space(serial: &str, mount_root: &Path) {
+    let Some((total_bytes, used_bytes, free_bytes)) = query_filesystem_space(mount_root) else {
+        return;
+    };
+    let dev_dir = profile_cache_dir_for_serial(serial);
+    let cache_ref = if dev_dir.is_dir() {
+        dev_dir.clone()
+    } else {
+        profile_cache_dir()
+    };
+    let baseline_cache_bytes = compute_dir_fat32_used_bytes(&cache_ref);
+    let snap = PersistedSdSpaceSnapshot {
+        total_bytes,
+        used_bytes,
+        free_bytes,
+        baseline_cache_bytes,
+    };
+    let Ok(json) = serde_json::to_string_pretty(&snap) else {
+        return;
+    };
+    let global_dir = profile_cache_dir();
+    let _ = fs::create_dir_all(&global_dir);
+    let _ = fs::write(global_dir.join(".sd_space_info.json"), &json);
+    if dev_dir != global_dir {
+        let _ = fs::create_dir_all(&dev_dir);
+        let _ = fs::write(dev_dir.join(".sd_space_info.json"), &json);
+    }
+}
+
+pub fn get_sd_card_space_info(serial: &str, sd_mount_path: Option<&Path>) -> SdCardSpaceInfo {
+    // 1. Check live mounted SD card path or auto-detected duckyPad mount
+    let live_mount = sd_mount_path
+        .filter(|p| !p.as_os_str().is_empty() && p.is_dir())
+        .map(|p| p.to_path_buf())
+        .or_else(find_mounted_duckypad_sd);
+
+    if let Some(ref mnt) = live_mount {
+        if let Some((total_bytes, used_bytes, free_bytes)) = query_filesystem_space(mnt) {
+            record_mounted_sd_space(serial, mnt);
+            return build_sd_space_info(
+                total_bytes,
+                used_bytes,
+                free_bytes,
+                true,
+                &format!("Mounted at {}", mnt.display()),
+            );
+        }
+    }
+
+    // 2. Check persisted SD space snapshot from most recent MSC sync / SD mount
+    let dev_dir = profile_cache_dir_for_serial(serial);
+    let global_dir = profile_cache_dir();
+    let cache_dir = if dev_dir.is_dir() {
+        &dev_dir
+    } else {
+        &global_dir
+    };
+    let current_cache_bytes = compute_dir_fat32_used_bytes(cache_dir);
+
+    let snap_raw = fs::read_to_string(dev_dir.join(".sd_space_info.json"))
+        .or_else(|_| fs::read_to_string(global_dir.join(".sd_space_info.json")))
+        .ok();
+
+    if let Some(raw) = snap_raw {
+        if let Ok(snap) = serde_json::from_str::<PersistedSdSpaceSnapshot>(&raw) {
+            if snap.total_bytes > 0 {
+                let delta = current_cache_bytes as i64 - snap.baseline_cache_bytes as i64;
+                let adjusted_used = (snap.used_bytes as i64 + delta)
+                    .max(65536)
+                    .min(snap.total_bytes as i64) as u64;
+                let adjusted_free = snap.total_bytes.saturating_sub(adjusted_used);
+                let src = if !serial.is_empty() && serial != "-" {
+                    format!("duckyPad microSD (SN: {serial})")
+                } else {
+                    "duckyPad microSD cache".to_string()
+                };
+                return build_sd_space_info(
+                    snap.total_bytes,
+                    adjusted_used,
+                    adjusted_free,
+                    false,
+                    &src,
+                );
+            }
+        }
+    }
+
+    // 3. Fallback estimation for bundled 4 GB (3.74 GiB FAT32) duckyPad microSD card
+    const DEFAULT_DUCKYPAD_SD_TOTAL_BYTES: u64 = 4_018_143_232; // ~3.74 GiB FAT32 volume on 7,864,320-sector 4GB card
+    const FAT32_FS_OVERHEAD_BYTES: u64 = 98_304; // System Volume Information + root FAT cluster metadata
+    let used_bytes = current_cache_bytes.saturating_add(FAT32_FS_OVERHEAD_BYTES);
+    let total_bytes = DEFAULT_DUCKYPAD_SD_TOTAL_BYTES;
+    let free_bytes = total_bytes.saturating_sub(used_bytes);
+    let src = if !serial.is_empty() && serial != "-" {
+        format!("duckyPad microSD (SN: {serial})")
+    } else {
+        "duckyPad microSD".to_string()
+    };
+    build_sd_space_info(total_bytes, used_bytes, free_bytes, false, &src)
+}
+
+fn build_sd_space_info(
+    total_bytes: u64,
+    used_bytes: u64,
+    free_bytes: u64,
+    is_live_mount: bool,
+    source_desc: &str,
+) -> SdCardSpaceInfo {
+    let pct_f = if total_bytes > 0 {
+        (used_bytes as f64 * 100.0) / (total_bytes as f64)
+    } else {
+        0.0
+    };
+    let used_percent = (pct_f.round() as i32).clamp(0, 100);
+    let used_str = format_storage_bytes(used_bytes);
+    let free_str = format_storage_bytes(free_bytes);
+    let total_str = format_storage_bytes(total_bytes);
+
+    let summary_text = format!("SD: {used_str} used • {free_str} free");
+    let tray_text = format!("SD Card: {used_str} used • {free_str} free ({total_str})");
+    let detail_tooltip = format!(
+        "duckyPad microSD Card Capacity\n\
+         • Used Space: {used_str} ({pct_f:.2}%)\n\
+         • Free Space: {free_str} ({:.2}%)\n\
+         • Total Capacity: {total_str}\n\
+         • Source: {source_desc}",
+        (100.0 - pct_f).max(0.0)
+    );
+
+    SdCardSpaceInfo {
+        total_bytes,
+        used_bytes,
+        free_bytes,
+        used_percent,
+        is_live_mount,
+        summary_text,
+        tray_text,
+        detail_tooltip,
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SdWriteSummary {
     pub profiles_count: usize,
@@ -1448,49 +1710,86 @@ pub fn compute_unsynced_changes_json(
                 .filter(|k| !k.label_line1.is_empty() || !k.on_press_script.trim().is_empty())
                 .count();
             total_changes += 1;
+            let detail_text = format!(
+                "Added with {} configured key(s), Default RGB ({}, {}, {})",
+                configured_keys, cur.bg_color[0], cur.bg_color[1], cur.bg_color[2]
+            );
             items.push(serde_json::json!({
                 "kind": "added",
                 "profileNumber": cur.number,
                 "profileName": cur.name,
                 "summary": format!("New Profile #{}: \"{}\"", cur.number, cur.name),
-                "details": [
-                    format!("Added with {} configured key(s), Default RGB ({}, {}, {})", configured_keys, cur.bg_color[0], cur.bg_color[1], cur.bg_color[2])
+                "details": [ detail_text.clone() ],
+                "detailItems": [
+                    {
+                        "changeKey": "profile_added",
+                        "text": detail_text
+                    }
                 ]
             }));
             continue;
         };
 
         let mut details: Vec<String> = Vec::new();
+        let mut detail_items: Vec<serde_json::Value> = Vec::new();
+        let mut push_detail = |change_key: &str, text: String| {
+            details.push(text.clone());
+            detail_items.push(serde_json::json!({
+                "changeKey": change_key,
+                "text": text
+            }));
+        };
+
         if base.number != cur.number {
-            details.push(format!("Reordered slot: #{} → #{}", base.number, cur.number));
+            push_detail(
+                "order",
+                format!("Reordered slot: #{} → #{}", base.number, cur.number),
+            );
         }
         if base.name != cur.name {
-            details.push(format!("Renamed profile: \"{}\" → \"{}\"", base.name, cur.name));
+            push_detail(
+                "name",
+                format!("Renamed profile: \"{}\" → \"{}\"", base.name, cur.name),
+            );
         }
         if base.bg_color != cur.bg_color {
-            details.push(format!(
-                "Default LED Color (BG_COLOR): ({}, {}, {}) → ({}, {}, {})",
-                base.bg_color[0], base.bg_color[1], base.bg_color[2],
-                cur.bg_color[0], cur.bg_color[1], cur.bg_color[2]
-            ));
+            push_detail(
+                "bg_color",
+                format!(
+                    "Default LED Color (BG_COLOR): ({}, {}, {}) → ({}, {}, {})",
+                    base.bg_color[0],
+                    base.bg_color[1],
+                    base.bg_color[2],
+                    cur.bg_color[0],
+                    cur.bg_color[1],
+                    cur.bg_color[2]
+                ),
+            );
         }
         if base.keydown_color != cur.keydown_color {
-            details.push(format!(
-                "Keydown Color: {:?} → {:?}",
-                base.keydown_color, cur.keydown_color
-            ));
+            push_detail(
+                "keydown_color",
+                format!(
+                    "Keydown Color: {:?} → {:?}",
+                    base.keydown_color, cur.keydown_color
+                ),
+            );
         }
         if base.dim_unused_keys != cur.dim_unused_keys {
-            details.push(format!(
-                "Dim Unused Keys: {} → {}",
-                base.dim_unused_keys, cur.dim_unused_keys
-            ));
+            push_detail(
+                "dim_unused_keys",
+                format!(
+                    "Dim Unused Keys: {} → {}",
+                    base.dim_unused_keys, cur.dim_unused_keys
+                ),
+            );
         }
 
         // Compare slots 1..=MAX_INPUT_SLOTS
         for slot_idx in 1..=MAX_INPUT_SLOTS {
             let bk = base.slots.get(&slot_idx);
             let ck = cur.slots.get(&slot_idx);
+            let slot_key = format!("slot:{slot_idx}");
             match (bk, ck) {
                 (Some(b), Some(c)) => {
                     let mut key_diffs: Vec<String> = Vec::new();
@@ -1553,8 +1852,19 @@ pub fn compute_unsynced_changes_json(
                             old_lines, new_lines
                         ));
                     }
-                    if b.allow_abort != c.allow_abort || b.disable_autorepeat != c.disable_autorepeat {
-                        key_diffs.push("execution flags changed".to_string());
+                    if b.disable_autorepeat != c.disable_autorepeat {
+                        key_diffs.push(format!(
+                            "No Repeat on Hold: {} → {}",
+                            if b.disable_autorepeat { "ON" } else { "OFF" },
+                            if c.disable_autorepeat { "ON" } else { "OFF" }
+                        ));
+                    }
+                    if b.allow_abort != c.allow_abort {
+                        key_diffs.push(format!(
+                            "Allow Abort: {} → {}",
+                            if b.allow_abort { "ON" } else { "OFF" },
+                            if c.allow_abort { "ON" } else { "OFF" }
+                        ));
                     }
                     if !key_diffs.is_empty() {
                         let key_title = if !c.label_line1.is_empty() {
@@ -1564,7 +1874,10 @@ pub fn compute_unsynced_changes_json(
                         } else {
                             format!("Key {}", slot_idx)
                         };
-                        details.push(format!("{}: {}", key_title, key_diffs.join(", ")));
+                        push_detail(
+                            &slot_key,
+                            format!("{}: {}", key_title, key_diffs.join(", ")),
+                        );
                     }
                 }
                 (None, Some(c)) => {
@@ -1572,8 +1885,13 @@ pub fn compute_unsynced_changes_json(
                         || !c.on_press_script.trim().is_empty()
                         || !c.on_release_script.trim().is_empty()
                         || c.custom_rgb.is_some()
+                        || c.disable_autorepeat
+                        || c.allow_abort
                     {
-                        details.push(format!("Key {} added (\"{}\")", slot_idx, c.label_line1));
+                        push_detail(
+                            &slot_key,
+                            format!("Key {} added (\"{}\")", slot_idx, c.label_line1),
+                        );
                     }
                 }
                 (Some(b), None) => {
@@ -1581,8 +1899,13 @@ pub fn compute_unsynced_changes_json(
                         || !b.on_press_script.trim().is_empty()
                         || !b.on_release_script.trim().is_empty()
                         || b.custom_rgb.is_some()
+                        || b.disable_autorepeat
+                        || b.allow_abort
                     {
-                        details.push(format!("Key {} cleared (was \"{}\")", slot_idx, b.label_line1));
+                        push_detail(
+                            &slot_key,
+                            format!("Key {} cleared (was \"{}\")", slot_idx, b.label_line1),
+                        );
                     }
                 }
                 (None, None) => {}
@@ -1596,7 +1919,8 @@ pub fn compute_unsynced_changes_json(
                 "profileNumber": cur.number,
                 "profileName": cur.name,
                 "summary": format!("Profile #{}: \"{}\" ({} change{})", cur.number, cur.name, details.len(), if details.len() == 1 { "" } else { "s" }),
-                "details": details
+                "details": details,
+                "detailItems": detail_items
             }));
         }
     }
@@ -1608,13 +1932,21 @@ pub fn compute_unsynced_changes_json(
             .any(|c| c.number == base.number || c.name == base.name);
         if !still_exists {
             total_changes += 1;
+            let detail_text = format!(
+                "Profile folder {} will be removed from microSD card",
+                base.folder_name()
+            );
             items.push(serde_json::json!({
                 "kind": "deleted",
                 "profileNumber": base.number,
                 "profileName": base.name,
                 "summary": format!("Deleted Profile #{}: \"{}\"", base.number, base.name),
-                "details": [
-                    format!("Profile folder {} will be removed from microSD card", base.folder_name())
+                "details": [ detail_text.clone() ],
+                "detailItems": [
+                    {
+                        "changeKey": "profile_deleted",
+                        "text": detail_text
+                    }
                 ]
             }));
         }
@@ -1638,6 +1970,143 @@ pub fn compute_unsynced_changes_json(
         "items": items
     })
     .to_string()
+}
+
+pub fn discard_unsynced_change_in_profiles(
+    serial: &str,
+    profiles: &mut Vec<DuckyProfile>,
+    sd_root: Option<&Path>,
+    profile_number: u8,
+    profile_name: &str,
+    change_key: &str,
+) -> Result<String, String> {
+    let baseline = load_sd_synced_snapshot(serial, sd_root)
+        .ok_or_else(|| "No microSD sync baseline snapshot found to revert against.".to_string())?;
+
+    if change_key == "profile_added" {
+        let idx = profiles
+            .iter()
+            .position(|p| p.number == profile_number && p.name == profile_name)
+            .or_else(|| profiles.iter().position(|p| p.number == profile_number))
+            .ok_or_else(|| format!("Profile #{profile_number} not found."))?;
+        let removed = profiles.remove(idx);
+        for (i, p) in profiles.iter_mut().enumerate() {
+            p.number = (i + 1) as u8;
+        }
+        return Ok(format!(
+            "Discarded new Profile #{}: \"{}\"",
+            removed.number, removed.name
+        ));
+    }
+
+    if change_key == "profile_deleted" {
+        let base = baseline
+            .iter()
+            .find(|b| b.number == profile_number && b.name == profile_name)
+            .or_else(|| baseline.iter().find(|b| b.name == profile_name))
+            .or_else(|| baseline.iter().find(|b| b.number == profile_number))
+            .ok_or_else(|| format!("Baseline Profile #{profile_number} not found."))?;
+        let insert_pos = ((base.number as usize).saturating_sub(1)).min(profiles.len());
+        profiles.insert(insert_pos, base.clone());
+        for (i, p) in profiles.iter_mut().enumerate() {
+            p.number = (i + 1) as u8;
+        }
+        return Ok(format!(
+            "Restored deleted Profile #{}: \"{}\"",
+            base.number, base.name
+        ));
+    }
+
+    let cur_idx = profiles
+        .iter()
+        .position(|p| p.number == profile_number && p.name == profile_name)
+        .or_else(|| profiles.iter().position(|p| p.number == profile_number))
+        .or_else(|| profiles.iter().position(|p| p.name == profile_name))
+        .ok_or_else(|| format!("Profile #{profile_number} not found."))?;
+
+    let cur_num = profiles[cur_idx].number;
+    let cur_name = profiles[cur_idx].name.clone();
+
+    let base = baseline
+        .iter()
+        .find(|b| b.number == cur_num)
+        .or_else(|| baseline.iter().find(|b| b.name == cur_name))
+        .ok_or_else(|| format!("No baseline found for Profile #{cur_num} (\"{cur_name}\")."))?;
+
+    if change_key == "profile_all" {
+        let mut restored = base.clone();
+        restored.number = cur_num;
+        profiles[cur_idx] = restored;
+        return Ok(format!(
+            "Reverted all unsynced changes in Profile #{cur_num}: \"{}\"",
+            base.name
+        ));
+    }
+
+    if change_key == "order" {
+        // Restore profile ordering to match baseline
+        for p in profiles.iter_mut() {
+            if let Some(b) = baseline.iter().find(|b| b.name == p.name) {
+                p.number = b.number;
+            }
+        }
+        profiles.sort_by_key(|p| p.number);
+        for (i, p) in profiles.iter_mut().enumerate() {
+            p.number = (i + 1) as u8;
+        }
+        return Ok(format!(
+            "Reverted profile order for \"{}\" back to #{}",
+            base.name, base.number
+        ));
+    }
+
+    let cur = &mut profiles[cur_idx];
+    match change_key {
+        "name" => {
+            cur.name = base.name.clone();
+            Ok(format!(
+                "Reverted Profile #{cur_num} name to \"{}\"",
+                base.name
+            ))
+        }
+        "bg_color" => {
+            cur.bg_color = base.bg_color;
+            Ok(format!(
+                "Reverted Default LED Color on Profile #{cur_num} (\"{}\")",
+                cur.name
+            ))
+        }
+        "keydown_color" => {
+            cur.keydown_color = base.keydown_color;
+            Ok(format!(
+                "Reverted Keydown Color on Profile #{cur_num} (\"{}\")",
+                cur.name
+            ))
+        }
+        "dim_unused_keys" => {
+            cur.dim_unused_keys = base.dim_unused_keys;
+            Ok(format!(
+                "Reverted Dim Unused Keys on Profile #{cur_num} (\"{}\")",
+                cur.name
+            ))
+        }
+        other if other.starts_with("slot:") => {
+            let slot_idx: usize = other
+                .strip_prefix("slot:")
+                .and_then(|s| s.parse().ok())
+                .ok_or_else(|| format!("Invalid slot key: {other}"))?;
+            if let Some(base_slot) = base.slots.get(&slot_idx) {
+                cur.slots.insert(slot_idx, base_slot.clone());
+            } else {
+                cur.slots.remove(&slot_idx);
+            }
+            Ok(format!(
+                "Reverted Key {} in Profile #{cur_num} (\"{}\")",
+                slot_idx, cur.name
+            ))
+        }
+        _ => Err(format!("Unknown change key: {change_key}")),
+    }
 }
 
 pub fn sync_profiles_to_cache(profiles: &[DuckyProfile]) {
@@ -1799,6 +2268,7 @@ where
             let fp = compute_profiles_fingerprint(&profiles);
             sync_profiles_to_device_cache(serial, &profiles);
             mark_profiles_sd_synced(serial, &profiles);
+            record_mounted_sd_space(serial, &already_mounted);
             on_progress(
                 100,
                 "Validated: Profiles loaded from duckyPad microSD!",
@@ -1866,6 +2336,7 @@ where
                     let fp = compute_profiles_fingerprint(&profiles);
                     sync_profiles_to_device_cache(serial, &profiles);
                     mark_profiles_sd_synced(serial, &profiles);
+                    record_mounted_sd_space(serial, &mount_root);
                     on_progress(
                         80,
                         "Step 4/4: Flushing & unmounting microSD before returning to HID mode...",
@@ -1977,6 +2448,7 @@ where
         let summary = write_profiles_to_sd_root(&already_mounted, profiles)?;
         sync_profiles_to_device_cache(serial, profiles);
         mark_profiles_sd_synced(serial, profiles);
+        record_mounted_sd_space(serial, &already_mounted);
         let short_fp = &summary.validated_fingerprint[..8.min(summary.validated_fingerprint.len())];
         on_progress(
             100,
@@ -2041,6 +2513,7 @@ where
             if let Ok(ref summary) = res {
                 sync_profiles_to_device_cache(serial, profiles);
                 mark_profiles_sd_synced(serial, profiles);
+                record_mounted_sd_space(serial, &mount_root);
                 let short_fp =
                     &summary.validated_fingerprint[..8.min(summary.validated_fingerprint.len())];
                 on_progress(
@@ -2350,9 +2823,196 @@ fn default_web_api_fkey() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct WebApiDestination {
+    pub name: String,
+    #[serde(default = "default_web_api_method")]
+    pub method: String,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub headers: String,
+}
+
+pub fn web_api_destinations_path() -> PathBuf {
+    let base = std::env::var("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+            PathBuf::from(home).join(".config")
+        });
+    base.join("duckydeck-studio").join("web_api_destinations.json")
+}
+
+pub fn load_web_api_destinations() -> Vec<WebApiDestination> {
+    let path = web_api_destinations_path();
+    let Ok(raw) = fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    let mut list: Vec<WebApiDestination> = serde_json::from_str(&raw).unwrap_or_default();
+    for item in &mut list {
+        item.name = item.name.trim().to_string();
+        item.method = item.method.trim().to_ascii_uppercase();
+        if item.method.is_empty() {
+            item.method = "POST".to_string();
+        }
+        item.url = item.url.trim().to_string();
+        item.headers = item.headers.trim().to_string();
+    }
+    list.retain(|d| !d.name.is_empty() && !d.url.is_empty());
+    list
+}
+
+pub fn save_web_api_destinations(destinations: &[WebApiDestination]) -> Result<(), String> {
+    let path = web_api_destinations_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed creating config dir {}: {e}", parent.display()))?;
+    }
+    let json = serde_json::to_string_pretty(destinations)
+        .map_err(|e| format!("Failed serializing Web API destinations: {e}"))?;
+    fs::write(&path, json)
+        .map_err(|e| format!("Failed writing {}: {e}", path.display()))
+}
+
+pub fn upsert_web_api_destination(
+    name: &str,
+    method: &str,
+    url: &str,
+    headers: &str,
+) -> Result<Vec<WebApiDestination>, String> {
+    let clean_name = name.trim();
+    let clean_url = url.trim();
+    if clean_name.is_empty() {
+        return Err("Destination name cannot be empty.".to_string());
+    }
+    if clean_url.is_empty() {
+        return Err("Destination URL cannot be empty.".to_string());
+    }
+    let clean_method = {
+        let m = method.trim().to_ascii_uppercase();
+        if m.is_empty() {
+            "POST".to_string()
+        } else {
+            m
+        }
+    };
+    let clean_headers = headers.trim().to_string();
+
+    let mut list = load_web_api_destinations();
+    if let Some(existing) = list
+        .iter_mut()
+        .find(|d| d.name.eq_ignore_ascii_case(clean_name))
+    {
+        existing.name = clean_name.to_string();
+        existing.method = clean_method;
+        existing.url = clean_url.to_string();
+        existing.headers = clean_headers;
+    } else {
+        list.push(WebApiDestination {
+            name: clean_name.to_string(),
+            method: clean_method,
+            url: clean_url.to_string(),
+            headers: clean_headers,
+        });
+    }
+    save_web_api_destinations(&list)?;
+    Ok(list)
+}
+
+pub fn delete_web_api_destination_by_name(name: &str) -> Result<Vec<WebApiDestination>, String> {
+    let clean_name = name.trim();
+    let mut list = load_web_api_destinations();
+    list.retain(|d| !d.name.eq_ignore_ascii_case(clean_name));
+    save_web_api_destinations(&list)?;
+    Ok(list)
+}
+
+pub fn seed_web_api_destinations_from_profiles(profiles: &[DuckyProfile]) -> Vec<WebApiDestination> {
+    let path = web_api_destinations_path();
+    let existing = load_web_api_destinations();
+    if path.exists() || !existing.is_empty() {
+        return existing;
+    }
+    let mut seeded: Vec<WebApiDestination> = Vec::new();
+    for prof in profiles {
+        for (&slot_num, slot) in &prof.slots {
+            for script in [&slot.on_press_script, &slot.on_release_script] {
+                if !has_web_api_config(script) {
+                    continue;
+                }
+                let cfg = extract_web_api_config(script, slot_num);
+                let url = cfg.url.trim();
+                if url.is_empty() {
+                    continue;
+                }
+                let already_have = seeded.iter().any(|d| {
+                    d.url.eq_ignore_ascii_case(url)
+                        && d.method.eq_ignore_ascii_case(&cfg.method)
+                        && d.headers.trim() == cfg.headers.trim()
+                });
+                if already_have {
+                    continue;
+                }
+                let base_name = if !cfg.destination.trim().is_empty() {
+                    cfg.destination.trim().to_string()
+                } else {
+                    let lbl = format!("{} {}", slot.label_line1.trim(), slot.label_line2.trim())
+                        .trim()
+                        .to_string();
+                    if !lbl.is_empty() {
+                        format!("{} ({})", prof.name.trim(), lbl)
+                    } else {
+                        format!("{} — Key {}", prof.name.trim(), slot_num)
+                    }
+                };
+                let mut candidate_name = base_name.clone();
+                let mut suffix = 2usize;
+                while seeded
+                    .iter()
+                    .any(|d| d.name.eq_ignore_ascii_case(&candidate_name))
+                {
+                    candidate_name = format!("{base_name} #{suffix}");
+                    suffix += 1;
+                }
+                seeded.push(WebApiDestination {
+                    name: candidate_name,
+                    method: cfg.method.clone(),
+                    url: url.to_string(),
+                    headers: cfg.headers.trim().to_string(),
+                });
+            }
+        }
+    }
+    if !seeded.is_empty() {
+        let _ = save_web_api_destinations(&seeded);
+    }
+    seeded
+}
+
+pub fn resolve_web_api_config_destination(cfg: &mut WebApiConfig) {
+    let dest_name = cfg.destination.trim();
+    if dest_name.is_empty() {
+        return;
+    }
+    let destinations = load_web_api_destinations();
+    if let Some(found) = destinations
+        .iter()
+        .find(|d| d.name.eq_ignore_ascii_case(dest_name))
+    {
+        cfg.destination = found.name.clone();
+        cfg.method = found.method.clone();
+        cfg.url = found.url.clone();
+        cfg.headers = found.headers.clone();
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct WebApiConfig {
     #[serde(default)]
     pub enabled: bool,
+    #[serde(default)]
+    pub destination: String,
     #[serde(default = "default_web_api_method")]
     pub method: String,
     #[serde(default)]
@@ -2375,6 +3035,7 @@ impl Default for WebApiConfig {
     fn default() -> Self {
         Self {
             enabled: false,
+            destination: String::new(),
             method: default_web_api_method(),
             url: String::new(),
             headers: String::new(),
@@ -2408,6 +3069,7 @@ pub fn extract_web_api_config(script: &str, slot_num: usize) -> WebApiConfig {
         let trimmed = line.trim();
         if let Some(json_part) = trimmed.strip_prefix(WEB_API_META_PREFIX) {
             if let Ok(mut cfg) = serde_json::from_str::<WebApiConfig>(json_part.trim()) {
+                resolve_web_api_config_destination(&mut cfg);
                 cfg.method = cfg.method.trim().to_ascii_uppercase();
                 if cfg.method.is_empty() {
                     cfg.method = "POST".to_string();
@@ -2432,7 +3094,8 @@ pub fn has_web_api_config(script: &str) -> bool {
     for line in script.lines() {
         let trimmed = line.trim();
         if let Some(json_part) = trimmed.strip_prefix(WEB_API_META_PREFIX) {
-            if let Ok(cfg) = serde_json::from_str::<WebApiConfig>(json_part.trim()) {
+            if let Ok(mut cfg) = serde_json::from_str::<WebApiConfig>(json_part.trim()) {
+                resolve_web_api_config_destination(&mut cfg);
                 if cfg.enabled && !cfg.url.trim().is_empty() {
                     return true;
                 }
@@ -2508,6 +3171,8 @@ pub fn apply_web_api_config_to_script(
     }
 
     let mut normalized = cfg.clone();
+    normalized.destination = normalized.destination.trim().to_string();
+    resolve_web_api_config_destination(&mut normalized);
     normalized.method = normalized.method.trim().to_ascii_uppercase();
     if normalized.method.is_empty() {
         normalized.method = "POST".to_string();
@@ -2924,6 +3589,42 @@ pub fn set_single_key_led_hid(slot_num: usize, rgb: [u8; 3]) -> bool {
     ok
 }
 
+pub fn set_batch_key_leds_hid(updates: &[(usize, [u8; 3])]) -> bool {
+    if updates.is_empty() {
+        return true;
+    }
+    if MSC_SYNC_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst) {
+        return false;
+    }
+    let Ok(_guard) = HID_IO_LOCK.try_lock() else {
+        return false;
+    };
+    let Ok(device) = open_duckypad_hid() else {
+        return false;
+    };
+    let mut any_ok = false;
+    for (idx, &(slot_num, rgb)) in updates.iter().enumerate() {
+        if !(1..=ONBOARD_KEY_COUNT).contains(&slot_num) {
+            continue;
+        }
+        let mut tx = [0u8; 64];
+        tx[0] = HID_REPORT_ID_OUT;
+        tx[1] = 0x40u8.wrapping_add(idx as u8);
+        tx[2] = HID_CMD_SET_LED_SINGLE;
+        tx[3] = (slot_num - 1) as u8;
+        tx[4] = rgb[0];
+        tx[5] = rgb[1];
+        tx[6] = rgb[2];
+        if device.write(&tx).is_ok() {
+            any_ok = true;
+            let mut rx = [0u8; 64];
+            let _ = device.read_timeout(&mut rx, 20);
+        }
+    }
+    any_ok
+}
+
+
 pub async fn flash_slot_led_feedback(slot_num: usize, success: bool, restore_rgb: [u8; 3]) {
     if !(1..=ONBOARD_KEY_COUNT).contains(&slot_num) {
         return;
@@ -2998,7 +3699,10 @@ fn resolve_home_assistant_service_url(url: &str, body: &str) -> (String, Option<
     (url.to_string(), None)
 }
 
-pub async fn execute_web_api_request(cfg: &WebApiConfig) -> WebApiExecutionResult {
+pub async fn execute_web_api_request(input_cfg: &WebApiConfig) -> WebApiExecutionResult {
+    let mut resolved_cfg = input_cfg.clone();
+    resolve_web_api_config_destination(&mut resolved_cfg);
+    let cfg = &resolved_cfg;
     let raw_url = cfg.url.trim();
     if raw_url.is_empty() {
         return WebApiExecutionResult {
@@ -3638,6 +4342,285 @@ pub fn execute_app_launch(cfg: &AppLaunchConfig) -> AppLaunchExecutionResult {
         },
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecordedMacroInputEvent {
+    pub kind: String, // "key_down", "key_up", "mouse_click", "mouse_move", "mouse_scroll"
+    pub key: String,
+    pub dx: i32,
+    pub dy: i32,
+}
+
+pub fn evdev_code_to_duckyscript_key(code: u16) -> Option<&'static str> {
+    match code {
+        1 => Some("ESC"),
+        2 => Some("1"),
+        3 => Some("2"),
+        4 => Some("3"),
+        5 => Some("4"),
+        6 => Some("5"),
+        7 => Some("6"),
+        8 => Some("7"),
+        9 => Some("8"),
+        10 => Some("9"),
+        11 => Some("0"),
+        12 => Some("-"),
+        13 => Some("="),
+        14 => Some("BACKSPACE"),
+        15 => Some("TAB"),
+        16 => Some("q"),
+        17 => Some("w"),
+        18 => Some("e"),
+        19 => Some("r"),
+        20 => Some("t"),
+        21 => Some("y"),
+        22 => Some("u"),
+        23 => Some("i"),
+        24 => Some("o"),
+        25 => Some("p"),
+        26 => Some("["),
+        27 => Some("]"),
+        28 => Some("ENTER"),
+        29 => Some("LCTRL"),
+        30 => Some("a"),
+        31 => Some("s"),
+        32 => Some("d"),
+        33 => Some("f"),
+        34 => Some("g"),
+        35 => Some("h"),
+        36 => Some("j"),
+        37 => Some("k"),
+        38 => Some("l"),
+        39 => Some(";"),
+        40 => Some("'"),
+        41 => Some("`"),
+        42 => Some("LSHIFT"),
+        43 => Some("\\"),
+        44 => Some("z"),
+        45 => Some("x"),
+        46 => Some("c"),
+        47 => Some("v"),
+        48 => Some("b"),
+        49 => Some("n"),
+        50 => Some("m"),
+        51 => Some(","),
+        52 => Some("."),
+        53 => Some("/"),
+        54 => Some("RSHIFT"),
+        55 => Some("KP_ASTERISK"),
+        56 => Some("LALT"),
+        57 => Some("SPACE"),
+        58 => Some("CAPSLOCK"),
+        59 => Some("F1"),
+        60 => Some("F2"),
+        61 => Some("F3"),
+        62 => Some("F4"),
+        63 => Some("F5"),
+        64 => Some("F6"),
+        65 => Some("F7"),
+        66 => Some("F8"),
+        67 => Some("F9"),
+        68 => Some("F10"),
+        69 => Some("NUMLOCK"),
+        70 => Some("SCROLLLOCK"),
+        71 => Some("KP_7"),
+        72 => Some("KP_8"),
+        73 => Some("KP_9"),
+        74 => Some("KP_MINUS"),
+        75 => Some("KP_4"),
+        76 => Some("KP_5"),
+        77 => Some("KP_6"),
+        78 => Some("KP_PLUS"),
+        79 => Some("KP_1"),
+        80 => Some("KP_2"),
+        81 => Some("KP_3"),
+        82 => Some("KP_0"),
+        83 => Some("KP_DOT"),
+        87 => Some("F11"),
+        88 => Some("F12"),
+        96 => Some("KP_ENTER"),
+        97 => Some("RCTRL"),
+        98 => Some("KP_SLASH"),
+        99 => Some("PRINTSCREEN"),
+        100 => Some("RALT"),
+        102 => Some("HOME"),
+        103 => Some("UP"),
+        104 => Some("PAGEUP"),
+        105 => Some("LEFT"),
+        106 => Some("RIGHT"),
+        107 => Some("END"),
+        108 => Some("DOWN"),
+        109 => Some("PAGEDOWN"),
+        110 => Some("INSERT"),
+        111 => Some("DELETE"),
+        113 => Some("MUTE"),
+        114 => Some("VOLUMEDOWN"),
+        115 => Some("VOLUMEUP"),
+        119 => Some("PAUSE"),
+        125 => Some("LGUI"),
+        126 => Some("RGUI"),
+        127 => Some("MENU"),
+        183 => Some("F13"),
+        184 => Some("F14"),
+        185 => Some("F15"),
+        186 => Some("F16"),
+        187 => Some("F17"),
+        188 => Some("F18"),
+        189 => Some("F19"),
+        190 => Some("F20"),
+        191 => Some("F21"),
+        192 => Some("F22"),
+        193 => Some("F23"),
+        194 => Some("F24"),
+        // Mouse buttons
+        0x110 => Some("LMOUSE"),
+        0x111 => Some("RMOUSE"),
+        0x112 => Some("MMOUSE"),
+        0x113 => Some("BMOUSE"),
+        0x114 => Some("FMOUSE"),
+        _ => None,
+    }
+}
+
+pub struct GlobalMacroEvdevRecorder {
+    files: Vec<(PathBuf, fs::File)>,
+}
+
+impl Default for GlobalMacroEvdevRecorder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl GlobalMacroEvdevRecorder {
+    pub fn new() -> Self {
+        let mut s = Self { files: Vec::new() };
+        s.open_all_input_nodes();
+        s
+    }
+
+    pub fn open_all_input_nodes(&mut self) {
+        use std::io::Read;
+        use std::os::unix::fs::OpenOptionsExt;
+        self.files.clear();
+        let Ok(entries) = fs::read_dir("/sys/class/input") else {
+            return;
+        };
+        let mut buf = [0u8; 240];
+        for entry in entries.flatten() {
+            let fname = entry.file_name();
+            let Some(name_str) = fname.to_str() else {
+                continue;
+            };
+            if !name_str.starts_with("event") {
+                continue;
+            }
+            let dev_path = Path::new("/dev/input").join(name_str);
+            if let Ok(mut file) = fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(0o4000) // O_NONBLOCK
+                .open(&dev_path)
+            {
+                // Drain any pending buffered bytes
+                while file.read(&mut buf).is_ok() {}
+                self.files.push((dev_path, file));
+            }
+        }
+    }
+
+    pub fn device_count(&self) -> usize {
+        self.files.len()
+    }
+
+    pub fn poll_events(&mut self) -> Vec<RecordedMacroInputEvent> {
+        use std::io::Read;
+        let mut out = Vec::new();
+        let mut buf = [0u8; 24];
+        let mut accum_dx: i32 = 0;
+        let mut accum_dy: i32 = 0;
+        let mut accum_wheel_v: i32 = 0;
+        let mut accum_wheel_h: i32 = 0;
+
+        for (_, file) in self.files.iter_mut() {
+            loop {
+                match file.read_exact(&mut buf) {
+                    Ok(()) => {
+                        let ev_type = u16::from_ne_bytes([buf[16], buf[17]]);
+                        let ev_code = u16::from_ne_bytes([buf[18], buf[19]]);
+                        let ev_value = i32::from_ne_bytes([buf[20], buf[21], buf[22], buf[23]]);
+
+                        if ev_type == 1 {
+                            // EV_KEY: 1 = press, 0 = release (ignore 2 = autorepeat)
+                            if (ev_value == 1 || ev_value == 0) {
+                                if let Some(duck_key) = evdev_code_to_duckyscript_key(ev_code) {
+                                    // Flush pending mouse moves before key/click
+                                    if accum_dx != 0 || accum_dy != 0 {
+                                        out.push(RecordedMacroInputEvent {
+                                            kind: "mouse_move".to_string(),
+                                            key: String::new(),
+                                            dx: accum_dx,
+                                            dy: accum_dy,
+                                        });
+                                        accum_dx = 0;
+                                        accum_dy = 0;
+                                    }
+                                    let is_mouse_btn = (0x110..=0x117).contains(&ev_code);
+                                    out.push(RecordedMacroInputEvent {
+                                        kind: if is_mouse_btn {
+                                            if ev_value == 1 {
+                                                "mouse_down".to_string()
+                                            } else {
+                                                "mouse_up".to_string()
+                                            }
+                                        } else if ev_value == 1 {
+                                            "key_down".to_string()
+                                        } else {
+                                            "key_up".to_string()
+                                        },
+                                        key: duck_key.to_string(),
+                                        dx: 0,
+                                        dy: 0,
+                                    });
+                                }
+                            }
+                        } else if ev_type == 2 {
+                            // EV_REL: 0 = REL_X, 1 = REL_Y, 6 = REL_HWHEEL, 8 = REL_WHEEL
+                            match ev_code {
+                                0 => accum_dx = accum_dx.saturating_add(ev_value),
+                                1 => accum_dy = accum_dy.saturating_add(ev_value),
+                                6 => accum_wheel_h = accum_wheel_h.saturating_add(ev_value),
+                                8 => accum_wheel_v = accum_wheel_v.saturating_add(ev_value),
+                                _ => {}
+                            }
+                        }
+                    }
+                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                    Err(_) => break,
+                }
+            }
+        }
+
+        if accum_dx != 0 || accum_dy != 0 {
+            out.push(RecordedMacroInputEvent {
+                kind: "mouse_move".to_string(),
+                key: String::new(),
+                dx: accum_dx,
+                dy: accum_dy,
+            });
+        }
+        if accum_wheel_h != 0 || accum_wheel_v != 0 {
+            out.push(RecordedMacroInputEvent {
+                kind: "mouse_scroll".to_string(),
+                key: String::new(),
+                dx: accum_wheel_h,
+                dy: accum_wheel_v,
+            });
+        }
+
+        out
+    }
+}
+
 
 
 

@@ -10,6 +10,9 @@ fn main() {
         .cc_builder(|cc| {
             cc.include("src/cpp");
             cc.include("/usr/include/KF6/KColorScheme");
+            cc.include("/usr/include/KF6/KConfig");
+            cc.include("/usr/include/KF6/KConfigCore");
+            cc.include("/usr/include/KF6/KIconThemes");
         })
         .qml_module(QmlModule {
             uri: "io.github.duckydeck",
@@ -23,14 +26,18 @@ fn main() {
                 "src/qml/PgvInspectorDrawer.qml",
                 "src/qml/AutoSwitchDrawer.qml",
                 "src/qml/AiArchitectModal.qml",
+                "src/qml/OledDesktopWidget.qml",
             ],
             qrc_files: &[
                 "src/qml/icons/tray-icon-dark.svg",
                 "src/qml/icons/tray-icon-light.svg",
+                "src/qml/icons/oled-widget-icon.svg",
             ],
             ..Default::default()
         })
         .build();
     println!("cargo:rerun-if-changed=src/cpp/app_helper.h");
     println!("cargo:rustc-link-lib=KF6ColorScheme");
+    println!("cargo:rustc-link-lib=KF6ConfigCore");
+    println!("cargo:rustc-link-lib=KF6IconThemes");
 }
