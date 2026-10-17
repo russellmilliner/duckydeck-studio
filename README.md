@@ -114,38 +114,39 @@ DuckyDeck Studio includes a full-featured **HTTP REST API Server** (configurable
    - Never expose the plain-HTTP port directly to the public internet or untrusted networks; place it behind a TLS/HTTPS reverse proxy (Caddy, Nginx) or use an encrypted tunnel (SSH port forwarding, WireGuard, Tailscale).
 
 ### REST API Endpoint Summary (`/api/v1/*`)
+Full documentation and request/response schemas are available in **[`docs/REST_API.md`](docs/REST_API.md)**, **[`docs/openapi.yaml`](docs/openapi.yaml)**, and **[`docs/swagger.json`](docs/swagger.json)**.
+
 | Method & Path | Description |
 | :--- | :--- |
-| `GET /api/v1/health` | Unauthenticated liveness probe (`{"ok":true,"status":"healthy"}`). |
-| `GET /api/v1/status` | Full device connection, firmware, active profile, SD sync, and auto-switcher state. |
-| `POST /api/v1/device/reconnect` | Re-scan USB HID devices and reload profiles. |
-| `POST /api/v1/device/sleep` \| `/wake` \| `/reboot` | Put duckyPad to sleep, wake it up, or reboot it (`{"bootloader":false}`). |
-| `POST /api/v1/device/sync-sd` | Compile all `.dsb` binaries and synchronize profiles to the microSD card. |
+| `GET /api/v1/health` | Unauthenticated liveness probe (`{"ok":true,"service":"duckydeck-studio","version":"0.1.24","authRequired":true}`). |
+| `GET /api/v1/openapi.json` \| `/swagger.json` \| `/openapi.yaml` | Unauthenticated OpenAPI 3.0.3 / Swagger specification in JSON or YAML format. |
+| `GET /api/v1/status` *(or `/api/v1`)* | Full device connection, firmware, active profile, SD sync, and auto-switcher state. |
 | `GET /api/v1/profiles` | List all profiles and their properties. |
-| `POST /api/v1/profiles` | Create a new profile (`{"name":"Streaming"}`). |
-| `POST /api/v1/profiles/select` | Switch active profile (`{"profile":2}`). |
-| `POST /api/v1/profiles/next` \| `/prev` | Step to next or previous profile. |
-| `GET /api/v1/profiles/{num}` | Get full profile details, webhook config, and all 58 slots. |
-| `PUT /api/v1/profiles/{num}` | Update profile properties (`name`, `bgColor`, `oledRotation`, `widgetRotation`, `webhook`, etc.). |
+| `POST /api/v1/profiles` | Create a new profile (`{"name":"Streaming"}`) or duplicate an existing profile (`{"name":"Copy","duplicateFrom":1}`). |
+| `POST /api/v1/profiles/select` | Select active profile and optionally switch hardware (`{"profile":2,"switchHardware":true}`). |
+| `POST /api/v1/profiles/reorder` | Move profile (`{"fromProfile":3,"toProfile":1}`). |
+| `GET /api/v1/profiles/{num}` | Get full profile details, webhook config, and all 26 slots. |
+| `PUT` \| `PATCH /api/v1/profiles/{num}` | Update profile properties (`name`, `bgColor`, `oledRotation`, `widgetRotation`, `webhook`, etc.). |
 | `DELETE /api/v1/profiles/{num}` | Delete profile `{num}`. |
-| `POST /api/v1/profiles/{num}/duplicate` | Duplicate profile `{num}`. |
-| `POST /api/v1/profiles/{num}/move` | Reorder profile (`{"direction":-1}` or `1`). |
-| `GET /api/v1/profiles/{num}/slots` | List all 58 slots in profile `{num}`. |
-| `GET /api/v1/profiles/{num}/slots/{slot}` | Get configuration and scripts for a specific slot (`1..58`). |
-| `PUT /api/v1/profiles/{num}/slots/{slot}` | Program a slot (`line1`, `line2`, `widgetLine1`, `widgetLine2`, `colorHex`, `iconName`, `script`, `releaseScript`, `allowAbort`, `dontRepeat`). |
+| `GET /api/v1/profiles/{num}/slots` | List all 26 slots (`1..20` keys, `21..26` rotary encoders) in profile `{num}`. |
+| `GET /api/v1/profiles/{num}/slots/{slot}` | Get configuration and scripts for a specific slot (`1..26`). |
+| `PUT` \| `POST` \| `PATCH /api/v1/profiles/{num}/slots/{slot}` | Program a slot (`labelLine1`, `labelLine2`, `widgetLabelLine1`, `widgetLabelLine2`, `colorHex`, `scriptContent`, `allowAbort`, `dontRepeat`, `hostApp`, `applyTemplateId`). |
 | `DELETE /api/v1/profiles/{num}/slots/{slot}` | Clear/reset slot `{slot}` in profile `{num}`. |
-| `POST /api/v1/profiles/{num}/slots/{slot}/trigger` | Remotely execute the slot's configured action/webhook/app-launch/macro. |
-| `GET /api/v1/pgv` \| `POST /api/v1/pgv` | Read all 32 PGVs (`_GV0.._GV31`) or write one (`{"index":0,"value":42}`). |
-| `POST /api/v1/leds` \| `POST /api/v1/leds/restore` | Override RGB LEDs (`{"fill":"#38bdf8"}` or `{"slot":1,"color":"#ff0055"}`) or restore profile LEDs. |
-| `POST /api/v1/oled/text` \| `/clear` \| `/restore` | Draw text on the OLED (`{"x":0,"y":0,"text":"Hello"}`), clear, or restore profile OLED. |
-| `POST /api/v1/compile` | Validate/compile DuckyScript 3 source (`{"script":"STRING Hello\nENTER"}`). |
-| `POST /api/v1/auto-switcher` | Enable/disable the KWin Wayland Auto-Switcher (`{"enabled":true}`). |
+| `POST /api/v1/profiles/{num}/slots/{slot}/trigger` | Remotely execute the slot's configured host action (`@HOST_APP`, `@HA_ACTION`, `@WEBHOOK`). |
+| `POST /api/v1/dsvm/compile` | Validate/compile duckyScript 3 source (`{"script":"STRINGLN Hello"}`) into `.dsb` bytecode + CRC32. |
+| `GET /api/v1/templates` | List all built-in and user-saved key templates. |
+| `GET /api/v1/pgv` \| `PUT` \| `POST /api/v1/pgv` | Read or write Persistent Global Variables (`PGV 1..16`). |
+| `POST /api/v1/leds` | Live-override per-key RGB LEDs (`{"colorHex":"#38bdf8"}` or `{"leds":[{"slot":1,"colorHex":"#ff0055"}]}`) or restore profile LEDs (`{"restore":true}`). |
+| `POST /api/v1/sd/sync` \| `/reload` \| `/mount` \| `/unmount` | Sync `.dsb` bytecode & profiles to microSD, reload from SD/cache, mount SD mode, or unmount SD. |
+| `POST /api/v1/device/sleep` \| `/wake` \| `/reboot` \| `/sync-rtc` | Put duckyPad to sleep, wake it up, soft-reboot, or synchronize hardware RTC with host clock. |
+| `GET /api/v1/logs` | Retrieve recent system, HID, script, and automation event logs. |
 
 ---
 
 ## 📚 Documentation
 
 - **📖 [Web User Documentation & Manual (`docs/user-guide.html`)](docs/user-guide.html)** — Interactive dark/light web manual covering every feature, workflow, and troubleshooting tip (also accessible inside the app via **☰ → User Documentation** or **About → User Guide**).
+- **🔌 [HTTP REST API Reference (`docs/REST_API.md`)](docs/REST_API.md)** — Complete endpoint documentation, authentication guide, and `curl` examples, accompanied by **[`docs/openapi.yaml`](docs/openapi.yaml)** and **[`docs/swagger.json`](docs/swagger.json)**.
 - **🏗️ [Architecture & Design Developer Documentation (`docs/ARCHITECTURE.md`)](docs/ARCHITECTURE.md)** — In-depth technical documentation with Mermaid diagrams detailing the CXX-Qt bridge, USB HID protocol, DSVM v2 bytecode compiler, HTTP REST API server, and KWin Wayland Auto-Switcher.
 
 ---
@@ -159,6 +160,9 @@ duckydeck-studio/
 ├── io.github.duckydeck.Studio.yml         # Flatpak manifest (org.kde.Platform 6.8 + Rust SDK)
 ├── docs/
 │   ├── user-guide.html                    # Interactive Web User Documentation & Manual
+│   ├── REST_API.md                        # HTTP REST API Reference & curl examples
+│   ├── openapi.yaml                       # OpenAPI 3.0.3 YAML specification
+│   ├── swagger.json                       # OpenAPI 3.0.3 / Swagger JSON specification
 │   └── ARCHITECTURE.md                    # Developer Architecture & Design Documentation
 ├── data/
 │   ├── io.github.duckydeck.Studio.desktop      # XDG Desktop entry
