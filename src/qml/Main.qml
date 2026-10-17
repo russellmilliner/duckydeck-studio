@@ -47,6 +47,18 @@ Kirigami.ApplicationWindow {
     minimumWidth: root.hasSelectedSlot ? root.expandedWindowWidth : root.compactWindowWidth
     minimumHeight: 680
 
+    TextEdit {
+        id: clipboardHelper
+        visible: false
+    }
+
+    function copyTextToClipboard(textToCopy) {
+        clipboardHelper.text = String(textToCopy !== undefined && textToCopy !== null ? textToCopy : "")
+        clipboardHelper.selectAll()
+        clipboardHelper.copy()
+        clipboardHelper.deselect()
+    }
+
     function syncWindowWidthToEditorState() {
         if (deviceController && deviceController.isDemoShowcaseMode()) {
             root.width = 1920
@@ -4232,7 +4244,7 @@ Kirigami.ApplicationWindow {
                                             settingsDialog.syncRestApiFieldsFromController()
                                             settingsDialog.restApiFeedback = qsTr("✓ %1").arg(deviceController.restApiStatus)
                                         } else {
-                                            settingsDialog.restApiFeedback = qsTr("✗ %1").arg(deviceController.statusText)
+                                            settingsDialog.restApiFeedback = qsTr("✗ %1").arg(deviceController.statusMessage)
                                         }
                                     }
                                 }
@@ -4298,24 +4310,20 @@ Kirigami.ApplicationWindow {
 
                                 QQC2.Button {
                                     icon.name: "network-transmit-receive"
-                                    text: qsTr("Test Webhook")
-                                    enabled: globalWebhookUrlField.text.trim().length > 0
+                                    text: deviceController.webApiTestBusy ? qsTr("Testing...") : qsTr("Test Webhook")
+                                    enabled: !deviceController.webApiTestBusy && globalWebhookUrlField.text.trim().length > 0
                                     onClicked: {
-                                        const resRaw = deviceController.testProfileWebhookJson(JSON.stringify({
-                                            enabled: true,
-                                            method: globalWebhookMethodCombo.currentText || "POST",
-                                            url: globalWebhookUrlField.text.trim(),
-                                            headers: globalWebhookHeadersArea.text,
-                                            body: globalWebhookBodyArea.text
-                                        }))
-                                        try {
-                                            const res = JSON.parse(resRaw)
-                                            settingsDialog.globalWebhookFeedback = res.ok
-                                                ? qsTr("✓ HTTP %1 (%2 ms)").arg(res.status).arg(res.elapsed_ms)
-                                                : qsTr("✗ %1").arg(res.error || ("HTTP " + res.status))
-                                        } catch (e) {
-                                            settingsDialog.globalWebhookFeedback = resRaw
-                                        }
+                                        deviceController.testProfileWebhookJson(
+                                            JSON.stringify({
+                                                enabled: true,
+                                                method: globalWebhookMethodCombo.currentText || "POST",
+                                                url: globalWebhookUrlField.text.trim(),
+                                                headers: globalWebhookHeadersArea.text,
+                                                body: globalWebhookBodyArea.text
+                                            }),
+                                            0
+                                        )
+                                        settingsDialog.globalWebhookFeedback = qsTr("⏳ Testing webhook → %1 (see result below)").arg(globalWebhookUrlField.text.trim())
                                     }
                                 }
 
@@ -11479,8 +11487,8 @@ Kirigami.ApplicationWindow {
             try {
                 const cfg = JSON.parse(deviceController.getHomeAssistantConfigJson())
                 if (cfg) {
-                    haBaseUrlField.text = cfg.base_url || "http://homeassistant.local:8123"
-                    haTokenField.text = cfg.access_token || ""
+                    haBaseUrlField.text = cfg.base_url || cfg.baseUrl || "http://homeassistant.local:8123"
+                    haTokenField.text = cfg.access_token || cfg.accessToken || ""
                 }
             } catch (e) {
                 if (haBaseUrlField.text.trim().length === 0) {
@@ -11505,31 +11513,48 @@ Kirigami.ApplicationWindow {
             )
             try {
                 const parsed = JSON.parse(raw)
-                if (Array.isArray(parsed)) {
-                    webApiKeyConfigWindow.haEntitiesModel = parsed
-                    webApiKeyConfigWindow.haStatusText = parsed.length > 0
+                const entitiesList = Array.isArray(parsed)
+                    ? parsed
+                    : (parsed && Array.isArray(parsed.entities) ? parsed.entities : null)
+                if (parsed && parsed.ok === false) {
+                    webApiKeyConfigWindow.haEntitiesModel = []
+                    webApiKeyConfigWindow.haStatusText = qsTr("✗ %1").arg(
+                        String(parsed.error || deviceController.statusMessage || "Home Assistant request failed.")
+                    )
+                } else if (Array.isArray(entitiesList)) {
+                    webApiKeyConfigWindow.haEntitiesModel = entitiesList
+                    webApiKeyConfigWindow.haStatusText = entitiesList.length > 0
                         ? qsTr("✓ Found %1 matching Home Assistant entities. Click an action below to bind it to Key %2.")
-                            .arg(parsed.length)
+                            .arg(entitiesList.length)
                             .arg(root.selectedSlotNumber)
                         : qsTr("No matching entities found for that filter/query.")
                 } else {
                     webApiKeyConfigWindow.haEntitiesModel = []
-                    webApiKeyConfigWindow.haStatusText = deviceController.statusText
+                    webApiKeyConfigWindow.haStatusText = String(
+                        deviceController.statusMessage || qsTr("Unexpected Home Assistant response.")
+                    )
                 }
             } catch (e) {
                 webApiKeyConfigWindow.haEntitiesModel = []
-                webApiKeyConfigWindow.haStatusText = qsTr("Failed to parse Home Assistant response.")
+                webApiKeyConfigWindow.haStatusText = qsTr("Failed to parse Home Assistant response: %1").arg(String(e))
             }
         }
 
         function applyHomeAssistantEntityToKey(entityObj, serviceOverride) {
-            if (!entityObj || !entityObj.entity_id) return
+            const entityId = entityObj ? String(entityObj.entity_id || entityObj.entityId || "") : ""
+            if (!entityId) return
             const cleanBase = haBaseUrlField.text.trim().replace(/\/+$/, "")
             const token = haTokenField.text.trim()
-            const domain = entityObj.domain || entityObj.entity_id.split(".")[0] || "homeassistant"
-            const service = (serviceOverride && serviceOverride.length > 0)
-                ? serviceOverride
-                : (entityObj.suggested_service || "toggle")
+            const domain = String(entityObj.domain || entityId.split(".")[0] || "homeassistant")
+            let rawService = (serviceOverride && serviceOverride.length > 0)
+                ? String(serviceOverride)
+                : String(entityObj.suggested_service || entityObj.suggestedService || "toggle")
+            if (rawService.indexOf("/") >= 0) {
+                rawService = rawService.split("/").pop()
+            } else if (rawService.indexOf(".") >= 0) {
+                rawService = rawService.split(".").pop()
+            }
+            const service = rawService || "toggle"
 
             root.syncingWebApiScript = true
             webApiEnabledCheck.checked = true
@@ -11537,10 +11562,9 @@ Kirigami.ApplicationWindow {
             webApiMethodCombo.currentIndex = postIdx >= 0 ? postIdx : 1
             webApiUrlField.text = cleanBase + "/api/services/" + domain + "/" + service
             webApiHeadersField.text = "Authorization: Bearer " + token + "\nContent-Type: application/json"
-            webApiBodyField.text = JSON.stringify({ entity_id: entityObj.entity_id })
-            const friendly = (entityObj.friendly_name && entityObj.friendly_name.length > 0)
-                ? entityObj.friendly_name
-                : entityObj.entity_id
+            webApiBodyField.text = JSON.stringify({ entity_id: entityId })
+            const friendlyRaw = String(entityObj.friendly_name || entityObj.friendlyName || "")
+            const friendly = friendlyRaw.length > 0 ? friendlyRaw : entityId
             webApiOledField.text = ("HA:" + friendly).slice(0, 20)
             root.syncingWebApiScript = false
             root.syncWebApiBuilderToScript()
@@ -11549,7 +11573,7 @@ Kirigami.ApplicationWindow {
                 .arg(domain)
                 .arg(service)
                 .arg(friendly)
-                .arg(entityObj.entity_id)
+                .arg(entityId)
         }
 
         function openWindow(slotNumber) {
@@ -11879,6 +11903,15 @@ Kirigami.ApplicationWindow {
                                             model: webApiKeyConfigWindow.haEntitiesModel
                                             delegate: Rectangle {
                                                 required property var modelData
+                                                readonly property string entId: String(modelData.entity_id || modelData.entityId || "")
+                                                readonly property string entName: String(modelData.friendly_name || modelData.friendlyName || entId)
+                                                readonly property string entDomain: String(modelData.domain || (entId.indexOf(".") >= 0 ? entId.split(".")[0] : "ha"))
+                                                readonly property string entService: {
+                                                    const rawSvc = String(modelData.suggested_service || modelData.suggestedService || "toggle")
+                                                    if (rawSvc.indexOf("/") >= 0) return rawSvc.split("/").pop()
+                                                    if (rawSvc.indexOf(".") >= 0) return rawSvc.split(".").pop()
+                                                    return rawSvc
+                                                }
                                                 Layout.fillWidth: true
                                                 implicitHeight: haRowInnerCol.implicitHeight + 10
                                                 radius: 4
@@ -11897,7 +11930,7 @@ Kirigami.ApplicationWindow {
                                                         spacing: 6
 
                                                         QQC2.Label {
-                                                            text: modelData.friendly_name || modelData.entity_id
+                                                            text: entName
                                                             font.bold: true
                                                             font.pixelSize: 11
                                                             Layout.fillWidth: true
@@ -11925,7 +11958,7 @@ Kirigami.ApplicationWindow {
                                                         spacing: 6
 
                                                         QQC2.Label {
-                                                            text: String(modelData.entity_id || "")
+                                                            text: entId
                                                             font.family: "monospace"
                                                             font.pixelSize: 10
                                                             color: Kirigami.Theme.disabledTextColor
@@ -11935,19 +11968,19 @@ Kirigami.ApplicationWindow {
 
                                                         QQC2.Button {
                                                             text: qsTr("⚡ %1.%2")
-                                                                .arg(modelData.domain || "ha")
-                                                                .arg(modelData.suggested_service || "toggle")
+                                                                .arg(entDomain)
+                                                                .arg(entService)
                                                             highlighted: true
                                                             implicitHeight: 24
                                                             font.pixelSize: 10
                                                             onClicked: webApiKeyConfigWindow.applyHomeAssistantEntityToKey(
                                                                 modelData,
-                                                                modelData.suggested_service || "toggle"
+                                                                entService
                                                             )
                                                         }
 
                                                         QQC2.Button {
-                                                            visible: modelData.domain === "light" || modelData.domain === "switch" || modelData.domain === "input_boolean" || modelData.domain === "fan" || modelData.domain === "automation"
+                                                            visible: entDomain === "light" || entDomain === "switch" || entDomain === "input_boolean" || entDomain === "fan" || entDomain === "automation"
                                                             text: qsTr("Turn On")
                                                             implicitHeight: 24
                                                             font.pixelSize: 10
@@ -11955,7 +11988,7 @@ Kirigami.ApplicationWindow {
                                                         }
 
                                                         QQC2.Button {
-                                                            visible: modelData.domain === "light" || modelData.domain === "switch" || modelData.domain === "input_boolean" || modelData.domain === "fan" || modelData.domain === "automation"
+                                                            visible: entDomain === "light" || entDomain === "switch" || entDomain === "input_boolean" || entDomain === "fan" || entDomain === "automation"
                                                             text: qsTr("Turn Off")
                                                             implicitHeight: 24
                                                             font.pixelSize: 10
@@ -12900,24 +12933,20 @@ Kirigami.ApplicationWindow {
 
                                 QQC2.Button {
                                     icon.name: "network-transmit-receive"
-                                    text: qsTr("Test Webhook")
-                                    enabled: profWebhookUrlField.text.trim().length > 0
+                                    text: deviceController.webApiTestBusy ? qsTr("Testing...") : qsTr("Test Webhook")
+                                    enabled: !deviceController.webApiTestBusy && profWebhookUrlField.text.trim().length > 0
                                     onClicked: {
-                                        const resRaw = deviceController.testProfileWebhookJson(JSON.stringify({
-                                            enabled: true,
-                                            method: profWebhookMethodCombo.currentText || "POST",
-                                            url: profWebhookUrlField.text.trim(),
-                                            headers: profWebhookHeadersArea.text,
-                                            body: profWebhookBodyArea.text
-                                        }))
-                                        try {
-                                            const res = JSON.parse(resRaw)
-                                            profilePropertiesWindow.webhookTestStatus = res.ok
-                                                ? qsTr("✓ HTTP %1 (%2 ms)").arg(res.status).arg(res.elapsed_ms)
-                                                : qsTr("✗ %1").arg(res.error || ("HTTP " + res.status))
-                                        } catch (e) {
-                                            profilePropertiesWindow.webhookTestStatus = resRaw
-                                        }
+                                        deviceController.testProfileWebhookJson(
+                                            JSON.stringify({
+                                                enabled: true,
+                                                method: profWebhookMethodCombo.currentText || "POST",
+                                                url: profWebhookUrlField.text.trim(),
+                                                headers: profWebhookHeadersArea.text,
+                                                body: profWebhookBodyArea.text
+                                            }),
+                                            profilePropertiesWindow.profNumber
+                                        )
+                                        profilePropertiesWindow.webhookTestStatus = qsTr("⏳ Testing webhook → %1 (see status bar / event log)").arg(profWebhookUrlField.text.trim())
                                     }
                                 }
                             }

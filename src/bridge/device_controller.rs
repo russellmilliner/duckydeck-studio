@@ -8360,7 +8360,9 @@ impl qobject::DeviceController {
     pub fn get_home_assistant_config_json(&self) -> QString {
         let cfg = load_home_assistant_config();
         let obj = serde_json::json!({
+            "base_url": cfg.base_url,
             "baseUrl": cfg.base_url,
+            "access_token": cfg.access_token,
             "accessToken": cfg.access_token,
         });
         QString::from(&obj.to_string())
@@ -8421,6 +8423,8 @@ impl qobject::DeviceController {
                     entities.len(),
                     if entities.len() == 1 { "y" } else { "ies" }
                 );
+                record_system_event("INFO", "HOME_ASSISTANT", &msg);
+                self.as_mut().sync_event_log_properties();
                 self.as_mut().set_status_message(QString::from(&msg));
                 let resp = serde_json::json!({
                     "ok": true,

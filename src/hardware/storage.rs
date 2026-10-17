@@ -6327,23 +6327,25 @@ impl GlobalMacroEvdevRecorder {
 // ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
 pub struct HomeAssistantConfig {
-    #[serde(default)]
+    #[serde(default, alias = "baseUrl")]
     pub base_url: String,
-    #[serde(default)]
+    #[serde(default, alias = "accessToken")]
     pub access_token: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct HomeAssistantEntity {
+    #[serde(alias = "entityId")]
     pub entity_id: String,
     pub domain: String,
+    #[serde(alias = "friendlyName")]
     pub friendly_name: String,
     pub state: String,
     pub icon: String,
+    #[serde(alias = "areaOrDevice")]
     pub area_or_device: String,
+    #[serde(alias = "suggestedService")]
     pub suggested_service: String,
 }
 
@@ -6431,21 +6433,14 @@ pub fn save_home_assistant_config(base_url: &str, access_token: &str) -> Result<
 
 pub fn suggested_ha_service_for_domain(domain: &str) -> &'static str {
     match domain {
-        "light" => "light/toggle",
-        "switch" => "switch/toggle",
-        "input_boolean" => "input_boolean/toggle",
-        "fan" => "fan/toggle",
-        "cover" => "cover/toggle",
-        "media_player" => "media_player/media_play_pause",
-        "scene" => "scene/turn_on",
-        "script" => "script/turn_on",
-        "automation" => "automation/trigger",
-        "button" => "button/press",
-        "input_button" => "input_button/press",
-        "lock" => "lock/unlock",
-        "vacuum" => "vacuum/start",
-        "climate" => "climate/toggle",
-        _ => "homeassistant/toggle",
+        "light" | "switch" | "input_boolean" | "fan" | "cover" | "climate" | "humidifier" => "toggle",
+        "media_player" => "media_play_pause",
+        "scene" | "script" => "turn_on",
+        "automation" => "trigger",
+        "button" | "input_button" => "press",
+        "lock" => "unlock",
+        "vacuum" => "start",
+        _ => "toggle",
     }
 }
 
