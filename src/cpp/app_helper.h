@@ -1063,6 +1063,9 @@ protected:
         QWindow* mainWin = find_main_window();
 
         if (key == Qt::Key_Escape && (mods == Qt::NoModifier || mods == Qt::KeypadModifier)) {
+            if (win && win->property("isRecording").toBool()) {
+                return false;
+            }
             if (win && win->objectName() == QStringLiteral("duckydeckOledWidgetWindow")) {
                 const bool showSize = win->property("showSizeSlider").toBool();
                 const bool showTrans = win->property("showTransparencySlider").toBool();

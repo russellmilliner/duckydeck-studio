@@ -1065,7 +1065,7 @@ Item {
                                         anchors.left: parent.left
                                         anchors.margins: 3
                                         text: keycapItem.slot
-                                        font.pixelSize: Math.round(9 * canvasRoot.canvasScale)
+                                        font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
                                         font.bold: true
                                         color: Kirigami.Theme.disabledTextColor
                                     }
@@ -1083,13 +1083,13 @@ Item {
                                             border.color: Qt.alpha("#a855f7", 0.75)
                                             border.width: 1
                                             width: fxBadgeLbl.implicitWidth + 4
-                                            height: 12
+                                            height: 14
 
                                             QQC2.Label {
                                                 id: fxBadgeLbl
                                                 anchors.centerIn: parent
                                                 text: "FX"
-                                                font.pixelSize: 7
+                                                font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
                                                 font.bold: true
                                                 color: "#c084fc"
                                             }
@@ -1101,13 +1101,13 @@ Item {
                                             border.color: Qt.alpha("#f59e0b", 0.75)
                                             border.width: 1
                                             width: appBadgeLbl.implicitWidth + 5
-                                            height: 12
+                                            height: 14
 
                                             QQC2.Label {
                                                 id: appBadgeLbl
                                                 anchors.centerIn: parent
                                                 text: "💻APP"
-                                                font.pixelSize: 7
+                                                font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
                                                 font.bold: true
                                                 color: "#f59e0b"
                                             }
@@ -1119,13 +1119,13 @@ Item {
                                             border.color: Qt.alpha("#f59e0b", 0.75)
                                             border.width: 1
                                             width: apiBadgeLbl.implicitWidth + 5
-                                            height: 12
+                                            height: 14
 
                                             QQC2.Label {
                                                 id: apiBadgeLbl
                                                 anchors.centerIn: parent
                                                 text: "💻API"
-                                                font.pixelSize: 7
+                                                font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
                                                 font.bold: true
                                                 color: "#f59e0b"
                                             }
@@ -1133,14 +1133,14 @@ Item {
                                         QQC2.Label {
                                             visible: keycapItem.hasRel
                                             text: "↑"
-                                            font.pixelSize: 10
+                                            font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
                                             font.bold: true
                                             color: Kirigami.Theme.highlightColor
                                         }
                                         QQC2.Label {
                                             visible: keycapItem.hasLoop
                                             text: "∞"
-                                            font.pixelSize: 11
+                                            font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
                                             font.bold: true
                                             color: Kirigami.Theme.neutralTextColor
                                         }
@@ -1158,11 +1158,12 @@ Item {
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
                                             text: keycapItem.l1
-                                            font.pixelSize: isIcon1
-                                                ? Math.round((keycapItem.l2.length > 0 ? 16 : 20) * canvasRoot.canvasScale)
-                                                : Math.round(12 * canvasRoot.canvasScale)
+                                            font.pointSize: isIcon1
+                                                ? Math.max(11, Math.round((keycapItem.l2.length > 0 ? 12 : 15) * canvasRoot.canvasScale))
+                                                : Math.max(10, Math.round(10 * canvasRoot.canvasScale))
                                             fontSizeMode: Text.HorizontalFit
-                                            minimumPixelSize: 7
+                                            minimumPointSize: 10
+                                            elide: Text.ElideRight
                                             font.bold: true
                                             color: Kirigami.Theme.textColor
                                         }
@@ -1173,11 +1174,12 @@ Item {
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
                                             text: keycapItem.l2
-                                            font.pixelSize: isIcon2
-                                                ? Math.round((keycapItem.l1.length > 0 ? 14 : 18) * canvasRoot.canvasScale)
-                                                : Math.round(10 * canvasRoot.canvasScale)
+                                            font.pointSize: isIcon2
+                                                ? Math.max(11, Math.round((keycapItem.l1.length > 0 ? 11 : 14) * canvasRoot.canvasScale))
+                                                : Math.max(10, Math.round(10 * canvasRoot.canvasScale))
                                             fontSizeMode: Text.HorizontalFit
-                                            minimumPixelSize: 6
+                                            minimumPointSize: 10
+                                            elide: Text.ElideRight
                                             font.weight: Font.Medium
                                             color: Kirigami.Theme.disabledTextColor
                                         }
@@ -1190,14 +1192,14 @@ Item {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         radius: 3
                                         width: dropModeLbl.implicitWidth + 8
-                                        height: 13
+                                        height: 15
                                         color: Kirigami.Theme.positiveTextColor
 
                                         QQC2.Label {
                                             id: dropModeLbl
                                             anchors.centerIn: parent
                                             text: canvasRoot.dragShiftMode ? qsTr("→ Shift") : qsTr("⇄ Swap")
-                                            font.pixelSize: 8
+                                            font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
                                             font.bold: true
                                             color: Kirigami.Theme.backgroundColor
                                         }
@@ -1485,9 +1487,10 @@ Item {
                                                 color: isSel ? "#020617" : "#f8fafc"
                                                 font.family: icon1 ? "sans-serif" : "monospace"
                                                 font.bold: true
-                                                font.pixelSize: icon1 ? (s2.length > 0 ? 11 : 14) : 8
+                                                font.pointSize: icon1 ? (s2.length > 0 ? 10 : 11) : 10
                                                 fontSizeMode: Text.HorizontalFit
-                                                minimumPixelSize: 6
+                                                minimumPointSize: 10
+                                                elide: Text.ElideRight
                                             }
 
                                             Text {
@@ -1499,9 +1502,10 @@ Item {
                                                 color: isSel ? "#020617" : "#f8fafc"
                                                 font.family: icon2 ? "sans-serif" : "monospace"
                                                 font.bold: true
-                                                font.pixelSize: icon2 ? (s1.length > 0 ? 10 : 14) : 8
+                                                font.pointSize: icon2 ? (s1.length > 0 ? 10 : 11) : 10
                                                 fontSizeMode: Text.HorizontalFit
-                                                minimumPixelSize: 6
+                                                minimumPointSize: 10
+                                                elide: Text.ElideRight
                                             }
                                         }
                                     }
@@ -1536,14 +1540,14 @@ Item {
                             }
                             contentItem: Text {
                                 text: "− Profile"
-                                font.pixelSize: Math.min(10, Math.round(9 * canvasRoot.canvasScale))
+                                font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
                                 fontSizeMode: Text.HorizontalFit
-                                minimumPixelSize: 7
+                                minimumPointSize: 10
                                 font.bold: true
                                 color: Kirigami.Theme.textColor
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideNone
+                                elide: Text.ElideRight
                             }
                             onClicked: {
                                 if (canvasRoot.controller) {
@@ -1588,14 +1592,14 @@ Item {
                             }
                             contentItem: Text {
                                 text: "+ Profile"
-                                font.pixelSize: Math.min(10, Math.round(9 * canvasRoot.canvasScale))
+                                font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
                                 fontSizeMode: Text.HorizontalFit
-                                minimumPixelSize: 7
+                                minimumPointSize: 10
                                 font.bold: true
                                 color: Kirigami.Theme.textColor
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideNone
+                                elide: Text.ElideRight
                             }
                             onClicked: {
                                 if (canvasRoot.controller) {
@@ -1632,7 +1636,7 @@ Item {
                     elide: Text.ElideRight
                     text: qsTr("Expansion Modules (4 Modules × 8 Channels) • Drag to swap, Right-click for Copy/Paste")
                     font.bold: true
-                    font.pixelSize: Math.round(13 * canvasRoot.canvasScale)
+                    font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
                     color: Kirigami.Theme.textColor
                 }
 
@@ -1695,9 +1699,9 @@ Item {
                                         ? ("M" + moduleNum + "·C" + chanNum + ": " + expLabel)
                                         : ("M" + moduleNum + "·C" + chanNum)
                                     font.bold: true
-                                    font.pixelSize: Math.round(16 * canvasRoot.canvasScale)
+                                    font.pointSize: Math.max(11, Math.round(12 * canvasRoot.canvasScale))
                                     fontSizeMode: Text.Fit
-                                    minimumPixelSize: 9
+                                    minimumPointSize: 10
                                     elide: Text.ElideRight
                                     color: Kirigami.Theme.textColor
                                 }
@@ -1709,9 +1713,9 @@ Item {
                                     text: isDropTarget
                                         ? (canvasRoot.dragShiftMode ? qsTr("→ Shift Here") : qsTr("⇄ Swap Here"))
                                         : ("Slot " + slotNum)
-                                    font.pixelSize: Math.round(13 * canvasRoot.canvasScale)
+                                    font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
                                     fontSizeMode: Text.Fit
-                                    minimumPixelSize: 8
+                                    minimumPointSize: 10
                                     elide: Text.ElideRight
                                     font.bold: isDropTarget
                                     color: isDropTarget ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.disabledTextColor
@@ -1828,9 +1832,10 @@ Item {
                 width: 132
                 horizontalAlignment: Text.AlignHCenter
                 text: encRoot.encoderTitle
-                font.pixelSize: Math.round(11 * encRoot.textScale)
+                font.pointSize: Math.max(10, Math.round(10 * encRoot.textScale))
                 fontSizeMode: Text.HorizontalFit
-                minimumPixelSize: 8
+                minimumPointSize: 10
+                elide: Text.ElideRight
                 font.bold: true
                 color: Kirigami.Theme.textColor
             }
@@ -1858,16 +1863,17 @@ Item {
                         QQC2.Label {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "⟲"
-                            font.pixelSize: 16
+                            font.pointSize: Math.max(11, Math.round(12 * encRoot.textScale))
                             color: Kirigami.Theme.highlightColor
                         }
                         QQC2.Label {
                             width: parent.width
                             horizontalAlignment: Text.AlignHCenter
                             text: encRoot.ccwLabel
-                            font.pixelSize: Math.round(9 * encRoot.textScale)
+                            font.pointSize: Math.max(10, Math.round(10 * encRoot.textScale))
                             fontSizeMode: Text.HorizontalFit
-                            minimumPixelSize: 6
+                            minimumPointSize: 10
+                            elide: Text.ElideRight
                             font.bold: true
                             color: Kirigami.Theme.textColor
                         }
@@ -1927,9 +1933,10 @@ Item {
                             width: parent.width
                             horizontalAlignment: Text.AlignHCenter
                             text: "PUSH"
-                            font.pixelSize: Math.round(8 * encRoot.textScale)
+                            font.pointSize: Math.max(10, Math.round(10 * encRoot.textScale))
                             fontSizeMode: Text.HorizontalFit
-                            minimumPixelSize: 6
+                            minimumPointSize: 10
+                            elide: Text.ElideRight
                             font.bold: true
                             color: Kirigami.Theme.disabledTextColor
                         }
@@ -1937,9 +1944,10 @@ Item {
                             width: parent.width
                             horizontalAlignment: Text.AlignHCenter
                             text: encRoot.pushLabel
-                            font.pixelSize: Math.round(9 * encRoot.textScale)
+                            font.pointSize: Math.max(10, Math.round(10 * encRoot.textScale))
                             fontSizeMode: Text.HorizontalFit
-                            minimumPixelSize: 6
+                            minimumPointSize: 10
+                            elide: Text.ElideRight
                             font.bold: true
                             color: Kirigami.Theme.textColor
                         }
@@ -1995,16 +2003,17 @@ Item {
                         QQC2.Label {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "⟳"
-                            font.pixelSize: 16
+                            font.pointSize: Math.max(11, Math.round(12 * encRoot.textScale))
                             color: Kirigami.Theme.highlightColor
                         }
                         QQC2.Label {
                             width: parent.width
                             horizontalAlignment: Text.AlignHCenter
                             text: encRoot.cwLabel
-                            font.pixelSize: Math.round(9 * encRoot.textScale)
+                            font.pointSize: Math.max(10, Math.round(10 * encRoot.textScale))
                             fontSizeMode: Text.HorizontalFit
-                            minimumPixelSize: 6
+                            minimumPointSize: 10
+                            elide: Text.ElideRight
                             font.bold: true
                             color: Kirigami.Theme.textColor
                         }

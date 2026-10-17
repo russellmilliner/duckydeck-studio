@@ -8,8 +8,9 @@ QQC2.Drawer {
     edge: Qt.RightEdge
     modal: true
     interactive: true
+    closePolicy: QQC2.Popup.CloseOnEscape | QQC2.Popup.CloseOnPressOutside
     padding: Kirigami.Units.largeSpacing
-    width: parent ? Math.min(parent.width * 0.85, 620) : 560
+    width: parent ? Math.min(parent.width * 0.85, Math.round(620 * Math.max(1.0, pgvDrawer.fontScale))) : 560
     height: parent ? parent.height : 600
 
     Kirigami.Theme.colorSet: Kirigami.Theme.View
@@ -27,8 +28,20 @@ QQC2.Drawer {
     }
 
     property var controller: null
+    readonly property bool closableWithEscape: true
+    readonly property real fontScale: (controller && controller.uiTextScale > 0
+        ? controller.uiTextScale
+        : 100) / 100.0
     property string searchFilter: ""
     property int dirtyCount: 0
+
+    Shortcut {
+        sequence: "Escape"
+        context: Qt.WindowShortcut
+        enabled: pgvDrawer.opened || pgvDrawer.visible
+        onActivated: pgvDrawer.close()
+        onAmbiguouslyActivated: pgvDrawer.close()
+    }
 
     ListModel {
         id: pgvModel
@@ -119,13 +132,16 @@ QQC2.Drawer {
 
             Kirigami.Heading {
                 level: 2
+                font.pointSize: 12 * pgvDrawer.fontScale
                 text: qsTr("Persistent Global Variables (_GV0 – _GV31)")
+                elide: Text.ElideRight
                 Layout.fillWidth: true
             }
 
             QQC2.Button {
                 icon.name: "view-refresh"
                 text: qsTr("Read All (0x18)")
+                font.pointSize: 10 * pgvDrawer.fontScale
                 onClicked: pgvDrawer.readAllFromDevice()
             }
 
@@ -133,11 +149,13 @@ QQC2.Drawer {
                 icon.name: "document-save"
                 enabled: pgvDrawer.dirtyCount > 0
                 text: qsTr("Write Dirty (%1)").arg(pgvDrawer.dirtyCount)
+                font.pointSize: 10 * pgvDrawer.fontScale
                 onClicked: pgvDrawer.commitDirtyToDevice()
             }
 
             QQC2.Button {
                 text: qsTr("✕ Close")
+                font.pointSize: 10 * pgvDrawer.fontScale
                 onClicked: pgvDrawer.close()
             }
         }
@@ -145,6 +163,7 @@ QQC2.Drawer {
         Kirigami.SearchField {
             id: filterField
             Layout.fillWidth: true
+            font.pointSize: 10 * pgvDrawer.fontScale
             placeholderText: qsTr("Filter by variable (_GV0.._GV31) or value...")
             onTextChanged: pgvDrawer.searchFilter = text.trim().toLowerCase()
         }
@@ -168,7 +187,7 @@ QQC2.Drawer {
             z: 50
             padding: 1
             background: Rectangle {
-                visible: hcBar.size < 1.0
+                visible: hcBar.size < 1.0 || hcBar.policy === QQC2.ScrollBar.AlwaysOn
                 implicitWidth: hcBar.orientation === Qt.Vertical ? 11 : 40
                 implicitHeight: hcBar.orientation === Qt.Horizontal ? 11 : 40
                 radius: 5
@@ -177,7 +196,7 @@ QQC2.Drawer {
                 border.width: 1
             }
             contentItem: Rectangle {
-                visible: hcBar.size < 1.0
+                visible: hcBar.size < 1.0 || hcBar.policy === QQC2.ScrollBar.AlwaysOn
                 implicitWidth: hcBar.orientation === Qt.Vertical ? 7 : 28
                 implicitHeight: hcBar.orientation === Qt.Horizontal ? 7 : 28
                 radius: 4
@@ -231,7 +250,7 @@ QQC2.Drawer {
 
                     visible: matchesSearch
                     width: pgvListView.width - 12
-                    height: matchesSearch ? 44 : 0
+                    height: matchesSearch ? Math.round(44 * pgvDrawer.fontScale) : 0
                     radius: 6
                     color: dirty
                         ? Kirigami.Theme.neutralBackgroundColor
@@ -248,10 +267,11 @@ QQC2.Drawer {
                         spacing: 8
 
                         QQC2.Label {
-                            Layout.preferredWidth: 58
+                            Layout.preferredWidth: Math.round(64 * pgvDrawer.fontScale)
                             text: rowCard.name
                             font.family: "monospace"
                             font.bold: true
+                            font.pointSize: 10 * pgvDrawer.fontScale
                             color: rowCard.dirty
                                 ? Kirigami.Theme.neutralTextColor
                                 : ((0.2126 * Kirigami.Theme.backgroundColor.r + 0.7152 * Kirigami.Theme.backgroundColor.g + 0.0722 * Kirigami.Theme.backgroundColor.b) > 0.45
@@ -260,9 +280,10 @@ QQC2.Drawer {
                         }
 
                         QQC2.TextField {
-                            Layout.preferredWidth: 120
+                            Layout.preferredWidth: Math.round(120 * pgvDrawer.fontScale)
                             text: rowCard.signedVal.toString()
                             font.family: "monospace"
+                            font.pointSize: 10 * pgvDrawer.fontScale
                             selectByMouse: true
                             onEditingFinished: {
                                 const parsed = parseInt(text, 10)
@@ -273,9 +294,10 @@ QQC2.Drawer {
                         }
 
                         QQC2.TextField {
-                            Layout.preferredWidth: 120
+                            Layout.preferredWidth: Math.round(120 * pgvDrawer.fontScale)
                             text: rowCard.unsignedVal
                             font.family: "monospace"
+                            font.pointSize: 10 * pgvDrawer.fontScale
                             selectByMouse: true
                             onEditingFinished: {
                                 const parsed = Number(text)
@@ -286,9 +308,10 @@ QQC2.Drawer {
                         }
 
                         QQC2.TextField {
-                            Layout.preferredWidth: 118
+                            Layout.preferredWidth: Math.round(118 * pgvDrawer.fontScale)
                             text: rowCard.hexVal
                             font.family: "monospace"
+                            font.pointSize: 10 * pgvDrawer.fontScale
                             selectByMouse: true
                             onEditingFinished: {
                                 const cleaned = text.trim().replace(/^0x/i, "")

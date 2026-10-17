@@ -780,6 +780,27 @@ pub mod qobject {
             filename: QString,
             download_url: QString,
         ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "zoomInUiTextScale"]
+        fn zoom_in_ui_text_scale(self: Pin<&mut DeviceController>) -> i32;
+
+        #[qinvokable]
+        #[cxx_name = "zoomOutUiTextScale"]
+        fn zoom_out_ui_text_scale(self: Pin<&mut DeviceController>) -> i32;
+
+        #[qinvokable]
+        #[cxx_name = "reloadZoomLevelFromDisk"]
+        fn reload_zoom_level_from_disk(self: Pin<&mut DeviceController>) -> i32;
+
+        #[qinvokable]
+        #[cxx_name = "sendKeyToActiveWindow"]
+        fn send_key_to_active_window(
+            self: &DeviceController,
+            qt_key: i32,
+            qt_modifiers: i32,
+            text: QString,
+        ) -> bool;
     }
 
     impl cxx_qt::Threading for DeviceController {}
@@ -1242,12 +1263,13 @@ impl Default for DeviceControllerRust {
         let app_theme = switcher.app_theme_mode.clone();
         let close_tray = switcher.close_to_tray;
         let text_scale = switcher.ui_text_scale.clamp(75, 160);
-        let sidebar_scale = switcher.sidebar_text_scale.clamp(75, 160);
-        let canvas_scale = switcher.canvas_text_scale.clamp(75, 160);
-        let inspector_scale = switcher.inspector_text_scale.clamp(75, 160);
-        let editor_scale = switcher.editor_text_scale.clamp(75, 160);
-        let status_bar_scale = switcher.status_bar_text_scale.clamp(75, 160);
-        let event_log_scale = switcher.event_log_text_scale.clamp(75, 160);
+        qobject::duckydeck_apply_ui_font_scale(text_scale);
+        let sidebar_scale = text_scale;
+        let canvas_scale = text_scale;
+        let inspector_scale = text_scale;
+        let editor_scale = text_scale;
+        let status_bar_scale = text_scale;
+        let event_log_scale = text_scale;
         let rest_enabled = switcher.rest_api_enabled;
         let rest_ip = switcher.rest_api_bind_ip.clone();
         let rest_port = switcher.rest_api_port as i32;
@@ -1872,6 +1894,7 @@ impl DeviceControllerRust {
     }
 
     pub fn create_showcase_instance() -> Self {
+        qobject::duckydeck_apply_ui_font_scale(100);
         let (profiles, rules) = Self::create_showcase_profiles_and_rules();
         let saved_colors = crate::kwin::auto_switcher::default_saved_colors();
         let switcher = SwitcherState {
@@ -3702,65 +3725,36 @@ impl qobject::DeviceController {
 
     pub fn apply_area_text_scale(
         mut self: Pin<&mut Self>,
-        area: QString,
+        _area: QString,
         scale_percent: i32,
     ) {
         let clamped = scale_percent.clamp(75, 160);
-        let key = area.to_string().trim().to_ascii_lowercase();
-        let label = match key.as_str() {
-            "sidebar" => "Profiles & Auto-Switcher Sidebar",
-            "canvas" => "Hardware Pad & Key Labels",
-            "inspector" => "Key Inspector & Controls",
-            "editor" => "duckyScript Code Editor",
-            "statusbar" => "Bottom Status Bar",
-            "eventlog" => "System Event Log Window",
-            _ => "All Application Areas",
-        };
 
         {
             let rust = self.as_mut().rust_mut().get_mut();
             if let Ok(mut sw) = rust.switcher_state.lock() {
-                match key.as_str() {
-                    "sidebar" => sw.sidebar_text_scale = clamped,
-                    "canvas" => sw.canvas_text_scale = clamped,
-                    "inspector" => sw.inspector_text_scale = clamped,
-                    "editor" => sw.editor_text_scale = clamped,
-                    "statusbar" => sw.status_bar_text_scale = clamped,
-                    "eventlog" => sw.event_log_text_scale = clamped,
-                    _ => {
-                        sw.ui_text_scale = clamped;
-                        sw.sidebar_text_scale = clamped;
-                        sw.canvas_text_scale = clamped;
-                        sw.inspector_text_scale = clamped;
-                        sw.editor_text_scale = clamped;
-                        sw.status_bar_text_scale = clamped;
-                        sw.event_log_text_scale = clamped;
-                    }
-                }
+                sw.ui_text_scale = clamped;
+                sw.sidebar_text_scale = clamped;
+                sw.canvas_text_scale = clamped;
+                sw.inspector_text_scale = clamped;
+                sw.editor_text_scale = clamped;
+                sw.status_bar_text_scale = clamped;
+                sw.event_log_text_scale = clamped;
                 let _ = sw.save_to_disk();
             }
         }
 
-        match key.as_str() {
-            "sidebar" => self.as_mut().set_sidebar_text_scale(clamped),
-            "canvas" => self.as_mut().set_canvas_text_scale(clamped),
-            "inspector" => self.as_mut().set_inspector_text_scale(clamped),
-            "editor" => self.as_mut().set_editor_text_scale(clamped),
-            "statusbar" => self.as_mut().set_status_bar_text_scale(clamped),
-            "eventlog" => self.as_mut().set_event_log_text_scale(clamped),
-            _ => {
-                self.as_mut().set_ui_text_scale(clamped);
-                self.as_mut().set_sidebar_text_scale(clamped);
-                self.as_mut().set_canvas_text_scale(clamped);
-                self.as_mut().set_inspector_text_scale(clamped);
-                self.as_mut().set_editor_text_scale(clamped);
-                self.as_mut().set_status_bar_text_scale(clamped);
-                self.as_mut().set_event_log_text_scale(clamped);
-            }
-        }
+        qobject::duckydeck_apply_ui_font_scale(clamped);
+        self.as_mut().set_ui_text_scale(clamped);
+        self.as_mut().set_sidebar_text_scale(clamped);
+        self.as_mut().set_canvas_text_scale(clamped);
+        self.as_mut().set_inspector_text_scale(clamped);
+        self.as_mut().set_editor_text_scale(clamped);
+        self.as_mut().set_status_bar_text_scale(clamped);
+        self.as_mut().set_event_log_text_scale(clamped);
 
         self.as_mut().set_status_message(QString::from(&format!(
-            "{label} text size set to {clamped}%"
+            "Application zoom set to {clamped}% (saved)"
         )));
     }
 
@@ -3768,8 +3762,58 @@ impl qobject::DeviceController {
         self.as_mut()
             .apply_area_text_scale(QString::from("all"), 100);
         self.as_mut().set_status_message(QString::from(
-            "All application area text sizes reset to 100%",
+            "Application zoom reset to 100% (saved)",
         ));
+    }
+
+    pub fn zoom_in_ui_text_scale(mut self: Pin<&mut Self>) -> i32 {
+        let current = *self.ui_text_scale();
+        let next = (current + 10).clamp(75, 160);
+        self.as_mut().apply_ui_text_scale(next);
+        next
+    }
+
+    pub fn zoom_out_ui_text_scale(mut self: Pin<&mut Self>) -> i32 {
+        let current = *self.ui_text_scale();
+        let next = (current - 10).clamp(75, 160);
+        self.as_mut().apply_ui_text_scale(next);
+        next
+    }
+
+    pub fn reload_zoom_level_from_disk(mut self: Pin<&mut Self>) -> i32 {
+        let restored = SwitcherState::load_config_from_disk()
+            .map(|c| c.ui_text_scale.clamp(75, 160))
+            .unwrap_or(100);
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                sw.ui_text_scale = restored;
+                sw.sidebar_text_scale = restored;
+                sw.canvas_text_scale = restored;
+                sw.inspector_text_scale = restored;
+                sw.editor_text_scale = restored;
+                sw.status_bar_text_scale = restored;
+                sw.event_log_text_scale = restored;
+            }
+        }
+        qobject::duckydeck_apply_ui_font_scale(restored);
+        self.as_mut().set_ui_text_scale(restored);
+        self.as_mut().set_sidebar_text_scale(restored);
+        self.as_mut().set_canvas_text_scale(restored);
+        self.as_mut().set_inspector_text_scale(restored);
+        self.as_mut().set_editor_text_scale(restored);
+        self.as_mut().set_status_bar_text_scale(restored);
+        self.as_mut().set_event_log_text_scale(restored);
+        restored
+    }
+
+    pub fn send_key_to_active_window(
+        &self,
+        qt_key: i32,
+        qt_modifiers: i32,
+        text: QString,
+    ) -> bool {
+        qobject::duckydeck_send_key_to_active_window(qt_key, qt_modifiers, &text)
     }
 
     pub fn refresh_unsynced_changes(mut self: Pin<&mut Self>) -> QString {

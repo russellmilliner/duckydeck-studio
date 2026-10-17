@@ -90,10 +90,22 @@ Window {
         }
     }
 
+    readonly property bool closableWithEscape: true
+    readonly property real fontScale: (controller && controller.uiTextScale > 0
+        ? controller.uiTextScale
+        : 100) / 100.0
     readonly property int activeProfile: controller ? controller.activeProfile : 1
     readonly property string activeProfileName: (controller && controller.activeProfileName)
         ? controller.activeProfileName
         : "Default"
+
+    Shortcut {
+        sequence: "Escape"
+        context: Qt.WindowShortcut
+        enabled: oledWidgetWindow.visible
+        onActivated: oledWidgetWindow.close()
+        onAmbiguouslyActivated: oledWidgetWindow.close()
+    }
 
     // Pure top-down geometry calculations (no child implicitHeight dependencies -> zero binding loops)
     readonly property real uiScale: Math.max(0.85, Math.min(width / 260.0, height / 366.0))
@@ -336,7 +348,7 @@ Window {
                 QQC2.Label {
                     text: "P" + oledWidgetWindow.activeProfile + ": " + oledWidgetWindow.activeProfileName
                     font.bold: true
-                    font.pixelSize: Math.max(11, Math.round(12 * oledWidgetWindow.uiScale))
+                    font.pointSize: Math.max(10, Math.round(10 * oledWidgetWindow.uiScale))
                     color: "#f8fafc"
                     elide: Text.ElideRight
                     Layout.fillWidth: true
@@ -579,7 +591,7 @@ Window {
                         color: oledWidgetWindow.profileOledRotation !== 0 ? "#38bdf8" : "#cbd5e1"
                         font.family: "monospace"
                         font.bold: true
-                        font.pixelSize: Math.max(9, Math.round(10 * oledWidgetWindow.uiScale))
+                        font.pointSize: Math.max(10, Math.round(10 * oledWidgetWindow.uiScale))
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
@@ -700,7 +712,7 @@ Window {
                     color: "#38bdf8"
                     font.family: "monospace"
                     font.bold: true
-                    font.pixelSize: 11
+                    font.pointSize: 10
                     Layout.preferredWidth: 32
                 }
 
@@ -720,7 +732,7 @@ Window {
                         color: "#f8fafc"
                         font.family: "monospace"
                         font.bold: true
-                        font.pixelSize: 10
+                        font.pointSize: 10
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
@@ -749,7 +761,7 @@ Window {
                         text: "✓"
                         color: "#38bdf8"
                         font.bold: true
-                        font.pixelSize: 11
+                        font.pointSize: 10
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
@@ -806,7 +818,7 @@ Window {
                     color: "#38bdf8"
                     font.family: "monospace"
                     font.bold: true
-                    font.pixelSize: 11
+                    font.pointSize: 10
                     Layout.preferredWidth: 28
                 }
 
@@ -827,7 +839,7 @@ Window {
                         color: "#f8fafc"
                         font.family: "monospace"
                         font.bold: true
-                        font.pixelSize: 10
+                        font.pointSize: 10
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
@@ -856,7 +868,7 @@ Window {
                         text: "✓"
                         color: "#38bdf8"
                         font.bold: true
-                        font.pixelSize: 11
+                        font.pointSize: 10
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
@@ -929,7 +941,7 @@ Window {
                             color: "#f8fafc"
                             font.family: "sans-serif"
                             font.bold: true
-                            font.pixelSize: Math.max(9, Math.round(parent.height * 0.56))
+                            font.pointSize: 10
                         }
                     }
 
@@ -937,7 +949,7 @@ Window {
                         text: oledWidgetWindow.enc1Summary
                         font.family: "monospace"
                         font.bold: true
-                        font.pixelSize: bottomFooterBar.encFontSize
+                        font.pointSize: Math.max(10, bottomFooterBar.encFontSize)
                         color: "#7dd3fc"
                         elide: Text.ElideRight
                         Layout.fillWidth: true
@@ -976,7 +988,7 @@ Window {
                             color: "#f8fafc"
                             font.family: "sans-serif"
                             font.bold: true
-                            font.pixelSize: Math.max(9, Math.round(parent.height * 0.56))
+                            font.pointSize: 10
                         }
                     }
 
@@ -984,7 +996,7 @@ Window {
                         text: oledWidgetWindow.enc2Summary
                         font.family: "monospace"
                         font.bold: true
-                        font.pixelSize: bottomFooterBar.encFontSize
+                        font.pointSize: Math.max(10, bottomFooterBar.encFontSize)
                         color: "#7dd3fc"
                         elide: Text.ElideRight
                         Layout.fillWidth: true
@@ -1013,7 +1025,7 @@ Window {
                             text: qsTr("− Profile")
                             color: "#f8fafc"
                             font.bold: true
-                            font.pixelSize: Math.max(10, Math.round(11 * oledWidgetWindow.uiScale))
+                            font.pointSize: Math.max(10, Math.round(10 * oledWidgetWindow.uiScale))
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
@@ -1044,7 +1056,7 @@ Window {
                             text: qsTr("+ Profile")
                             color: "#f8fafc"
                             font.bold: true
-                            font.pixelSize: Math.max(10, Math.round(11 * oledWidgetWindow.uiScale))
+                            font.pointSize: Math.max(10, Math.round(10 * oledWidgetWindow.uiScale))
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
@@ -1068,7 +1080,7 @@ Window {
                         Text {
                             anchors.centerIn: parent
                             text: "◢"
-                            font.pixelSize: Math.max(11, Math.round(13 * oledWidgetWindow.uiScale))
+                            font.pointSize: Math.max(10, Math.round(10 * oledWidgetWindow.uiScale))
                             color: "#64748b"
                         }
 
@@ -1161,7 +1173,7 @@ Window {
                             color: "#020617"
                             font.family: "sans-serif"
                             font.bold: true
-                            font.pixelSize: Math.max(9, Math.round(parent.height * 0.68))
+                            font.pointSize: Math.max(10, Math.round(parent.height * 0.52))
                             elide: Text.ElideRight
                         }
                     }
@@ -1269,11 +1281,11 @@ Window {
                                         color: parent.parent.isSel ? "#020617" : "#f8fafc"
                                         font.family: (isIcon1 || isLong1) ? "sans-serif" : "monospace"
                                         font.bold: true
-                                        font.pixelSize: isIcon1
-                                            ? Math.max(10, Math.round(parent.parent.height * (parent.parent.disp2.length > 0 ? 0.42 : 0.56)))
-                                            : Math.max(8, Math.round(parent.parent.height * 0.34))
+                                        font.pointSize: isIcon1
+                                            ? Math.max(10, Math.round(parent.parent.height * (parent.parent.disp2.length > 0 ? 0.34 : 0.44)))
+                                            : 10
                                         fontSizeMode: Text.HorizontalFit
-                                        minimumPixelSize: 6
+                                        minimumPointSize: 10
                                         elide: Text.ElideRight
                                     }
 
@@ -1288,11 +1300,11 @@ Window {
                                         color: parent.parent.isSel ? "#0f172a" : "#cbd5e1"
                                         font.family: (isIcon2 || isLong2) ? "sans-serif" : "monospace"
                                         font.bold: true
-                                        font.pixelSize: isIcon2
-                                            ? Math.max(10, Math.round(parent.parent.height * (parent.parent.disp1.length > 0 ? 0.40 : 0.54)))
-                                            : Math.max(7, Math.round(parent.parent.height * 0.30))
+                                        font.pointSize: isIcon2
+                                            ? Math.max(10, Math.round(parent.parent.height * (parent.parent.disp1.length > 0 ? 0.32 : 0.42)))
+                                            : 10
                                         fontSizeMode: Text.HorizontalFit
-                                        minimumPixelSize: 6
+                                        minimumPointSize: 10
                                         elide: Text.ElideRight
                                     }
                                 }

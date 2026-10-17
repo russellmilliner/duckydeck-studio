@@ -21,6 +21,10 @@ Window {
     color: Kirigami.Theme.backgroundColor
 
     property var controller: null
+    readonly property bool closableWithEscape: true
+    readonly property real fontScale: (controller && controller.uiTextScale > 0
+        ? controller.uiTextScale
+        : 100) / 100.0
 
     function open() {
         aiDialog.show()
@@ -47,7 +51,7 @@ Window {
         z: 50
         padding: 1
         background: Rectangle {
-            visible: hcBar.size < 1.0
+            visible: hcBar.size < 1.0 || hcBar.policy === QQC2.ScrollBar.AlwaysOn
             implicitWidth: hcBar.orientation === Qt.Vertical ? 11 : 40
             implicitHeight: hcBar.orientation === Qt.Horizontal ? 11 : 40
             radius: 5
@@ -56,7 +60,7 @@ Window {
             border.width: 1
         }
         contentItem: Rectangle {
-            visible: hcBar.size < 1.0
+            visible: hcBar.size < 1.0 || hcBar.policy === QQC2.ScrollBar.AlwaysOn
             implicitWidth: hcBar.orientation === Qt.Vertical ? 7 : 28
             implicitHeight: hcBar.orientation === Qt.Horizontal ? 7 : 28
             radius: 4
@@ -75,6 +79,7 @@ Window {
         context: Qt.WindowShortcut
         enabled: aiDialog.visible
         onActivated: aiDialog.close()
+        onAmbiguouslyActivated: aiDialog.close()
     }
 
     ColumnLayout {
@@ -85,7 +90,7 @@ Window {
         QQC2.Label {
             Layout.fillWidth: true
             font.bold: true
-            font.pixelSize: 15
+            font.pointSize: 12 * aiDialog.fontScale
             text: qsTr("AI Profile Architect & Shortcut Scraper")
             color: Kirigami.Theme.textColor
             elide: Text.ElideRight
@@ -122,7 +127,7 @@ Window {
                 QQC2.Label {
                     Layout.fillWidth: true
                     font.bold: true
-                    font.pixelSize: 12
+                    font.pointSize: 10 * aiDialog.fontScale
                     text: qsTr("Target Application / Game:")
                     color: Kirigami.Theme.textColor
                 }
@@ -130,6 +135,7 @@ Window {
                 QQC2.TextField {
                     id: appInput
                     Layout.fillWidth: true
+                    font.pointSize: 10 * aiDialog.fontScale
                     text: "Kdenlive"
                     placeholderText: qsTr("e.g., Blender, Kdenlive, Helldivers 2, FreeCAD")
                 }
@@ -137,6 +143,7 @@ Window {
                 QQC2.CheckBox {
                     id: scrapeToggle
                     Layout.fillWidth: true
+                    font.pointSize: 10 * aiDialog.fontScale
                     checked: true
                     text: qsTr("Scrape ~/.config/kglobalshortcutsrc for local KDE keybindings")
                 }
@@ -144,7 +151,7 @@ Window {
                 QQC2.Label {
                     Layout.fillWidth: true
                     font.bold: true
-                    font.pixelSize: 12
+                    font.pointSize: 10 * aiDialog.fontScale
                     text: qsTr("Macro / Layout Goal:")
                     color: Kirigami.Theme.textColor
                 }
@@ -154,6 +161,7 @@ Window {
                     Layout.fillWidth: true
                     implicitHeight: 90
                     padding: 6
+                    font.pointSize: 10 * aiDialog.fontScale
                     wrapMode: TextEdit.Wrap
                     selectByMouse: true
                     color: Kirigami.Theme.textColor
@@ -181,6 +189,7 @@ Window {
             QQC2.Button {
                 icon.name: "dialog-cancel"
                 text: qsTr("Cancel")
+                font.pointSize: 10 * aiDialog.fontScale
                 onClicked: aiDialog.close()
             }
 
@@ -189,6 +198,7 @@ Window {
                 text: qsTr("Generate Macro")
                 highlighted: true
                 font.bold: true
+                font.pointSize: 10 * aiDialog.fontScale
                 onClicked: {
                     if (aiDialog.controller) {
                         aiDialog.controller.generateAiMacro(appInput.text, promptInput.text)

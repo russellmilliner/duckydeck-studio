@@ -1578,6 +1578,11 @@ mod ui_test_suite {
             .and_then(|s| s.get("scrollBarStyleViolationsCount"))
             .and_then(|v| v.as_u64())
             .unwrap_or(999);
+        let min_font_pt_violations_count = report
+            .get("summary")
+            .and_then(|s| s.get("minFontPointSizeViolationsCount"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(999);
         let total_scrollbars_inspected = report
             .get("summary")
             .and_then(|s| s.get("totalScrollBarsInspected"))
@@ -1604,27 +1609,43 @@ mod ui_test_suite {
             "UI scrollbar style violations detected (must match Profiles Box HighContrastScrollBar): {}",
             serde_json::to_string_pretty(&report["scrollBarStyleViolations"]).unwrap_or_default()
         );
+        assert_eq!(
+            min_font_pt_violations_count, 0,
+            "UI minimum 10pt font size violations detected: {}",
+            serde_json::to_string_pretty(&report["minFontPointSizeViolations"]).unwrap_or_default()
+        );
         assert!(
             total_scrollbars_inspected >= 40,
             "Expected at least 40 scrollbar instances to be inspected across all resizable windows and themes, got {}",
             total_scrollbars_inspected
         );
-        let scrollbar_behavior_passed = report
-            .get("behavioralResults")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter().any(|entry| {
-                    entry.get("name").and_then(|n| n.as_str())
-                        == Some("resizable_windows_scrollbar_style_matches_profiles_box")
-                        && entry.get("passed").and_then(|p| p.as_bool()) == Some(true)
+
+        let required_behaviors = [
+            "resizable_windows_scrollbar_style_matches_profiles_box",
+            "script_editor_has_scrollbar",
+            "settings_removed_area_text_sizes_and_min_10pt_font",
+            "ctrl_plus_equal_minus_zoom_and_restart_persistence",
+            "all_popup_windows_closable_with_esc",
+        ];
+        for req_name in required_behaviors {
+            let behavior_passed = report
+                .get("behavioralResults")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter().any(|entry| {
+                        entry.get("name").and_then(|n| n.as_str()) == Some(req_name)
+                            && entry.get("passed").and_then(|p| p.as_bool()) == Some(true)
+                    })
                 })
-            })
-            .unwrap_or(false);
-        assert!(
-            scrollbar_behavior_passed,
-            "Behavioral check 'resizable_windows_scrollbar_style_matches_profiles_box' did not pass: {}",
-            serde_json::to_string_pretty(&report["behavioralResults"]).unwrap_or_default()
-        );
+                .unwrap_or(false);
+            assert!(
+                behavior_passed,
+                "Behavioral check '{}' did not pass: {}",
+                req_name,
+                serde_json::to_string_pretty(&report["behavioralResults"]).unwrap_or_default()
+            );
+        }
+
         assert!(
             passed && output.status.success(),
             "UI test suite did not pass cleanly. Report summary: {}",

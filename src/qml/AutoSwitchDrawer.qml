@@ -34,6 +34,11 @@ Window {
     property int contextMenuTargetProfile: 1
     property bool contextMenuRuleEnabled: true
 
+    readonly property bool closableWithEscape: true
+    readonly property real fontScale: (controller && controller.uiTextScale > 0
+        ? controller.uiTextScale
+        : 100) / 100.0
+
     Kirigami.Theme.colorSet: Kirigami.Theme.Window
     Kirigami.Theme.inherit: false
     color: Kirigami.Theme.backgroundColor
@@ -58,7 +63,7 @@ Window {
         z: 50
         padding: 1
         background: Rectangle {
-            visible: hcBar.size < 1.0
+            visible: hcBar.size < 1.0 || hcBar.policy === QQC2.ScrollBar.AlwaysOn
             implicitWidth: hcBar.orientation === Qt.Vertical ? 11 : 40
             implicitHeight: hcBar.orientation === Qt.Horizontal ? 11 : 40
             radius: 5
@@ -67,7 +72,7 @@ Window {
             border.width: 1
         }
         contentItem: Rectangle {
-            visible: hcBar.size < 1.0
+            visible: hcBar.size < 1.0 || hcBar.policy === QQC2.ScrollBar.AlwaysOn
             implicitWidth: hcBar.orientation === Qt.Vertical ? 7 : 28
             implicitHeight: hcBar.orientation === Qt.Horizontal ? 7 : 28
             radius: 4
@@ -334,7 +339,10 @@ Window {
 
         Shortcut {
             sequence: "Escape"
+            context: Qt.WindowShortcut
+            enabled: drawerRoot.visible
             onActivated: drawerRoot.close()
+            onAmbiguouslyActivated: drawerRoot.close()
         }
 
         ColumnLayout {
@@ -366,7 +374,7 @@ Window {
                         wrapMode: Text.WordWrap
                         text: qsTr("Automatically switches duckyPad profiles when application windows focus or after the mouse settles")
                         color: Kirigami.Theme.disabledTextColor
-                        font.pixelSize: 12
+                        font.pointSize: 10 * drawerRoot.fontScale
                     }
 
                     Rectangle {
@@ -382,7 +390,7 @@ Window {
                             anchors.fill: parent
                             anchors.margins: 4
                             wrapMode: Text.WordWrap
-                            font.pixelSize: 11
+                            font.pointSize: 10 * drawerRoot.fontScale
                             font.bold: true
                             color: (0.2126 * Kirigami.Theme.backgroundColor.r + 0.7152 * Kirigami.Theme.backgroundColor.g + 0.0722 * Kirigami.Theme.backgroundColor.b) > 0.45
                                 ? "#92400e"
@@ -454,7 +462,7 @@ Window {
                                     checked: drawerRoot.controller ? drawerRoot.controller.autoSwitchEnabled : true
                                     text: qsTr("Enable Automatic Profile Switching on Window Focus")
                                     font.bold: true
-                                    font.pixelSize: 13
+                                    font.pointSize: 11 * drawerRoot.fontScale
                                     onToggled: {
                                         if (drawerRoot.controller) {
                                             const fbNum = drawerRoot.fallbackNumbers[fallbackCombo.currentIndex] || 0
@@ -471,7 +479,7 @@ Window {
                                 QQC2.Label {
                                     Layout.alignment: Qt.AlignVCenter
                                     text: qsTr("Fallback Profile (when no rule matches):")
-                                    font.pixelSize: 12
+                                    font.pointSize: 10 * drawerRoot.fontScale
                                     color: Kirigami.Theme.disabledTextColor
                                 }
 
@@ -481,7 +489,7 @@ Window {
                                     Layout.minimumWidth: 120
                                     Layout.preferredWidth: 1
                                     Layout.alignment: Qt.AlignVCenter
-                                    font.pixelSize: 12
+                                    font.pointSize: 10 * drawerRoot.fontScale
                                     model: drawerRoot.fallbackChoices
                                     onActivated: (index) => {
                                         if (drawerRoot.controller && index >= 0 && index < drawerRoot.fallbackNumbers.length) {
@@ -508,7 +516,7 @@ Window {
                                 QQC2.Label {
                                     Layout.alignment: Qt.AlignVCenter
                                     text: qsTr("Mouse Settle:")
-                                    font.pixelSize: 12
+                                    font.pointSize: 10 * drawerRoot.fontScale
                                     font.bold: true
                                     color: Kirigami.Theme.textColor
                                     QQC2.ToolTip.visible: settleLabelHover.hovered
@@ -525,7 +533,7 @@ Window {
                                         implicitWidth: 28
                                         implicitHeight: 30
                                         font.bold: true
-                                        font.pixelSize: 14
+                                        font.pointSize: 11 * drawerRoot.fontScale
                                         enabled: drawerRoot.settleMsValue > 0
                                         onClicked: drawerRoot.applyTimings(Math.max(0, drawerRoot.settleMsValue - 50), drawerRoot.dwellMsValue)
                                         QQC2.ToolTip.visible: hovered
@@ -541,7 +549,7 @@ Window {
                                         verticalAlignment: Text.AlignVCenter
                                         font.family: "monospace"
                                         font.bold: true
-                                        font.pixelSize: 13
+                                        font.pointSize: 11 * drawerRoot.fontScale
                                         selectByMouse: true
                                         text: String(drawerRoot.settleMsValue)
                                         validator: IntValidator { bottom: 0; top: 5000 }
@@ -565,7 +573,7 @@ Window {
                                         implicitWidth: 28
                                         implicitHeight: 30
                                         font.bold: true
-                                        font.pixelSize: 14
+                                        font.pointSize: 11 * drawerRoot.fontScale
                                         enabled: drawerRoot.settleMsValue < 5000
                                         onClicked: drawerRoot.applyTimings(Math.min(5000, drawerRoot.settleMsValue + 50), drawerRoot.dwellMsValue)
                                         QQC2.ToolTip.visible: hovered
@@ -574,7 +582,7 @@ Window {
 
                                     QQC2.Label {
                                         text: qsTr("ms")
-                                        font.pixelSize: 12
+                                        font.pointSize: 10 * drawerRoot.fontScale
                                         color: Kirigami.Theme.disabledTextColor
                                     }
                                 }
@@ -584,7 +592,7 @@ Window {
                                 QQC2.Label {
                                     Layout.alignment: Qt.AlignVCenter
                                     text: qsTr("Window Dwell:")
-                                    font.pixelSize: 12
+                                    font.pointSize: 10 * drawerRoot.fontScale
                                     font.bold: true
                                     color: Kirigami.Theme.textColor
                                     QQC2.ToolTip.visible: dwellLabelHover.hovered
@@ -601,7 +609,7 @@ Window {
                                         implicitWidth: 28
                                         implicitHeight: 30
                                         font.bold: true
-                                        font.pixelSize: 14
+                                        font.pointSize: 11 * drawerRoot.fontScale
                                         enabled: drawerRoot.dwellMsValue > 0
                                         onClicked: drawerRoot.applyTimings(drawerRoot.settleMsValue, Math.max(0, drawerRoot.dwellMsValue - 50))
                                         QQC2.ToolTip.visible: hovered
@@ -617,7 +625,7 @@ Window {
                                         verticalAlignment: Text.AlignVCenter
                                         font.family: "monospace"
                                         font.bold: true
-                                        font.pixelSize: 13
+                                        font.pointSize: 11 * drawerRoot.fontScale
                                         selectByMouse: true
                                         text: String(drawerRoot.dwellMsValue)
                                         validator: IntValidator { bottom: 0; top: 5000 }
@@ -641,7 +649,7 @@ Window {
                                         implicitWidth: 28
                                         implicitHeight: 30
                                         font.bold: true
-                                        font.pixelSize: 14
+                                        font.pointSize: 11 * drawerRoot.fontScale
                                         enabled: drawerRoot.dwellMsValue < 5000
                                         onClicked: drawerRoot.applyTimings(drawerRoot.settleMsValue, Math.min(5000, drawerRoot.dwellMsValue + 50))
                                         QQC2.ToolTip.visible: hovered
@@ -650,7 +658,7 @@ Window {
 
                                     QQC2.Label {
                                         text: qsTr("ms")
-                                        font.pixelSize: 12
+                                        font.pointSize: 10 * drawerRoot.fontScale
                                         color: Kirigami.Theme.disabledTextColor
                                     }
                                 }
@@ -666,14 +674,14 @@ Window {
                                 QQC2.Label {
                                     Layout.alignment: Qt.AlignVCenter
                                     text: qsTr("Timing Presets:")
-                                    font.pixelSize: 12
+                                    font.pointSize: 10 * drawerRoot.fontScale
                                     color: Kirigami.Theme.disabledTextColor
                                 }
 
                                 QQC2.Button {
                                     Layout.alignment: Qt.AlignVCenter
                                     text: qsTr("Instant (0 ms)")
-                                    font.pixelSize: 11
+                                    font.pointSize: 10 * drawerRoot.fontScale
                                     implicitHeight: 26
                                     highlighted: drawerRoot.settleMsValue === 0 && drawerRoot.dwellMsValue === 0
                                     onClicked: drawerRoot.applyTimings(0, 0)
@@ -684,7 +692,7 @@ Window {
                                 QQC2.Button {
                                     Layout.alignment: Qt.AlignVCenter
                                     text: qsTr("Balanced (250 / 150 ms)")
-                                    font.pixelSize: 11
+                                    font.pointSize: 10 * drawerRoot.fontScale
                                     implicitHeight: 26
                                     highlighted: drawerRoot.settleMsValue === 250 && drawerRoot.dwellMsValue === 150
                                     onClicked: drawerRoot.applyTimings(250, 150)
@@ -695,7 +703,7 @@ Window {
                                 QQC2.Button {
                                     Layout.alignment: Qt.AlignVCenter
                                     text: qsTr("Relaxed (500 / 300 ms)")
-                                    font.pixelSize: 11
+                                    font.pointSize: 10 * drawerRoot.fontScale
                                     implicitHeight: 26
                                     highlighted: drawerRoot.settleMsValue === 500 && drawerRoot.dwellMsValue === 300
                                     onClicked: drawerRoot.applyTimings(500, 300)
@@ -744,7 +752,7 @@ Window {
                                           )
                                     font.bold: true
                                     font.family: "monospace"
-                                    font.pixelSize: 13
+                                    font.pointSize: 11 * drawerRoot.fontScale
                                     color: drawerRoot.controller && drawerRoot.controller.windowPickerArmed
                                         ? Kirigami.Theme.highlightColor
                                         : Kirigami.Theme.textColor
@@ -757,7 +765,7 @@ Window {
                                     text: drawerRoot.controller && drawerRoot.controller.activeWindowTitle.length > 0
                                         ? qsTr("Title: %1").arg(drawerRoot.controller.activeWindowTitle)
                                         : qsTr("Switch focus to another app window or click 'Pick Window' to grab its class and title")
-                                    font.pixelSize: 11
+                                    font.pointSize: 10 * drawerRoot.fontScale
                                     color: Kirigami.Theme.disabledTextColor
                                     elide: Text.ElideRight
                                     Layout.fillWidth: true
@@ -771,7 +779,7 @@ Window {
                                 text: drawerRoot.controller && drawerRoot.controller.windowPickerArmed
                                     ? qsTr("Armed...")
                                     : qsTr("🎯 Pick Window")
-                                font.pixelSize: 12
+                                font.pointSize: 10 * drawerRoot.fontScale
                                 highlighted: drawerRoot.controller && drawerRoot.controller.windowPickerArmed
                                 onClicked: {
                                     if (drawerRoot.controller) {
@@ -786,7 +794,7 @@ Window {
                                 Layout.alignment: Qt.AlignVCenter
                                 icon.name: "edit-paste"
                                 text: qsTr("Use Current")
-                                font.pixelSize: 12
+                                font.pointSize: 10 * drawerRoot.fontScale
                                 enabled: drawerRoot.controller
                                     && drawerRoot.controller.activeWindowClass.length > 0
                                     && drawerRoot.controller.activeWindowClass !== "Listening for KWin..."
@@ -834,7 +842,7 @@ Window {
                                     ? qsTr("Edit Rule #%1").arg(drawerRoot.editingRuleIndex + 1)
                                     : qsTr("Add New Window Rule")
                                 font.bold: true
-                                font.pixelSize: 13
+                                font.pointSize: 11 * drawerRoot.fontScale
                                 color: Kirigami.Theme.textColor
                             }
 
@@ -847,7 +855,7 @@ Window {
                                 QQC2.Label {
                                     Layout.alignment: Qt.AlignVCenter
                                     text: qsTr("Window Class:")
-                                    font.pixelSize: 12
+                                    font.pointSize: 10 * drawerRoot.fontScale
                                     color: Kirigami.Theme.disabledTextColor
                                 }
 
@@ -864,7 +872,7 @@ Window {
                                         Layout.preferredWidth: 1
                                         placeholderText: qsTr("e.g. firefox, chrome, zen, code, or *browser*")
                                         font.family: "monospace"
-                                        font.pixelSize: 12
+                                        font.pointSize: 10 * drawerRoot.fontScale
                                         selectByMouse: true
                                         onTextChanged: {
                                             const trimmed = text.trim()
@@ -879,7 +887,7 @@ Window {
                                         Layout.alignment: Qt.AlignVCenter
                                         checked: classInput.text.trim().toLowerCase() === "*browser*"
                                         text: qsTr("🌐 Match All Browsers")
-                                        font.pixelSize: 11
+                                        font.pointSize: 10 * drawerRoot.fontScale
                                         onToggled: {
                                             if (checked) {
                                                 const cur = classInput.text.trim()
@@ -910,7 +918,7 @@ Window {
                                 QQC2.Label {
                                     Layout.alignment: Qt.AlignVCenter
                                     text: qsTr("Title Substring:")
-                                    font.pixelSize: 12
+                                    font.pointSize: 10 * drawerRoot.fontScale
                                     color: Kirigami.Theme.disabledTextColor
                                 }
 
@@ -920,14 +928,14 @@ Window {
                                     Layout.minimumWidth: 80
                                     Layout.preferredWidth: 1
                                     placeholderText: qsTr("Optional (e.g. YouTube, Gmail, Twitch — matched against window title)")
-                                    font.pixelSize: 12
+                                    font.pointSize: 10 * drawerRoot.fontScale
                                     selectByMouse: true
                                 }
 
                                 QQC2.Label {
                                     Layout.alignment: Qt.AlignVCenter
                                     text: qsTr("Favicon / Site URL:")
-                                    font.pixelSize: 12
+                                    font.pointSize: 10 * drawerRoot.fontScale
                                     color: Kirigami.Theme.disabledTextColor
                                 }
 
@@ -938,14 +946,14 @@ Window {
                                     Layout.preferredWidth: 1
                                     placeholderText: qsTr("Optional URL or domain for rule icon (e.g. https://news.ycombinator.com or http://192.168.1.50:8123)")
                                     font.family: "monospace"
-                                    font.pixelSize: 12
+                                    font.pointSize: 10 * drawerRoot.fontScale
                                     selectByMouse: true
                                 }
 
                                 QQC2.Label {
                                     Layout.alignment: Qt.AlignVCenter
                                     text: qsTr("Target Profile:")
-                                    font.pixelSize: 12
+                                    font.pointSize: 10 * drawerRoot.fontScale
                                     color: Kirigami.Theme.disabledTextColor
                                 }
 
@@ -961,7 +969,7 @@ Window {
                                         Layout.minimumWidth: 120
                                         Layout.preferredWidth: 1
                                         Layout.alignment: Qt.AlignVCenter
-                                        font.pixelSize: 12
+                                        font.pointSize: 10 * drawerRoot.fontScale
                                         model: drawerRoot.profileChoices
                                     }
 
@@ -969,7 +977,7 @@ Window {
                                         Layout.alignment: Qt.AlignVCenter
                                         visible: drawerRoot.editingRuleIndex >= 0
                                         text: qsTr("Cancel")
-                                        font.pixelSize: 12
+                                        font.pointSize: 10 * drawerRoot.fontScale
                                         onClicked: {
                                             drawerRoot.editingRuleIndex = -1
                                             classInput.text = ""
@@ -982,7 +990,7 @@ Window {
                                         Layout.alignment: Qt.AlignVCenter
                                         icon.name: drawerRoot.editingRuleIndex >= 0 ? "document-save" : "list-add"
                                         text: drawerRoot.editingRuleIndex >= 0 ? qsTr("Update Rule") : qsTr("Save Rule")
-                                        font.pixelSize: 12
+                                        font.pointSize: 10 * drawerRoot.fontScale
                                         highlighted: true
                                         enabled: classInput.text.trim().length > 0 && targetProfileCombo.currentIndex >= 0
                                         onClicked: {
@@ -1018,7 +1026,7 @@ Window {
                                 ? qsTr("Configured Rules (%1 of %2) — Double-click to Edit • Right-click for Options").arg(rulesModel.count).arg(drawerRoot.totalRuleCount)
                                 : qsTr("Configured Rules (%1) — Drag to Reorder • Double-click to Edit • Right-click for Options").arg(drawerRoot.totalRuleCount)
                             font.bold: true
-                            font.pixelSize: 13
+                            font.pointSize: 11 * drawerRoot.fontScale
                             color: Kirigami.Theme.textColor
                             elide: Text.ElideRight
                             Layout.fillWidth: true
@@ -1033,7 +1041,7 @@ Window {
                             Layout.alignment: Qt.AlignVCenter
                             placeholderText: qsTr("Filter rules by class, title, URL, or profile...")
                             selectByMouse: true
-                            font.pixelSize: 12
+                            font.pointSize: 10 * drawerRoot.fontScale
                             onTextChanged: {
                                 drawerRoot.ruleFilterText = text
                                 drawerRoot.syncFromController()
@@ -1046,7 +1054,7 @@ Window {
                             text: "✕"
                             implicitWidth: 26
                             implicitHeight: 26
-                            font.pixelSize: 11
+                            font.pointSize: 10 * drawerRoot.fontScale
                             onClicked: {
                                 ruleFilterField.text = ""
                             }
@@ -1097,7 +1105,7 @@ Window {
                                 text: drawerRoot.totalRuleCount > 0
                                     ? qsTr("No configured rules match \"%1\"").arg(drawerRoot.ruleFilterText.trim())
                                     : qsTr("No auto-switcher rules configured yet.")
-                                font.pixelSize: 13
+                                font.pointSize: 11 * drawerRoot.fontScale
                                 color: Kirigami.Theme.disabledTextColor
                             }
 
@@ -1311,7 +1319,7 @@ Window {
                                             QQC2.Label {
                                                 anchors.centerIn: parent
                                                 text: "⠿"
-                                                font.pixelSize: 17
+                                                font.pointSize: 13 * drawerRoot.fontScale
                                                 color: ruleDragMouse.containsMouse || ruleDelegate.isBeingDragged
                                                     ? Kirigami.Theme.textColor
                                                     : Kirigami.Theme.disabledTextColor
@@ -1364,7 +1372,7 @@ Window {
                                                     )
                                                     font.family: "monospace"
                                                     font.bold: true
-                                                    font.pixelSize: 14
+                                                    font.pointSize: 11 * drawerRoot.fontScale
                                                     elide: Text.ElideRight
                                                     color: ruleEnabled ? Kirigami.Theme.textColor : Kirigami.Theme.disabledTextColor
                                                 }
@@ -1387,7 +1395,7 @@ Window {
                                                         anchors.rightMargin: 6
                                                         verticalAlignment: Text.AlignVCenter
                                                         text: qsTr("title: \"%1\"").arg(titleContains)
-                                                        font.pixelSize: 11
+                                                        font.pointSize: 10 * drawerRoot.fontScale
                                                         elide: Text.ElideRight
                                                         color: Kirigami.Theme.disabledTextColor
                                                     }
@@ -1400,7 +1408,7 @@ Window {
                                                 text: faviconUrl.length > 0
                                                     ? qsTr("Switches to Profile #%1 (%2)  •  🔗 %3").arg(targetProfile).arg(targetProfileName).arg(faviconUrl)
                                                     : qsTr("Switches to Profile #%1 (%2)").arg(targetProfile).arg(targetProfileName)
-                                                font.pixelSize: 12
+                                                font.pointSize: 10 * drawerRoot.fontScale
                                                 font.weight: Font.Medium
                                                 elide: Text.ElideRight
                                                 color: (0.2126 * Kirigami.Theme.backgroundColor.r + 0.7152 * Kirigami.Theme.backgroundColor.g + 0.0722 * Kirigami.Theme.backgroundColor.b) > 0.45
