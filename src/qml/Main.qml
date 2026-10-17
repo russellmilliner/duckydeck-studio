@@ -83,6 +83,11 @@ Kirigami.ApplicationWindow {
     }
 
     color: Kirigami.Theme.backgroundColor
+    readonly property bool isLightTheme: (0.2126 * root.color.r + 0.7152 * root.color.g + 0.0722 * root.color.b) > 0.45
+    readonly property color highContrastHighlightText: isLightTheme ? "#0369a1" : Kirigami.Theme.highlightColor
+    readonly property color highContrastPositiveText: isLightTheme ? "#15803d" : "#4ade80"
+    readonly property color highContrastWarningText: isLightTheme ? "#b45309" : "#fbbf24"
+    readonly property color highContrastOrangeText: isLightTheme ? "#c2410c" : "#fb923c"
 
     readonly property real fontScale: (deviceController && deviceController.uiTextScale > 0
         ? deviceController.uiTextScale
@@ -378,6 +383,17 @@ Kirigami.ApplicationWindow {
     ]
 
     function badgeColorForType(badge) {
+        if (root.isLightTheme) {
+            if (badge === "CMD") return "#0369a1"
+            if (badge === "KEY") return "#6d28d9"
+            if (badge === "FLOW") return "#b45309"
+            if (badge === "OLED") return "#0f766e"
+            if (badge === "LED") return "#be185d"
+            if (badge === "VAR") return "#15803d"
+            if (badge === "FUNC") return "#1d4ed8"
+            if (badge === "PROF") return "#c2410c"
+            return "#334155"
+        }
         if (badge === "CMD") return "#38bdf8"
         if (badge === "KEY") return "#a78bfa"
         if (badge === "FLOW") return "#f59e0b"
@@ -643,12 +659,22 @@ Kirigami.ApplicationWindow {
     readonly property var eventLogLevels: ["ALL", "INFO", "WARN", "ERROR"]
 
     function levelColorForLog(lvl) {
-        if (lvl === "ERROR") return Kirigami.Theme.negativeTextColor
-        if (lvl === "WARN") return Kirigami.Theme.neutralTextColor
-        return Kirigami.Theme.highlightColor
+        if (lvl === "ERROR") return root.isLightTheme ? "#b91c1c" : Kirigami.Theme.negativeTextColor
+        if (lvl === "WARN") return root.isLightTheme ? "#b45309" : Kirigami.Theme.neutralTextColor
+        return root.highContrastHighlightText
     }
 
     function categoryColorForLog(cat) {
+        if (root.isLightTheme) {
+            if (cat === "DEVICE") return "#0369a1"
+            if (cat === "PROFILE") return "#6d28d9"
+            if (cat === "AUTOSWITCH") return "#15803d"
+            if (cat === "SD_SYNC") return "#b45309"
+            if (cat === "SCRIPT") return "#0f766e"
+            if (cat === "WEB_API") return "#be185d"
+            if (cat === "APP_LAUNCH") return "#c2410c"
+            return "#334155"
+        }
         if (cat === "DEVICE") return "#38bdf8"
         if (cat === "PROFILE") return "#a78bfa"
         if (cat === "AUTOSWITCH") return "#4ade80"
@@ -1916,10 +1942,10 @@ Kirigami.ApplicationWindow {
     Window {
         id: newProfileGroupDialog
         title: qsTr("Create New Profile Group — DuckyDeck Studio")
-        width: 440
-        height: 245
-        minimumWidth: 400
-        minimumHeight: 230
+        width: 590
+        height: 255
+        minimumWidth: 560
+        minimumHeight: 240
         visible: false
         transientParent: root
         modality: Qt.WindowModal
@@ -1965,6 +1991,8 @@ Kirigami.ApplicationWindow {
 
             QQC2.Label {
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: 1
                 wrapMode: Text.WordWrap
                 font.pixelSize: 12
                 color: Kirigami.Theme.textColor
@@ -1987,6 +2015,8 @@ Kirigami.ApplicationWindow {
                 QQC2.TextField {
                     id: newGroupNameInput
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 120
+                    Layout.preferredWidth: 1
                     placeholderText: qsTr("e.g. Work & Coding")
                     selectByMouse: true
                     font.pixelSize: 12
@@ -2004,6 +2034,8 @@ Kirigami.ApplicationWindow {
                 QQC2.TextField {
                     id: newGroupFirstProfileInput
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 120
+                    Layout.preferredWidth: 1
                     maximumLength: 16
                     placeholderText: qsTr("Default")
                     selectByMouse: true
@@ -2536,7 +2568,7 @@ Kirigami.ApplicationWindow {
                         QQC2.Label {
                             text: "R"
                             font.bold: true
-                            color: "#f87171"
+                            color: root.isLightTheme ? "#dc2626" : "#f87171"
                             Layout.preferredWidth: 14
                         }
                         QQC2.Slider {
@@ -2570,7 +2602,7 @@ Kirigami.ApplicationWindow {
                         QQC2.Label {
                             text: "G"
                             font.bold: true
-                            color: "#4ade80"
+                            color: root.highContrastPositiveText
                             Layout.preferredWidth: 14
                         }
                         QQC2.Slider {
@@ -2604,7 +2636,7 @@ Kirigami.ApplicationWindow {
                         QQC2.Label {
                             text: "B"
                             font.bold: true
-                            color: "#60a5fa"
+                            color: root.isLightTheme ? "#2563eb" : "#60a5fa"
                             Layout.preferredWidth: 14
                         }
                         QQC2.Slider {
@@ -2738,6 +2770,9 @@ Kirigami.ApplicationWindow {
                         anchors.margins: 6
                         clip: true
                         QQC2.ScrollBar.vertical: HighContrastScrollBar {}
+                        QQC2.ScrollBar.horizontal: HighContrastScrollBar {
+                            orientation: Qt.Horizontal
+                        }
 
                         Flow {
                             id: savedColorsFlow
@@ -2851,6 +2886,9 @@ Kirigami.ApplicationWindow {
                         anchors.margins: 6
                         clip: true
                         QQC2.ScrollBar.vertical: HighContrastScrollBar {}
+                        QQC2.ScrollBar.horizontal: HighContrastScrollBar {
+                            orientation: Qt.Horizontal
+                        }
 
                         Flow {
                             width: parent.width
@@ -3331,11 +3369,19 @@ Kirigami.ApplicationWindow {
                     spacing: 6
                     model: profileTemplatesDialog.templatesList
                     boundsBehavior: Flickable.StopAtBounds
-                    QQC2.ScrollBar.vertical: QQC2.ScrollBar { policy: QQC2.ScrollBar.AsNeeded }
+                    QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                        parent: tplListView
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        policy: tplListView.contentHeight > tplListView.height
+                            ? QQC2.ScrollBar.AlwaysOn
+                            : QQC2.ScrollBar.AsNeeded
+                    }
 
                     delegate: Rectangle {
                         id: tplDelegate
-                        width: Math.max(200, tplListView.width - 14)
+                        width: Math.max(200, tplListView.width - (tplListView.contentHeight > tplListView.height ? 16 : 4))
                         implicitHeight: tplDelegateCol.implicitHeight + 16
                         radius: 5
                         readonly property bool isSel: profileTemplatesDialog.selectedIndex === index
@@ -3416,7 +3462,9 @@ Kirigami.ApplicationWindow {
                                 QQC2.Label {
                                     font.family: "monospace"
                                     font.pixelSize: 11
-                                    color: Kirigami.Theme.disabledTextColor
+                                    color: tplDelegate.isSel
+                                        ? Qt.alpha(Kirigami.Theme.textColor, 0.82)
+                                        : Kirigami.Theme.disabledTextColor
                                     text: qsTr("%1 keys configured  •  OLED %2°")
                                         .arg(tplDelegate.keyCount)
                                         .arg(modelData.oledRotation || 0)
@@ -3717,7 +3765,13 @@ Kirigami.ApplicationWindow {
 
     component HighContrastScrollBar: QQC2.ScrollBar {
         id: hcBar
-        policy: QQC2.ScrollBar.AsNeeded
+        objectName: "highContrastScrollBar"
+        readonly property bool isProfileBoxStyleScrollBar: true
+        readonly property int styleTrackThickness: 11
+        readonly property int styleThumbThickness: 7
+        readonly property int styleTrackRadius: 5
+        readonly property int styleThumbRadius: 4
+        policy: size < 1.0 ? QQC2.ScrollBar.AlwaysOn : QQC2.ScrollBar.AsNeeded
         minimumSize: 0.14
         implicitWidth: orientation === Qt.Vertical ? 11 : (parent ? parent.width : 40)
         implicitHeight: orientation === Qt.Horizontal ? 11 : (parent ? parent.height : 40)
@@ -3855,7 +3909,7 @@ Kirigami.ApplicationWindow {
                         font.pixelSize: 11
                         color: scaleRow.scaleValue === 100
                             ? Kirigami.Theme.textColor
-                            : Kirigami.Theme.highlightColor
+                            : root.highContrastHighlightText
                     }
                 }
 
@@ -4060,7 +4114,7 @@ Kirigami.ApplicationWindow {
                                         font.bold: true
                                         font.pixelSize: 10
                                         color: deviceController.restApiEnabled
-                                            ? Kirigami.Theme.positiveTextColor
+                                            ? root.highContrastPositiveText
                                             : Kirigami.Theme.disabledTextColor
                                     }
                                 }
@@ -4085,7 +4139,7 @@ Kirigami.ApplicationWindow {
                                         text: qsTr("⚠ Security Implications — Please Read Before Enabling")
                                         font.bold: true
                                         font.pixelSize: 11
-                                        color: "#fbbf24"
+                                        color: root.highContrastWarningText
                                         Layout.fillWidth: true
                                         wrapMode: Text.WordWrap
                                     }
@@ -4904,7 +4958,7 @@ Kirigami.ApplicationWindow {
                                             font.family: "monospace"
                                             font.bold: true
                                             font.pixelSize: 10
-                                            color: Kirigami.Theme.highlightColor
+                                            color: root.highContrastHighlightText
                                         }
                                     }
 
@@ -5489,10 +5543,10 @@ Kirigami.ApplicationWindow {
     Window {
         id: eventLogDialog
         title: qsTr("System Event Log — DuckyDeck Studio v%1").arg(deviceController.appVersion)
-        width: 860
-        height: 540
-        minimumWidth: 680
-        minimumHeight: 400
+        width: 960
+        height: 560
+        minimumWidth: 780
+        minimumHeight: 420
         visible: false
         transientParent: root
         modality: Qt.NonModal
@@ -5565,7 +5619,7 @@ Kirigami.ApplicationWindow {
                                 font.family: "monospace"
                                 font.bold: true
                                 font.pixelSize: Math.round(11 * root.eventLogScale)
-                                color: Kirigami.Theme.highlightColor
+                                color: root.highContrastHighlightText
                             }
                         }
 
@@ -5585,6 +5639,8 @@ Kirigami.ApplicationWindow {
 
                     QQC2.Label {
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        Layout.preferredWidth: 1
                         text: qsTr("Log file: %1").arg(deviceController.logFilePath)
                         font.family: "monospace"
                         font.pixelSize: Math.round(11 * root.eventLogScale)
@@ -5602,6 +5658,8 @@ Kirigami.ApplicationWindow {
                 QQC2.TextField {
                     id: eventLogSearchField
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 140
+                    Layout.preferredWidth: 1
                     implicitHeight: Math.round(30 * root.eventLogScale)
                     font.pixelSize: Math.round(12 * root.eventLogScale)
                     selectByMouse: true
@@ -5652,13 +5710,15 @@ Kirigami.ApplicationWindow {
                 }
             }
 
-            // Category Filter Pills Row
-            RowLayout {
+            // Category Filter Pills Row (Flow wraps cleanly at any font scale)
+            Flow {
                 Layout.fillWidth: true
                 spacing: 4
 
                 QQC2.Label {
                     text: qsTr("Category:")
+                    height: Math.round(24 * root.eventLogScale)
+                    verticalAlignment: Text.AlignVCenter
                     font.pixelSize: Math.round(11 * root.eventLogScale)
                     color: Kirigami.Theme.disabledTextColor
                 }
@@ -5682,8 +5742,6 @@ Kirigami.ApplicationWindow {
                         }
                     }
                 }
-
-                Item { Layout.fillWidth: true }
             }
 
             // Event Log List Container
@@ -5704,6 +5762,9 @@ Kirigami.ApplicationWindow {
                         policy: eventLogListView.contentHeight > eventLogListView.height
                             ? QQC2.ScrollBar.AlwaysOn
                             : QQC2.ScrollBar.AsNeeded
+                    }
+                    QQC2.ScrollBar.horizontal: HighContrastScrollBar {
+                        orientation: Qt.Horizontal
                     }
 
                     ListView {
@@ -5794,6 +5855,8 @@ Kirigami.ApplicationWindow {
                                         ? Kirigami.Theme.negativeTextColor
                                         : Kirigami.Theme.textColor
                                     Layout.fillWidth: true
+                                    Layout.minimumWidth: 0
+                                    Layout.preferredWidth: 1
                                     wrapMode: Text.WrapAnywhere
                                 }
                             }
@@ -5867,10 +5930,10 @@ Kirigami.ApplicationWindow {
     Window {
         id: aboutDialog
         title: qsTr("About DuckyDeck Studio v%1").arg(deviceController.appVersion)
-        width: 620
-        height: 530
-        minimumWidth: 560
-        minimumHeight: 500
+        width: 720
+        height: 550
+        minimumWidth: 680
+        minimumHeight: 510
         visible: false
         transientParent: root
         modality: Qt.WindowModal
@@ -5973,7 +6036,7 @@ Kirigami.ApplicationWindow {
                                 font.family: "monospace"
                                 font.bold: true
                                 font.pixelSize: 12
-                                color: Kirigami.Theme.highlightColor
+                                color: root.highContrastHighlightText
                             }
                         }
 
@@ -5983,7 +6046,7 @@ Kirigami.ApplicationWindow {
                         Rectangle {
                             id: aboutKofiWidget
                             radius: 16
-                            color: aboutKofiMouse.containsMouse ? "#ff7875" : "#ff5e5b"
+                            color: aboutKofiMouse.containsMouse ? "#c81e1e" : "#d93834"
                             border.color: "#ffffff33"
                             border.width: 1
                             implicitWidth: aboutKofiRow.implicitWidth + 22
@@ -6022,6 +6085,8 @@ Kirigami.ApplicationWindow {
 
                     QQC2.Label {
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        Layout.preferredWidth: 1
                         text: qsTr("KDE Plasma 6 / Kirigami Configurator, DSVM v2 Compiler & Wayland Auto-Switcher for duckyPad Pro & duckyPad (2020)")
                         font.pixelSize: 12
                         color: Kirigami.Theme.disabledTextColor
@@ -6038,199 +6103,246 @@ Kirigami.ApplicationWindow {
                 color: Kirigami.Theme.alternateBackgroundColor
                 border.color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
                 border.width: 1
+                clip: true
 
-                GridLayout {
+                Flickable {
+                    id: aboutDetailsFlickable
                     anchors.fill: parent
                     anchors.margins: 14
-                    columns: 2
-                    rowSpacing: 8
-                    columnSpacing: 14
+                    clip: true
+                    contentWidth: width
+                    contentHeight: aboutMetadataGrid.implicitHeight + 4
+                    boundsBehavior: Flickable.StopAtBounds
+                    flickableDirection: Flickable.VerticalFlick
 
-                    QQC2.Label {
-                        text: qsTr("Version:")
-                        font.bold: true
-                        color: Kirigami.Theme.disabledTextColor
-                    }
-                    QQC2.Label {
-                        text: qsTr("v%1 (DSVM v2 Bytecode Compiler)").arg(deviceController.appVersion)
-                        font.family: "monospace"
-                        font.bold: true
-                        color: Kirigami.Theme.textColor
-                        Layout.fillWidth: true
-                    }
-
-                    QQC2.Label {
-                        text: qsTr("Author:")
-                        font.bold: true
-                        color: Kirigami.Theme.disabledTextColor
-                    }
-                    QQC2.Label {
-                        text: deviceController.appAuthor
-                        font.bold: true
-                        color: Kirigami.Theme.textColor
-                        Layout.fillWidth: true
+                    QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                        parent: aboutDetailsFlickable
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        policy: aboutDetailsFlickable.contentHeight > aboutDetailsFlickable.height
+                            ? QQC2.ScrollBar.AlwaysOn
+                            : QQC2.ScrollBar.AsNeeded
                     }
 
-                    QQC2.Label {
-                        text: qsTr("GitHub:")
-                        font.bold: true
-                        color: Kirigami.Theme.disabledTextColor
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
+                    GridLayout {
+                        id: aboutMetadataGrid
+                        width: Math.max(
+                            200,
+                            aboutDetailsFlickable.width - (aboutDetailsFlickable.contentHeight > aboutDetailsFlickable.height ? 16 : 0)
+                        )
+                        columns: 2
+                        rowSpacing: 8
+                        columnSpacing: 14
 
                         QQC2.Label {
-                            id: githubLinkLbl
-                            text: deviceController.appGithubUrl
-                            font.family: "monospace"
-                            font.underline: githubMouse.containsMouse
-                            color: Kirigami.Theme.highlightColor
-                            elide: Text.ElideMiddle
-                            Layout.fillWidth: true
-
-                            MouseArea {
-                                id: githubMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: Qt.openUrlExternally(deviceController.appGithubUrl)
-                            }
-                        }
-
-                        QQC2.Button {
-                            icon.name: "edit-copy"
-                            text: qsTr("Copy")
-                            implicitHeight: 24
-                            font.pixelSize: 10
-                            onClicked: root.copyTextToClipboard(deviceController.appGithubUrl)
-                        }
-                    }
-
-                    QQC2.Label {
-                        text: qsTr("Ko-fi Support:")
-                        font.bold: true
-                        color: Kirigami.Theme.disabledTextColor
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        QQC2.Label {
-                            id: kofiLinkLbl
-                            text: "https://ko-fi.com/russellmilliner"
-                            font.family: "monospace"
-                            font.underline: kofiLinkMouse.containsMouse
-                            color: "#ff5e5b"
-                            elide: Text.ElideMiddle
-                            Layout.fillWidth: true
-
-                            MouseArea {
-                                id: kofiLinkMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: Qt.openUrlExternally("https://ko-fi.com/russellmilliner")
-                            }
-                        }
-
-                        QQC2.Button {
-                            icon.name: "edit-copy"
-                            text: qsTr("Copy")
-                            implicitHeight: 24
-                            font.pixelSize: 10
-                            onClicked: root.copyTextToClipboard("https://ko-fi.com/russellmilliner")
-                        }
-                    }
-
-                    QQC2.Label {
-                        text: qsTr("Special Thanks:")
-                        font.bold: true
-                        color: Kirigami.Theme.disabledTextColor
-                    }
-                    QQC2.Label {
-                        text: qsTr("Thank you to dekuNukem for creating the duckyPad & duckyPad Pro!")
-                        font.bold: true
-                        color: Kirigami.Theme.positiveTextColor
-                        wrapMode: Text.WordWrap
-                        Layout.fillWidth: true
-                    }
-
-                    QQC2.Label {
-                        text: qsTr("duckyPad Links:")
-                        font.bold: true
-                        color: Kirigami.Theme.disabledTextColor
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 12
-
-                        QQC2.Label {
-                            text: "duckypad.com"
-                            font.family: "monospace"
-                            font.underline: duckySiteMouse.containsMouse
-                            color: Kirigami.Theme.highlightColor
-
-                            MouseArea {
-                                id: duckySiteMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: Qt.openUrlExternally("https://www.duckypad.com")
-                            }
-                        }
-
-                        QQC2.Label {
-                            text: "•"
+                            text: qsTr("Version:")
+                            font.bold: true
                             color: Kirigami.Theme.disabledTextColor
                         }
+                        QQC2.Label {
+                            text: qsTr("v%1 (DSVM v2 Bytecode Compiler)").arg(deviceController.appVersion)
+                            font.family: "monospace"
+                            font.bold: true
+                            color: Kirigami.Theme.textColor
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            Layout.preferredWidth: 1
+                            elide: Text.ElideRight
+                        }
 
                         QQC2.Label {
-                            text: "Tindie Store (dekuNukem)"
-                            font.family: "monospace"
-                            font.underline: tindieSiteMouse.containsMouse
-                            color: Kirigami.Theme.highlightColor
+                            text: qsTr("Author:")
+                            font.bold: true
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+                        QQC2.Label {
+                            text: deviceController.appAuthor
+                            font.bold: true
+                            color: Kirigami.Theme.textColor
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            Layout.preferredWidth: 1
+                            elide: Text.ElideRight
+                        }
 
-                            MouseArea {
-                                id: tindieSiteMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: Qt.openUrlExternally("https://www.tindie.com/stores/dekunukem/")
+                        QQC2.Label {
+                            text: qsTr("GitHub:")
+                            font.bold: true
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            Layout.preferredWidth: 1
+                            spacing: 8
+
+                            QQC2.Label {
+                                id: githubLinkLbl
+                                text: deviceController.appGithubUrl
+                                font.family: "monospace"
+                                font.underline: githubMouse.containsMouse
+                                color: root.highContrastHighlightText
+                                elide: Text.ElideMiddle
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                Layout.preferredWidth: 1
+
+                                MouseArea {
+                                    id: githubMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: Qt.openUrlExternally(deviceController.appGithubUrl)
+                                }
+                            }
+
+                            QQC2.Button {
+                                icon.name: "edit-copy"
+                                text: qsTr("Copy")
+                                implicitHeight: 24
+                                font.pixelSize: 10
+                                onClicked: root.copyTextToClipboard(deviceController.appGithubUrl)
                             }
                         }
 
-                        Item { Layout.fillWidth: true }
-                    }
+                        QQC2.Label {
+                            text: qsTr("Ko-fi Support:")
+                            font.bold: true
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            Layout.preferredWidth: 1
+                            spacing: 8
 
-                    QQC2.Label {
-                        text: qsTr("License:")
-                        font.bold: true
-                        color: Kirigami.Theme.disabledTextColor
-                    }
-                    QQC2.Label {
-                        text: qsTr("GPL-3.0-or-later")
-                        font.family: "monospace"
-                        color: Kirigami.Theme.textColor
-                        Layout.fillWidth: true
-                    }
+                            QQC2.Label {
+                                id: kofiLinkLbl
+                                text: "https://ko-fi.com/russellmilliner"
+                                font.family: "monospace"
+                                font.underline: kofiLinkMouse.containsMouse
+                                color: root.isLightTheme ? "#c81e1e" : "#ff5e5b"
+                                elide: Text.ElideMiddle
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                Layout.preferredWidth: 1
 
-                    QQC2.Label {
-                        text: qsTr("Device Status:")
-                        font.bold: true
-                        color: Kirigami.Theme.disabledTextColor
-                    }
-                    QQC2.Label {
-                        text: deviceController.connected
-                            ? qsTr("%1 (FW: %2 • SN: %3)")
-                                .arg(deviceController.modelName)
-                                .arg(deviceController.firmwareVersion)
-                                .arg(deviceController.serialNumber)
-                            : deviceController.modelName
-                        font.family: "monospace"
-                        color: Kirigami.Theme.textColor
-                        elide: Text.ElideRight
-                        Layout.fillWidth: true
+                                MouseArea {
+                                    id: kofiLinkMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: Qt.openUrlExternally("https://ko-fi.com/russellmilliner")
+                                }
+                            }
+
+                            QQC2.Button {
+                                icon.name: "edit-copy"
+                                text: qsTr("Copy")
+                                implicitHeight: 24
+                                font.pixelSize: 10
+                                onClicked: root.copyTextToClipboard("https://ko-fi.com/russellmilliner")
+                            }
+                        }
+
+                        QQC2.Label {
+                            text: qsTr("Special Thanks:")
+                            font.bold: true
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+                        QQC2.Label {
+                            text: qsTr("Thank you to dekuNukem for creating the duckyPad & duckyPad Pro!")
+                            font.bold: true
+                            color: root.highContrastPositiveText
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            Layout.preferredWidth: 1
+                        }
+
+                        QQC2.Label {
+                            text: qsTr("duckyPad Links:")
+                            font.bold: true
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            Layout.preferredWidth: 1
+                            spacing: 12
+
+                            QQC2.Label {
+                                text: "duckypad.com"
+                                font.family: "monospace"
+                                font.underline: duckySiteMouse.containsMouse
+                                color: root.highContrastHighlightText
+
+                                MouseArea {
+                                    id: duckySiteMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: Qt.openUrlExternally("https://www.duckypad.com")
+                                }
+                            }
+
+                            QQC2.Label {
+                                text: "•"
+                                color: Kirigami.Theme.disabledTextColor
+                            }
+
+                            QQC2.Label {
+                                text: "Tindie Store (dekuNukem)"
+                                font.family: "monospace"
+                                font.underline: tindieSiteMouse.containsMouse
+                                color: root.highContrastHighlightText
+
+                                MouseArea {
+                                    id: tindieSiteMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: Qt.openUrlExternally("https://www.tindie.com/stores/dekunukem/")
+                                }
+                            }
+
+                            Item { Layout.fillWidth: true }
+                        }
+
+                        QQC2.Label {
+                            text: qsTr("License:")
+                            font.bold: true
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+                        QQC2.Label {
+                            text: qsTr("GPL-3.0-or-later")
+                            font.family: "monospace"
+                            color: Kirigami.Theme.textColor
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            Layout.preferredWidth: 1
+                        }
+
+                        QQC2.Label {
+                            text: qsTr("Device Status:")
+                            font.bold: true
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+                        QQC2.Label {
+                            text: deviceController.connected
+                                ? qsTr("%1 (FW: %2 • SN: %3)")
+                                    .arg(deviceController.modelName)
+                                    .arg(deviceController.firmwareVersion)
+                                    .arg(deviceController.serialNumber)
+                                : deviceController.modelName
+                            font.family: "monospace"
+                            color: Kirigami.Theme.textColor
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            Layout.preferredWidth: 1
+                        }
                     }
                 }
             }
@@ -7493,6 +7605,9 @@ Kirigami.ApplicationWindow {
                     anchors.margins: 8
                     clip: true
                     QQC2.ScrollBar.vertical: HighContrastScrollBar {}
+                    QQC2.ScrollBar.horizontal: HighContrastScrollBar {
+                        orientation: Qt.Horizontal
+                    }
 
                     T.TextArea {
                         id: syncLogArea
@@ -7659,7 +7774,7 @@ Kirigami.ApplicationWindow {
                 Rectangle {
                     id: headerKofiWidget
                     radius: 15
-                    color: headerKofiMouse.containsMouse ? "#ff7875" : "#ff5e5b"
+                    color: headerKofiMouse.containsMouse ? "#c81e1e" : "#d93834"
                     border.color: "#ffffff33"
                     border.width: 1
                     implicitWidth: headerKofiRow.implicitWidth + 20
@@ -7810,6 +7925,7 @@ Kirigami.ApplicationWindow {
                                 readonly property bool canReorder: root.profileFilterText.trim().length === 0
 
                                 QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                                    id: profilesBoxScrollBar
                                     parent: profileSidebarList
                                     anchors.top: parent.top
                                     anchors.right: parent.right
@@ -8110,7 +8226,7 @@ Kirigami.ApplicationWindow {
                                                     text: "+" + (profDelegate.boundRuleCount - 1)
                                                     font.pixelSize: Math.round(10 * root.sidebarScale)
                                                     font.bold: true
-                                                    color: Kirigami.Theme.highlightColor
+                                                    color: root.highContrastHighlightText
                                                 }
                                             }
 
@@ -8391,9 +8507,9 @@ Kirigami.ApplicationWindow {
                                         font.bold: true
                                         font.pixelSize: Math.round(11 * root.sidebarScale)
                                         color: deviceController.windowPickerArmed
-                                            ? Kirigami.Theme.highlightColor
+                                            ? root.highContrastHighlightText
                                             : (root.hasSelectedSlot && deviceController.autoSwitchEnabled
-                                                ? "#f59e0b"
+                                                ? root.highContrastWarningText
                                                 : Kirigami.Theme.textColor)
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
@@ -8653,8 +8769,10 @@ Kirigami.ApplicationWindow {
                                                     font.bold: true
                                                     font.pixelSize: Math.round(9 * root.inspectorScale)
                                                     color: inspectorCard.isMechanicalKey
-                                                        ? "#38bdf8"
-                                                        : (inspectorCard.isRotaryEncoder ? "#a78bfa" : "#f59e0b")
+                                                        ? root.highContrastHighlightText
+                                                        : (inspectorCard.isRotaryEncoder
+                                                            ? (root.isLightTheme ? "#6d28d9" : "#a78bfa")
+                                                            : root.highContrastWarningText)
                                                 }
                                             }
 
@@ -8697,7 +8815,9 @@ Kirigami.ApplicationWindow {
                                                 text: parent.parent.hasKeyFx ? qsTr("✨ Key FX ●") : qsTr("✨ Key FX")
                                                 font.bold: true
                                                 font.pixelSize: Math.round(10 * root.inspectorScale)
-                                                color: parent.parent.hasKeyFx ? "#e9d5ff" : Kirigami.Theme.textColor
+                                                color: parent.parent.hasKeyFx
+                                                    ? (root.isLightTheme ? "#6d28d9" : "#e9d5ff")
+                                                    : Kirigami.Theme.textColor
                                             }
                                         }
 
@@ -8897,7 +9017,7 @@ Kirigami.ApplicationWindow {
                                         font.bold: true
                                         font.pixelSize: Math.round(10 * root.inspectorScale)
                                         color: (widgetLabel1Input.text.trim().length > 0 || widgetLabel2Input.text.trim().length > 0)
-                                            ? "#fbbf24"
+                                            ? root.highContrastWarningText
                                             : Kirigami.Theme.disabledTextColor
                                         QQC2.ToolTip.visible: widgetLblHover.hovered
                                         QQC2.ToolTip.text: qsTr("💻 Host App Only (Not Hardware-Portable): Longer labels (up to 24 chars) displayed only on the Desktop OLED Widget while DuckyDeck Studio is running. Physical OLED always uses the 5-char L1/L2 labels above.")
@@ -9021,7 +9141,7 @@ Kirigami.ApplicationWindow {
                                             font.pixelSize: Math.round(11 * root.inspectorScale)
                                             font.bold: parent.isActiveTab
                                             color: parent.isActiveTab
-                                                ? Kirigami.Theme.highlightColor
+                                                ? root.highContrastHighlightText
                                                 : Kirigami.Theme.textColor
                                         }
 
@@ -9103,7 +9223,7 @@ Kirigami.ApplicationWindow {
                                             font.pixelSize: Math.round(11 * root.inspectorScale)
                                             font.bold: parent.isActiveTab
                                             color: parent.isActiveTab
-                                                ? Kirigami.Theme.highlightColor
+                                                ? root.highContrastHighlightText
                                                 : Kirigami.Theme.textColor
                                         }
 
@@ -9259,7 +9379,7 @@ Kirigami.ApplicationWindow {
                                         font.pixelSize: Math.round(10 * root.inspectorScale)
                                         font.bold: parent.isActiveTab
                                         color: parent.isActiveTab
-                                            ? Kirigami.Theme.highlightColor
+                                            ? root.highContrastHighlightText
                                             : Kirigami.Theme.textColor
                                     }
 
@@ -9330,7 +9450,7 @@ Kirigami.ApplicationWindow {
                                         font.pixelSize: Math.round(10 * root.inspectorScale)
                                         font.bold: parent.isActiveTab || root.appLaunchEnabled
                                         color: parent.isActiveTab || root.appLaunchEnabled
-                                            ? "#fb923c"
+                                            ? root.highContrastOrangeText
                                             : Kirigami.Theme.textColor
                                     }
 
@@ -9401,7 +9521,7 @@ Kirigami.ApplicationWindow {
                                         font.pixelSize: Math.round(10 * root.inspectorScale)
                                         font.bold: parent.isActiveTab || root.webApiEnabled
                                         color: parent.isActiveTab || root.webApiEnabled
-                                            ? Kirigami.Theme.positiveTextColor
+                                            ? root.highContrastPositiveText
                                             : Kirigami.Theme.textColor
                                     }
 
@@ -9474,7 +9594,7 @@ Kirigami.ApplicationWindow {
                                     elide: Text.ElideRight
                                     font.bold: true
                                     font.pixelSize: Math.round(10 * root.inspectorScale)
-                                    color: slotPortabilityStrip.requiresHostApp ? "#fbbf24" : "#4ade80"
+                                    color: slotPortabilityStrip.requiresHostApp ? root.highContrastWarningText : root.highContrastPositiveText
                                     text: slotPortabilityStrip.requiresHostApp
                                         ? qsTr("💻 Requires DuckyDeck Studio Running on Host PC — Not Hardware-Portable (uses USB HID host listener)")
                                         : qsTr("✅ Hardware-Portable DuckyScript 3 — Runs standalone from microSD on any PC without DuckyDeck Studio")
@@ -9509,7 +9629,7 @@ Kirigami.ApplicationWindow {
                                     elide: Text.ElideRight
                                     font.bold: true
                                     font.pixelSize: Math.round(10 * root.inspectorScale)
-                                    color: "#fb923c"
+                                    color: root.highContrastOrangeText
                                     text: root.appLaunchEnabled
                                         ? qsTr("🚀 Launch App [💻 Host App Required]: %1").arg(root.appLaunchAppName || appLaunchCommandField.text || qsTr("Configured"))
                                         : qsTr("🚀 Launch Application Configurator [💻 Host App Required]")
@@ -9545,7 +9665,7 @@ Kirigami.ApplicationWindow {
                                     elide: Text.ElideRight
                                     font.bold: true
                                     font.pixelSize: Math.round(10 * root.inspectorScale)
-                                    color: Kirigami.Theme.positiveTextColor
+                                    color: root.highContrastPositiveText
                                     text: root.webApiEnabled
                                         ? qsTr("🌐 Web API [💻 Host App Required]: %1").arg(root.webApiSelectedDestination || webApiUrlField.text || qsTr("Configured"))
                                         : qsTr("🌐 Web API Call Configurator [💻 Host App Required]")
@@ -9671,6 +9791,9 @@ Kirigami.ApplicationWindow {
                                             ? QQC2.ScrollBar.AlwaysOn
                                             : QQC2.ScrollBar.AsNeeded
                                     }
+                                    QQC2.ScrollBar.horizontal: HighContrastScrollBar {
+                                        orientation: Qt.Horizontal
+                                    }
 
                                     ListView {
                                         id: commandReferenceListView
@@ -9747,7 +9870,7 @@ Kirigami.ApplicationWindow {
                                                     text: qsTr("+ Insert")
                                                     font.bold: true
                                                     font.pixelSize: Math.round(10 * root.inspectorScale)
-                                                    color: Kirigami.Theme.highlightColor
+                                                    color: root.highContrastHighlightText
                                                 }
                                             }
 
@@ -9845,7 +9968,7 @@ Kirigami.ApplicationWindow {
                                                 font.family: "monospace"
                                                 font.bold: true
                                                 font.pixelSize: Math.round(10 * root.inspectorScale)
-                                                color: Kirigami.Theme.highlightColor
+                                                color: root.highContrastHighlightText
                                             }
 
                                             QQC2.Label {
@@ -10127,6 +10250,16 @@ Kirigami.ApplicationWindow {
                                         model: autocompleteModel
                                         currentIndex: root.autocompleteIndex
                                         boundsBehavior: Flickable.StopAtBounds
+
+                                        QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                                            parent: autocompleteListView
+                                            anchors.top: parent.top
+                                            anchors.right: parent.right
+                                            anchors.bottom: parent.bottom
+                                            policy: autocompleteListView.contentHeight > autocompleteListView.height
+                                                ? QQC2.ScrollBar.AlwaysOn
+                                                : QQC2.ScrollBar.AsNeeded
+                                        }
 
                                         delegate: Rectangle {
                                             id: acDelegate
@@ -10888,6 +11021,9 @@ Kirigami.ApplicationWindow {
                             ? QQC2.ScrollBar.AlwaysOn
                             : QQC2.ScrollBar.AsNeeded
                     }
+                    QQC2.ScrollBar.horizontal: HighContrastScrollBar {
+                        orientation: Qt.Horizontal
+                    }
 
                     ListView {
                         id: installedAppsListView
@@ -11128,7 +11264,7 @@ Kirigami.ApplicationWindow {
                     wrapMode: Text.WordWrap
                     font.pixelSize: 11
                     font.bold: true
-                    color: "#fbbf24"
+                    color: root.highContrastWarningText
                     text: qsTr("💻 Requires DuckyDeck Studio Running on Host PC (Not Hardware-Portable) — Application launching is executed by DuckyDeck Studio over USB HID. If DuckyDeck Studio is not running or the duckyPad is moved to another PC, only standard DuckyScript 3 commands in this key will run.")
                 }
             }
@@ -11210,7 +11346,7 @@ Kirigami.ApplicationWindow {
                                     text: qsTr("Selected: %1").arg(root.appLaunchAppName)
                                     font.bold: true
                                     font.pixelSize: 11
-                                    color: Kirigami.Theme.positiveTextColor
+                                    color: root.highContrastPositiveText
                                     elide: Text.ElideRight
                                 }
                             }
@@ -11702,7 +11838,7 @@ Kirigami.ApplicationWindow {
                     wrapMode: Text.WordWrap
                     font.pixelSize: 11
                     font.bold: true
-                    color: "#fbbf24"
+                    color: root.highContrastWarningText
                     text: qsTr("💻 Requires DuckyDeck Studio Running on Host PC (Not Hardware-Portable) — Outbound HTTP REST / Webhook calls are dispatched by DuckyDeck Studio over USB HID. The duckyPad hardware has no network stack and cannot send HTTP requests when DuckyDeck Studio is closed.")
                 }
             }
@@ -14323,14 +14459,18 @@ Kirigami.ApplicationWindow {
                                             text: modelData.title
                                             font.bold: true
                                             font.pixelSize: 12
-                                            color: isSelected ? "#f3e8ff" : Kirigami.Theme.textColor
+                                            color: isSelected
+                                                ? (root.isLightTheme ? "#6b21a8" : "#f3e8ff")
+                                                : Kirigami.Theme.textColor
                                             Layout.fillWidth: true
                                             elide: Text.ElideRight
                                         }
                                         QQC2.Label {
                                             text: modelData.desc
                                             font.pixelSize: 10
-                                            color: Kirigami.Theme.disabledTextColor
+                                            color: isSelected
+                                                ? Qt.alpha(Kirigami.Theme.textColor, 0.82)
+                                                : Kirigami.Theme.disabledTextColor
                                             wrapMode: Text.WordWrap
                                             Layout.fillWidth: true
                                             Layout.minimumWidth: 0
@@ -14682,10 +14822,10 @@ Kirigami.ApplicationWindow {
         transientParent: root
         modality: Qt.NonModal
         flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
-        width: Math.min(840, Screen.desktopAvailableWidth - 80)
-        height: Math.min(680, Screen.desktopAvailableHeight - 80)
-        minimumWidth: 680
-        minimumHeight: 500
+        width: Math.max(840, minimumWidth)
+        height: 680
+        minimumWidth: 780
+        minimumHeight: 520
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
         Kirigami.Theme.inherit: false
         color: Kirigami.Theme.backgroundColor
@@ -15037,7 +15177,7 @@ Kirigami.ApplicationWindow {
                     spacing: 8
 
                     // Row 1: Timing Mode Options
-                    RowLayout {
+                    Flow {
                         Layout.fillWidth: true
                         spacing: 8
 
@@ -15045,12 +15185,12 @@ Kirigami.ApplicationWindow {
                             text: qsTr("Timing Mode:")
                             font.bold: true
                             font.pixelSize: 12
+                            height: 28
+                            verticalAlignment: Text.AlignVCenter
                         }
 
                         QQC2.Button {
                             text: qsTr("⏱ Exact Timings (Real Delays)")
-                            checkable: true
-                            checked: macroRecorderDialog.timingMode === "exact"
                             highlighted: macroRecorderDialog.timingMode === "exact"
                             font.bold: macroRecorderDialog.timingMode === "exact"
                             onClicked: {
@@ -15063,8 +15203,6 @@ Kirigami.ApplicationWindow {
 
                         QQC2.Button {
                             text: qsTr("⚡ As Fast As Possible (No Delays)")
-                            checkable: true
-                            checked: macroRecorderDialog.timingMode === "fast"
                             highlighted: macroRecorderDialog.timingMode === "fast"
                             font.bold: macroRecorderDialog.timingMode === "fast"
                             onClicked: {
@@ -15077,8 +15215,6 @@ Kirigami.ApplicationWindow {
 
                         QQC2.Button {
                             text: qsTr("📏 Fixed Step Delay")
-                            checkable: true
-                            checked: macroRecorderDialog.timingMode === "fixed"
                             highlighted: macroRecorderDialog.timingMode === "fixed"
                             font.bold: macroRecorderDialog.timingMode === "fixed"
                             onClicked: {
@@ -15103,21 +15239,23 @@ Kirigami.ApplicationWindow {
                             visible: macroRecorderDialog.timingMode === "fixed"
                             text: qsTr("ms")
                             font.pixelSize: 11
+                            height: 28
+                            verticalAlignment: Text.AlignVCenter
                             color: Kirigami.Theme.disabledTextColor
                         }
-
-                        Item { Layout.fillWidth: true }
                     }
 
                     // Row 2: Input Sources (Keyboard, Mouse Clicks/Scroll, Mouse Movements)
-                    RowLayout {
+                    Flow {
                         Layout.fillWidth: true
-                        spacing: 12
+                        spacing: 10
 
                         QQC2.Label {
                             text: qsTr("Include Inputs:")
                             font.bold: true
                             font.pixelSize: 12
+                            height: 26
+                            verticalAlignment: Text.AlignVCenter
                         }
 
                         QQC2.CheckBox {
@@ -15145,8 +15283,6 @@ Kirigami.ApplicationWindow {
                             font.pixelSize: 11
                             onToggled: macroRecorderDialog.captureMouseMoves = checked
                         }
-
-                        Item { Layout.fillWidth: true }
                     }
                 }
             }
@@ -15368,6 +15504,9 @@ Kirigami.ApplicationWindow {
                 clip: true
                 contentWidth: availableWidth
                 QQC2.ScrollBar.vertical: HighContrastScrollBar {}
+                QQC2.ScrollBar.horizontal: HighContrastScrollBar {
+                    orientation: Qt.Horizontal
+                }
 
                 QQC2.TextArea {
                     id: recordedScriptEditor
@@ -15996,8 +16135,14 @@ Kirigami.ApplicationWindow {
                     boundsBehavior: Flickable.StopAtBounds
                     model: oledIconPickerDialog.filteredIcons
 
-                    QQC2.ScrollBar.vertical: QQC2.ScrollBar {
-                        policy: QQC2.ScrollBar.AsNeeded
+                    QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                        parent: iconGridView
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        policy: iconGridView.contentHeight > iconGridView.height
+                            ? QQC2.ScrollBar.AlwaysOn
+                            : QQC2.ScrollBar.AsNeeded
                     }
 
                     delegate: Item {
@@ -16096,5 +16241,1057 @@ Kirigami.ApplicationWindow {
         controller: deviceController
         selectedSlot: root.selectedSlotNumber
     }
+
+    // =========================================================================
+    // AUTOMATED UI TEST SUITE & SCENE-GRAPH AUDITOR (--ui-test-suite)
+    // Verifies behavioral specifications, zero window/element overflow, and
+    // WCAG color contrast across all windows/dialogs in Dark and Light themes.
+    // =========================================================================
+    Item {
+        id: uiTestSuiteRunner
+        visible: false
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
+
+        property int stepIndex: 0
+        property string currentTheme: "dark"
+        property var behavioralResults: []
+        property var overflowViolations: []
+        property var contrastViolations: []
+        property var scrollBarStyleViolations: []
+        property var auditedWindows: []
+        property int totalElementsInspected: 0
+        property int totalTextNodesInspected: 0
+        property int totalControlsInspected: 0
+        property int totalScrollBarsInspected: 0
+
+        function srgbChannelToLinear(c) {
+            return (c <= 0.03928) ? (c / 12.92) : Math.pow((c + 0.055) / 1.055, 2.4)
+        }
+
+        function relativeLuminance(r, g, b) {
+            return 0.2126 * srgbChannelToLinear(r)
+                 + 0.7152 * srgbChannelToLinear(g)
+                 + 0.0722 * srgbChannelToLinear(b)
+        }
+
+        function contrastRatio(c1, c2) {
+            var l1 = relativeLuminance(c1.r, c1.g, c1.b)
+            var l2 = relativeLuminance(c2.r, c2.g, c2.b)
+            var lighter = Math.max(l1, l2)
+            var darker = Math.min(l1, l2)
+            return (lighter + 0.05) / (darker + 0.05)
+        }
+
+        function blendColors(fg, bg, extraOpacity) {
+            var alpha = Math.max(0, Math.min(1, fg.a * (extraOpacity !== undefined ? extraOpacity : 1.0)))
+            return {
+                r: fg.r * alpha + bg.r * (1.0 - alpha),
+                g: fg.g * alpha + bg.g * (1.0 - alpha),
+                b: fg.b * alpha + bg.b * (1.0 - alpha),
+                a: 1.0
+            }
+        }
+
+        function isRectangleNode(node) {
+            if (!node) return false
+            var s = node.toString()
+            return s.indexOf("QQuickRectangle") !== -1 || s.indexOf("ShadowedRectangle") !== -1
+        }
+
+        function resolveEffectiveBackground(item, fallbackWindowColor) {
+            var layers = []
+            var cur = item ? item.parent : null
+            var guard = 0
+            while (cur && guard < 64) {
+                guard++
+                // 1. Check if cur itself is a Rectangle with a visible fill
+                if (isRectangleNode(cur) && cur.color !== undefined && cur.color.a !== undefined && cur.color.a > 0.01) {
+                    var rectAlpha = cur.color.a * (cur.opacity !== undefined ? cur.opacity : 1.0)
+                    layers.push({
+                        r: cur.color.r,
+                        g: cur.color.g,
+                        b: cur.color.b,
+                        a: rectAlpha
+                    })
+                    if (rectAlpha >= 0.98) break
+                }
+                // 2. Check if cur is a Control with a background item
+                if (cur.background && cur.background.visible !== false && (cur.background.opacity === undefined || cur.background.opacity > 0.05)) {
+                    if (isRectangleNode(cur.background) && cur.background.color !== undefined && cur.background.color.a !== undefined && cur.background.color.a > 0.01) {
+                        var bgAlpha = cur.background.color.a * (cur.background.opacity !== undefined ? cur.background.opacity : 1.0)
+                        layers.push({
+                            r: cur.background.color.r,
+                            g: cur.background.color.g,
+                            b: cur.background.color.b,
+                            a: bgAlpha
+                        })
+                        if (bgAlpha >= 0.98) break
+                    } else {
+                        // Native Breeze QQC2 style background (Button, ComboBox, TextField, SpinBox, etc.)
+                        var curType = cur.toString()
+                        var isFlatUnpressed = (cur.flat === true && !cur.down && !cur.checked && !cur.highlighted)
+                        if (!isFlatUnpressed && (curType.indexOf("Button") !== -1
+                                || curType.indexOf("TextField") !== -1
+                                || curType.indexOf("TextArea") !== -1
+                                || curType.indexOf("ComboBox") !== -1
+                                || curType.indexOf("SpinBox") !== -1)) {
+                            var themeBg = (cur.Kirigami && cur.Kirigami.Theme && cur.Kirigami.Theme.backgroundColor && cur.Kirigami.Theme.backgroundColor.a > 0.01)
+                                ? cur.Kirigami.Theme.backgroundColor
+                                : root.color
+                            if (themeBg && themeBg.a > 0.01) {
+                                layers.push({
+                                    r: themeBg.r,
+                                    g: themeBg.g,
+                                    b: themeBg.b,
+                                    a: themeBg.a
+                                })
+                                if (themeBg.a >= 0.98) break
+                            }
+                        }
+                    }
+                }
+                cur = cur.parent
+            }
+
+            var hasValidFallback = (fallbackWindowColor
+                && fallbackWindowColor.a !== undefined
+                && fallbackWindowColor.a > 0.01
+                && !(fallbackWindowColor.r === 0 && fallbackWindowColor.g === 0 && fallbackWindowColor.b === 0 && uiTestSuiteRunner.currentTheme === "light"))
+
+            var base = hasValidFallback
+                ? {
+                    r: fallbackWindowColor.r,
+                    g: fallbackWindowColor.g,
+                    b: fallbackWindowColor.b,
+                    a: 1.0
+                }
+                : (uiTestSuiteRunner.currentTheme === "light"
+                    ? { r: 0.937, g: 0.941, b: 0.945, a: 1.0 }
+                    : { r: 0.125, g: 0.137, b: 0.149, a: 1.0 })
+
+            for (var i = layers.length - 1; i >= 0; i--) {
+                base = blendColors(layers[i], base, 1.0)
+            }
+            return base
+        }
+
+        function isEffectivelyEnabled(item) {
+            var cur = item
+            var guard = 0
+            while (cur && guard < 64) {
+                guard++
+                if (cur.enabled === false) return false
+                if (cur.visible === false) return false
+                if (cur.opacity !== undefined && cur.opacity < 0.45) return false
+                cur = cur.parent
+            }
+            return true
+        }
+
+        function isPlaceholderTextNode(item) {
+            if (!item || !item.parent) return false
+            if (item.parent.placeholderText !== undefined && String(item.text) === String(item.parent.placeholderText)) {
+                return true
+            }
+            return false
+        }
+
+        function hasAlphanumericText(s) {
+            if (!s) return false
+            return /[A-Za-z0-9]/.test(String(s))
+        }
+
+        function isInsideScrollableHorizontal(item, rootItem) {
+            var cur = item ? item.parent : null
+            var guard = 0
+            while (cur && cur !== rootItem && guard < 64) {
+                guard++
+                var tName = cur.toString()
+                if (cur.contentWidth !== undefined && cur.contentItem !== undefined) {
+                    if (cur.contentWidth > cur.width + 2) return true
+                }
+                if (tName.indexOf("Flickable") !== -1 || tName.indexOf("ListView") !== -1 || tName.indexOf("GridView") !== -1) {
+                    return true
+                }
+                cur = cur.parent
+            }
+            return false
+        }
+
+        function findEnclosingFlickable(item, rootItem) {
+            var cur = item ? item.parent : null
+            var guard = 0
+            while (cur && cur !== rootItem && guard < 64) {
+                guard++
+                if (cur.contentWidth !== undefined && cur.contentHeight !== undefined && cur.contentItem !== undefined) {
+                    return cur
+                }
+                cur = cur.parent
+            }
+            return null
+        }
+
+        function describeItem(item) {
+            if (!item) return "<null>"
+            var rawType = item.toString().split("(")[0]
+            var txt = ""
+            if (item.text !== undefined && String(item.text).length > 0) {
+                txt = String(item.text).replace(/\s+/g, " ").substring(0, 48)
+            } else if (item.title !== undefined && String(item.title).length > 0) {
+                txt = String(item.title).replace(/\s+/g, " ").substring(0, 48)
+            }
+            return rawType + (txt.length > 0 ? "[\"" + txt + "\"]" : "")
+        }
+
+        function validateScrollBarStyle(windowName, sb) {
+            if (!sb) return false
+            uiTestSuiteRunner.totalScrollBarsInspected++
+
+            var refBar = profilesBoxScrollBar
+            var isVert = (sb.orientation === undefined || sb.orientation === Qt.Vertical)
+            var bg = sb.background
+            var thumb = sb.contentItem
+
+            var expectedTrackThickness = refBar ? refBar.styleTrackThickness : 11
+            var expectedThumbThickness = refBar ? refBar.styleThumbThickness : 7
+            var expectedTrackRadius = refBar ? refBar.styleTrackRadius : 5
+            var expectedThumbRadius = refBar ? refBar.styleThumbRadius : 4
+            var expectedMinSize = refBar ? refBar.minimumSize : 0.14
+            var expectedPadding = refBar ? refBar.padding : 1
+            var expectedZ = refBar ? refBar.z : 50
+
+            var actualTrackThickness = isVert ? Math.round(sb.implicitWidth) : Math.round(sb.implicitHeight)
+            var actualThumbThickness = thumb
+                ? (isVert ? Math.round(thumb.implicitWidth) : Math.round(thumb.implicitHeight))
+                : -1
+            var actualTrackRadius = (bg && bg.radius !== undefined) ? Math.round(bg.radius) : -1
+            var actualThumbRadius = (thumb && thumb.radius !== undefined) ? Math.round(thumb.radius) : -1
+            var actualTrackBorderWidth = (bg && bg.border) ? Math.round(bg.border.width) : -1
+            var actualThumbBorderWidth = (thumb && thumb.border) ? Math.round(thumb.border.width) : -1
+            var actualTrackAlpha = (bg && bg.color && bg.color.a !== undefined) ? bg.color.a : -1
+            var actualTrackBorderAlpha = (bg && bg.border && bg.border.color && bg.border.color.a !== undefined) ? bg.border.color.a : -1
+            var actualThumbBorderAlpha = (thumb && thumb.border && thumb.border.color && thumb.border.color.a !== undefined) ? thumb.border.color.a : -1
+
+            var reasons = []
+            if (sb.isProfileBoxStyleScrollBar !== true || sb.objectName !== "highContrastScrollBar") {
+                reasons.push("not HighContrastScrollBar (objectName=" + sb.objectName + ")")
+            }
+            if (Math.abs((sb.minimumSize || 0) - expectedMinSize) > 0.005) {
+                reasons.push("minimumSize=" + sb.minimumSize + " expected=" + expectedMinSize)
+            }
+            if (Math.round(sb.padding || 0) !== expectedPadding) {
+                reasons.push("padding=" + sb.padding + " expected=" + expectedPadding)
+            }
+            if (Math.round(sb.z || 0) !== expectedZ) {
+                reasons.push("z=" + sb.z + " expected=" + expectedZ)
+            }
+            if (actualTrackThickness !== expectedTrackThickness) {
+                reasons.push("trackThickness=" + actualTrackThickness + " expected=" + expectedTrackThickness)
+            }
+            if (actualThumbThickness !== expectedThumbThickness) {
+                reasons.push("thumbThickness=" + actualThumbThickness + " expected=" + expectedThumbThickness)
+            }
+            if (actualTrackRadius !== expectedTrackRadius) {
+                reasons.push("trackRadius=" + actualTrackRadius + " expected=" + expectedTrackRadius)
+            }
+            if (actualThumbRadius !== expectedThumbRadius) {
+                reasons.push("thumbRadius=" + actualThumbRadius + " expected=" + expectedThumbRadius)
+            }
+            if (actualTrackBorderWidth !== 1 || actualThumbBorderWidth !== 1) {
+                reasons.push("borderWidth track=" + actualTrackBorderWidth + " thumb=" + actualThumbBorderWidth)
+            }
+            if (Math.abs(actualTrackAlpha - 0.14) > 0.025
+                || Math.abs(actualTrackBorderAlpha - 0.28) > 0.025
+                || Math.abs(actualThumbBorderAlpha - 0.55) > 0.025) {
+                reasons.push("alpha mismatch track=" + actualTrackAlpha.toFixed(2)
+                    + " trackBorder=" + actualTrackBorderAlpha.toFixed(2)
+                    + " thumbBorder=" + actualThumbBorderAlpha.toFixed(2))
+            }
+
+            if (reasons.length > 0) {
+                uiTestSuiteRunner.scrollBarStyleViolations.push({
+                    theme: uiTestSuiteRunner.currentTheme,
+                    window: windowName,
+                    element: describeItem(sb),
+                    parentElement: sb.parent ? describeItem(sb.parent) : "<none>",
+                    reasons: reasons
+                })
+                return false
+            }
+            return true
+        }
+
+        function auditWindowScrollBars(windowName, rootItem) {
+            if (!rootItem) return 0
+            // OledDesktopWidget is a compact HUD overlay without scrollbars
+            if (windowName.indexOf("OledDesktopWidget") === 0) return 0
+
+            var stack = [{ node: rootItem, depth: 0 }]
+            var visited = []
+            var count = 0
+            var guard = 0
+
+            while (stack.length > 0 && guard < 10000) {
+                var entry = stack.pop()
+                var node = entry.node
+                var depth = entry.depth
+                if (!node || visited.indexOf(node) !== -1) continue
+                visited.push(node)
+                guard++
+
+                var tStr = node.toString()
+                if (tStr.indexOf("ScrollBar") !== -1 || node.isProfileBoxStyleScrollBar === true) {
+                    count++
+                    validateScrollBarStyle(windowName, node)
+                }
+
+                if (node.children && node.children.length > 0 && depth < 42) {
+                    for (var i = node.children.length - 1; i >= 0; i--) {
+                        stack.push({ node: node.children[i], depth: depth + 1 })
+                    }
+                }
+                if (node.contentItem && node.contentItem !== node && depth < 42) {
+                    stack.push({ node: node.contentItem, depth: depth + 1 })
+                }
+            }
+            return count
+        }
+
+        function auditItemTree(windowName, rootItem, winWidth, winHeight, fallbackBgColor) {
+            if (!rootItem || winWidth <= 0 || winHeight <= 0) return
+
+            var windowScrollBarsCount = auditWindowScrollBars(windowName, rootItem)
+
+            var stack = [{ node: rootItem, depth: 0 }]
+            var visitedCount = 0
+
+            while (stack.length > 0 && visitedCount < 8000) {
+                var entry = stack.pop()
+                var item = entry.node
+                var depth = entry.depth
+                if (!item) continue
+                visitedCount++
+                uiTestSuiteRunner.totalElementsInspected++
+
+                if (item.visible === false || (item.opacity !== undefined && item.opacity <= 0.05)) {
+                    continue
+                }
+                if (item.width !== undefined && item.height !== undefined && (item.width <= 0.5 || item.height <= 0.5)) {
+                    continue
+                }
+
+                var typeStr = item.toString()
+                var isButton = typeStr.indexOf("Button") !== -1 && typeStr.indexOf("ButtonGroup") === -1
+                var isControl = isButton
+                    || typeStr.indexOf("CheckBox") !== -1
+                    || typeStr.indexOf("Switch") !== -1
+                    || typeStr.indexOf("ComboBox") !== -1
+                    || typeStr.indexOf("TextField") !== -1
+                    || typeStr.indexOf("SpinBox") !== -1
+                var isTextNode = (typeStr.indexOf("QQuickText") !== -1
+                    || typeStr.indexOf("Label") !== -1
+                    || (item.text !== undefined && item.font !== undefined && item.elide !== undefined))
+                    && typeStr.indexOf("TextField") === -1
+                    && typeStr.indexOf("TextArea") === -1
+                    && typeStr.indexOf("TextEdit") === -1
+
+                // 1. Check Control / Button Overflow
+                if (isControl && item.width > 1 && item.height > 1) {
+                    uiTestSuiteRunner.totalControlsInspected++
+                    var flick = findEnclosingFlickable(item, rootItem)
+                    if (!flick) {
+                        var tl = item.mapToItem(rootItem, 0, 0)
+                        var br = item.mapToItem(rootItem, item.width, item.height)
+                        if (tl && br) {
+                            if (br.x > winWidth + 4 || tl.x < -4 || br.y > winHeight + 4 || tl.y < -4) {
+                                uiTestSuiteRunner.overflowViolations.push({
+                                    theme: uiTestSuiteRunner.currentTheme,
+                                    window: windowName,
+                                    element: describeItem(item),
+                                    kind: "control_outside_window_bounds",
+                                    bounds: {
+                                        left: Math.round(tl.x),
+                                        top: Math.round(tl.y),
+                                        right: Math.round(br.x),
+                                        bottom: Math.round(br.y),
+                                        windowWidth: Math.round(winWidth),
+                                        windowHeight: Math.round(winHeight)
+                                    }
+                                })
+                            }
+                        }
+                    } else if (flick.width > 10 && (!flick.contentWidth || flick.contentWidth <= flick.width + 4)) {
+                        // Inside a vertical-only Flickable/ScrollView: verify horizontal bounds inside flickable
+                        var ftl = item.mapToItem(flick, 0, 0)
+                        var fbr = item.mapToItem(flick, item.width, item.height)
+                        if (ftl && fbr && (fbr.x > flick.width + 6 || ftl.x < -6)) {
+                            uiTestSuiteRunner.overflowViolations.push({
+                                theme: uiTestSuiteRunner.currentTheme,
+                                window: windowName,
+                                element: describeItem(item),
+                                kind: "control_overflows_scrollview_width",
+                                bounds: {
+                                    left: Math.round(ftl.x),
+                                    right: Math.round(fbr.x),
+                                    containerWidth: Math.round(flick.width)
+                                }
+                            })
+                        }
+                    }
+                }
+
+                // 2. Check Text / Label Overflow & WCAG Color Contrast
+                if (isTextNode && hasAlphanumericText(item.text)) {
+                    uiTestSuiteRunner.totalTextNodesInspected++
+
+                    // Check if un-elided single-line text overflows its parent container or window
+                    var textWrap = item.wrapMode !== undefined ? item.wrapMode : Text.NoWrap
+                    var textElide = item.elide !== undefined ? item.elide : Text.ElideNone
+                    if (textWrap === Text.NoWrap && textElide === Text.ElideNone && item.implicitWidth > item.width + 8) {
+                        var parentClip = item.parent && item.parent.clip === true
+                        var ttl = item.mapToItem(rootItem, 0, 0)
+                        var tbr = item.mapToItem(rootItem, item.implicitWidth, item.height)
+                        if (parentClip || (tbr && tbr.x > winWidth + 6 && !isInsideScrollableHorizontal(item, rootItem))) {
+                            uiTestSuiteRunner.overflowViolations.push({
+                                theme: uiTestSuiteRunner.currentTheme,
+                                window: windowName,
+                                element: describeItem(item),
+                                kind: "text_overflow_unelided",
+                                details: {
+                                    implicitWidth: Math.round(item.implicitWidth),
+                                    allocatedWidth: Math.round(item.width),
+                                    mappedRight: tbr ? Math.round(tbr.x) : -1,
+                                    windowWidth: Math.round(winWidth)
+                                }
+                            })
+                        }
+                    }
+
+                    // Check WCAG Color Contrast for enabled text nodes (excluding empty-input placeholder hints)
+                    if (isEffectivelyEnabled(item) && !isPlaceholderTextNode(item) && item.color !== undefined) {
+                        var bg = resolveEffectiveBackground(item, fallbackBgColor)
+                        var fg = blendColors(item.color, bg, item.opacity !== undefined ? item.opacity : 1.0)
+                        var ratio = contrastRatio(fg, bg)
+                        var fontPx = (item.font && item.font.pixelSize) ? item.font.pixelSize : 12
+                        var isBold = (item.font && item.font.bold) ? true : false
+                        // Minimum contrast threshold: 3.0:1 across all UI controls, badges, headers, captions, and labels
+                        var minRatio = 3.0
+                        if (ratio < minRatio) {
+                            uiTestSuiteRunner.contrastViolations.push({
+                                theme: uiTestSuiteRunner.currentTheme,
+                                window: windowName,
+                                element: describeItem(item),
+                                contrastRatio: Number(ratio.toFixed(2)),
+                                requiredRatio: minRatio,
+                                fgColor: Qt.rgba(fg.r, fg.g, fg.b, 1.0).toString(),
+                                bgColor: Qt.rgba(bg.r, bg.g, bg.b, 1.0).toString(),
+                                fontSize: fontPx,
+                                bold: isBold
+                            })
+                        }
+                    }
+                }
+
+                // Traverse visible children
+                if (item.children && item.children.length > 0 && depth < 42) {
+                    for (var c = item.children.length - 1; c >= 0; c--) {
+                        stack.push({ node: item.children[c], depth: depth + 1 })
+                    }
+                }
+                // Also traverse contentItem if present and not already in children
+                if (item.contentItem && item.contentItem !== item && depth < 42) {
+                    var alreadyChild = false
+                    if (item.children) {
+                        for (var k = 0; k < item.children.length; k++) {
+                            if (item.children[k] === item.contentItem) {
+                                alreadyChild = true
+                                break
+                            }
+                        }
+                    }
+                    if (!alreadyChild) {
+                        stack.push({ node: item.contentItem, depth: depth + 1 })
+                    }
+                }
+            }
+
+            uiTestSuiteRunner.auditedWindows.push({
+                theme: uiTestSuiteRunner.currentTheme,
+                window: windowName,
+                width: Math.round(winWidth),
+                height: Math.round(winHeight),
+                elementsVisited: visitedCount,
+                scrollBarsAudited: windowScrollBarsCount
+            })
+        }
+
+        function recordBehavior(name, passed, details) {
+            uiTestSuiteRunner.behavioralResults.push({
+                name: name,
+                passed: Boolean(passed),
+                details: details || ""
+            })
+        }
+
+        function ensureTestFixtures() {
+            deviceController.resetAllTextScales()
+            firmwareUpdateDialog.refreshCatalog()
+        }
+
+        function runBehavioralSuite() {
+            ensureTestFixtures()
+
+            // 1. Desktop Widget Profile Rotation (0°, 90°, 180°, 270°)
+            deviceController.setActiveProfileWidgetRotation(0)
+            oledDesktopWidget.syncFromController()
+            var rot0Ok = (oledDesktopWidget.effectiveRotation === 0
+                && oledDesktopWidget.gridCols === 4
+                && oledDesktopWidget.gridRows === 5
+                && oledDesktopWidget.slotForCell(0, 0) === 1
+                && oledDesktopWidget.slotForCell(3, 0) === 4
+                && oledDesktopWidget.slotForCell(0, 4) === 17
+                && oledDesktopWidget.slotForCell(3, 4) === 20)
+            recordBehavior("desktop_widget_rotation_0_deg", rot0Ok,
+                "rot=" + oledDesktopWidget.effectiveRotation + " grid=" + oledDesktopWidget.gridCols + "x" + oledDesktopWidget.gridRows)
+
+            deviceController.setActiveProfileWidgetRotation(90)
+            oledDesktopWidget.syncFromController()
+            var rot90Ok = (oledDesktopWidget.effectiveRotation === 90
+                && oledDesktopWidget.gridCols === 5
+                && oledDesktopWidget.gridRows === 4
+                && oledDesktopWidget.slotForCell(0, 0) === 4
+                && oledDesktopWidget.slotForCell(4, 0) === 20
+                && oledDesktopWidget.slotForCell(0, 3) === 1
+                && oledDesktopWidget.slotForCell(4, 3) === 17)
+            recordBehavior("desktop_widget_rotation_90_deg", rot90Ok,
+                "rot=" + oledDesktopWidget.effectiveRotation + " grid=" + oledDesktopWidget.gridCols + "x" + oledDesktopWidget.gridRows)
+
+            deviceController.setActiveProfileWidgetRotation(180)
+            oledDesktopWidget.syncFromController()
+            var rot180Ok = (oledDesktopWidget.effectiveRotation === 180
+                && oledDesktopWidget.gridCols === 4
+                && oledDesktopWidget.gridRows === 5
+                && oledDesktopWidget.slotForCell(0, 0) === 20
+                && oledDesktopWidget.slotForCell(3, 0) === 17
+                && oledDesktopWidget.slotForCell(0, 4) === 4
+                && oledDesktopWidget.slotForCell(3, 4) === 1)
+            recordBehavior("desktop_widget_rotation_180_deg", rot180Ok,
+                "rot=" + oledDesktopWidget.effectiveRotation + " grid=" + oledDesktopWidget.gridCols + "x" + oledDesktopWidget.gridRows)
+
+            deviceController.setActiveProfileWidgetRotation(270)
+            oledDesktopWidget.syncFromController()
+            var rot270Ok = (oledDesktopWidget.effectiveRotation === 270
+                && oledDesktopWidget.gridCols === 5
+                && oledDesktopWidget.gridRows === 4
+                && oledDesktopWidget.slotForCell(0, 0) === 17
+                && oledDesktopWidget.slotForCell(4, 0) === 1
+                && oledDesktopWidget.slotForCell(0, 3) === 20
+                && oledDesktopWidget.slotForCell(4, 3) === 4)
+            recordBehavior("desktop_widget_rotation_270_deg", rot270Ok,
+                "rot=" + oledDesktopWidget.effectiveRotation + " grid=" + oledDesktopWidget.gridCols + "x" + oledDesktopWidget.gridRows)
+
+            // 2. Profile Properties Window hardware rotation + Follow Hardware (-1) propagation
+            var activeProfNum = deviceController.activeProfile || 1
+            profilePropertiesWindow.openForProfile(activeProfNum)
+            profilePropertiesWindow.profOledRotation = 90
+            profilePropertiesWindow.profWidgetRotation = -1
+            profilePropertiesWindow.saveAllProfileProperties()
+            var savedProps = {}
+            try {
+                savedProps = JSON.parse(deviceController.getProfilePropertiesJson(activeProfNum))
+            } catch (e) {}
+            var followHwOk = (savedProps.oledRotation === 90
+                && savedProps.widgetRotation === -1
+                && savedProps.effectiveWidgetRotation === 90
+                && oledDesktopWidget.effectiveRotation === 90
+                && oledDesktopWidget.gridCols === 5
+                && oledDesktopWidget.gridRows === 4)
+            recordBehavior("profile_properties_follow_hardware_rotation", followHwOk,
+                "hwRot=" + savedProps.oledRotation
+                + " widgetOverride=" + savedProps.widgetRotation
+                + " effective=" + oledDesktopWidget.effectiveRotation)
+
+            // Restore 0° rotation after rotation tests
+            profilePropertiesWindow.profOledRotation = 0
+            profilePropertiesWindow.profWidgetRotation = -1
+            profilePropertiesWindow.saveAllProfileProperties()
+            profilePropertiesWindow.close()
+
+            // 3. Firmware Manager filtering & catalog behavior
+            firmwareUpdateDialog.refreshCatalog()
+            firmwareUpdateDialog.vendorFilter = "all"
+            var allCount = firmwareUpdateDialog.filteredFirmwares.length
+            firmwareUpdateDialog.vendorFilter = "studio"
+            var studioCount = firmwareUpdateDialog.filteredFirmwares.length
+            firmwareUpdateDialog.vendorFilter = "official"
+            var officialCount = firmwareUpdateDialog.filteredFirmwares.length
+            firmwareUpdateDialog.vendorFilter = "all"
+            recordBehavior("firmware_manager_vendor_filtering",
+                allCount >= 2 && studioCount >= 1 && officialCount >= 1 && (studioCount + officialCount === allCount),
+                "all=" + allCount + " studio=" + studioCount + " official=" + officialCount)
+
+            // 4. Resizable windows scrollbar style matches Profiles Box scrollbar (profilesBoxScrollBar)
+            var resizableWindowsWithScrollBars = [
+                { name: "MainWindow", root: root.contentItem },
+                { name: "FirmwareUpdateDialog", root: firmwareUpdateDialog.contentItem },
+                { name: "ProfilePropertiesWindow", root: profilePropertiesWindow.contentItem },
+                { name: "KeyPropertiesWindow", root: keyPropertiesWindow.contentItem },
+                { name: "DuckyColorPickerWindow", root: duckyColorPickerWindow.contentItem },
+                { name: "ProfileTemplatesDialog", root: profileTemplatesDialog.contentItem },
+                { name: "SettingsDialog", root: settingsDialog.contentItem },
+                { name: "WebApiDestinationsDialog", root: webApiDestinationsDialog.contentItem },
+                { name: "EventLogDialog", root: eventLogDialog.contentItem },
+                { name: "AboutDialog", root: aboutDialog.contentItem },
+                { name: "UnsyncedChangesDialog", root: unsyncedChangesDialog.contentItem },
+                { name: "SdSyncDialog", root: sdSyncDialog.contentItem },
+                { name: "AppLaunchConfigWindow", root: appLaunchConfigWindow.contentItem },
+                { name: "InstalledAppPickerDialog", root: installedAppPickerDialog.contentItem },
+                { name: "WebApiKeyConfigWindow", root: webApiKeyConfigWindow.contentItem },
+                { name: "LightingAnimatorDialog", root: lightingAnimatorDialog.contentItem },
+                { name: "MacroRecorderDialog", root: macroRecorderDialog.contentItem },
+                { name: "OledIconPickerDialog", root: oledIconPickerDialog.contentItem },
+                { name: "PgvDrawer", root: pgvDrawer.contentItem },
+                { name: "AutoSwitchDrawer", root: autoSwitchDrawer.contentItem },
+                { name: "AiModal", root: aiModal.contentItem }
+            ]
+            var missingScrollBarWindows = []
+            var totalResizableBarsChecked = 0
+            for (var wIdx = 0; wIdx < resizableWindowsWithScrollBars.length; wIdx++) {
+                var wEntry = resizableWindowsWithScrollBars[wIdx]
+                var c = auditWindowScrollBars(wEntry.name + "_BehavioralCheck", wEntry.root)
+                totalResizableBarsChecked += c
+                if (c === 0) {
+                    missingScrollBarWindows.push(wEntry.name)
+                }
+            }
+            var refBarOk = validateScrollBarStyle("ProfilesBox_Reference", profilesBoxScrollBar)
+            recordBehavior(
+                "resizable_windows_scrollbar_style_matches_profiles_box",
+                refBarOk
+                    && missingScrollBarWindows.length === 0
+                    && uiTestSuiteRunner.scrollBarStyleViolations.length === 0
+                    && totalResizableBarsChecked >= 20,
+                "windowsVerified=" + (resizableWindowsWithScrollBars.length - missingScrollBarWindows.length)
+                    + "/" + resizableWindowsWithScrollBars.length
+                    + " scrollBarsVerified=" + totalResizableBarsChecked
+                    + " violations=" + uiTestSuiteRunner.scrollBarStyleViolations.length
+            )
+        }
+
+        property var windowSteps: [
+            {
+                name: "MainWindow_Default",
+                open: function() {
+                    root.selectedSlotNumber = 0
+                    root.syncWindowWidthToEditorState()
+                },
+                audit: function() {
+                    auditItemTree("MainWindow_Default", root.contentItem, root.width, root.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {}
+            },
+            {
+                name: "MainWindow_SlotInspector",
+                open: function() {
+                    root.selectedSlotNumber = 1
+                    root.syncWindowWidthToEditorState()
+                },
+                audit: function() {
+                    auditItemTree("MainWindow_SlotInspector", root.contentItem, root.width, root.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    root.selectedSlotNumber = 0
+                    root.syncWindowWidthToEditorState()
+                }
+            },
+            {
+                name: "OledDesktopWidget_0deg",
+                open: function() {
+                    deviceController.setActiveProfileWidgetRotation(0)
+                    oledDesktopWidget.show()
+                    oledDesktopWidget.syncFromController()
+                },
+                audit: function() {
+                    auditItemTree("OledDesktopWidget_0deg", oledDesktopWidget.contentItem, oledDesktopWidget.width, oledDesktopWidget.height, { r: 0.02, g: 0.03, b: 0.06, a: 1.0 })
+                },
+                close: function() {}
+            },
+            {
+                name: "OledDesktopWidget_90deg",
+                open: function() {
+                    deviceController.setActiveProfileWidgetRotation(90)
+                    oledDesktopWidget.show()
+                    oledDesktopWidget.syncFromController()
+                },
+                audit: function() {
+                    auditItemTree("OledDesktopWidget_90deg", oledDesktopWidget.contentItem, oledDesktopWidget.width, oledDesktopWidget.height, { r: 0.02, g: 0.03, b: 0.06, a: 1.0 })
+                },
+                close: function() {
+                    deviceController.setActiveProfileWidgetRotation(0)
+                    oledDesktopWidget.syncFromController()
+                    oledDesktopWidget.hide()
+                }
+            },
+            {
+                name: "FirmwareUpdateDialog",
+                open: function() {
+                    ensureTestFixtures()
+                    firmwareUpdateDialog.open()
+                },
+                audit: function() {
+                    auditItemTree("FirmwareUpdateDialog", firmwareUpdateDialog.contentItem, firmwareUpdateDialog.width, firmwareUpdateDialog.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    firmwareUpdateDialog.close()
+                }
+            },
+            {
+                name: "ProfilePropertiesWindow",
+                open: function() {
+                    profilePropertiesWindow.openForProfile(deviceController.activeProfile || 1)
+                },
+                audit: function() {
+                    auditItemTree("ProfilePropertiesWindow", profilePropertiesWindow.contentItem, profilePropertiesWindow.width, profilePropertiesWindow.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    profilePropertiesWindow.close()
+                }
+            },
+            {
+                name: "KeyPropertiesWindow",
+                open: function() {
+                    keyPropertiesWindow.openForSlot(1)
+                },
+                audit: function() {
+                    auditItemTree("KeyPropertiesWindow", keyPropertiesWindow.contentItem, keyPropertiesWindow.width, keyPropertiesWindow.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    keyPropertiesWindow.close()
+                }
+            },
+            {
+                name: "DuckyColorPickerWindow",
+                open: function() {
+                    duckyColorPickerWindow.openForKey(1, "#38BDF8")
+                },
+                audit: function() {
+                    auditItemTree("DuckyColorPickerWindow", duckyColorPickerWindow.contentItem, duckyColorPickerWindow.width, duckyColorPickerWindow.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    duckyColorPickerWindow.close()
+                }
+            },
+            {
+                name: "ProfileTemplatesDialog",
+                open: function() {
+                    profileTemplatesDialog.openGeneral()
+                },
+                audit: function() {
+                    auditItemTree("ProfileTemplatesDialog", profileTemplatesDialog.contentItem, profileTemplatesDialog.width, profileTemplatesDialog.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    profileTemplatesDialog.close()
+                }
+            },
+            {
+                name: "SettingsDialog",
+                open: function() {
+                    settingsDialog.open()
+                },
+                audit: function() {
+                    auditItemTree("SettingsDialog", settingsDialog.contentItem, settingsDialog.width, settingsDialog.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    settingsDialog.close()
+                }
+            },
+            {
+                name: "WebApiDestinationsDialog",
+                open: function() {
+                    webApiDestinationsDialog.openForDestination("", "POST", "", "")
+                },
+                audit: function() {
+                    auditItemTree("WebApiDestinationsDialog", webApiDestinationsDialog.contentItem, webApiDestinationsDialog.width, webApiDestinationsDialog.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    webApiDestinationsDialog.close()
+                }
+            },
+            {
+                name: "EventLogDialog",
+                open: function() {
+                    eventLogDialog.openLogWindow()
+                },
+                audit: function() {
+                    auditItemTree("EventLogDialog", eventLogDialog.contentItem, eventLogDialog.width, eventLogDialog.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    eventLogDialog.close()
+                }
+            },
+            {
+                name: "AboutDialog",
+                open: function() {
+                    aboutDialog.openAboutWindow()
+                },
+                audit: function() {
+                    auditItemTree("AboutDialog", aboutDialog.contentItem, aboutDialog.width, aboutDialog.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    aboutDialog.close()
+                }
+            },
+            {
+                name: "UnsyncedChangesDialog",
+                open: function() {
+                    unsyncedChangesDialog.open()
+                },
+                audit: function() {
+                    auditItemTree("UnsyncedChangesDialog", unsyncedChangesDialog.contentItem, unsyncedChangesDialog.width, unsyncedChangesDialog.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    unsyncedChangesDialog.close()
+                }
+            },
+            {
+                name: "SdSyncDialog",
+                open: function() {
+                    sdSyncDialog.open()
+                },
+                audit: function() {
+                    auditItemTree("SdSyncDialog", sdSyncDialog.contentItem, sdSyncDialog.width, sdSyncDialog.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    sdSyncDialog.close()
+                }
+            },
+            {
+                name: "AppLaunchConfigWindow",
+                open: function() {
+                    appLaunchConfigWindow.openWindow(1)
+                },
+                audit: function() {
+                    auditItemTree("AppLaunchConfigWindow", appLaunchConfigWindow.contentItem, appLaunchConfigWindow.width, appLaunchConfigWindow.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    appLaunchConfigWindow.close()
+                }
+            },
+            {
+                name: "InstalledAppPickerDialog",
+                open: function() {
+                    installedAppPickerDialog.show()
+                },
+                audit: function() {
+                    auditItemTree("InstalledAppPickerDialog", installedAppPickerDialog.contentItem, installedAppPickerDialog.width, installedAppPickerDialog.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    installedAppPickerDialog.close()
+                }
+            },
+            {
+                name: "WebApiKeyConfigWindow",
+                open: function() {
+                    webApiKeyConfigWindow.openWindow(1)
+                },
+                audit: function() {
+                    auditItemTree("WebApiKeyConfigWindow", webApiKeyConfigWindow.contentItem, webApiKeyConfigWindow.width, webApiKeyConfigWindow.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    webApiKeyConfigWindow.close()
+                }
+            },
+            {
+                name: "LightingAnimatorDialog",
+                open: function() {
+                    lightingAnimatorDialog.openFor("profile", 1)
+                },
+                audit: function() {
+                    auditItemTree("LightingAnimatorDialog", lightingAnimatorDialog.contentItem, lightingAnimatorDialog.width, lightingAnimatorDialog.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    lightingAnimatorDialog.close()
+                }
+            },
+            {
+                name: "MacroRecorderDialog",
+                open: function() {
+                    macroRecorderDialog.openRecorder()
+                },
+                audit: function() {
+                    auditItemTree("MacroRecorderDialog", macroRecorderDialog.contentItem, macroRecorderDialog.width, macroRecorderDialog.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    macroRecorderDialog.close()
+                }
+            },
+            {
+                name: "OledIconPickerDialog",
+                open: function() {
+                    oledIconPickerDialog.openForInspector(0)
+                },
+                audit: function() {
+                    auditItemTree("OledIconPickerDialog", oledIconPickerDialog.contentItem, oledIconPickerDialog.width, oledIconPickerDialog.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    oledIconPickerDialog.close()
+                }
+            },
+            {
+                name: "NewProfileGroupDialog",
+                open: function() {
+                    newProfileGroupDialog.openWithDefaults()
+                },
+                audit: function() {
+                    auditItemTree("NewProfileGroupDialog", newProfileGroupDialog.contentItem, newProfileGroupDialog.width, newProfileGroupDialog.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    newProfileGroupDialog.close()
+                }
+            },
+            {
+                name: "RenameProfileDialog",
+                open: function() {
+                    renameProfileDialog.openWithProfile(1, "Default")
+                },
+                audit: function() {
+                    auditItemTree("RenameProfileDialog", renameProfileDialog.contentItem, renameProfileDialog.width, renameProfileDialog.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    renameProfileDialog.close()
+                }
+            },
+            {
+                name: "PgvDrawer",
+                open: function() {
+                    pgvDrawer.open()
+                },
+                audit: function() {
+                    auditItemTree("PgvDrawer", pgvDrawer.contentItem, pgvDrawer.width, pgvDrawer.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    pgvDrawer.close()
+                }
+            },
+            {
+                name: "AutoSwitchDrawer",
+                open: function() {
+                    autoSwitchDrawer.open()
+                },
+                audit: function() {
+                    auditItemTree("AutoSwitchDrawer", autoSwitchDrawer.contentItem, autoSwitchDrawer.width, autoSwitchDrawer.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    autoSwitchDrawer.close()
+                }
+            },
+            {
+                name: "AiModal",
+                open: function() {
+                    aiModal.open()
+                },
+                audit: function() {
+                    auditItemTree("AiModal", aiModal.contentItem, aiModal.width, aiModal.height, Kirigami.Theme.backgroundColor)
+                },
+                close: function() {
+                    aiModal.close()
+                }
+            }
+        ]
+
+        property int phase: 0 // 0=init, 1=open window, 2=audit+close window
+
+        Timer {
+            id: uiTestStepTimer
+            interval: 65
+            repeat: true
+            running: deviceController.isUiTestSuiteMode()
+            onTriggered: {
+                var totalStepsPerTheme = uiTestSuiteRunner.windowSteps.length
+                if (uiTestSuiteRunner.phase === 0) {
+                    // Run behavioral checks first, then switch to dark theme
+                    uiTestSuiteRunner.runBehavioralSuite()
+                    uiTestSuiteRunner.currentTheme = "dark"
+                    deviceController.applyAppThemeMode("dark")
+                    uiTestSuiteRunner.stepIndex = 0
+                    uiTestSuiteRunner.phase = 1
+                    return
+                }
+
+                if (uiTestSuiteRunner.stepIndex >= totalStepsPerTheme) {
+                    if (uiTestSuiteRunner.currentTheme === "dark") {
+                        // Switch to Light theme and audit all windows again
+                        uiTestSuiteRunner.currentTheme = "light"
+                        deviceController.applyAppThemeMode("light")
+                        uiTestSuiteRunner.stepIndex = 0
+                        uiTestSuiteRunner.phase = 1
+                        return
+                    } else {
+                        // Finished both Dark and Light theme audits!
+                        uiTestStepTimer.stop()
+                        var failedBehaviors = []
+                        for (var b = 0; b < uiTestSuiteRunner.behavioralResults.length; b++) {
+                            if (!uiTestSuiteRunner.behavioralResults[b].passed) {
+                                failedBehaviors.push(uiTestSuiteRunner.behavioralResults[b])
+                            }
+                        }
+                        var totalFailures = failedBehaviors.length
+                            + uiTestSuiteRunner.overflowViolations.length
+                            + uiTestSuiteRunner.contrastViolations.length
+                            + uiTestSuiteRunner.scrollBarStyleViolations.length
+
+                        var report = {
+                            passed: totalFailures === 0,
+                            summary: {
+                                themesTested: ["dark", "light"],
+                                windowsAuditedCount: uiTestSuiteRunner.auditedWindows.length,
+                                totalElementsInspected: uiTestSuiteRunner.totalElementsInspected,
+                                totalControlsInspected: uiTestSuiteRunner.totalControlsInspected,
+                                totalTextNodesInspected: uiTestSuiteRunner.totalTextNodesInspected,
+                                totalScrollBarsInspected: uiTestSuiteRunner.totalScrollBarsInspected,
+                                behavioralChecksCount: uiTestSuiteRunner.behavioralResults.length,
+                                behavioralFailuresCount: failedBehaviors.length,
+                                overflowViolationsCount: uiTestSuiteRunner.overflowViolations.length,
+                                contrastViolationsCount: uiTestSuiteRunner.contrastViolations.length,
+                                scrollBarStyleViolationsCount: uiTestSuiteRunner.scrollBarStyleViolations.length
+                            },
+                            behavioralResults: uiTestSuiteRunner.behavioralResults,
+                            overflowViolations: uiTestSuiteRunner.overflowViolations,
+                            contrastViolations: uiTestSuiteRunner.contrastViolations,
+                            scrollBarStyleViolations: uiTestSuiteRunner.scrollBarStyleViolations,
+                            auditedWindows: uiTestSuiteRunner.auditedWindows
+                        }
+
+                        deviceController.writeUiTestReport(JSON.stringify(report, null, 2), totalFailures === 0 ? 0 : 1)
+                        Qt.quit()
+                        return
+                    }
+                }
+
+                var currentStep = uiTestSuiteRunner.windowSteps[uiTestSuiteRunner.stepIndex]
+                if (uiTestSuiteRunner.phase === 1) {
+                    try {
+                        currentStep.open()
+                    } catch (e) {
+                        uiTestSuiteRunner.recordBehavior("open_" + currentStep.name + "_" + uiTestSuiteRunner.currentTheme, false, String(e))
+                    }
+                    uiTestSuiteRunner.phase = 2
+                } else if (uiTestSuiteRunner.phase === 2) {
+                    try {
+                        currentStep.audit()
+                    } catch (e2) {
+                        uiTestSuiteRunner.recordBehavior("audit_" + currentStep.name + "_" + uiTestSuiteRunner.currentTheme, false, String(e2))
+                    }
+                    try {
+                        currentStep.close()
+                    } catch (e3) {}
+                    uiTestSuiteRunner.stepIndex++
+                    uiTestSuiteRunner.phase = 1
+                }
+            }
+        }
+    }
 }
+
 

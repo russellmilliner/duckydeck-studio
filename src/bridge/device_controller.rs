@@ -26,6 +26,12 @@ pub mod qobject {
         fn duckydeck_save_oled_widget_appearance();
         fn duckydeck_record_oled_geometry(x: i32, y: i32, width: i32, height: i32);
         fn duckydeck_apply_app_theme(theme_mode: &QString);
+        fn duckydeck_apply_ui_font_scale(scale_percent: i32);
+        fn duckydeck_send_key_to_active_window(
+            qt_key: i32,
+            qt_modifiers: i32,
+            text: &QString,
+        ) -> bool;
         fn duckydeck_run_app(start_minimized: bool) -> i32;
         fn duckydeck_capture_composite_frame(
             output_path: &QString,
@@ -541,6 +547,18 @@ pub mod qobject {
         fn is_demo_showcase_mode(self: &DeviceController) -> bool;
 
         #[qinvokable]
+        #[cxx_name = "isUiTestSuiteMode"]
+        fn is_ui_test_suite_mode(self: &DeviceController) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "writeUiTestReport"]
+        fn write_ui_test_report(
+            self: &DeviceController,
+            report_json: QString,
+            exit_code: i32,
+        );
+
+        #[qinvokable]
         fn is_start_minimized_mode(self: &DeviceController) -> bool;
 
         #[qinvokable]
@@ -819,8 +837,12 @@ pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const APP_AUTHOR: &str = "Russell Milliner";
 pub const APP_GITHUB_URL: &str = "https://github.com/russellmilliner/duckydeck-studio";
 
+pub fn is_ui_test_suite_env() -> bool {
+    std::env::var("DUCKYDECK_UI_TEST_SUITE").as_deref() == Ok("1")
+}
+
 pub fn is_demo_showcase_env() -> bool {
-    std::env::var("DUCKYDECK_DEMO_SHOWCASE").as_deref() == Ok("1")
+    std::env::var("DUCKYDECK_DEMO_SHOWCASE").as_deref() == Ok("1") || is_ui_test_suite_env()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2278,9 +2300,9 @@ impl qobject::DeviceController {
             .find(|p| p.number as i32 == prof_num)
             .map(|p| {
                 (
-                    p.oled_rotation(),
-                    p.widget_rotation(),
-                    p.effective_widget_rotation(),
+                    p.oled_rotation_degrees(),
+                    p.widget_rotation_degrees(),
+                    p.effective_widget_rotation_degrees(),
                 )
             })
             .unwrap_or((0, -1, 0));
@@ -2299,11 +2321,19 @@ impl qobject::DeviceController {
             "sdSpaceSummary": sd_space.summary_text,
             "slots": slots_val,
         });
-        if let Some(home) = std::env::var_os("HOME") {
-            let state_dir = PathBuf::from(home).join(".local/share/duckydeck-studio");
-            let _ = fs::create_dir_all(&state_dir);
-            if let Ok(serialized) = serde_json::to_string(&oled_snapshot) {
-                let _ = fs::write(state_dir.join("oled_state.json"), serialized);
+        if let Ok(test_state_path) = std::env::var("DUCKYDECK_UI_TEST_OLED_STATE_PATH") {
+            if !test_state_path.trim().is_empty() {
+                if let Ok(serialized) = serde_json::to_string(&oled_snapshot) {
+                    let _ = fs::write(test_state_path.trim(), serialized);
+                }
+            }
+        } else if !is_demo_showcase_env() {
+            if let Some(home) = std::env::var_os("HOME") {
+                let state_dir = PathBuf::from(home).join(".local/share/duckydeck-studio");
+                let _ = fs::create_dir_all(&state_dir);
+                if let Ok(serialized) = serde_json::to_string(&oled_snapshot) {
+                    let _ = fs::write(state_dir.join("oled_state.json"), serialized);
+                }
             }
         }
     }
@@ -6987,7 +7017,30 @@ impl qobject::DeviceController {
     }
 
     pub fn is_demo_showcase_mode(&self) -> bool {
-        is_demo_showcase_env()
+        std::env::var("DUCKYDECK_DEMO_SHOWCASE").as_deref() == Ok("1")
+    }
+
+    pub fn is_ui_test_suite_mode(&self) -> bool {
+        is_ui_test_suite_env()
+    }
+
+    pub fn write_ui_test_report(&self, report_json: QString, exit_code: i32) {
+        let raw = report_json.to_string();
+        if let Ok(path) = std::env::var("DUCKYDECK_UI_TEST_REPORT") {
+            let trimmed = path.trim();
+            if !trimmed.is_empty() {
+                let _ = fs::write(trimmed, &raw);
+            }
+        }
+        println!("{raw}");
+        let _ = std::io::stdout().flush();
+        let _ = std::io::stderr().flush();
+        extern "C" {
+            fn _exit(status: i32) -> !;
+        }
+        unsafe {
+            _exit(exit_code);
+        }
     }
 
     pub fn is_start_minimized_mode(&self) -> bool {
@@ -8469,7 +8522,7 @@ impl qobject::DeviceController {
     }
 
     pub fn fetch_official_firmwares_from_site(mut self: Pin<&mut Self>) {
-        if *self.firmware_fetch_busy() {
+        if *self.firmware_fetch_busy() || is_ui_test_suite_env() {
             return;
         }
         let curr_ver = self.firmware_version().to_string();

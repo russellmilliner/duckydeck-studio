@@ -12,6 +12,7 @@
 #include <QCursor>
 #include <QDateTime>
 #include <QDir>
+#include <QEvent>
 #include <QFile>
 #include <QFileInfo>
 #include <QFont>
@@ -20,6 +21,7 @@
 #include <QImage>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeyEvent>
 #include <QLoggingCategory>
 #include <QMenu>
 #include <QMessageBox>
@@ -57,6 +59,7 @@ inline QPointer<QWindow>& main_window_ref() {
 }
 
 inline QWindow* find_main_window();
+inline void ensure_global_key_filter();
 
 inline QIcon build_multisize_svg_icon(const QString& qrcPath) {
     QSvgRenderer renderer(qrcPath);
@@ -473,6 +476,7 @@ inline void record_oled_widget_geometry_from_kwin(int x, int y, int width, int h
 }
 
 inline void ensure_window_hooks(QWindow* win) {
+    ensure_global_key_filter();
     if (!win || win->property("_duckydeck_minimize_hooked").toBool()) {
         return;
     }
@@ -1014,6 +1018,120 @@ inline QString load_saved_app_theme_mode() {
     return QStringLiteral("system");
 }
 
+inline int load_saved_ui_text_scale() {
+    QString path;
+    if (qEnvironmentVariable("DUCKYDECK_UI_TEST_SUITE") == QStringLiteral("1")) {
+        path = QDir::tempPath()
+            + QStringLiteral("/duckydeck-ui-test-suite-%1/kwin_rules.json")
+                  .arg(static_cast<qlonglong>(::getpid()));
+    } else {
+        QString base = qEnvironmentVariable("XDG_CONFIG_HOME").trimmed();
+        if (base.isEmpty()) {
+            base = QDir::homePath() + QStringLiteral("/.config");
+        }
+        path = base + QStringLiteral("/duckydeck-studio/kwin_rules.json");
+    }
+    QFile f(path);
+    if (!f.exists() || !f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return 100;
+    }
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+    f.close();
+    if (!doc.isObject()) {
+        return 100;
+    }
+    const int scale = doc.object().value(QStringLiteral("ui_text_scale")).toInt(100);
+    return std::clamp(scale, 75, 160);
+}
+
+class DuckyDeckGlobalKeyFilter : public QObject {
+public:
+    explicit DuckyDeckGlobalKeyFilter(QObject* parent = nullptr) : QObject(parent) {}
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override {
+        if (!watched || !watched->isWindowType() || !event) {
+            return false;
+        }
+        if (event->type() != QEvent::KeyPress) {
+            return false;
+        }
+        QKeyEvent* ke = static_cast<QKeyEvent*>(event);
+        const int key = ke->key();
+        const Qt::KeyboardModifiers mods = ke->modifiers();
+        QWindow* win = qobject_cast<QWindow*>(watched);
+        QWindow* mainWin = find_main_window();
+
+        if (key == Qt::Key_Escape && (mods == Qt::NoModifier || mods == Qt::KeypadModifier)) {
+            if (win && win->objectName() == QStringLiteral("duckydeckOledWidgetWindow")) {
+                const bool showSize = win->property("showSizeSlider").toBool();
+                const bool showTrans = win->property("showTransparencySlider").toBool();
+                if (showSize || showTrans) {
+                    win->setProperty("showSizeSlider", false);
+                    win->setProperty("showTransparencySlider", false);
+                } else {
+                    hide_oled_widget_window();
+                }
+                ke->accept();
+                return true;
+            }
+            if (mainWin) {
+                QVariant closed = false;
+                if (QMetaObject::invokeMethod(
+                        mainWin,
+                        "closeTopmostPopupWindow",
+                        Qt::DirectConnection,
+                        Q_RETURN_ARG(QVariant, closed)
+                    ) && closed.toBool()) {
+                    ke->accept();
+                    return true;
+                }
+            }
+            if (win && win != mainWin && win->isVisible()) {
+                win->close();
+                ke->accept();
+                return true;
+            }
+            return false;
+        }
+
+        if ((mods & Qt::ControlModifier) && !(mods & Qt::AltModifier) && !(mods & Qt::MetaModifier)) {
+            if (key == Qt::Key_Plus || key == Qt::Key_Equal) {
+                if (mainWin) {
+                    QMetaObject::invokeMethod(mainWin, "zoomIn", Qt::DirectConnection);
+                    ke->accept();
+                    return true;
+                }
+            } else if (key == Qt::Key_Minus || key == Qt::Key_Underscore) {
+                if (mainWin) {
+                    QMetaObject::invokeMethod(mainWin, "zoomOut", Qt::DirectConnection);
+                    ke->accept();
+                    return true;
+                }
+            } else if (key == Qt::Key_0 || key == Qt::Key_ParenRight) {
+                if (mainWin) {
+                    QMetaObject::invokeMethod(mainWin, "resetZoom", Qt::DirectConnection);
+                    ke->accept();
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+};
+
+inline void ensure_global_key_filter() {
+    QCoreApplication* app = QCoreApplication::instance();
+    if (!app) {
+        return;
+    }
+    static QPointer<DuckyDeckGlobalKeyFilter> s_filter;
+    if (!s_filter) {
+        s_filter = new DuckyDeckGlobalKeyFilter(app);
+        app->installEventFilter(s_filter);
+    }
+}
+
 } // namespace duckydeck
 
 template <typename ControllerT>
@@ -1198,6 +1316,61 @@ inline void duckydeck_apply_app_theme(const QString& themeMode) {
     }
 }
 
+inline void duckydeck_apply_ui_font_scale(int32_t scalePercent) {
+    if (!QCoreApplication::instance()) {
+        return;
+    }
+    const int clamped = std::clamp(static_cast<int>(scalePercent), 75, 160);
+    QFont f = QGuiApplication::font();
+    const double basePt = 10.0;
+    f.setPointSizeF(std::round(basePt * (static_cast<double>(clamped) / 100.0) * 10.0) / 10.0);
+    QGuiApplication::setFont(f);
+}
+
+inline bool duckydeck_send_key_to_active_window(
+    int32_t qtKey,
+    int32_t qtModifiers,
+    const QString& text
+) {
+    if (!QCoreApplication::instance()) {
+        return false;
+    }
+    duckydeck::ensure_global_key_filter();
+    QWindow* mainWin = duckydeck::find_main_window();
+    QWindow* target = QGuiApplication::focusWindow();
+    if (!target || !target->isVisible()) {
+        const auto windows = QGuiApplication::topLevelWindows();
+        for (QWindow* w : windows) {
+            if (w && w != mainWin && w->isVisible()
+                && w->objectName() != QStringLiteral("duckydeckOledWidgetWindow")) {
+                target = w;
+                break;
+            }
+        }
+        if (!target) {
+            target = mainWin;
+        }
+    }
+    if (!target) {
+        return false;
+    }
+    QKeyEvent pressEv(
+        QEvent::KeyPress,
+        qtKey,
+        static_cast<Qt::KeyboardModifiers>(qtModifiers),
+        text
+    );
+    QCoreApplication::sendEvent(target, &pressEv);
+    QKeyEvent releaseEv(
+        QEvent::KeyRelease,
+        qtKey,
+        static_cast<Qt::KeyboardModifiers>(qtModifiers),
+        text
+    );
+    QCoreApplication::sendEvent(target, &releaseEv);
+    return pressEv.isAccepted();
+}
+
 inline void terminate_existing_pids(const QList<pid_t>& pids) {
     for (pid_t pid : pids) {
         if (pid > 1 && ::kill(pid, 0) == 0) {
@@ -1275,6 +1448,8 @@ inline int duckydeck_run_app(bool start_minimized) {
 #endif
 
     duckydeck_apply_app_theme(duckydeck::load_saved_app_theme_mode());
+    duckydeck_apply_ui_font_scale(duckydeck::load_saved_ui_text_scale());
+    duckydeck::ensure_global_key_filter();
 
     QIcon initialIcon = duckydeck::build_multisize_svg_icon(
         QStringLiteral(":/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-dark.svg")

@@ -108,10 +108,25 @@ Window {
 
     property real pendingScaleMultiplier: 1.5
     property int profileOledRotation: 0
+    readonly property int effectiveRotation: profileOledRotation
+    readonly property int gridCols: (profileOledRotation === 90 || profileOledRotation === 270) ? 5 : 4
+    readonly property int gridRows: (profileOledRotation === 90 || profileOledRotation === 270) ? 4 : 5
     property int dataRevision: 0
     property var slotItems: []
     property string enc1Summary: "CCW · CW · [Push]"
     property string enc2Summary: "CCW · CW · [Push]"
+
+    function slotForCell(colIdx, rowIdx) {
+        const rot = oledWidgetWindow.profileOledRotation
+        if (rot === 90) {
+            return colIdx * 4 + (3 - rowIdx) + 1
+        } else if (rot === 180) {
+            return (4 - rowIdx) * 4 + (3 - colIdx) + 1
+        } else if (rot === 270) {
+            return (4 - colIdx) * 4 + rowIdx + 1
+        }
+        return rowIdx * 4 + colIdx + 1
+    }
 
     onProfileOledRotationChanged: {
         oledWidgetWindow.dataRevision += 1

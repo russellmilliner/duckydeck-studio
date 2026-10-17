@@ -1210,6 +1210,19 @@ fn main() {
             "--wake" => {
                 std::process::exit(run_cli_sleep_wake(false));
             }
+            "--ui-test-suite" => {
+                env::set_var("DUCKYDECK_UI_TEST_SUITE", "1");
+                foreground_mode = true;
+            }
+            "--ui-test-report" => {
+                if i + 1 < args.len() {
+                    i += 1;
+                    env::set_var("DUCKYDECK_UI_TEST_REPORT", &args[i]);
+                } else {
+                    eprintln!("Error: --ui-test-report requires an output JSON file path.");
+                    std::process::exit(1);
+                }
+            }
             "--reboot" => {
                 match reboot_duckypad() {
                     Ok(()) => {
@@ -1225,6 +1238,8 @@ fn main() {
             other => {
                 if let Some(val) = other.strip_prefix("--profile=") {
                     startup_profile = Some(val.to_string());
+                } else if let Some(val) = other.strip_prefix("--ui-test-report=") {
+                    env::set_var("DUCKYDECK_UI_TEST_REPORT", val);
                 } else if let Some(val) = other.strip_prefix("--switch-profile=") {
                     std::process::exit(run_cli_switch_profile(val));
                 } else if let Some(val) = other.strip_prefix("--auto-switch=") {
@@ -1255,13 +1270,16 @@ fn main() {
         i += 1;
     }
 
+    let is_ui_test_suite = env::var("DUCKYDECK_UI_TEST_SUITE").as_deref() == Ok("1");
+
     // Automatically detect if launched by KDE Plasma / XDG / systemd autostart
-    let launched_by_autostart = env::var("GIO_LAUNCHED_DESKTOP_FILE")
-        .map(|v| v.contains("/autostart/"))
-        .unwrap_or(false)
-        || fs::read_to_string("/proc/self/cgroup")
-            .map(|c| c.contains("autostart"))
-            .unwrap_or(false);
+    let launched_by_autostart = !is_ui_test_suite
+        && (env::var("GIO_LAUNCHED_DESKTOP_FILE")
+            .map(|v| v.contains("/autostart/"))
+            .unwrap_or(false)
+            || fs::read_to_string("/proc/self/cgroup")
+                .map(|c| c.contains("autostart"))
+                .unwrap_or(false));
     if launched_by_autostart {
         start_minimized = true;
         foreground_mode = true;
@@ -1279,15 +1297,24 @@ fn main() {
         env::set_var("QT_SCALE_FACTOR", "1");
         env::set_var("QT_AUTO_SCREEN_SCALE_FACTOR", "0");
         env::set_var("QT_SCREEN_SCALE_FACTORS", "1");
+    } else if is_ui_test_suite {
+        if env::var("QT_QPA_PLATFORM").is_err() {
+            env::set_var("QT_QPA_PLATFORM", "offscreen");
+        }
+        env::set_var("QT_SCALE_FACTOR", "1");
+        env::set_var("QT_AUTO_SCREEN_SCALE_FACTOR", "0");
+        env::set_var("QT_SCREEN_SCALE_FACTORS", "1");
     }
 
-    let pfile = pid_file_path();
-    env::set_var("DUCKYDECK_PID_FILE", &pfile);
+    if !is_ui_test_suite {
+        let pfile = pid_file_path();
+        env::set_var("DUCKYDECK_PID_FILE", &pfile);
+    }
 
     let is_daemon_child = env::var("DUCKYDECK_DAEMONIZED").as_deref() == Ok("1");
     let is_offscreen = env::var("QT_QPA_PLATFORM").as_deref() == Ok("offscreen");
 
-    if !is_daemon_child {
+    if !is_daemon_child && !is_ui_test_suite {
         let existing_pids = find_existing_duckydeck_instances();
         if !existing_pids.is_empty() {
             if restart_requested
@@ -1398,3 +1425,211 @@ fn main() {
     let exit_code = bridge::device_controller::run_application(start_minimized);
     std::process::exit(exit_code);
 }
+
+#[cfg(test)]
+mod ui_test_suite {
+    use super::*;
+
+    #[test]
+    fn test_openapi_and_swagger_specs_are_valid() {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+        let openapi_json_path = manifest_dir.join("docs/openapi.json");
+        let swagger_json_path = manifest_dir.join("docs/swagger.json");
+        let openapi_yaml_path = manifest_dir.join("docs/openapi.yaml");
+        let rest_api_md_path = manifest_dir.join("docs/REST_API.md");
+
+        assert!(openapi_json_path.exists(), "docs/openapi.json must exist");
+        assert!(swagger_json_path.exists(), "docs/swagger.json must exist");
+        assert!(openapi_yaml_path.exists(), "docs/openapi.yaml must exist");
+        assert!(rest_api_md_path.exists(), "docs/REST_API.md must exist");
+
+        let openapi_raw = std::fs::read_to_string(&openapi_json_path)
+            .expect("Failed to read docs/openapi.json");
+        let openapi_val: serde_json::Value = serde_json::from_str(&openapi_raw)
+            .expect("docs/openapi.json must be valid JSON");
+
+        assert_eq!(
+            openapi_val.get("openapi").and_then(|v| v.as_str()),
+            Some("3.0.3"),
+            "docs/openapi.json must declare OpenAPI 3.0.3"
+        );
+
+        let paths = openapi_val
+            .get("paths")
+            .and_then(|v| v.as_object())
+            .expect("docs/openapi.json must contain a paths object");
+
+        let required_paths = [
+            "/api/v1/health",
+            "/api/v1/openapi.json",
+            "/api/v1/swagger.json",
+            "/api/v1/openapi.yaml",
+            "/api/v1/status",
+            "/api/v1/profiles",
+            "/api/v1/profiles/select",
+            "/api/v1/profiles/reorder",
+            "/api/v1/profiles/{number}",
+            "/api/v1/profiles/{number}/slots",
+            "/api/v1/profiles/{number}/slots/{slot}",
+            "/api/v1/profiles/{number}/slots/{slot}/trigger",
+            "/api/v1/dsvm/compile",
+            "/api/v1/templates",
+            "/api/v1/pgv",
+            "/api/v1/leds",
+            "/api/v1/sd/sync",
+            "/api/v1/sd/reload",
+            "/api/v1/sd/mount",
+            "/api/v1/sd/unmount",
+            "/api/v1/device/sleep",
+            "/api/v1/device/wake",
+            "/api/v1/device/reboot",
+            "/api/v1/device/sync-rtc",
+            "/api/v1/logs",
+        ];
+
+        for ep in required_paths {
+            assert!(
+                paths.contains_key(ep),
+                "OpenAPI spec is missing endpoint path: {}",
+                ep
+            );
+        }
+
+        let swagger_raw = std::fs::read_to_string(&swagger_json_path)
+            .expect("Failed to read docs/swagger.json");
+        let swagger_val: serde_json::Value = serde_json::from_str(&swagger_raw)
+            .expect("docs/swagger.json must be valid JSON");
+        assert!(
+            swagger_val.get("paths").and_then(|v| v.as_object()).is_some(),
+            "docs/swagger.json must contain paths"
+        );
+    }
+
+    #[test]
+    fn test_full_qml_ui_overflow_and_contrast_suite() {
+        if std::env::var("DUCKYDECK_UI_TEST_SUBPROC").as_deref() == Ok("1") {
+            sanitize_xdg_env();
+            let code = crate::bridge::device_controller::run_application(false);
+            std::process::exit(code);
+        }
+
+        let report_path = std::env::temp_dir().join(format!(
+            "duckydeck_ui_test_report_{}.json",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&report_path);
+
+        let current_test_bin = std::env::current_exe()
+            .expect("Failed to resolve current test executable path");
+
+        let mut cmd = Command::new(current_test_bin);
+        cmd.arg("--exact")
+            .arg("ui_test_suite::test_full_qml_ui_overflow_and_contrast_suite")
+            .arg("--nocapture")
+            .env("DUCKYDECK_UI_TEST_SUBPROC", "1")
+            .env("DUCKYDECK_UI_TEST_SUITE", "1")
+            .env("DUCKYDECK_UI_TEST_REPORT", &report_path);
+
+        if std::env::var_os("WAYLAND_DISPLAY").is_none() && std::env::var_os("DISPLAY").is_none() {
+            cmd.env("QT_QPA_PLATFORM", "offscreen");
+        }
+
+        let output = cmd
+            .output()
+            .expect("Failed to execute UI test suite subprocess");
+
+        assert!(
+            report_path.exists(),
+            "UI test report JSON was not generated at {:?}. stderr: {}",
+            report_path,
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let report_raw = std::fs::read_to_string(&report_path)
+            .expect("Failed to read generated UI test report JSON");
+        let _ = std::fs::remove_file(&report_path);
+
+        let report: serde_json::Value = serde_json::from_str(&report_raw)
+            .expect("UI test report must be valid JSON");
+
+        let passed = report
+            .get("passed")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let behavioral_failures = report
+            .get("summary")
+            .and_then(|s| s.get("behavioralFailuresCount"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(999);
+        let overflow_count = report
+            .get("summary")
+            .and_then(|s| s.get("overflowViolationsCount"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(999);
+        let contrast_count = report
+            .get("summary")
+            .and_then(|s| s.get("contrastViolationsCount"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(999);
+        let scrollbar_violations_count = report
+            .get("summary")
+            .and_then(|s| s.get("scrollBarStyleViolationsCount"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(999);
+        let total_scrollbars_inspected = report
+            .get("summary")
+            .and_then(|s| s.get("totalScrollBarsInspected"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        assert_eq!(
+            behavioral_failures, 0,
+            "UI behavioral checks failed: {}",
+            serde_json::to_string_pretty(&report["behavioralResults"]).unwrap_or_default()
+        );
+        assert_eq!(
+            overflow_count, 0,
+            "UI overflow violations detected: {}",
+            serde_json::to_string_pretty(&report["overflowViolations"]).unwrap_or_default()
+        );
+        assert_eq!(
+            contrast_count, 0,
+            "UI contrast violations detected: {}",
+            serde_json::to_string_pretty(&report["contrastViolations"]).unwrap_or_default()
+        );
+        assert_eq!(
+            scrollbar_violations_count, 0,
+            "UI scrollbar style violations detected (must match Profiles Box HighContrastScrollBar): {}",
+            serde_json::to_string_pretty(&report["scrollBarStyleViolations"]).unwrap_or_default()
+        );
+        assert!(
+            total_scrollbars_inspected >= 40,
+            "Expected at least 40 scrollbar instances to be inspected across all resizable windows and themes, got {}",
+            total_scrollbars_inspected
+        );
+        let scrollbar_behavior_passed = report
+            .get("behavioralResults")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter().any(|entry| {
+                    entry.get("name").and_then(|n| n.as_str())
+                        == Some("resizable_windows_scrollbar_style_matches_profiles_box")
+                        && entry.get("passed").and_then(|p| p.as_bool()) == Some(true)
+                })
+            })
+            .unwrap_or(false);
+        assert!(
+            scrollbar_behavior_passed,
+            "Behavioral check 'resizable_windows_scrollbar_style_matches_profiles_box' did not pass: {}",
+            serde_json::to_string_pretty(&report["behavioralResults"]).unwrap_or_default()
+        );
+        assert!(
+            passed && output.status.success(),
+            "UI test suite did not pass cleanly. Report summary: {}",
+            serde_json::to_string_pretty(&report["summary"]).unwrap_or_default()
+        );
+    }
+}
+

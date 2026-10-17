@@ -2701,14 +2701,20 @@ pub fn discard_unsynced_change_in_profiles(
 }
 
 pub fn sync_profiles_to_cache(profiles: &[DuckyProfile]) {
-    if profiles.is_empty() {
+    if profiles.is_empty()
+        || std::env::var("DUCKYDECK_DEMO_SHOWCASE").as_deref() == Ok("1")
+        || std::env::var("DUCKYDECK_UI_TEST_SUITE").as_deref() == Ok("1")
+    {
         return;
     }
     write_profiles_to_cache_dir(&profile_cache_dir(), profiles);
 }
 
 pub fn sync_profiles_to_device_cache(serial: &str, profiles: &[DuckyProfile]) {
-    if profiles.is_empty() {
+    if profiles.is_empty()
+        || std::env::var("DUCKYDECK_DEMO_SHOWCASE").as_deref() == Ok("1")
+        || std::env::var("DUCKYDECK_UI_TEST_SUITE").as_deref() == Ok("1")
+    {
         return;
     }
     write_profiles_to_cache_dir(&profile_cache_dir(), profiles);

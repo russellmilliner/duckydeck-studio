@@ -16,6 +16,8 @@ Item {
     property bool showExpansion: false
     property bool oledScriptMode: false
     property int activeProfileOledRotation: 0
+    readonly property bool isLightTheme: (0.2126 * Kirigami.Theme.backgroundColor.r + 0.7152 * Kirigami.Theme.backgroundColor.g + 0.0722 * Kirigami.Theme.backgroundColor.b) > 0.45
+    readonly property color highContrastHighlightText: isLightTheme ? "#0369a1" : Kirigami.Theme.highlightColor
 
     property string enc1CcwLabel: "Size -"
     property string enc1CwLabel: "Size +"
@@ -788,7 +790,7 @@ Item {
                             Layout.preferredWidth: 16
                             Layout.preferredHeight: 16
                             color: onboardTabBtn.isActiveTab
-                                ? Kirigami.Theme.highlightColor
+                                ? canvasRoot.highContrastHighlightText
                                 : Kirigami.Theme.textColor
                         }
 
@@ -796,7 +798,7 @@ Item {
                             text: qsTr("Onboard")
                             font.bold: onboardTabBtn.isActiveTab
                             color: onboardTabBtn.isActiveTab
-                                ? Kirigami.Theme.highlightColor
+                                ? canvasRoot.highContrastHighlightText
                                 : Kirigami.Theme.textColor
                         }
                     }
@@ -865,7 +867,7 @@ Item {
                             Layout.preferredWidth: 16
                             Layout.preferredHeight: 16
                             color: expansionTabBtn.isActiveTab
-                                ? Kirigami.Theme.highlightColor
+                                ? canvasRoot.highContrastHighlightText
                                 : Kirigami.Theme.textColor
                         }
 
@@ -873,7 +875,7 @@ Item {
                             text: qsTr("Expansion")
                             font.bold: expansionTabBtn.isActiveTab
                             color: expansionTabBtn.isActiveTab
-                                ? Kirigami.Theme.highlightColor
+                                ? canvasRoot.highContrastHighlightText
                                 : Kirigami.Theme.textColor
                         }
                     }

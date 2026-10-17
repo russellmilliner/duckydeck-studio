@@ -248,12 +248,12 @@ impl Default for SwitcherState {
                 app_theme_mode: theme,
                 close_to_tray: cfg.close_to_tray,
                 ui_text_scale: cfg.ui_text_scale.clamp(75, 160),
-                sidebar_text_scale: cfg.sidebar_text_scale.clamp(75, 160),
-                canvas_text_scale: cfg.canvas_text_scale.clamp(75, 160),
-                inspector_text_scale: cfg.inspector_text_scale.clamp(75, 160),
-                editor_text_scale: cfg.editor_text_scale.clamp(75, 160),
-                status_bar_text_scale: cfg.status_bar_text_scale.clamp(75, 160),
-                event_log_text_scale: cfg.event_log_text_scale.clamp(75, 160),
+                sidebar_text_scale: cfg.ui_text_scale.clamp(75, 160),
+                canvas_text_scale: cfg.ui_text_scale.clamp(75, 160),
+                inspector_text_scale: cfg.ui_text_scale.clamp(75, 160),
+                editor_text_scale: cfg.ui_text_scale.clamp(75, 160),
+                status_bar_text_scale: cfg.ui_text_scale.clamp(75, 160),
+                event_log_text_scale: cfg.ui_text_scale.clamp(75, 160),
                 saved_colors,
                 rest_api_enabled: cfg.rest_api_enabled,
                 rest_api_bind_ip: bind_ip,
@@ -330,6 +330,11 @@ impl Default for SwitcherState {
 
 impl SwitcherState {
     pub fn config_file_path() -> PathBuf {
+        if std::env::var("DUCKYDECK_UI_TEST_SUITE").as_deref() == Ok("1") {
+            return std::env::temp_dir()
+                .join(format!("duckydeck-ui-test-suite-{}", std::process::id()))
+                .join("kwin_rules.json");
+        }
         let base = std::env::var("XDG_CONFIG_HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|_| {
@@ -346,13 +351,16 @@ impl SwitcherState {
     }
 
     pub fn save_to_disk(&self) -> Result<(), String> {
-        if std::env::var("DUCKYDECK_DEMO_SHOWCASE").as_deref() == Ok("1") {
+        if std::env::var("DUCKYDECK_DEMO_SHOWCASE").as_deref() == Ok("1")
+            && std::env::var("DUCKYDECK_UI_TEST_SUITE").as_deref() != Ok("1")
+        {
             return Ok(());
         }
         let path = Self::config_file_path();
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("Failed creating config dir: {e}"))?;
         }
+        let unified_scale = self.ui_text_scale.clamp(75, 160);
         let payload = PersistedSwitcherConfig {
             enabled: self.enabled,
             default_profile: self.default_profile,
@@ -362,13 +370,13 @@ impl SwitcherState {
             tray_icon_mode: self.tray_icon_mode.clone(),
             app_theme_mode: self.app_theme_mode.clone(),
             close_to_tray: self.close_to_tray,
-            ui_text_scale: self.ui_text_scale.clamp(75, 160),
-            sidebar_text_scale: self.sidebar_text_scale.clamp(75, 160),
-            canvas_text_scale: self.canvas_text_scale.clamp(75, 160),
-            inspector_text_scale: self.inspector_text_scale.clamp(75, 160),
-            editor_text_scale: self.editor_text_scale.clamp(75, 160),
-            status_bar_text_scale: self.status_bar_text_scale.clamp(75, 160),
-            event_log_text_scale: self.event_log_text_scale.clamp(75, 160),
+            ui_text_scale: unified_scale,
+            sidebar_text_scale: unified_scale,
+            canvas_text_scale: unified_scale,
+            inspector_text_scale: unified_scale,
+            editor_text_scale: unified_scale,
+            status_bar_text_scale: unified_scale,
+            event_log_text_scale: unified_scale,
             saved_colors: self.saved_colors.clone(),
             rest_api_enabled: self.rest_api_enabled,
             rest_api_bind_ip: self.rest_api_bind_ip.clone(),
