@@ -47,6 +47,14 @@ fn default_ui_text_scale() -> i32 {
     100
 }
 
+pub fn default_mouse_settle_ms() -> i32 {
+    250
+}
+
+pub fn default_window_dwell_ms() -> i32 {
+    150
+}
+
 pub fn default_saved_colors() -> Vec<String> {
     vec![
         "#00aaff".to_string(),
@@ -67,6 +75,10 @@ pub struct PersistedSwitcherConfig {
     pub enabled: bool,
     pub default_profile: Option<u8>,
     pub rules: Vec<AutoSwitchRule>,
+    #[serde(default = "default_mouse_settle_ms")]
+    pub mouse_settle_ms: i32,
+    #[serde(default = "default_window_dwell_ms")]
+    pub window_dwell_ms: i32,
     #[serde(default = "default_tray_icon_mode")]
     pub tray_icon_mode: String,
     #[serde(default = "default_app_theme_mode")]
@@ -96,6 +108,8 @@ pub struct SwitcherState {
     pub paused_for_editing: bool,
     pub default_profile: Option<u8>,
     pub rules: Vec<AutoSwitchRule>,
+    pub mouse_settle_ms: i32,
+    pub window_dwell_ms: i32,
     pub tray_icon_mode: String,
     pub app_theme_mode: String,
     pub close_to_tray: bool,
@@ -133,6 +147,8 @@ impl Default for SwitcherState {
                 paused_for_editing: false,
                 default_profile: cfg.default_profile,
                 rules: cfg.rules,
+                mouse_settle_ms: cfg.mouse_settle_ms.clamp(0, 5000),
+                window_dwell_ms: cfg.window_dwell_ms.clamp(0, 5000),
                 tray_icon_mode: mode,
                 app_theme_mode: theme,
                 close_to_tray: cfg.close_to_tray,
@@ -177,6 +193,8 @@ impl Default for SwitcherState {
                     target_profile: 4,
                 },
             ],
+            mouse_settle_ms: default_mouse_settle_ms(),
+            window_dwell_ms: default_window_dwell_ms(),
             tray_icon_mode: "auto".to_string(),
             app_theme_mode: "system".to_string(),
             close_to_tray: true,
@@ -224,6 +242,8 @@ impl SwitcherState {
             enabled: self.enabled,
             default_profile: self.default_profile,
             rules: self.rules.clone(),
+            mouse_settle_ms: self.mouse_settle_ms.clamp(0, 5000),
+            window_dwell_ms: self.window_dwell_ms.clamp(0, 5000),
             tray_icon_mode: self.tray_icon_mode.clone(),
             app_theme_mode: self.app_theme_mode.clone(),
             close_to_tray: self.close_to_tray,
@@ -364,6 +384,20 @@ pub fn is_web_browser_class(resource_class: &str) -> bool {
     false
 }
 
+pub fn is_chromium_pwa_class(class_lower: &str) -> bool {
+    for prefix in ["chrome-", "chromium-", "brave-", "msedge-"] {
+        if let Some(rest) = class_lower.strip_prefix(prefix) {
+            let app_id = rest.split('-').next().unwrap_or("");
+            if (16..=40).contains(&app_id.len())
+                && app_id.chars().all(|c| c.is_ascii_alphanumeric())
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 pub fn rule_matches_window_class(rule_class_raw: &str, active_window_class_lower: &str) -> bool {
     let trimmed = rule_class_raw.trim();
     if trimmed.is_empty() || active_window_class_lower.is_empty() {
@@ -372,6 +406,12 @@ pub fn rule_matches_window_class(rule_class_raw: &str, active_window_class_lower
     if is_any_browser_wildcard(trimmed) {
         return is_web_browser_class(active_window_class_lower);
     }
+
+    let is_pwa = is_chromium_pwa_class(active_window_class_lower);
+    let norm_active: String = active_window_class_lower
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect();
 
     for part in trimmed.split([',', '|']) {
         let token = part.trim().to_ascii_lowercase();
@@ -384,7 +424,28 @@ pub fn rule_matches_window_class(rule_class_raw: &str, active_window_class_lower
             }
             continue;
         }
-        if active_window_class_lower == token || active_window_class_lower.contains(&token) {
+        if active_window_class_lower == token {
+            return true;
+        }
+        // Do not let generic browser rules (e.g. "chrome", "chromium") match standalone Chrome PWAs
+        // like "chrome-hbmnbinfcdjocecbhmpfeapfnchehanm-Profile_1" unless the rule explicitly targets that PWA ID.
+        if is_pwa && !is_chromium_pwa_class(&token) {
+            continue;
+        }
+        let norm_token: String = token
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .collect();
+        if !norm_token.is_empty() && norm_active == norm_token {
+            return true;
+        }
+        if active_window_class_lower
+            .split(['.', '-', '_'])
+            .any(|seg| seg == token || (!norm_token.is_empty() && seg == norm_token))
+        {
+            return true;
+        }
+        if token.len() >= 5 && active_window_class_lower.contains(&token) {
             return true;
         }
     }
@@ -1843,7 +1904,7 @@ impl SwitcherState {
     pub fn match_profile_for_window(&self, resource_class: &str, caption: &str) -> Option<u8> {
         let lower_class = resource_class.trim().to_lowercase();
         if lower_class.is_empty() || lower_class == "none" {
-            return None;
+            return self.default_profile;
         }
         let resolved_caption = resolve_full_browser_caption(resource_class, caption);
         let caption_lower = resolved_caption.to_lowercase();
@@ -1882,9 +1943,34 @@ impl SwitcherState {
     }
 }
 
+struct PendingWindowSwitch {
+    raw_class: String,
+    raw_name: String,
+    raw_caption: String,
+    window_entered_at: std::time::Instant,
+    last_motion_at: std::time::Instant,
+    settled_and_dispatched: bool,
+}
+
+impl Default for PendingWindowSwitch {
+    fn default() -> Self {
+        let now = std::time::Instant::now();
+        Self {
+            raw_class: String::new(),
+            raw_name: String::new(),
+            raw_caption: String::new(),
+            window_entered_at: now,
+            last_motion_at: now,
+            settled_and_dispatched: true,
+        }
+    }
+}
+
 pub struct KWinBridgeService {
     state: Arc<Mutex<SwitcherState>>,
     ui_event_tx: mpsc::UnboundedSender<WindowChangeEvent>,
+    pending: Arc<Mutex<PendingWindowSwitch>>,
+    settle_notify: Arc<tokio::sync::Notify>,
 }
 
 #[interface(name = "io.github.duckydeck.KWinBridge")]
@@ -1895,49 +1981,100 @@ impl KWinBridgeService {
         resource_name: String,
         caption: String,
     ) {
-        let lower_class = resource_class.to_lowercase();
-        if resource_class.is_empty()
-            || lower_class == "plasmashell"
-            || lower_class.contains("duckydeck")
-        {
+        let mut effective_class = resource_class.trim().to_string();
+        if effective_class.is_empty() {
+            effective_class = resource_name.trim().to_string();
+        }
+        if effective_class.is_empty() {
+            effective_class = "plasmashell".to_string();
+        }
+
+        let lower_class = effective_class.to_lowercase();
+        if lower_class.contains("duckydeck") {
             return;
         }
 
-        let resolved_caption = resolve_full_browser_caption(&resource_class, &caption);
-        let mut matched_profile: Option<u8> = None;
+        let (picker_armed, settle_ms, dwell_ms) = if let Ok(state) = self.state.lock() {
+            (
+                state.picker_armed,
+                state.mouse_settle_ms.clamp(0, 5000),
+                state.window_dwell_ms.clamp(0, 5000),
+            )
+        } else {
+            return;
+        };
 
-        if let Ok(mut state) = self.state.lock() {
-            if state.picker_armed {
-                state.picker_armed = false;
-                let _ = self.ui_event_tx.send(WindowChangeEvent {
-                    resource_class,
-                    resource_name,
-                    caption: resolved_caption,
-                    matched_profile: None,
-                    picked: true,
-                });
-                return;
+        if picker_armed {
+            return;
+        }
+
+        let now = std::time::Instant::now();
+        let mut window_changed = false;
+        let mut already_settled = false;
+
+        if let Ok(mut pending) = self.pending.lock() {
+            window_changed =
+                pending.raw_class != effective_class || pending.raw_caption != caption;
+            if window_changed {
+                pending.raw_class = effective_class.clone();
+                pending.raw_name = resource_name.clone();
+                pending.raw_caption = caption.clone();
+                pending.window_entered_at = now;
+                pending.last_motion_at = now;
+                pending.settled_and_dispatched = false;
+            } else {
+                pending.last_motion_at = now;
+                already_settled = pending.settled_and_dispatched;
             }
 
-            if state.enabled && !state.paused_for_editing {
-                matched_profile =
-                    state.match_profile_for_window(&resource_class, &resolved_caption);
-
-                if let Some(target) = matched_profile {
-                    if send_hid_switch_profile(target) {
-                        state.last_switched_profile = target;
-                    }
-                }
+            if settle_ms <= 0 && dwell_ms <= 0 && !pending.settled_and_dispatched {
+                pending.settled_and_dispatched = true;
             }
         }
 
-        let _ = self.ui_event_tx.send(WindowChangeEvent {
-            resource_class,
-            resource_name,
-            caption: resolved_caption,
-            matched_profile,
-            picked: false,
-        });
+        if already_settled {
+            return;
+        }
+
+        if settle_ms <= 0 && dwell_ms <= 0 {
+            let resolved_caption = resolve_full_browser_caption(&effective_class, &caption);
+            let mut matched_profile: Option<u8> = None;
+
+            if let Ok(mut state) = self.state.lock() {
+                if !state.picker_armed && state.enabled && !state.paused_for_editing {
+                    matched_profile =
+                        state.match_profile_for_window(&effective_class, &resolved_caption);
+
+                    if let Some(target) = matched_profile {
+                        if send_hid_switch_profile(target) {
+                            state.last_switched_profile = target;
+                        }
+                    }
+                }
+            }
+
+            let _ = self.ui_event_tx.send(WindowChangeEvent {
+                resource_class: effective_class,
+                resource_name,
+                caption: resolved_caption,
+                matched_profile,
+                picked: false,
+            });
+            return;
+        }
+
+        if window_changed {
+            let resolved_caption = resolve_full_browser_caption(&effective_class, &caption);
+            let _ = self.ui_event_tx.send(WindowChangeEvent {
+                resource_class: effective_class,
+                resource_name,
+                caption: resolved_caption,
+                matched_profile: None,
+                picked: false,
+            });
+        }
+
+        self.settle_notify.notify_one();
     }
 
     fn notify_main_window_minimized(&mut self) {
@@ -1955,16 +2092,30 @@ impl KWinBridgeService {
     }
 }
 
+pub static LAST_SW_PROFILE_SWITCH_MS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub static LAST_SW_PROFILE_TARGET: std::sync::atomic::AtomicU8 =
+    std::sync::atomic::AtomicU8::new(0);
+
+pub fn current_epoch_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 pub fn send_hid_switch_profile(profile_number: u8) -> bool {
     if crate::hardware::storage::MSC_SYNC_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst) {
         return false;
     }
+    let clamped = profile_number.clamp(1, 64);
+    LAST_SW_PROFILE_TARGET.store(clamped, std::sync::atomic::Ordering::SeqCst);
+    LAST_SW_PROFILE_SWITCH_MS.store(current_epoch_ms(), std::sync::atomic::Ordering::SeqCst);
+
     let _guard = crate::hardware::storage::HID_IO_LOCK.lock().ok();
     let Ok(api) = HidApi::new() else {
         return false;
     };
-
-    let clamped = profile_number.clamp(1, 64);
 
     for pid in [PID_DUCKYPAD_PRO, PID_DUCKYPAD_2020] {
         if let Ok(device) = api.open(DUCKYPAD_VID, pid) {
@@ -1978,12 +2129,14 @@ pub fn send_hid_switch_profile(profile_number: u8) -> bool {
                 let mut qrx = [0u8; 64];
                 if let Ok(n) = device.read_timeout(&mut qrx, 200) {
                     if n >= 12 && qrx[2] == 0 && qrx[6] != 0 && qrx[11] == clamped {
+                        LAST_SW_PROFILE_SWITCH_MS
+                            .store(current_epoch_ms(), std::sync::atomic::Ordering::SeqCst);
                         return true;
                     }
                 }
             }
 
-            for attempt in 0..2u8 {
+            for attempt in 0..6u8 {
                 let mut tx = [0u8; 64];
                 tx[0] = HID_REPORT_ID_OUT;
                 tx[1] = 0x77u8.wrapping_add(attempt);
@@ -1994,13 +2147,16 @@ pub fn send_hid_switch_profile(profile_number: u8) -> bool {
                     let mut rx = [0u8; 64];
                     if let Ok(n) = device.read_timeout(&mut rx, 500) {
                         if n >= 3 && rx[2] == 2 {
-                            // HID_RESPONSE_BUSY: wait briefly and retry once
-                            std::thread::sleep(std::time::Duration::from_millis(50));
+                            // HID_RESPONSE_BUSY: wait briefly and retry
+                            std::thread::sleep(std::time::Duration::from_millis(75));
                             continue;
                         }
                     }
+                    LAST_SW_PROFILE_SWITCH_MS
+                        .store(current_epoch_ms(), std::sync::atomic::Ordering::SeqCst);
                     return true;
                 }
+                std::thread::sleep(std::time::Duration::from_millis(50));
             }
         }
     }
@@ -2055,7 +2211,110 @@ pub async fn run_kwin_auto_switcher(
     state: Arc<Mutex<SwitcherState>>,
     ui_event_tx: mpsc::UnboundedSender<WindowChangeEvent>,
 ) -> ZbusResult<()> {
-    let service = KWinBridgeService { state, ui_event_tx };
+    let pending = Arc::new(Mutex::new(PendingWindowSwitch::default()));
+    let settle_notify = Arc::new(tokio::sync::Notify::new());
+
+    {
+        let state_bg = Arc::clone(&state);
+        let pending_bg = Arc::clone(&pending);
+        let notify_bg = Arc::clone(&settle_notify);
+        let ui_tx_bg = ui_event_tx.clone();
+
+        tokio::spawn(async move {
+            loop {
+                let maybe_deadline = {
+                    let (settle_ms, dwell_ms) = if let Ok(st) = state_bg.lock() {
+                        (
+                            st.mouse_settle_ms.clamp(0, 5000) as u64,
+                            st.window_dwell_ms.clamp(0, 5000) as u64,
+                        )
+                    } else {
+                        (250, 150)
+                    };
+
+                    if let Ok(p) = pending_bg.lock() {
+                        if p.settled_and_dispatched || p.raw_class.is_empty() {
+                            None
+                        } else {
+                            let settle_dl =
+                                p.last_motion_at + std::time::Duration::from_millis(settle_ms);
+                            let dwell_dl =
+                                p.window_entered_at + std::time::Duration::from_millis(dwell_ms);
+                            Some(settle_dl.max(dwell_dl))
+                        }
+                    } else {
+                        None
+                    }
+                };
+
+                let Some(deadline) = maybe_deadline else {
+                    notify_bg.notified().await;
+                    continue;
+                };
+
+                let now = std::time::Instant::now();
+                if now < deadline {
+                    tokio::select! {
+                        _ = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)) => {}
+                        _ = notify_bg.notified() => {
+                            continue;
+                        }
+                    }
+                    continue;
+                }
+
+                // Deadline reached without newer cursor motion or window change!
+                let dispatch_target = if let Ok(mut p) = pending_bg.lock() {
+                    if p.settled_and_dispatched || p.raw_class.is_empty() {
+                        None
+                    } else {
+                        p.settled_and_dispatched = true;
+                        Some((
+                            p.raw_class.clone(),
+                            p.raw_name.clone(),
+                            p.raw_caption.clone(),
+                        ))
+                    }
+                } else {
+                    None
+                };
+
+                if let Some((effective_class, resource_name, raw_caption)) = dispatch_target {
+                    let resolved_caption =
+                        resolve_full_browser_caption(&effective_class, &raw_caption);
+                    let mut matched_profile: Option<u8> = None;
+
+                    if let Ok(mut st) = state_bg.lock() {
+                        if !st.picker_armed && st.enabled && !st.paused_for_editing {
+                            matched_profile =
+                                st.match_profile_for_window(&effective_class, &resolved_caption);
+
+                            if let Some(target) = matched_profile {
+                                if send_hid_switch_profile(target) {
+                                    st.last_switched_profile = target;
+                                }
+                            }
+                        }
+                    }
+
+                    let _ = ui_tx_bg.send(WindowChangeEvent {
+                        resource_class: effective_class,
+                        resource_name,
+                        caption: resolved_caption,
+                        matched_profile,
+                        picked: false,
+                    });
+                }
+            }
+        });
+    }
+
+    let service = KWinBridgeService {
+        state,
+        ui_event_tx,
+        pending,
+        settle_notify,
+    };
     let conn = zbus::conn::Builder::session()?
         .name("io.github.duckydeck.Studio")?
         .serve_at("/KWinBridge", service)?
@@ -2113,6 +2372,8 @@ fn write_kwin6_hook_script() -> std::io::Result<String> {
     let js_code = r#"
 var trackedWindow = null;
 var hookedWindows = [];
+var lastCursorKey = "";
+var lastMotionSentMs = 0;
 
 function isWindowHooked(win) {
     for (var i = 0; i < hookedWindows.length; ++i) {
@@ -2236,65 +2497,199 @@ function checkOledKeepAbove(win) {
     }
 }
 
-function isIgnoredWindow(win) {
-    if (!win) return true;
+function isDuckyDeckWindow(win) {
+    if (!win) return false;
     checkOledKeepAbove(win);
+    if (isOledWidgetWindow(win) || isDuckyDeckMainWindow(win)) return true;
     var cls = (win.resourceClass ? win.resourceClass.toString() : "").toLowerCase();
-    return cls === "" || cls === "plasmashell" || cls.indexOf("duckydeck") !== -1;
+    var name = (win.resourceName ? win.resourceName.toString() : "").toLowerCase();
+    return cls.indexOf("duckydeck") !== -1 || name.indexOf("duckydeck") !== -1;
 }
 
-function sendWindow(win) {
-    if (!win) return;
-    callDBus(
-        "io.github.duckydeck.Studio",
-        "/KWinBridge",
-        "io.github.duckydeck.KWinBridge",
-        "NotifyActiveWindow",
-        win.resourceClass ? win.resourceClass.toString() : "",
-        win.resourceName ? win.resourceName.toString() : "",
-        win.caption ? win.caption.toString() : ""
-    );
+function isDesktopOrPanelWindow(win) {
+    if (!win) return true;
+    if (win.desktopWindow || win.dock) return true;
+    var cls = (win.resourceClass ? win.resourceClass.toString() : "").toLowerCase();
+    var name = (win.resourceName ? win.resourceName.toString() : "").toLowerCase();
+    return cls === "plasmashell" || cls === "org.kde.plasmashell" || name === "plasmashell";
 }
 
-function onTrackedCaptionChanged() {
-    if (trackedWindow && !isIgnoredWindow(trackedWindow)) {
-        sendWindow(trackedWindow);
-    }
+function effectiveWindowClass(win) {
+    if (!win || isDesktopOrPanelWindow(win)) return "plasmashell";
+    var cls = win.resourceClass ? win.resourceClass.toString().trim() : "";
+    if (cls !== "") return cls;
+    var name = win.resourceName ? win.resourceName.toString().trim() : "";
+    if (name !== "") return name;
+    var df = win.desktopFileName ? win.desktopFileName.toString().trim() : "";
+    if (df !== "") return df;
+    return "unmatched-window";
 }
 
-function onWindowActivated(win) {
-    if (!win || isIgnoredWindow(win)) return;
-    if (trackedWindow && trackedWindow !== win) {
+function disconnectTrackedWindow() {
+    if (trackedWindow) {
         try {
             if (trackedWindow.captionChanged) {
                 trackedWindow.captionChanged.disconnect(onTrackedCaptionChanged);
             }
         } catch (e) {}
+        trackedWindow = null;
     }
-    trackedWindow = win;
-    try {
-        if (trackedWindow.captionChanged) {
-            trackedWindow.captionChanged.connect(onTrackedCaptionChanged);
+}
+
+function sendDesktop() {
+    lastCursorKey = "plasmashell::Desktop";
+    callDBus(
+        "io.github.duckydeck.Studio",
+        "/KWinBridge",
+        "io.github.duckydeck.KWinBridge",
+        "NotifyActiveWindow",
+        "plasmashell",
+        "plasmashell",
+        "Desktop"
+    );
+}
+
+function sendWindow(win) {
+    if (!win || isDesktopOrPanelWindow(win)) {
+        sendDesktop();
+        return;
+    }
+    var cls = effectiveWindowClass(win);
+    var rname = win.resourceName ? win.resourceName.toString() : cls;
+    var cap = win.caption ? win.caption.toString() : "";
+    lastCursorKey = cls + "::" + cap;
+    callDBus(
+        "io.github.duckydeck.Studio",
+        "/KWinBridge",
+        "io.github.duckydeck.KWinBridge",
+        "NotifyActiveWindow",
+        cls,
+        rname,
+        cap
+    );
+}
+
+function onTrackedCaptionChanged() {
+    if (workspace.activeWindow && isDuckyDeckWindow(workspace.activeWindow)) {
+        return;
+    }
+    if (trackedWindow && !isDuckyDeckWindow(trackedWindow)) {
+        sendWindow(trackedWindow);
+    }
+}
+
+function onWindowActivated(win) {
+    if (!win) {
+        disconnectTrackedWindow();
+        sendDesktop();
+        return;
+    }
+    if (isDuckyDeckWindow(win)) {
+        disconnectTrackedWindow();
+        lastCursorKey = "__duckydeck__";
+        return;
+    }
+    if (isDesktopOrPanelWindow(win)) {
+        disconnectTrackedWindow();
+        sendDesktop();
+        return;
+    }
+    if (trackedWindow !== win) {
+        if (trackedWindow) {
+            disconnectTrackedWindow();
         }
-    } catch (e) {}
+        trackedWindow = win;
+        try {
+            if (trackedWindow.captionChanged) {
+                trackedWindow.captionChanged.connect(onTrackedCaptionChanged);
+            }
+        } catch (e) {}
+    }
     sendWindow(win);
 }
 
+function isWindowOnCurrentDesktop(w) {
+    if (!w) return false;
+    if (w.onAllDesktops || w.desktopWindow || w.dock) return true;
+    if (!workspace.currentDesktop || !w.desktops || w.desktops.length === 0) return true;
+    for (var d = 0; d < w.desktops.length; ++d) {
+        if (w.desktops[d] === workspace.currentDesktop) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function topWindowAtPoint(pt) {
+    if (!pt) return null;
+    var order = workspace.stackingOrder || (workspace.windowList ? workspace.windowList() : null);
+    if (!order || !order.length) return null;
+    for (var i = order.length - 1; i >= 0; --i) {
+        var w = order[i];
+        if (!w || w.minimized || w.hidden || w.deleted) continue;
+        if (w.tooltip || w.notification || w.criticalNotification || w.onScreenDisplay || w.dndIcon || w.splash) continue;
+        if (!isWindowOnCurrentDesktop(w)) continue;
+        var fg = w.frameGeometry;
+        if (!fg || fg.width <= 0 || fg.height <= 0) continue;
+        if (pt.x >= fg.x && pt.x < (fg.x + fg.width) && pt.y >= fg.y && pt.y < (fg.y + fg.height)) {
+            return w;
+        }
+    }
+    return null;
+}
+
+function onCursorPosChanged() {
+    var pt = workspace.cursorPos;
+    if (!pt) return;
+    var now = Date.now();
+    var topWin = topWindowAtPoint(pt);
+    if (!topWin || isDesktopOrPanelWindow(topWin)) {
+        if (lastCursorKey !== "plasmashell::Desktop" || (now - lastMotionSentMs) >= 50) {
+            lastMotionSentMs = now;
+            disconnectTrackedWindow();
+            sendDesktop();
+        }
+        return;
+    }
+    if (isDuckyDeckWindow(topWin)) {
+        lastCursorKey = "__duckydeck__";
+        return;
+    }
+    var cls = effectiveWindowClass(topWin);
+    var cap = topWin.caption ? topWin.caption.toString() : "";
+    var key = cls + "::" + cap;
+    if (lastCursorKey !== key || (now - lastMotionSentMs) >= 50) {
+        lastMotionSentMs = now;
+        onWindowActivated(topWin);
+    }
+}
+
 function sendInitialTopWindow() {
-    var order = workspace.stackingOrder || workspace.windowList();
+    var order = workspace.stackingOrder || (workspace.windowList ? workspace.windowList() : null);
     if (order && order.length) {
         for (var j = 0; j < order.length; ++j) {
             checkOledKeepAbove(order[j]);
         }
     }
-    if (workspace.activeWindow && !isIgnoredWindow(workspace.activeWindow)) {
+    if (workspace.cursorPos) {
+        var underCursor = topWindowAtPoint(workspace.cursorPos);
+        if (!underCursor || isDesktopOrPanelWindow(underCursor)) {
+            sendDesktop();
+            return;
+        }
+        if (!isDuckyDeckWindow(underCursor)) {
+            onWindowActivated(underCursor);
+            return;
+        }
+    }
+    if (workspace.activeWindow && !isDuckyDeckWindow(workspace.activeWindow)) {
         onWindowActivated(workspace.activeWindow);
         return;
     }
     if (order && order.length) {
         for (var i = order.length - 1; i >= 0; --i) {
             var w = order[i];
-            if (!isIgnoredWindow(w) && (!w.minimized)) {
+            if (!isDuckyDeckWindow(w) && (!w.minimized)) {
                 onWindowActivated(w);
                 return;
             }
@@ -2304,6 +2699,9 @@ function sendInitialTopWindow() {
 
 if (workspace.windowAdded) {
     workspace.windowAdded.connect(checkOledKeepAbove);
+}
+if (workspace.cursorPosChanged) {
+    workspace.cursorPosChanged.connect(onCursorPosChanged);
 }
 if (workspace.windowActivated) {
     workspace.windowActivated.connect(onWindowActivated);

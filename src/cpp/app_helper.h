@@ -1086,7 +1086,25 @@ inline void terminate_existing_pids(const QList<pid_t>& pids) {
     QThread::msleep(60);
 }
 
+inline QtMessageHandler& prev_qt_msg_handler() {
+    static QtMessageHandler h = nullptr;
+    return h;
+}
+
+inline void duckydeck_qt_msg_handler(QtMsgType type, const QMessageLogContext& ctx, const QString& msg) {
+    if (msg.contains(QStringLiteral("org/kde/breeze/TextArea.qml"))
+        && msg.contains(QStringLiteral("QQuickTextInput"))) {
+        return;
+    }
+    if (QtMessageHandler prev = prev_qt_msg_handler()) {
+        prev(type, ctx, msg);
+    }
+}
+
 inline int duckydeck_run_app(bool start_minimized) {
+    if (!prev_qt_msg_handler()) {
+        prev_qt_msg_handler() = qInstallMessageHandler(duckydeck_qt_msg_handler);
+    }
     QLoggingCategory::setFilterRules(QStringLiteral("union.*=false\nqt.core.qobject.connect=false"));
     if (!std::getenv("QT_QUICK_CONTROLS_STYLE")) {
         qputenv("QT_QUICK_CONTROLS_STYLE", "org.kde.breeze");

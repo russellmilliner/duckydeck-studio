@@ -2632,7 +2632,8 @@ Kirigami.ApplicationWindow {
 
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: Math.max(96, savedColorsFlow.implicitHeight + 16)
+                    Layout.preferredHeight: Math.min(130, Math.max(84, savedColorsFlow.implicitHeight + 16))
+                    Layout.maximumHeight: 130
                     radius: 6
                     color: Kirigami.Theme.alternateBackgroundColor
                     border.color: Qt.alpha(Kirigami.Theme.textColor, 0.18)
@@ -3679,12 +3680,16 @@ Kirigami.ApplicationWindow {
 
                 ColumnLayout {
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 1
                     spacing: 2
 
                     Kirigami.Heading {
                         level: 2
                         text: qsTr("Reusable Web API Destinations")
                         color: Kirigami.Theme.textColor
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
                     }
 
                     QQC2.Label {
@@ -3693,6 +3698,7 @@ Kirigami.ApplicationWindow {
                         color: Kirigami.Theme.disabledTextColor
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
                     }
                 }
 
@@ -3732,14 +3738,16 @@ Kirigami.ApplicationWindow {
 
                     ColumnLayout {
                         id: destListCol
-                        width: destListFlickable.width - (destListFlickable.contentHeight > destListFlickable.height ? 16 : 0)
+                        width: Math.max(200, destListFlickable.width - (destListFlickable.contentHeight > destListFlickable.height ? 16 : 0))
                         spacing: 6
 
                         QQC2.Label {
                             visible: (root.webApiDestinationsList || []).length === 0
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             Layout.topMargin: 28
                             horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
                             text: qsTr("No saved Web API destinations yet.\nEnter a Name, HTTP Method, URL, and optional Headers below and click Save Destination.")
                             color: Kirigami.Theme.disabledTextColor
                             font.pixelSize: 12
@@ -3792,6 +3800,8 @@ Kirigami.ApplicationWindow {
 
                                     ColumnLayout {
                                         Layout.fillWidth: true
+                                        Layout.minimumWidth: 0
+                                        Layout.preferredWidth: 1
                                         spacing: 2
 
                                         RowLayout {
@@ -3804,6 +3814,8 @@ Kirigami.ApplicationWindow {
                                                 font.pixelSize: 12
                                                 color: Kirigami.Theme.textColor
                                                 elide: Text.ElideRight
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 0
                                             }
 
                                             Rectangle {
@@ -3822,12 +3834,11 @@ Kirigami.ApplicationWindow {
                                                     color: Kirigami.Theme.positiveTextColor
                                                 }
                                             }
-
-                                            Item { Layout.fillWidth: true }
                                         }
 
                                         QQC2.Label {
                                             Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
                                             text: modelData.url || ""
                                             font.family: "monospace"
                                             font.pixelSize: 10
@@ -3917,6 +3928,8 @@ Kirigami.ApplicationWindow {
                         font.bold: true
                         font.pixelSize: 11
                         color: Kirigami.Theme.disabledTextColor
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
                     }
 
                     RowLayout {
@@ -3933,6 +3946,8 @@ Kirigami.ApplicationWindow {
                         QQC2.TextField {
                             id: destManagerNameField
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 80
+                            Layout.preferredWidth: 1
                             selectByMouse: true
                             placeholderText: qsTr("e.g. Home Assistant — Light Toggle, OBS Webhook, Discord Bot")
                         }
@@ -3965,6 +3980,8 @@ Kirigami.ApplicationWindow {
                         QQC2.TextField {
                             id: destManagerUrlField
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 80
+                            Layout.preferredWidth: 1
                             font.family: "monospace"
                             selectByMouse: true
                             placeholderText: qsTr("https://api.example.com/webhook  or  http://homeassistant.local:8123/api/services/light/toggle")
@@ -3985,6 +4002,8 @@ Kirigami.ApplicationWindow {
                         QQC2.TextField {
                             id: destManagerHeadersField
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 80
+                            Layout.preferredWidth: 1
                             font.family: "monospace"
                             selectByMouse: true
                             placeholderText: qsTr("Optional HTTP headers separated by ';' (e.g. Authorization: Bearer <token>; X-Api-Key: 123)")
@@ -6585,20 +6604,15 @@ Kirigami.ApplicationWindow {
                                 Layout.fillWidth: true
 
                                 QQC2.Label {
-                                    text: root.hasSelectedSlot && deviceController.autoSwitchEnabled
-                                        ? qsTr("AUTO-SWITCHER (PAUSED)")
-                                        : qsTr("AUTO-SWITCHER")
+                                    text: qsTr("AUTO-SWITCHER")
                                     font.bold: true
                                     font.pixelSize: Math.round(11 * root.sidebarScale)
-                                    color: root.hasSelectedSlot && deviceController.autoSwitchEnabled
-                                        ? Kirigami.Theme.neutralTextColor
-                                        : Kirigami.Theme.disabledTextColor
+                                    color: Kirigami.Theme.disabledTextColor
                                     Layout.fillWidth: true
                                 }
 
                                 QQC2.Switch {
-                                    checked: deviceController.autoSwitchEnabled && !root.hasSelectedSlot
-                                    enabled: !root.hasSelectedSlot
+                                    checked: deviceController.autoSwitchEnabled
                                     implicitHeight: 22
                                     onToggled: {
                                         deviceController.setAutoSwitchConfig(
@@ -6607,9 +6621,7 @@ Kirigami.ApplicationWindow {
                                         )
                                     }
                                     QQC2.ToolTip.visible: hovered
-                                    QQC2.ToolTip.text: root.hasSelectedSlot
-                                        ? qsTr("Auto-Switcher is disabled while the key editor is open to keep the edited key in context")
-                                        : qsTr("Toggle automatic profile switching")
+                                    QQC2.ToolTip.text: qsTr("Toggle automatic profile switching")
                                 }
                             }
 
@@ -6620,11 +6632,13 @@ Kirigami.ApplicationWindow {
                                 radius: 6
                                 color: deviceController.windowPickerArmed
                                     ? Qt.tint(Kirigami.Theme.alternateBackgroundColor, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.25))
-                                    : Kirigami.Theme.alternateBackgroundColor
+                                    : (root.hasSelectedSlot && deviceController.autoSwitchEnabled
+                                        ? Qt.tint(Kirigami.Theme.alternateBackgroundColor, Qt.rgba(0.96, 0.62, 0.04, 0.16))
+                                        : Kirigami.Theme.alternateBackgroundColor)
                                 border.color: deviceController.windowPickerArmed
                                     ? Kirigami.Theme.highlightColor
                                     : (root.hasSelectedSlot && deviceController.autoSwitchEnabled
-                                        ? Qt.alpha(Kirigami.Theme.neutralTextColor, 0.55)
+                                        ? "#f59e0b"
                                         : profilesSidebar.frameBorder)
                                 border.width: 1
 
@@ -6638,7 +6652,7 @@ Kirigami.ApplicationWindow {
                                         text: deviceController.windowPickerArmed
                                             ? qsTr("🎯 Click target window...")
                                             : (root.hasSelectedSlot && deviceController.autoSwitchEnabled
-                                                ? qsTr("⏸ Paused (Editing Key %1)").arg(root.selectedSlotNumber)
+                                                ? qsTr("⏸ Paused while Key Editor is open")
                                                 : qsTr("Active: %1").arg(deviceController.activeWindowClass))
                                         font.family: "monospace"
                                         font.bold: true
@@ -6646,15 +6660,17 @@ Kirigami.ApplicationWindow {
                                         color: deviceController.windowPickerArmed
                                             ? Kirigami.Theme.highlightColor
                                             : (root.hasSelectedSlot && deviceController.autoSwitchEnabled
-                                                ? Kirigami.Theme.neutralTextColor
+                                                ? "#f59e0b"
                                                 : Kirigami.Theme.textColor)
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
                                     }
 
                                     QQC2.Label {
-                                        visible: deviceController.activeWindowTitle.length > 0
-                                        text: deviceController.activeWindowTitle
+                                        visible: deviceController.activeWindowTitle.length > 0 || (root.hasSelectedSlot && deviceController.autoSwitchEnabled)
+                                        text: (root.hasSelectedSlot && deviceController.autoSwitchEnabled)
+                                            ? qsTr("Auto-Switch resumes when Key Editor closes")
+                                            : deviceController.activeWindowTitle
                                         font.pixelSize: Math.round(9 * root.sidebarScale)
                                         color: Kirigami.Theme.disabledTextColor
                                         elide: Text.ElideRight
@@ -6698,14 +6714,17 @@ Kirigami.ApplicationWindow {
                     }
 
                     onSlotContentMutated: (newSelectedSlot) => {
-                        if (newSelectedSlot >= 1 && newSelectedSlot <= 58) {
-                            root.loadSlotFromController(
-                                newSelectedSlot,
-                                hardwareCanvas.slotTitleFor(newSelectedSlot),
-                                hardwareCanvas.slotColorFor(newSelectedSlot)
-                            )
-                        } else {
-                            root.refreshSelectedSlotFromController()
+                        hardwareCanvas.syncSlotsFromController()
+                        if (root.hasSelectedSlot) {
+                            if (newSelectedSlot >= 1 && newSelectedSlot <= 58 && root.selectedSlotNumber === newSelectedSlot) {
+                                root.loadSlotFromController(
+                                    newSelectedSlot,
+                                    hardwareCanvas.slotTitleFor(newSelectedSlot),
+                                    hardwareCanvas.slotColorFor(newSelectedSlot)
+                                )
+                            } else {
+                                root.refreshSelectedSlotFromController()
+                            }
                         }
                     }
 
@@ -6750,11 +6769,15 @@ Kirigami.ApplicationWindow {
                         )
                     )
                     readonly property int minContentWidth: Math.max(
-                        350,
+                        440,
                         Math.ceil(Math.max(
+                            inspectorHeaderRow.implicitWidth + 16,
                             inspectorLabelsRow.implicitWidth + 16,
                             inspectorPhaseRow.implicitWidth + 12,
-                            inspectorTabsRow.implicitWidth + 12
+                            holdFlagsRow.implicitWidth + 16,
+                            inspectorTabsRow.implicitWidth + 12,
+                            editorHeaderRow.implicitWidth + 16,
+                            inspectorFooterRow.implicitWidth + 12
                         )) + Kirigami.Units.mediumSpacing * 2 + 8
                     )
                     QQC2.SplitView.fillWidth: true
@@ -6917,7 +6940,10 @@ Kirigami.ApplicationWindow {
                                     // Interactive Key RGB FX Animation Pill (Slots 1..20)
                                     Rectangle {
                                         visible: inspectorCard.isMechanicalKey
-                                        readonly property bool hasKeyFx: hardwareCanvas.keyHasCustomAnimation(root.selectedSlotNumber)
+                                        readonly property bool hasKeyFx: {
+                                            const _cfgs = hardwareCanvas.keyAnimationConfigs
+                                            return hardwareCanvas.keyHasCustomAnimation(root.selectedSlotNumber)
+                                        }
                                         radius: 5
                                         color: keyFxPillMouse.containsMouse
                                             ? Qt.alpha("#c084fc", 0.25)
@@ -7506,15 +7532,14 @@ Kirigami.ApplicationWindow {
                                             root.showWebApiBuilder = false
                                             root.showAppLaunchBuilder = false
                                             root.inspectorMode = "app_launch"
-                                            appLaunchConfigWindow.openForCurrentSlot()
                                         }
                                     }
 
                                     QQC2.ToolTip.visible: appLaunchTabMouse.containsMouse
-                                    QQC2.ToolTip.text: qsTr("Open Launch Application Configurator window for this key")
+                                    QQC2.ToolTip.text: qsTr("Switch to Launch App tab")
                                 }
 
-                                // Tab 3: Web API (Opens Web API Configuration Window)
+                                // Tab 3: Web API
                                 Rectangle {
                                     id: webApiToggleBtn
                                     readonly property bool isActiveTab: root.inspectorMode === "web_api" || webApiKeyConfigWindow.visible
@@ -7578,12 +7603,11 @@ Kirigami.ApplicationWindow {
                                             root.showAppLaunchBuilder = false
                                             root.showWebApiBuilder = false
                                             root.inspectorMode = "web_api"
-                                            webApiKeyConfigWindow.openForCurrentSlot()
                                         }
                                     }
 
                                     QQC2.ToolTip.visible: webApiTabMouse.containsMouse
-                                    QQC2.ToolTip.text: qsTr("Open Web API Call Configurator window for this key")
+                                    QQC2.ToolTip.text: qsTr("Switch to Web API tab")
                                 }
 
                                 Item { Layout.fillWidth: true }
@@ -7931,6 +7955,7 @@ Kirigami.ApplicationWindow {
                                 }
 
                                 RowLayout {
+                                    id: editorHeaderRow
                                     anchors.fill: parent
                                     anchors.leftMargin: 8
                                     anchors.rightMargin: 6
@@ -8649,14 +8674,44 @@ Kirigami.ApplicationWindow {
                     color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
                 }
 
-                // Live Status Message
-                QQC2.Label {
-                    text: deviceController.statusMessage
-                    font.pixelSize: Math.round(13 * root.statusBarScale)
-                    color: Kirigami.Theme.textColor
-                    opacity: 0.92
-                    elide: Text.ElideRight
+                // Live Status Message (Click to open Event Log Viewer)
+                Rectangle {
+                    id: statusLogLineBox
                     Layout.fillWidth: true
+                    implicitHeight: Math.round(26 * root.statusBarScale)
+                    radius: 4
+                    color: statusLogLineMouse.containsMouse
+                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.14)
+                        : "transparent"
+                    border.color: statusLogLineMouse.containsMouse
+                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.45)
+                        : "transparent"
+                    border.width: 1
+
+                    QQC2.Label {
+                        anchors.fill: parent
+                        anchors.leftMargin: 6
+                        anchors.rightMargin: 6
+                        verticalAlignment: Text.AlignVCenter
+                        text: deviceController.statusMessage
+                        font.pixelSize: Math.round(13 * root.statusBarScale)
+                        color: Kirigami.Theme.textColor
+                        opacity: statusLogLineMouse.containsMouse ? 1.0 : 0.92
+                        elide: Text.ElideRight
+                    }
+
+                    MouseArea {
+                        id: statusLogLineMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: eventLogDialog.openLogWindow()
+                    }
+
+                    QQC2.ToolTip.visible: statusLogLineMouse.containsMouse
+                    QQC2.ToolTip.text: deviceController.statusMessage.length > 0
+                        ? (deviceController.statusMessage + "\n" + qsTr("Click to open the Event Log Viewer"))
+                        : qsTr("Click to open the Event Log Viewer")
                 }
             }
 
@@ -9090,8 +9145,8 @@ Kirigami.ApplicationWindow {
     Window {
         id: appLaunchConfigWindow
         title: qsTr("Launch Desktop Application — Key %1 (%2)").arg(root.selectedSlotNumber).arg(root.selectedSlotTitle)
-        width: 720
-        height: 620
+        width: 740
+        height: 640
         minimumWidth: 580
         minimumHeight: 480
         visible: false
@@ -9103,11 +9158,21 @@ Kirigami.ApplicationWindow {
         Kirigami.Theme.inherit: false
         color: Kirigami.Theme.backgroundColor
 
-        function openWindow() {
-            if (!root.hasSelectedSlot) return
+        function openWindow(slotNumber) {
+            const targetSlot = (slotNumber !== undefined && slotNumber > 0) ? slotNumber : root.selectedSlotNumber
+            if (targetSlot <= 0) return
+            if (root.hasSelectedSlot && root.selectedSlotNumber === targetSlot) {
+                root.loadAppLaunchBuilderFromScript(scriptEditor.text)
+            } else if (keyPropertiesWindow.visible && keyPropertiesWindow.slotNum === targetSlot) {
+                root.loadAppLaunchBuilderFromScript(keyPropPressScriptArea.text)
+            }
             appLaunchConfigWindow.show()
             appLaunchConfigWindow.raise()
             appLaunchConfigWindow.requestActivate()
+        }
+
+        function openForCurrentSlot() {
+            openWindow(root.selectedSlotNumber)
         }
 
         ColumnLayout {
@@ -9135,18 +9200,24 @@ Kirigami.ApplicationWindow {
 
                 ColumnLayout {
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 1
                     spacing: 2
                     QQC2.Label {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        elide: Text.ElideRight
                         text: qsTr("Desktop Application & Command Launcher — %1").arg(root.selectedSlotTitle)
                         font.bold: true
                         font.pixelSize: 15
                     }
                     QQC2.Label {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
                         text: qsTr("Launch any installed desktop application, shell script, or command when this duckyPad key is pressed.")
                         font.pixelSize: 11
                         color: Kirigami.Theme.disabledTextColor
                         wrapMode: Text.WordWrap
-                        Layout.fillWidth: true
                     }
                 }
 
@@ -9158,15 +9229,31 @@ Kirigami.ApplicationWindow {
                 }
             }
 
-            QQC2.ScrollView {
+            Flickable {
+                id: appLaunchFlickable
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                Layout.minimumHeight: 80
+                Layout.preferredHeight: 1
                 clip: true
-                contentWidth: availableWidth
-                QQC2.ScrollBar.vertical: HighContrastScrollBar {}
+                contentWidth: width
+                contentHeight: appLaunchScrollCol.implicitHeight + 8
+                boundsBehavior: Flickable.StopAtBounds
+                flickableDirection: Flickable.VerticalFlick
+
+                QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                    parent: appLaunchFlickable
+                    anchors.top: appLaunchFlickable.top
+                    anchors.right: appLaunchFlickable.right
+                    anchors.bottom: appLaunchFlickable.bottom
+                    policy: appLaunchFlickable.contentHeight > appLaunchFlickable.height
+                        ? QQC2.ScrollBar.AlwaysOn
+                        : QQC2.ScrollBar.AsNeeded
+                }
 
                 ColumnLayout {
-                    width: parent.width - 14
+                    id: appLaunchScrollCol
+                    width: Math.max(200, appLaunchFlickable.width - (appLaunchFlickable.contentHeight > appLaunchFlickable.height ? 18 : 2))
                     spacing: 10
 
                     Rectangle {
@@ -9208,10 +9295,14 @@ Kirigami.ApplicationWindow {
                                     onClicked: appExecutableFileDialog.open()
                                 }
 
-                                Item { Layout.fillWidth: true }
+                                Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
 
                                 QQC2.Label {
                                     visible: root.appLaunchAppName.length > 0
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 0
+                                    Layout.preferredWidth: 1
+                                    horizontalAlignment: Text.AlignRight
                                     text: qsTr("Selected: %1").arg(root.appLaunchAppName)
                                     font.bold: true
                                     font.pixelSize: 11
@@ -9234,6 +9325,8 @@ Kirigami.ApplicationWindow {
                                 QQC2.TextField {
                                     id: appLaunchCommandField
                                     Layout.fillWidth: true
+                                    Layout.minimumWidth: 100
+                                    Layout.preferredWidth: 1
                                     placeholderText: qsTr("e.g. dolphin, konsole, /usr/bin/obs, ~/scripts/deploy.sh")
                                     font.family: "monospace"
                                     selectByMouse: true
@@ -9253,6 +9346,8 @@ Kirigami.ApplicationWindow {
                                 QQC2.TextField {
                                     id: appLaunchArgsField
                                     Layout.fillWidth: true
+                                    Layout.minimumWidth: 100
+                                    Layout.preferredWidth: 1
                                     placeholderText: qsTr("Optional CLI arguments (e.g. --new-window ~/Projects)")
                                     font.family: "monospace"
                                     selectByMouse: true
@@ -9267,6 +9362,8 @@ Kirigami.ApplicationWindow {
                                 QQC2.TextField {
                                     id: appLaunchWorkDirField
                                     Layout.fillWidth: true
+                                    Layout.minimumWidth: 100
+                                    Layout.preferredWidth: 1
                                     placeholderText: qsTr("Optional working directory (e.g. /home/user/workspace)")
                                     font.family: "monospace"
                                     selectByMouse: true
@@ -9303,6 +9400,8 @@ Kirigami.ApplicationWindow {
                                 QQC2.ComboBox {
                                     id: appLaunchTriggerModeCombo
                                     Layout.fillWidth: true
+                                    Layout.minimumWidth: 120
+                                    Layout.preferredWidth: 1
                                     model: [
                                         qsTr("USB HID Listener (Instant host launch — Zero keystroke pollution)"),
                                         qsTr("F-Key Shortcut Fallback (Emits F13–F24 + host listener)")
@@ -9326,12 +9425,16 @@ Kirigami.ApplicationWindow {
 
                                 QQC2.CheckBox {
                                     id: appLaunchTerminalCheck
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 0
                                     text: qsTr("Run inside Terminal Emulator (konsole)")
                                     onToggled: root.syncAppLaunchBuilderToScript()
                                 }
 
                                 QQC2.CheckBox {
                                     id: appLaunchLedCheck
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 0
                                     checked: true
                                     text: qsTr("Flash Key LED Green on Launch")
                                     onToggled: root.syncAppLaunchBuilderToScript()
@@ -9351,6 +9454,8 @@ Kirigami.ApplicationWindow {
                                 QQC2.TextField {
                                     id: appLaunchOledField
                                     Layout.fillWidth: true
+                                    Layout.minimumWidth: 100
+                                    Layout.preferredWidth: 1
                                     maximumLength: 20
                                     placeholderText: qsTr("Optional OLED status message on press (leave blank for none)")
                                     selectByMouse: true
@@ -9420,7 +9525,7 @@ Kirigami.ApplicationWindow {
                             }
                         }
 
-                        Item { Layout.fillWidth: true }
+                        Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
                     }
                 }
             }
@@ -9434,15 +9539,9 @@ Kirigami.ApplicationWindow {
                     text: qsTr("Test Launch Now")
                     enabled: appLaunchCommandField.text.trim().length > 0
                     onClicked: {
-                        deviceController.testKeyAppLaunch(
-                            deviceController.activeProfile,
-                            root.selectedSlotNumber,
-                            root.appLaunchAppName,
-                            root.appLaunchDesktopId,
-                            appLaunchCommandField.text.trim(),
-                            appLaunchArgsField.text.trim(),
-                            appLaunchWorkDirField.text.trim(),
-                            appLaunchTerminalCheck.checked
+                        deviceController.testAppLaunch(
+                            root.buildAppLaunchConfigJson(),
+                            root.selectedSlotNumber
                         )
                     }
                 }
@@ -9461,7 +9560,7 @@ Kirigami.ApplicationWindow {
                     }
                 }
 
-                Item { Layout.fillWidth: true }
+                Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
 
                 QQC2.Button {
                     icon.name: "dialog-ok-apply"
@@ -9473,6 +9572,12 @@ Kirigami.ApplicationWindow {
                         appLaunchConfigWindow.close()
                     }
                 }
+
+                QQC2.Button {
+                    icon.name: "window-close"
+                    text: qsTr("Close")
+                    onClicked: appLaunchConfigWindow.close()
+                }
             }
         }
     }
@@ -9483,8 +9588,8 @@ Kirigami.ApplicationWindow {
     Window {
         id: webApiKeyConfigWindow
         title: qsTr("Web API / HTTP Webhook — Key %1 (%2)").arg(root.selectedSlotNumber).arg(root.selectedSlotTitle)
-        width: 740
-        height: 660
+        width: 760
+        height: 680
         minimumWidth: 600
         minimumHeight: 500
         visible: false
@@ -9496,11 +9601,21 @@ Kirigami.ApplicationWindow {
         Kirigami.Theme.inherit: false
         color: Kirigami.Theme.backgroundColor
 
-        function openWindow() {
-            if (!root.hasSelectedSlot) return
+        function openWindow(slotNumber) {
+            const targetSlot = (slotNumber !== undefined && slotNumber > 0) ? slotNumber : root.selectedSlotNumber
+            if (targetSlot <= 0) return
+            if (root.hasSelectedSlot && root.selectedSlotNumber === targetSlot) {
+                root.loadWebApiBuilderFromScript(scriptEditor.text)
+            } else if (keyPropertiesWindow.visible && keyPropertiesWindow.slotNum === targetSlot) {
+                root.loadWebApiBuilderFromScript(keyPropPressScriptArea.text)
+            }
             webApiKeyConfigWindow.show()
             webApiKeyConfigWindow.raise()
             webApiKeyConfigWindow.requestActivate()
+        }
+
+        function openForCurrentSlot() {
+            openWindow(root.selectedSlotNumber)
         }
 
         ColumnLayout {
@@ -9528,25 +9643,38 @@ Kirigami.ApplicationWindow {
 
                 ColumnLayout {
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 1
                     spacing: 2
                     QQC2.Label {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        elide: Text.ElideRight
                         text: qsTr("Web API & Outbound HTTP Webhook — %1").arg(root.selectedSlotTitle)
                         font.bold: true
                         font.pixelSize: 15
                     }
                     QQC2.Label {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
                         text: qsTr("Trigger local DuckyDeck Studio actions or send HTTP REST/Webhook requests (Home Assistant, OBS, Node-RED) when this key is pressed.")
                         font.pixelSize: 11
                         color: Kirigami.Theme.disabledTextColor
                         wrapMode: Text.WordWrap
-                        Layout.fillWidth: true
                     }
                 }
 
                 QQC2.Button {
                     icon.name: "network-server"
-                    text: qsTr("Global Server Settings...")
-                    onClicked: webApiDrawer.open()
+                    text: qsTr("Manage Destinations...")
+                    onClicked: {
+                        webApiDestinationsDialog.openForDestination(
+                            root.webApiSelectedDestination,
+                            webApiMethodCombo.currentText,
+                            webApiUrlField.text,
+                            webApiHeadersField.text
+                        )
+                    }
                 }
 
                 QQC2.Switch {
@@ -9557,15 +9685,31 @@ Kirigami.ApplicationWindow {
                 }
             }
 
-            QQC2.ScrollView {
+            Flickable {
+                id: webApiFlickable
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                Layout.minimumHeight: 80
+                Layout.preferredHeight: 1
                 clip: true
-                contentWidth: availableWidth
-                QQC2.ScrollBar.vertical: HighContrastScrollBar {}
+                contentWidth: width
+                contentHeight: webApiScrollCol.implicitHeight + 8
+                boundsBehavior: Flickable.StopAtBounds
+                flickableDirection: Flickable.VerticalFlick
+
+                QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                    parent: webApiFlickable
+                    anchors.top: webApiFlickable.top
+                    anchors.right: webApiFlickable.right
+                    anchors.bottom: webApiFlickable.bottom
+                    policy: webApiFlickable.contentHeight > webApiFlickable.height
+                        ? QQC2.ScrollBar.AlwaysOn
+                        : QQC2.ScrollBar.AsNeeded
+                }
 
                 ColumnLayout {
-                    width: parent.width - 14
+                    id: webApiScrollCol
+                    width: Math.max(200, webApiFlickable.width - (webApiFlickable.contentHeight > webApiFlickable.height ? 18 : 2))
                     spacing: 10
 
                     Rectangle {
@@ -9587,7 +9731,7 @@ Kirigami.ApplicationWindow {
                                 spacing: 8
 
                                 QQC2.Label {
-                                    text: qsTr("Target Type:")
+                                    text: qsTr("Destination:")
                                     font.bold: true
                                     font.pixelSize: 12
                                 }
@@ -9595,16 +9739,25 @@ Kirigami.ApplicationWindow {
                                 QQC2.ComboBox {
                                     id: webApiDestinationCombo
                                     Layout.fillWidth: true
-                                    model: [
-                                        qsTr("Local DuckyDeck Studio REST API (127.0.0.1:%1)").arg(deviceController.webApiPort),
-                                        qsTr("External HTTP / HTTPS Webhook (Home Assistant, OBS, Custom URL)")
-                                    ]
-                                    onActivated: {
-                                        if (currentIndex === 0 && webApiUrlField.text.indexOf("http") === 0) {
-                                            webApiUrlField.text = "/api/v1/status"
-                                        } else if (currentIndex === 1 && webApiUrlField.text.indexOf("http") !== 0) {
-                                            webApiUrlField.text = "http://127.0.0.1:8123/api/webhook/duckypad"
+                                    Layout.minimumWidth: 120
+                                    Layout.preferredWidth: 1
+                                    model: root.webApiDestinationComboItems
+                                    onActivated: (index) => {
+                                        root.syncingWebApiScript = true
+                                        if (index > 0 && (index - 1) < root.webApiDestinationsList.length) {
+                                            const d = root.webApiDestinationsList[index - 1]
+                                            root.webApiSelectedDestination = d.name || ""
+                                            const mIdx = root.webApiMethods.indexOf((d.method || "POST").toUpperCase())
+                                            webApiMethodCombo.currentIndex = mIdx >= 0 ? mIdx : 0
+                                            webApiUrlField.text = d.url || ""
+                                            webApiHeadersField.text = d.headers || ""
+                                            if (!webApiEnabledCheck.checked) {
+                                                webApiEnabledCheck.checked = true
+                                            }
+                                        } else {
+                                            root.webApiSelectedDestination = ""
                                         }
+                                        root.syncingWebApiScript = false
                                         root.syncWebApiBuilderToScript()
                                     }
                                 }
@@ -9617,17 +9770,17 @@ Kirigami.ApplicationWindow {
                                 QQC2.ComboBox {
                                     id: webApiMethodCombo
                                     Layout.preferredWidth: 105
-                                    model: ["POST", "GET", "PUT", "DELETE"]
+                                    model: root.webApiMethods
                                     onActivated: root.syncWebApiBuilderToScript()
                                 }
 
                                 QQC2.TextField {
                                     id: webApiUrlField
                                     Layout.fillWidth: true
+                                    Layout.minimumWidth: 100
+                                    Layout.preferredWidth: 1
                                     font.family: "monospace"
-                                    placeholderText: webApiDestinationCombo.currentIndex === 0
-                                        ? qsTr("/api/v1/profile/select")
-                                        : qsTr("https://example.com/api/webhook")
+                                    placeholderText: qsTr("https://example.com/api/webhook or http://homeassistant.local:8123/api/...")
                                     selectByMouse: true
                                     onTextEdited: {
                                         if (text.trim().length > 0 && !webApiEnabledCheck.checked) {
@@ -9639,6 +9792,9 @@ Kirigami.ApplicationWindow {
                             }
 
                             QQC2.Label {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                wrapMode: Text.WordWrap
                                 text: qsTr("HTTP Headers (Optional — one 'Header-Name: value' per line):")
                                 font.bold: true
                                 font.pixelSize: 11
@@ -9647,13 +9803,17 @@ Kirigami.ApplicationWindow {
                             QQC2.TextArea {
                                 id: webApiHeadersField
                                 Layout.fillWidth: true
-                                implicitHeight: 56
+                                Layout.minimumWidth: 100
+                                Layout.preferredWidth: 1
+                                implicitHeight: 60
+                                wrapMode: TextEdit.Wrap
+                                clip: true
                                 font.family: "monospace"
                                 font.pixelSize: 11
                                 placeholderText: qsTr("Content-Type: application/json\nAuthorization: Bearer <token>")
                                 selectByMouse: true
                                 onTextChanged: {
-                                    if (!root.suppressWebApiSync) root.syncWebApiBuilderToScript()
+                                    if (!root.syncingWebApiScript) root.syncWebApiBuilderToScript()
                                 }
                                 background: Rectangle {
                                     radius: 4
@@ -9664,6 +9824,9 @@ Kirigami.ApplicationWindow {
                             }
 
                             QQC2.Label {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                wrapMode: Text.WordWrap
                                 text: qsTr("Request Body / JSON Payload:")
                                 font.bold: true
                                 font.pixelSize: 11
@@ -9672,13 +9835,17 @@ Kirigami.ApplicationWindow {
                             QQC2.TextArea {
                                 id: webApiBodyField
                                 Layout.fillWidth: true
-                                implicitHeight: 74
+                                Layout.minimumWidth: 100
+                                Layout.preferredWidth: 1
+                                implicitHeight: 76
+                                wrapMode: TextEdit.Wrap
+                                clip: true
                                 font.family: "monospace"
                                 font.pixelSize: 11
-                                placeholderText: qsTr("{\"profile\": 1}")
+                                placeholderText: qsTr("{\"entity_id\": \"light.studio_key_light\"}")
                                 selectByMouse: true
                                 onTextChanged: {
-                                    if (!root.suppressWebApiSync) root.syncWebApiBuilderToScript()
+                                    if (!root.syncingWebApiScript) root.syncWebApiBuilderToScript()
                                 }
                                 background: Rectangle {
                                     radius: 4
@@ -9717,6 +9884,8 @@ Kirigami.ApplicationWindow {
                                 QQC2.ComboBox {
                                     id: webApiTriggerModeCombo
                                     Layout.fillWidth: true
+                                    Layout.minimumWidth: 120
+                                    Layout.preferredWidth: 1
                                     model: [
                                         qsTr("USB HID Listener (Silent background HTTP call)"),
                                         qsTr("F-Key Shortcut Fallback (Emits F13–F24 + HTTP call)"),
@@ -9748,6 +9917,8 @@ Kirigami.ApplicationWindow {
                                 QQC2.TextField {
                                     id: webApiOledField
                                     Layout.fillWidth: true
+                                    Layout.minimumWidth: 100
+                                    Layout.preferredWidth: 1
                                     maximumLength: 20
                                     placeholderText: qsTr("Optional OLED status text on trigger")
                                     selectByMouse: true
@@ -9775,15 +9946,9 @@ Kirigami.ApplicationWindow {
                     text: qsTr("Test Webhook Now")
                     enabled: webApiUrlField.text.trim().length > 0
                     onClicked: {
-                        const dest = webApiDestinationCombo.currentIndex === 1 ? "external" : "local"
-                        deviceController.testKeyWebApiAction(
-                            deviceController.activeProfile,
-                            root.selectedSlotNumber,
-                            dest,
-                            webApiMethodCombo.currentText,
-                            webApiUrlField.text.trim(),
-                            webApiHeadersField.text,
-                            webApiBodyField.text
+                        deviceController.testWebApiCall(
+                            root.buildWebApiConfigJson(),
+                            root.selectedSlotNumber
                         )
                     }
                 }
@@ -9800,7 +9965,7 @@ Kirigami.ApplicationWindow {
                     }
                 }
 
-                Item { Layout.fillWidth: true }
+                Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
 
                 QQC2.Button {
                     icon.name: "dialog-ok-apply"
@@ -9812,6 +9977,12 @@ Kirigami.ApplicationWindow {
                         webApiKeyConfigWindow.close()
                     }
                 }
+
+                QQC2.Button {
+                    icon.name: "window-close"
+                    text: qsTr("Close")
+                    onClicked: webApiKeyConfigWindow.close()
+                }
             }
         }
     }
@@ -9822,9 +9993,9 @@ Kirigami.ApplicationWindow {
     Window {
         id: profilePropertiesWindow
         title: qsTr("Profile #%1 Properties — %2").arg(profilePropertiesWindow.profNumber).arg(profilePropertiesWindow.profName)
-        width: 680
+        width: 780
         height: 660
-        minimumWidth: 560
+        minimumWidth: 660
         minimumHeight: 520
         visible: false
         transientParent: root
@@ -9932,11 +10103,15 @@ Kirigami.ApplicationWindow {
 
                 ColumnLayout {
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 1
                     spacing: 2
                     QQC2.Label {
                         text: qsTr("Profile #%1 Properties").arg(profilePropertiesWindow.profNumber)
                         font.bold: true
                         font.pixelSize: 15
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
                     }
                     QQC2.Label {
                         text: qsTr("Folder: %1  •  Configured Slots: %2")
@@ -9945,19 +10120,40 @@ Kirigami.ApplicationWindow {
                         font.family: "monospace"
                         font.pixelSize: 11
                         color: Kirigami.Theme.disabledTextColor
+                        Layout.fillWidth: true
+                        elide: Text.ElideMiddle
                     }
                 }
             }
 
-            QQC2.ScrollView {
+            Flickable {
+                id: profPropsFlickable
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                Layout.minimumHeight: 80
+                Layout.preferredHeight: 1
                 clip: true
-                contentWidth: availableWidth
-                QQC2.ScrollBar.vertical: HighContrastScrollBar {}
+                contentWidth: width
+                contentHeight: profPropsScrollCol.implicitHeight + 8
+                boundsBehavior: Flickable.StopAtBounds
+                flickableDirection: Flickable.VerticalFlick
+
+                QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                    parent: profPropsFlickable
+                    anchors.top: profPropsFlickable.top
+                    anchors.right: profPropsFlickable.right
+                    anchors.bottom: profPropsFlickable.bottom
+                    policy: profPropsFlickable.contentHeight > profPropsFlickable.height
+                        ? QQC2.ScrollBar.AlwaysOn
+                        : QQC2.ScrollBar.AsNeeded
+                }
 
                 ColumnLayout {
-                    width: parent.width - 14
+                    id: profPropsScrollCol
+                    width: Math.max(
+                        200,
+                        profPropsFlickable.width - (profPropsFlickable.contentHeight > profPropsFlickable.height ? 18 : 2)
+                    )
                     spacing: 10
 
                     // Identity & Colors Card
@@ -9986,6 +10182,8 @@ Kirigami.ApplicationWindow {
                             QQC2.TextField {
                                 id: profNameField
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 80
+                                Layout.preferredWidth: 1
                                 maximumLength: 13
                                 selectByMouse: true
                                 font.bold: true
@@ -10000,6 +10198,8 @@ Kirigami.ApplicationWindow {
 
                             RowLayout {
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                Layout.preferredWidth: 1
                                 spacing: 8
 
                                 Rectangle {
@@ -10054,6 +10254,8 @@ Kirigami.ApplicationWindow {
 
                             RowLayout {
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                Layout.preferredWidth: 1
                                 spacing: 8
 
                                 QQC2.CheckBox {
@@ -10106,21 +10308,53 @@ Kirigami.ApplicationWindow {
                                 text: qsTr("Hardware LED & Orientation Directives (config.txt):")
                                 font.bold: true
                                 font.pixelSize: 12
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
                             }
 
                             QQC2.CheckBox {
                                 id: profDimUnusedCheck
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 text: qsTr("Dim Unused Keys (DIM_UNUSED_KEYS 1 — turn off LEDs on unconfigured keys)")
+                                contentItem: QQC2.Label {
+                                    leftPadding: (profDimUnusedCheck.indicator ? profDimUnusedCheck.indicator.width : 18) + profDimUnusedCheck.spacing
+                                    text: profDimUnusedCheck.text
+                                    font: profDimUnusedCheck.font
+                                    color: Kirigami.Theme.textColor
+                                    verticalAlignment: Text.AlignVCenter
+                                    wrapMode: Text.WordWrap
+                                }
                             }
 
                             QQC2.CheckBox {
                                 id: profLandscapeCheck
-                                text: qsTr("Landscape Orientation (IS_LANDSCAPE 1 — rotate OLED & key matrix 90°)")
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                text: qsTr("Landscape Orientation (IS_LANDSCAPE 1 — rotate OLED and key matrix 90°)")
+                                contentItem: QQC2.Label {
+                                    leftPadding: (profLandscapeCheck.indicator ? profLandscapeCheck.indicator.width : 18) + profLandscapeCheck.spacing
+                                    text: profLandscapeCheck.text
+                                    font: profLandscapeCheck.font
+                                    color: Kirigami.Theme.textColor
+                                    verticalAlignment: Text.AlignVCenter
+                                    wrapMode: Text.WordWrap
+                                }
                             }
 
                             QQC2.CheckBox {
                                 id: profUpperHsCheck
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 text: qsTr("Inverted / Upper Hot-Swap Orientation (IS_UPPER_HS 1)")
+                                contentItem: QQC2.Label {
+                                    leftPadding: (profUpperHsCheck.indicator ? profUpperHsCheck.indicator.width : 18) + profUpperHsCheck.spacing
+                                    text: profUpperHsCheck.text
+                                    font: profUpperHsCheck.font
+                                    color: Kirigami.Theme.textColor
+                                    verticalAlignment: Text.AlignVCenter
+                                    wrapMode: Text.WordWrap
+                                }
                             }
                         }
                     }
@@ -10191,15 +10425,21 @@ Kirigami.ApplicationWindow {
                             font.bold: true
                             font.pixelSize: 11
                             color: Kirigami.Theme.disabledTextColor
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
                         }
 
                         QQC2.TextArea {
                             id: profExtraLinesArea
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 100
+                            Layout.preferredWidth: 1
                             implicitHeight: 68
                             font.family: "monospace"
                             font.pixelSize: 11
                             selectByMouse: true
+                            wrapMode: TextEdit.Wrap
+                            clip: true
                             placeholderText: qsTr("// Optional custom config.txt directives")
                             background: Rectangle {
                                 radius: 4
@@ -10216,6 +10456,8 @@ Kirigami.ApplicationWindow {
                         color: Kirigami.Theme.positiveTextColor
                         font.bold: true
                         font.pixelSize: 11
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
                     }
                 }
             }
@@ -10224,17 +10466,7 @@ Kirigami.ApplicationWindow {
                 Layout.fillWidth: true
                 spacing: 8
 
-                QQC2.Button {
-                    text: qsTr("Apply")
-                    onClicked: profilePropertiesWindow.saveAllProfileProperties()
-                }
-
                 Item { Layout.fillWidth: true }
-
-                QQC2.Button {
-                    text: qsTr("Cancel")
-                    onClicked: profilePropertiesWindow.close()
-                }
 
                 QQC2.Button {
                     icon.name: "dialog-ok-apply"
@@ -10247,6 +10479,12 @@ Kirigami.ApplicationWindow {
                         }
                     }
                 }
+
+                QQC2.Button {
+                    icon.name: "window-close"
+                    text: qsTr("Close")
+                    onClicked: profilePropertiesWindow.close()
+                }
             }
         }
     }
@@ -10257,9 +10495,9 @@ Kirigami.ApplicationWindow {
     Window {
         id: keyPropertiesWindow
         title: qsTr("Key Properties — Slot %1 (%2)").arg(keyPropertiesWindow.slotNum).arg(keyPropertiesWindow.slotTitle)
-        width: 720
+        width: 780
         height: 680
-        minimumWidth: 580
+        minimumWidth: 660
         minimumHeight: 540
         visible: false
         transientParent: root
@@ -10276,26 +10514,36 @@ Kirigami.ApplicationWindow {
 
         function openForSlot(slotNumber) {
             const targetSlot = slotNumber > 0 ? slotNumber : root.selectedSlotNumber
-            if (targetSlot <= 0) return
-            if (root.selectedSlotNumber !== targetSlot) {
-                hardwareCanvas.selectedSlot = targetSlot
-                root.loadSlotFromController(
-                    targetSlot,
-                    hardwareCanvas.slotTitleFor(targetSlot),
-                    hardwareCanvas.slotColorFor(targetSlot)
-                )
-            }
-            keyPropertiesWindow.slotNum = targetSlot
-            keyPropertiesWindow.slotTitle = root.selectedSlotTitle
-            keyPropertiesWindow.slotColor = root.selectedSlotColor
+            if (targetSlot <= 0 || targetSlot > 58) return
 
-            keyPropLabel1Field.text = label1Input.text.substring(0, 5)
-            keyPropLabel2Field.text = label2Input.text.substring(0, 5)
-            keyPropColorField.text = root.selectedSlotColor
-            keyPropDontRepeatCheck.checked = disableRepeatCheck.checked
-            keyPropAllowAbortCheck.checked = allowAbortCheck.checked
-            keyPropPressScriptArea.text = root.pressScriptBuffer
-            keyPropReleaseScriptArea.text = root.releaseScriptBuffer
+            if (root.hasSelectedSlot && root.selectedSlotNumber === targetSlot) {
+                root.flushPendingSlotEditsIfModified()
+            }
+
+            keyPropertiesWindow.slotNum = targetSlot
+            keyPropertiesWindow.slotTitle = hardwareCanvas.slotTitleFor(targetSlot)
+            keyPropertiesWindow.slotColor = String(hardwareCanvas.slotColorFor(targetSlot))
+
+            let l1 = ""
+            let l2 = ""
+            let allowAbort = false
+            let disableRepeat = false
+            try {
+                const metaJson = deviceController.getSlotMetaJson(targetSlot)
+                const meta = JSON.parse(metaJson)
+                l1 = meta.l1 || ""
+                l2 = meta.l2 || ""
+                allowAbort = !!meta.allowAbort
+                disableRepeat = !!meta.disableAutorepeat
+            } catch (e) {}
+
+            keyPropLabel1Field.text = l1.substring(0, 5)
+            keyPropLabel2Field.text = l2.substring(0, 5)
+            keyPropColorField.text = keyPropertiesWindow.slotColor
+            keyPropDontRepeatCheck.checked = disableRepeat
+            keyPropAllowAbortCheck.checked = allowAbort
+            keyPropPressScriptArea.text = deviceController.getSlotScript(targetSlot, false)
+            keyPropReleaseScriptArea.text = deviceController.getSlotScript(targetSlot, true)
 
             keyPropertiesWindow.show()
             keyPropertiesWindow.raise()
@@ -10303,29 +10551,46 @@ Kirigami.ApplicationWindow {
         }
 
         function applyKeyProperties() {
-            label1Input.text = keyPropLabel1Field.text.substring(0, 5)
-            label2Input.text = keyPropLabel2Field.text.substring(0, 5)
-            disableRepeatCheck.checked = keyPropDontRepeatCheck.checked
-            allowAbortCheck.checked = keyPropAllowAbortCheck.checked
+            const targetSlot = keyPropertiesWindow.slotNum
+            if (targetSlot <= 0 || targetSlot > 58) return
+
+            const l1 = keyPropLabel1Field.text.trim().substring(0, 5)
+            const l2 = keyPropLabel2Field.text.trim().substring(0, 5)
+            const disableRepeat = keyPropDontRepeatCheck.checked
+            const allowAbort = keyPropAllowAbortCheck.checked
+            const pressScript = keyPropPressScriptArea.text
+            const releaseScript = keyPropReleaseScriptArea.text
 
             const hexCandidate = keyPropColorField.text.trim()
-            if (keyPropertiesWindow.slotNum <= 20 && /^#[0-9A-Fa-f]{6}$/.test(hexCandidate)) {
+            if (targetSlot <= 20 && /^#[0-9A-Fa-f]{6}$/.test(hexCandidate)) {
                 const rVal = parseInt(hexCandidate.substring(1, 3), 16)
                 const gVal = parseInt(hexCandidate.substring(3, 5), 16)
                 const bVal = parseInt(hexCandidate.substring(5, 7), 16)
                 if (hexCandidate.toLowerCase() !== keyPropertiesWindow.slotColor.toLowerCase()) {
-                    hardwareCanvas.setKeyRgbAt(keyPropertiesWindow.slotNum, rVal, gVal, bVal)
+                    hardwareCanvas.setKeyRgbAt(targetSlot, rVal, gVal, bVal)
                 }
-                root.selectedSlotColor = hexCandidate
                 keyPropertiesWindow.slotColor = hexCandidate
             }
 
-            root.pressScriptBuffer = keyPropPressScriptArea.text
-            root.releaseScriptBuffer = keyPropReleaseScriptArea.text
-            scriptEditor.text = root.editingReleaseScript ? root.releaseScriptBuffer : root.pressScriptBuffer
+            deviceController.saveSlotConfig(
+                targetSlot,
+                l1,
+                l2,
+                pressScript,
+                releaseScript,
+                allowAbort,
+                disableRepeat
+            )
 
-            root.saveCurrentSlotToController()
             hardwareCanvas.syncSlotsFromController()
+
+            if (root.hasSelectedSlot && root.selectedSlotNumber === targetSlot) {
+                root.loadSlotFromController(
+                    targetSlot,
+                    hardwareCanvas.slotTitleFor(targetSlot),
+                    hardwareCanvas.slotColorFor(targetSlot)
+                )
+            }
         }
 
         ColumnLayout {
@@ -10348,11 +10613,15 @@ Kirigami.ApplicationWindow {
 
                 ColumnLayout {
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 1
                     spacing: 2
                     QQC2.Label {
                         text: qsTr("Key Properties — %1 (Slot %2)").arg(keyPropertiesWindow.slotTitle).arg(keyPropertiesWindow.slotNum)
                         font.bold: true
                         font.pixelSize: 15
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
                     }
                     QQC2.Label {
                         text: qsTr("Profile #%1 (%2) • Edit OLED labels, per-key RGB color, execution flags, and scripts.")
@@ -10360,19 +10629,40 @@ Kirigami.ApplicationWindow {
                             .arg(deviceController.activeProfileName)
                         font.pixelSize: 11
                         color: Kirigami.Theme.disabledTextColor
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
                     }
                 }
             }
 
-            QQC2.ScrollView {
+            Flickable {
+                id: keyPropsFlickable
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                Layout.minimumHeight: 80
+                Layout.preferredHeight: 1
                 clip: true
-                contentWidth: availableWidth
-                QQC2.ScrollBar.vertical: HighContrastScrollBar {}
+                contentWidth: width
+                contentHeight: keyPropsScrollCol.implicitHeight + 8
+                boundsBehavior: Flickable.StopAtBounds
+                flickableDirection: Flickable.VerticalFlick
+
+                QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                    parent: keyPropsFlickable
+                    anchors.top: keyPropsFlickable.top
+                    anchors.right: keyPropsFlickable.right
+                    anchors.bottom: keyPropsFlickable.bottom
+                    policy: keyPropsFlickable.contentHeight > keyPropsFlickable.height
+                        ? QQC2.ScrollBar.AlwaysOn
+                        : QQC2.ScrollBar.AsNeeded
+                }
 
                 ColumnLayout {
-                    width: parent.width - 14
+                    id: keyPropsScrollCol
+                    width: Math.max(
+                        200,
+                        keyPropsFlickable.width - (keyPropsFlickable.contentHeight > keyPropsFlickable.height ? 18 : 2)
+                    )
                     spacing: 10
 
                     // OLED Labels & Per-Key RGB Color Card
@@ -10400,11 +10690,15 @@ Kirigami.ApplicationWindow {
 
                             RowLayout {
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                Layout.preferredWidth: 1
                                 spacing: 8
 
                                 QQC2.TextField {
                                     id: keyPropLabel1Field
                                     Layout.fillWidth: true
+                                    Layout.minimumWidth: 80
+                                    Layout.preferredWidth: 1
                                     maximumLength: 5
                                     font.family: "monospace"
                                     font.bold: true
@@ -10429,12 +10723,16 @@ Kirigami.ApplicationWindow {
 
                             RowLayout {
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                Layout.preferredWidth: 1
                                 spacing: 8
                                 visible: keyPropertiesWindow.slotNum <= 20
 
                                 QQC2.TextField {
                                     id: keyPropLabel2Field
                                     Layout.fillWidth: true
+                                    Layout.minimumWidth: 80
+                                    Layout.preferredWidth: 1
                                     maximumLength: 5
                                     font.family: "monospace"
                                     selectByMouse: true
@@ -10458,6 +10756,8 @@ Kirigami.ApplicationWindow {
 
                             RowLayout {
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                Layout.preferredWidth: 1
                                 spacing: 8
                                 visible: keyPropertiesWindow.slotNum <= 20
 
@@ -10525,16 +10825,38 @@ Kirigami.ApplicationWindow {
                                 text: qsTr("Hardware Execution Flags (config.txt):")
                                 font.bold: true
                                 font.pixelSize: 12
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
                             }
 
                             QQC2.CheckBox {
                                 id: keyPropDontRepeatCheck
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 text: qsTr("No Repeat on Key Held Down (dr%1 — run once per physical press instead of auto-repeating)").arg(keyPropertiesWindow.slotNum)
+                                contentItem: QQC2.Label {
+                                    leftPadding: (keyPropDontRepeatCheck.indicator ? keyPropDontRepeatCheck.indicator.width : 18) + keyPropDontRepeatCheck.spacing
+                                    text: keyPropDontRepeatCheck.text
+                                    font: keyPropDontRepeatCheck.font
+                                    color: Kirigami.Theme.textColor
+                                    verticalAlignment: Text.AlignVCenter
+                                    wrapMode: Text.WordWrap
+                                }
                             }
 
                             QQC2.CheckBox {
                                 id: keyPropAllowAbortCheck
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 text: qsTr("Allow Early Abort (ab%1 — pressing any key while this macro runs terminates it immediately)").arg(keyPropertiesWindow.slotNum)
+                                contentItem: QQC2.Label {
+                                    leftPadding: (keyPropAllowAbortCheck.indicator ? keyPropAllowAbortCheck.indicator.width : 18) + keyPropAllowAbortCheck.spacing
+                                    text: keyPropAllowAbortCheck.text
+                                    font: keyPropAllowAbortCheck.font
+                                    color: Kirigami.Theme.textColor
+                                    verticalAlignment: Text.AlignVCenter
+                                    wrapMode: Text.WordWrap
+                                }
                             }
                         }
                     }
@@ -10562,12 +10884,12 @@ Kirigami.ApplicationWindow {
 
                             QQC2.Button {
                                 text: qsTr("🚀 Launch App Window...")
-                                onClicked: appLaunchConfigWindow.openWindow()
+                                onClicked: appLaunchConfigWindow.openWindow(keyPropertiesWindow.slotNum)
                             }
 
                             QQC2.Button {
                                 text: qsTr("🌐 Web API Window...")
-                                onClicked: webApiKeyConfigWindow.openWindow()
+                                onClicked: webApiKeyConfigWindow.openWindow(keyPropertiesWindow.slotNum)
                             }
 
                             QQC2.Button {
@@ -10588,15 +10910,21 @@ Kirigami.ApplicationWindow {
                             text: qsTr("⬇ On Press DuckyScript 3 (key%1.txt):").arg(keyPropertiesWindow.slotNum)
                             font.bold: true
                             font.pixelSize: 12
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
                         }
 
                         QQC2.TextArea {
                             id: keyPropPressScriptArea
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 100
+                            Layout.preferredWidth: 1
                             implicitHeight: 110
                             font.family: "monospace"
                             font.pixelSize: 11
                             selectByMouse: true
+                            wrapMode: TextEdit.Wrap
+                            clip: true
                             placeholderText: qsTr("// On Press DuckyScript 3 commands")
                             background: Rectangle {
                                 radius: 4
@@ -10611,16 +10939,22 @@ Kirigami.ApplicationWindow {
                             text: qsTr("⬆ On Release DuckyScript 3 (key%1-release.txt):").arg(keyPropertiesWindow.slotNum)
                             font.bold: true
                             font.pixelSize: 12
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
                         }
 
                         QQC2.TextArea {
                             id: keyPropReleaseScriptArea
                             visible: keyPropertiesWindow.slotNum <= 20
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 100
+                            Layout.preferredWidth: 1
                             implicitHeight: 80
                             font.family: "monospace"
                             font.pixelSize: 11
                             selectByMouse: true
+                            wrapMode: TextEdit.Wrap
+                            clip: true
                             placeholderText: qsTr("// Optional On Release DuckyScript 3 commands")
                             background: Rectangle {
                                 radius: 4
@@ -10637,17 +10971,7 @@ Kirigami.ApplicationWindow {
                 Layout.fillWidth: true
                 spacing: 8
 
-                QQC2.Button {
-                    text: qsTr("Apply")
-                    onClicked: keyPropertiesWindow.applyKeyProperties()
-                }
-
                 Item { Layout.fillWidth: true }
-
-                QQC2.Button {
-                    text: qsTr("Cancel")
-                    onClicked: keyPropertiesWindow.close()
-                }
 
                 QQC2.Button {
                     icon.name: "dialog-ok-apply"
@@ -10658,6 +10982,12 @@ Kirigami.ApplicationWindow {
                         keyPropertiesWindow.applyKeyProperties()
                         keyPropertiesWindow.close()
                     }
+                }
+
+                QQC2.Button {
+                    icon.name: "window-close"
+                    text: qsTr("Close")
+                    onClicked: keyPropertiesWindow.close()
                 }
             }
         }
@@ -10839,9 +11169,9 @@ Kirigami.ApplicationWindow {
         transientParent: root
         modality: Qt.NonModal
         flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
-        width: Math.min(720, Screen.desktopAvailableWidth - 80)
+        width: Math.min(820, Screen.desktopAvailableWidth - 80)
         height: Math.min(680, Screen.desktopAvailableHeight - 80)
-        minimumWidth: 600
+        minimumWidth: 680
         minimumHeight: 500
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
         Kirigami.Theme.inherit: false
@@ -10956,12 +11286,16 @@ Kirigami.ApplicationWindow {
 
                 ColumnLayout {
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 1
                     spacing: 2
                     QQC2.Label {
                         text: qsTr("Gaming RGB Lighting Effects & Key Animations")
                         font.bold: true
                         font.pixelSize: 15
                         color: Kirigami.Theme.textColor
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
                     }
                     QQC2.Label {
                         text: qsTr("Attach idle or reactive keypress animations (Pulse, Waves, Ripple, Starlight, Spectrum, Scanner) to an entire profile or an individual key.")
@@ -10969,6 +11303,7 @@ Kirigami.ApplicationWindow {
                         color: Kirigami.Theme.disabledTextColor
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
                     }
                 }
             }
@@ -10995,7 +11330,7 @@ Kirigami.ApplicationWindow {
                     }
 
                     QQC2.Button {
-                        text: qsTr("🎛 Entire Profile #%1 (%2)")
+                        text: qsTr("🎛 Profile #%1 (%2)")
                             .arg(deviceController.activeProfile)
                             .arg(deviceController.activeProfileName)
                         checkable: true
@@ -11009,7 +11344,7 @@ Kirigami.ApplicationWindow {
                     }
 
                     QQC2.Button {
-                        text: qsTr("⌨ Individual Mechanical Key")
+                        text: qsTr("⌨ Individual Key")
                         checkable: true
                         checked: lightingAnimatorDialog.targetScope === "key"
                         highlighted: lightingAnimatorDialog.targetScope === "key"
@@ -11023,7 +11358,7 @@ Kirigami.ApplicationWindow {
                     QQC2.ComboBox {
                         id: animKeySelectorCombo
                         visible: lightingAnimatorDialog.targetScope === "key"
-                        Layout.preferredWidth: 165
+                        Layout.preferredWidth: 150
                         model: {
                             let arr = []
                             for (let k = 1; k <= 20; k++) {
@@ -11043,7 +11378,7 @@ Kirigami.ApplicationWindow {
 
                     QQC2.Switch {
                         checked: lightingAnimatorDialog.animEnabled
-                        text: lightingAnimatorDialog.animEnabled ? qsTr("Effect Enabled") : qsTr("Effect Disabled")
+                        text: lightingAnimatorDialog.animEnabled ? qsTr("Enabled") : qsTr("Disabled")
                         font.bold: true
                         onToggled: lightingAnimatorDialog.animEnabled = checked
                     }
@@ -11051,15 +11386,34 @@ Kirigami.ApplicationWindow {
             }
 
             // Scrollable Settings Body
-            QQC2.ScrollView {
+            Flickable {
+                id: lightingFlickable
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                Layout.minimumHeight: 80
+                Layout.preferredHeight: 1
                 clip: true
-                contentWidth: availableWidth
-                QQC2.ScrollBar.vertical: HighContrastScrollBar {}
+                contentWidth: width
+                contentHeight: lightingScrollCol.implicitHeight + 8
+                boundsBehavior: Flickable.StopAtBounds
+                flickableDirection: Flickable.VerticalFlick
+
+                QQC2.ScrollBar.vertical: HighContrastScrollBar {
+                    parent: lightingFlickable
+                    anchors.top: lightingFlickable.top
+                    anchors.right: lightingFlickable.right
+                    anchors.bottom: lightingFlickable.bottom
+                    policy: lightingFlickable.contentHeight > lightingFlickable.height
+                        ? QQC2.ScrollBar.AlwaysOn
+                        : QQC2.ScrollBar.AsNeeded
+                }
 
                 ColumnLayout {
-                    width: parent.width - 14
+                    id: lightingScrollCol
+                    width: Math.max(
+                        200,
+                        lightingFlickable.width - (lightingFlickable.contentHeight > lightingFlickable.height ? 18 : 2)
+                    )
                     spacing: 10
 
                     // Trigger Condition Card
@@ -11145,6 +11499,8 @@ Kirigami.ApplicationWindow {
                                     text: qsTr("seconds of inactivity (0 = animate continuously)")
                                     font.pixelSize: 11
                                     color: Kirigami.Theme.disabledTextColor
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideRight
                                 }
                             }
                         }
@@ -11169,6 +11525,8 @@ Kirigami.ApplicationWindow {
                             delegate: Rectangle {
                                 required property var modelData
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 100
+                                Layout.preferredWidth: 1
                                 implicitHeight: presetCardRow.implicitHeight + 16
                                 radius: 6
                                 readonly property bool isSelected: lightingAnimatorDialog.animPreset === modelData.id
@@ -11191,12 +11549,16 @@ Kirigami.ApplicationWindow {
 
                                     ColumnLayout {
                                         Layout.fillWidth: true
+                                        Layout.minimumWidth: 0
+                                        Layout.preferredWidth: 1
                                         spacing: 2
                                         QQC2.Label {
                                             text: modelData.title
                                             font.bold: true
                                             font.pixelSize: 12
                                             color: isSelected ? "#f3e8ff" : Kirigami.Theme.textColor
+                                            Layout.fillWidth: true
+                                            elide: Text.ElideRight
                                         }
                                         QQC2.Label {
                                             text: modelData.desc
@@ -11204,6 +11566,7 @@ Kirigami.ApplicationWindow {
                                             color: Kirigami.Theme.disabledTextColor
                                             wrapMode: Text.WordWrap
                                             Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
                                         }
                                     }
                                 }
@@ -11250,6 +11613,8 @@ Kirigami.ApplicationWindow {
 
                                 QQC2.Slider {
                                     Layout.fillWidth: true
+                                    Layout.minimumWidth: 80
+                                    Layout.preferredWidth: 1
                                     from: 1
                                     to: 10
                                     stepSize: 1
@@ -11399,20 +11764,42 @@ Kirigami.ApplicationWindow {
                             spacing: 6
 
                             QQC2.CheckBox {
+                                id: animPushHwCheck
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 checked: lightingAnimatorDialog.animPushToHardware
                                 text: qsTr("Stream live RGB animation frames to physical duckyPad LEDs over USB HID")
                                 font.bold: true
                                 font.pixelSize: 11
                                 onToggled: lightingAnimatorDialog.animPushToHardware = checked
+                                contentItem: QQC2.Label {
+                                    leftPadding: (animPushHwCheck.indicator ? animPushHwCheck.indicator.width : 18) + animPushHwCheck.spacing
+                                    text: animPushHwCheck.text
+                                    font: animPushHwCheck.font
+                                    color: Kirigami.Theme.textColor
+                                    verticalAlignment: Text.AlignVCenter
+                                    wrapMode: Text.WordWrap
+                                }
                             }
 
                             QQC2.CheckBox {
+                                id: animCompileScriptCheck
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 visible: lightingAnimatorDialog.targetScope === "key" && (lightingAnimatorDialog.animTrigger === "keypress" || lightingAnimatorDialog.animTrigger === "both")
                                 checked: lightingAnimatorDialog.animCompileIntoScript
                                 text: qsTr("Embed standalone DuckyScript 3 SWC_SET / SWC_RESET animation block into Key %1's script (runs on hardware even without PC app)")
                                     .arg(lightingAnimatorDialog.targetKeySlot)
                                 font.pixelSize: 11
                                 onToggled: lightingAnimatorDialog.animCompileIntoScript = checked
+                                contentItem: QQC2.Label {
+                                    leftPadding: (animCompileScriptCheck.indicator ? animCompileScriptCheck.indicator.width : 18) + animCompileScriptCheck.spacing
+                                    text: animCompileScriptCheck.text
+                                    font: animCompileScriptCheck.font
+                                    color: Kirigami.Theme.textColor
+                                    verticalAlignment: Text.AlignVCenter
+                                    wrapMode: Text.WordWrap
+                                }
                             }
                         }
                     }
@@ -11528,9 +11915,9 @@ Kirigami.ApplicationWindow {
         transientParent: root
         modality: Qt.NonModal
         flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
-        width: Math.min(780, Screen.desktopAvailableWidth - 80)
+        width: Math.min(840, Screen.desktopAvailableWidth - 80)
         height: Math.min(680, Screen.desktopAvailableHeight - 80)
-        minimumWidth: 640
+        minimumWidth: 680
         minimumHeight: 500
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
         Kirigami.Theme.inherit: false
@@ -11819,11 +12206,15 @@ Kirigami.ApplicationWindow {
 
                 ColumnLayout {
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 1
                     spacing: 2
                     QQC2.Label {
                         text: qsTr("DuckyScript 3 Live Macro Recorder")
                         font.bold: true
                         font.pixelSize: 15
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
                     }
                     QQC2.Label {
                         text: qsTr("Record keyboard strokes, key holds, mouse clicks, scroll wheel, and mouse movements directly into DuckyScript 3.")
@@ -11831,6 +12222,7 @@ Kirigami.ApplicationWindow {
                         color: Kirigami.Theme.disabledTextColor
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
                     }
                 }
 
@@ -11953,7 +12345,7 @@ Kirigami.ApplicationWindow {
                     // Row 2: Input Sources (Keyboard, Mouse Clicks/Scroll, Mouse Movements)
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 14
+                        spacing: 12
 
                         QQC2.Label {
                             text: qsTr("Include Inputs:")
@@ -11971,15 +12363,17 @@ Kirigami.ApplicationWindow {
 
                         QQC2.CheckBox {
                             checked: macroRecorderDialog.captureMouseClicks
-                            text: qsTr("🖱 Mouse Clicks & Scroll Wheel (LMOUSE / RMOUSE / MMOUSE / SCROLL)")
+                            text: qsTr("🖱 Mouse Clicks & Scroll")
                             font.bold: true
                             font.pixelSize: 11
                             onToggled: macroRecorderDialog.captureMouseClicks = checked
+                            QQC2.ToolTip.visible: hovered
+                            QQC2.ToolTip.text: qsTr("Captures LMOUSE, RMOUSE, MMOUSE, and MOUSE_SCROLL events")
                         }
 
                         QQC2.CheckBox {
                             checked: macroRecorderDialog.captureMouseMoves
-                            text: qsTr("📐 Mouse Movements (MOUSE_MOVE dx dy)")
+                            text: qsTr("📐 Mouse Moves (MOUSE_MOVE)")
                             font.bold: true
                             font.pixelSize: 11
                             onToggled: macroRecorderDialog.captureMouseMoves = checked
@@ -11994,7 +12388,7 @@ Kirigami.ApplicationWindow {
             Rectangle {
                 id: captureFocusPad
                 Layout.fillWidth: true
-                Layout.preferredHeight: 110
+                Layout.preferredHeight: 96
                 radius: 8
                 focus: true
                 activeFocusOnTab: true
@@ -12111,11 +12505,17 @@ Kirigami.ApplicationWindow {
                 }
 
                 ColumnLayout {
-                    anchors.centerIn: parent
+                    anchors.fill: parent
+                    anchors.margins: 8
                     spacing: 4
 
+                    Item { Layout.fillHeight: true }
+
                     QQC2.Label {
-                        Layout.alignment: Qt.AlignHCenter
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
                         text: macroRecorderDialog.isRecording
                             ? qsTr("🔴 RECORDING LIVE — Type keys, click, scroll, or move the mouse here%1")
                                 .arg(macroRecorderDialog.globalEvdevActive ? qsTr(" (or anywhere on desktop via evdev)") : "")
@@ -12126,7 +12526,10 @@ Kirigami.ApplicationWindow {
                     }
 
                     QQC2.Label {
-                        Layout.alignment: Qt.AlignHCenter
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        horizontalAlignment: Text.AlignHCenter
+                        elide: Text.ElideRight
                         text: qsTr("Captured Events: %1 • Mode: %2")
                             .arg(macroRecorderDialog.rawEvents.length)
                             .arg(macroRecorderDialog.timingMode === "exact"
@@ -12136,6 +12539,8 @@ Kirigami.ApplicationWindow {
                         font.pixelSize: 11
                         color: Kirigami.Theme.disabledTextColor
                     }
+
+                    Item { Layout.fillHeight: true }
                 }
             }
 
@@ -12148,9 +12553,9 @@ Kirigami.ApplicationWindow {
                     text: qsTr("Generated DuckyScript 3 Output (Editable):")
                     font.bold: true
                     font.pixelSize: 12
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
                 }
-
-                Item { Layout.fillWidth: true }
 
                 QQC2.Button {
                     text: qsTr("+ DELAY 100")
@@ -12191,15 +12596,20 @@ Kirigami.ApplicationWindow {
             QQC2.ScrollView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                Layout.minimumHeight: 80
+                Layout.preferredHeight: 1
                 clip: true
+                contentWidth: availableWidth
                 QQC2.ScrollBar.vertical: HighContrastScrollBar {}
 
                 QQC2.TextArea {
                     id: recordedScriptEditor
+                    width: parent.width
                     font.family: "monospace"
                     font.pixelSize: 12
                     selectByMouse: true
-                    wrapMode: TextEdit.NoWrap
+                    wrapMode: TextEdit.Wrap
+                    clip: true
                     text: qsTr("// Click '🔴 Start Recording' above, then type keys or use the mouse.\n// Your recorded DuckyScript 3 macro will appear here in real time.")
                     background: Rectangle {
                         radius: 6
@@ -12223,9 +12633,10 @@ Kirigami.ApplicationWindow {
                         : qsTr("Select a key on the canvas to insert directly")
                     font.pixelSize: 11
                     color: Kirigami.Theme.disabledTextColor
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    elide: Text.ElideRight
                 }
-
-                Item { Layout.fillWidth: true }
 
                 QQC2.Button {
                     text: qsTr("Close")

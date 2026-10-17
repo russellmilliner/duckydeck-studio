@@ -54,6 +54,8 @@ pub mod qobject {
         #[qproperty(QString, generated_script_preview)]
         #[qproperty(bool, auto_switch_enabled)]
         #[qproperty(i32, default_fallback_profile)]
+        #[qproperty(i32, auto_switch_settle_ms)]
+        #[qproperty(i32, auto_switch_dwell_ms)]
         #[qproperty(QString, active_window_class)]
         #[qproperty(QString, active_window_title)]
         #[qproperty(bool, window_picker_armed)]
@@ -242,6 +244,13 @@ pub mod qobject {
             self: Pin<&mut DeviceController>,
             enabled: bool,
             default_profile: i32,
+        );
+
+        #[qinvokable]
+        fn set_auto_switch_timings(
+            self: Pin<&mut DeviceController>,
+            settle_ms: i32,
+            dwell_ms: i32,
         );
 
         #[qinvokable]
@@ -819,6 +828,8 @@ pub struct DeviceControllerRust {
     pub(crate) generated_script_preview: QString,
     pub(crate) auto_switch_enabled: bool,
     pub(crate) default_fallback_profile: i32,
+    pub(crate) auto_switch_settle_ms: i32,
+    pub(crate) auto_switch_dwell_ms: i32,
     pub(crate) active_window_class: QString,
     pub(crate) active_window_title: QString,
     pub(crate) window_picker_armed: bool,
@@ -1003,6 +1014,8 @@ impl Default for DeviceControllerRust {
 
         let auto_enabled = switcher.enabled;
         let fallback_prof = switcher.default_profile.unwrap_or(0) as i32;
+        let settle_ms = switcher.mouse_settle_ms.clamp(0, 5000);
+        let dwell_ms = switcher.window_dwell_ms.clamp(0, 5000);
         let tray_mode = switcher.tray_icon_mode.clone();
         let app_theme = switcher.app_theme_mode.clone();
         let close_tray = switcher.close_to_tray;
@@ -1080,6 +1093,8 @@ impl Default for DeviceControllerRust {
             ),
             auto_switch_enabled: auto_enabled,
             default_fallback_profile: fallback_prof,
+            auto_switch_settle_ms: settle_ms,
+            auto_switch_dwell_ms: dwell_ms,
             active_window_class: QString::from("Listening for KWin..."),
             active_window_title: QString::from(""),
             window_picker_armed: false,
@@ -1619,6 +1634,8 @@ impl DeviceControllerRust {
             paused_for_editing: false,
             default_profile: Some(8),
             rules: rules.clone(),
+            mouse_settle_ms: 250,
+            window_dwell_ms: 150,
             tray_icon_mode: "auto".to_string(),
             app_theme_mode: "dark".to_string(),
             close_to_tray: true,
@@ -1712,6 +1729,8 @@ impl DeviceControllerRust {
             ),
             auto_switch_enabled: true,
             default_fallback_profile: 8,
+            auto_switch_settle_ms: 250,
+            auto_switch_dwell_ms: 150,
             active_window_class: QString::from("org.kde.dolphin"),
             active_window_title: QString::from("Projects — Dolphin"),
             window_picker_armed: false,
@@ -3824,8 +3843,26 @@ impl qobject::DeviceController {
         let slot_idx = slot_number.clamp(1, MAX_INPUT_SLOTS as i32) as usize;
         let active_num = *self.active_profile() as u8;
 
-        let l1: String = label1.to_string().chars().take(5).collect();
-        let l2: String = label2.to_string().chars().take(5).collect();
+        let take_5_visible = |raw: &str| -> String {
+            let mut out = String::new();
+            let mut count = 0usize;
+            for ch in raw.chars() {
+                if matches!(ch, '\u{FE0E}' | '\u{FE0F}' | '\u{200D}') {
+                    if count > 0 && count <= 5 {
+                        out.push(ch);
+                    }
+                    continue;
+                }
+                if count >= 5 {
+                    break;
+                }
+                out.push(ch);
+                count += 1;
+            }
+            out
+        };
+        let l1: String = take_5_visible(&label1.to_string());
+        let l2: String = take_5_visible(&label2.to_string());
         let press = on_press_script.to_string();
         let release = on_release_script.to_string();
 
@@ -4106,9 +4143,19 @@ impl qobject::DeviceController {
                                 qobject.as_mut().refresh_device();
                             } else if was_connected && hid_present {
                                 if let Some(hw_prof) = hw_active_prof {
+                                    let now_ms = crate::kwin::auto_switcher::current_epoch_ms();
+                                    let last_sw_ms = crate::kwin::auto_switcher::LAST_SW_PROFILE_SWITCH_MS
+                                        .load(std::sync::atomic::Ordering::SeqCst);
+                                    let last_sw_target = crate::kwin::auto_switcher::LAST_SW_PROFILE_TARGET
+                                        .load(std::sync::atomic::Ordering::SeqCst);
+                                    let in_sw_cooldown = now_ms.saturating_sub(last_sw_ms) < 1400
+                                        && last_sw_target >= 1
+                                        && hw_prof != last_sw_target;
+
                                     let current_prof = *qobject.active_profile() as u8;
                                     let max_prof = qobject.rust().profiles.len() as u8;
-                                    if hw_prof != current_prof
+                                    if !in_sw_cooldown
+                                        && hw_prof != current_prof
                                         && hw_prof >= 1
                                         && (max_prof == 0 || hw_prof <= max_prof)
                                     {
@@ -4303,6 +4350,31 @@ impl qobject::DeviceController {
             .set_default_fallback_profile(fallback.unwrap_or(0) as i32);
         self.as_mut().apply_auto_switch_for_current_window();
         self.as_mut().sync_active_profile_state();
+    }
+
+    pub fn set_auto_switch_timings(
+        mut self: Pin<&mut Self>,
+        settle_ms: i32,
+        dwell_ms: i32,
+    ) {
+        let clamped_settle = settle_ms.clamp(0, 5000);
+        let clamped_dwell = dwell_ms.clamp(0, 5000);
+
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                sw.mouse_settle_ms = clamped_settle;
+                sw.window_dwell_ms = clamped_dwell;
+                let _ = sw.save_to_disk();
+            }
+        }
+
+        self.as_mut().set_auto_switch_settle_ms(clamped_settle);
+        self.as_mut().set_auto_switch_dwell_ms(clamped_dwell);
+        self.as_mut().set_status_message(QString::from(&format!(
+            "Auto-Switcher timings set: mouse settle = {} ms, window dwell = {} ms",
+            clamped_settle, clamped_dwell
+        )));
     }
 
     pub fn arm_window_picker(mut self: Pin<&mut Self>, bind_to_active_profile: bool) {

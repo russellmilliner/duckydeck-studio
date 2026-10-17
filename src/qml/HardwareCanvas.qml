@@ -50,6 +50,12 @@ Item {
     property var activeKeyBursts: ([]) // [{ slot: 1..20, startMs: ..., preset: ..., color1: ..., color2: ..., speed: ..., scope: "key"|"profile" }]
     property int hwStreamTickCounter: 0
 
+    function keyHasCustomAnimation(slotNum) {
+        if (!canvasRoot.keyAnimationConfigs || slotNum < 1 || slotNum > 20) return false
+        const cfg = canvasRoot.keyAnimationConfigs[String(slotNum)]
+        return !!(cfg && cfg.enabled)
+    }
+
     function notifyUserActivity(pressedSlot) {
         const now = Date.now()
         const wasIdle = canvasRoot.idleAnimationActive
@@ -584,7 +590,6 @@ Item {
         if (!controller || !controller.hasCopiedSlot) return
         canvasRoot.beforeSlotMutationRequested()
         if (controller.pasteSlot(targetSlotNum)) {
-            canvasRoot.selectedSlot = targetSlotNum
             canvasRoot.slotContentMutated(targetSlotNum)
             oledSimulator.requestPaint()
         }
@@ -594,7 +599,6 @@ Item {
         if (!controller) return
         canvasRoot.beforeSlotMutationRequested()
         if (controller.clearSlot(slotNum)) {
-            canvasRoot.selectedSlot = slotNum
             canvasRoot.slotContentMutated(slotNum)
             oledSimulator.requestPaint()
         }
@@ -604,21 +608,16 @@ Item {
         if (!controller || fromSlot === toSlot) return
         canvasRoot.beforeSlotMutationRequested()
         if (controller.moveOrSwapSlot(fromSlot, toSlot, shiftBetween)) {
-            canvasRoot.selectedSlot = toSlot
+            if (canvasRoot.selectedSlot === fromSlot) {
+                canvasRoot.selectedSlot = toSlot
+            }
             canvasRoot.slotContentMutated(toSlot)
             oledSimulator.requestPaint()
         }
     }
 
     function openSlotContextMenu(slotNum) {
-        canvasRoot.selectedSlot = slotNum
         canvasRoot.contextMenuSlot = slotNum
-        canvasRoot.slotSelected(
-            slotNum,
-            canvasRoot.slotTitleFor(slotNum),
-            canvasRoot.slotColorFor(slotNum)
-        )
-        oledSimulator.requestPaint()
         slotContextMenu.popup()
     }
 
@@ -629,7 +628,6 @@ Item {
             icon.name: "document-properties"
             text: qsTr("Properties...")
             onTriggered: {
-                canvasRoot.selectedSlot = canvasRoot.contextMenuSlot
                 canvasRoot.openKeyPropertiesRequested(canvasRoot.contextMenuSlot)
             }
         }
@@ -662,7 +660,6 @@ Item {
             icon.name: "color-picker"
             text: qsTr("Set Key %1 Color").arg(canvasRoot.contextMenuSlot)
             onTriggered: {
-                canvasRoot.selectedSlot = canvasRoot.contextMenuSlot
                 canvasRoot.keyColorPickerRequested(
                     canvasRoot.contextMenuSlot,
                     canvasRoot.slotColorFor(canvasRoot.contextMenuSlot).toString()
@@ -675,7 +672,6 @@ Item {
             icon.name: "preferences-desktop-color"
             text: qsTr("✨ Key %1 RGB Lighting Animation...").arg(canvasRoot.contextMenuSlot)
             onTriggered: {
-                canvasRoot.selectedSlot = canvasRoot.contextMenuSlot
                 canvasRoot.openLightingAnimatorRequested("key", canvasRoot.contextMenuSlot)
             }
         }
@@ -694,67 +690,187 @@ Item {
     ColumnLayout {
         id: mainCol
         anchors.fill: parent
-        spacing: Kirigami.Units.smallSpacing
+        spacing: 0
 
-        RowLayout {
+        Item {
             id: topToolbarRow
             Layout.fillWidth: true
-            spacing: 4
+            Layout.preferredHeight: 34
 
-            QQC2.Button {
-                text: canvasRoot.profileAnimationConfig && canvasRoot.profileAnimationConfig.enabled
-                    ? qsTr("✨ RGB FX ●")
-                    : qsTr("✨ RGB FX")
-                highlighted: !!(canvasRoot.profileAnimationConfig && canvasRoot.profileAnimationConfig.enabled)
-                font.bold: true
-                onClicked: canvasRoot.openLightingAnimatorRequested(
-                    canvasRoot.selectedSlot >= 1 && canvasRoot.selectedSlot <= 20 ? "key" : "profile",
-                    canvasRoot.selectedSlot >= 1 && canvasRoot.selectedSlot <= 20 ? canvasRoot.selectedSlot : 1
-                )
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: qsTr("Configure Gaming-Keyboard RGB Animations (Pulsing, Waves, Ripple, Spectrum, Starlight) for this Profile or Individual Keys")
-            }
+            RowLayout {
+                anchors.fill: parent
+                spacing: 4
 
-            QQC2.ButtonGroup { id: modeGroup }
+                // Tab 1: Onboard (20 Keys + 2 Encoders)
+                Rectangle {
+                    id: onboardTabBtn
+                    readonly property bool isActiveTab: !canvasRoot.showExpansion
+                    Layout.preferredHeight: 34
+                    implicitWidth: onboardTabRow.implicitWidth + 24
+                    topLeftRadius: 8
+                    topRightRadius: 8
+                    bottomLeftRadius: 0
+                    bottomRightRadius: 0
+                    color: isActiveTab
+                        ? Kirigami.Theme.alternateBackgroundColor
+                        : (onboardTabMouse.containsMouse
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.12)
+                            : Kirigami.Theme.backgroundColor)
+                    border.color: isActiveTab
+                        ? Kirigami.Theme.highlightColor
+                        : Qt.alpha(Kirigami.Theme.textColor, 0.22)
+                    border.width: 1
 
-            QQC2.ToolButton {
-                QQC2.ButtonGroup.group: modeGroup
-                checkable: true
-                checked: !canvasRoot.showExpansion
-                icon.name: "input-keyboard"
-                text: qsTr("Onboard")
-                display: QQC2.AbstractButton.TextBesideIcon
-                onClicked: canvasRoot.showExpansion = false
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: qsTr("Onboard (20 Keys + 2 Encoders)")
-            }
+                    Rectangle {
+                        visible: parent.isActiveTab
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        height: 3
+                        topLeftRadius: 8
+                        topRightRadius: 8
+                        color: Kirigami.Theme.highlightColor
+                    }
 
-            QQC2.ToolButton {
-                QQC2.ButtonGroup.group: modeGroup
-                checkable: true
-                checked: canvasRoot.showExpansion
-                icon.name: "network-wired"
-                text: qsTr("Expansion")
-                display: QQC2.AbstractButton.TextBesideIcon
-                onClicked: canvasRoot.showExpansion = true
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: qsTr("Daisy-Chained Expansion Channels (27–58)")
-            }
+                    Rectangle {
+                        visible: parent.isActiveTab
+                        anchors.bottom: parent.bottom
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 1
+                        anchors.rightMargin: 1
+                        height: 2
+                        color: Kirigami.Theme.alternateBackgroundColor
+                    }
 
-            Item { Layout.fillWidth: true }
+                    RowLayout {
+                        id: onboardTabRow
+                        anchors.centerIn: parent
+                        spacing: 6
 
-            QQC2.ToolButton {
-                checkable: true
-                checked: canvasRoot.oledScriptMode
-                icon.name: "video-television"
-                display: QQC2.AbstractButton.TextBesideIcon
-                text: canvasRoot.oledScriptMode ? qsTr("OLED VM") : qsTr("OLED Grid")
-                onToggled: {
-                    canvasRoot.oledScriptMode = checked
-                    oledSimulator.requestPaint()
+                        Kirigami.Icon {
+                            source: "input-keyboard"
+                            Layout.preferredWidth: 16
+                            Layout.preferredHeight: 16
+                            color: onboardTabBtn.isActiveTab
+                                ? Kirigami.Theme.highlightColor
+                                : Kirigami.Theme.textColor
+                        }
+
+                        QQC2.Label {
+                            text: qsTr("Onboard")
+                            font.bold: onboardTabBtn.isActiveTab
+                            color: onboardTabBtn.isActiveTab
+                                ? Kirigami.Theme.highlightColor
+                                : Kirigami.Theme.textColor
+                        }
+                    }
+
+                    MouseArea {
+                        id: onboardTabMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: canvasRoot.showExpansion = false
+                    }
+
+                    QQC2.ToolTip.visible: onboardTabMouse.containsMouse
+                    QQC2.ToolTip.text: qsTr("Onboard (20 Keys + 2 Encoders)")
                 }
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: canvasRoot.oledScriptMode ? qsTr("Switch to Profile Grid HUD") : qsTr("Switch to duckStack VM HUD")
+
+                // Tab 2: Expansion (Channels 27–58)
+                Rectangle {
+                    id: expansionTabBtn
+                    readonly property bool isActiveTab: canvasRoot.showExpansion
+                    Layout.preferredHeight: 34
+                    implicitWidth: expansionTabRow.implicitWidth + 24
+                    topLeftRadius: 8
+                    topRightRadius: 8
+                    bottomLeftRadius: 0
+                    bottomRightRadius: 0
+                    color: isActiveTab
+                        ? Kirigami.Theme.alternateBackgroundColor
+                        : (expansionTabMouse.containsMouse
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.12)
+                            : Kirigami.Theme.backgroundColor)
+                    border.color: isActiveTab
+                        ? Kirigami.Theme.highlightColor
+                        : Qt.alpha(Kirigami.Theme.textColor, 0.22)
+                    border.width: 1
+
+                    Rectangle {
+                        visible: parent.isActiveTab
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        height: 3
+                        topLeftRadius: 8
+                        topRightRadius: 8
+                        color: Kirigami.Theme.highlightColor
+                    }
+
+                    Rectangle {
+                        visible: parent.isActiveTab
+                        anchors.bottom: parent.bottom
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 1
+                        anchors.rightMargin: 1
+                        height: 2
+                        color: Kirigami.Theme.alternateBackgroundColor
+                    }
+
+                    RowLayout {
+                        id: expansionTabRow
+                        anchors.centerIn: parent
+                        spacing: 6
+
+                        Kirigami.Icon {
+                            source: "network-wired"
+                            Layout.preferredWidth: 16
+                            Layout.preferredHeight: 16
+                            color: expansionTabBtn.isActiveTab
+                                ? Kirigami.Theme.highlightColor
+                                : Kirigami.Theme.textColor
+                        }
+
+                        QQC2.Label {
+                            text: qsTr("Expansion")
+                            font.bold: expansionTabBtn.isActiveTab
+                            color: expansionTabBtn.isActiveTab
+                                ? Kirigami.Theme.highlightColor
+                                : Kirigami.Theme.textColor
+                        }
+                    }
+
+                    MouseArea {
+                        id: expansionTabMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: canvasRoot.showExpansion = true
+                    }
+
+                    QQC2.ToolTip.visible: expansionTabMouse.containsMouse
+                    QQC2.ToolTip.text: qsTr("Daisy-Chained Expansion Channels (27–58)")
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.ToolButton {
+                    Layout.alignment: Qt.AlignVCenter
+                    checkable: true
+                    checked: canvasRoot.oledScriptMode
+                    icon.name: "video-television"
+                    display: QQC2.AbstractButton.TextBesideIcon
+                    text: canvasRoot.oledScriptMode ? qsTr("OLED VM") : qsTr("OLED Grid")
+                    onToggled: {
+                        canvasRoot.oledScriptMode = checked
+                        oledSimulator.requestPaint()
+                    }
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.text: canvasRoot.oledScriptMode ? qsTr("Switch to Profile Grid HUD") : qsTr("Switch to duckStack VM HUD")
+                }
             }
         }
 
@@ -773,7 +889,10 @@ Item {
 
             Layout.fillWidth: true
             Layout.fillHeight: true
-            radius: 12
+            topLeftRadius: 0
+            topRightRadius: 12
+            bottomLeftRadius: 12
+            bottomRightRadius: 12
             color: Kirigami.Theme.alternateBackgroundColor
             border.color: pcbChassis.frameBorderColor
             border.width: 1
