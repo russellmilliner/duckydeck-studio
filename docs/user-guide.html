@@ -536,7 +536,7 @@
       <a class="nav-link" href="#overview">🏠 Overview &amp; Supported Hardware</a>
       <a class="nav-link" href="#portability">⚡ Hardware-Portable vs. Host-Dependent</a>
       <a class="nav-link" href="#showcase">🎬 Video Tour &amp; Screenshots</a>
-      <a class="nav-link" href="#installation">📦 Installation &amp; USB Permissions</a>
+      <a class="nav-link" href="#installation">📦 Download, Install &amp; USB Permissions</a>
       <a class="nav-link" href="#workspace">🖥️ 3-Column Workspace Tour</a>
 
       <div class="nav-group-title">Profiles &amp; Hardware</div>
@@ -561,6 +561,9 @@
     </nav>
 
     <div class="sidebar-footer">
+      <a class="ext-btn" href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
+        🐙 Download on GitHub
+      </a>
       <a class="kofi-btn" href="https://ko-fi.com/russellmilliner" target="_blank" rel="noopener noreferrer">
         ☕ Buy Me a Coffee on Ko-fi
       </a>
@@ -600,6 +603,9 @@
           <span>DuckyDeck Studio — User Guide</span>
         </h1>
         <div style="display:flex;flex-wrap:wrap;gap:10px;">
+          <a class="ext-btn" href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer">
+            🐙 GitHub Repository
+          </a>
           <a class="ext-btn" href="https://www.duckypad.com" target="_blank" rel="noopener noreferrer">
             🦆 Official duckyPad Site
           </a>
@@ -744,17 +750,83 @@
 
     <!-- 1. Installation & Permissions -->
     <section id="installation">
-      <h2>📦 1. Installation &amp; USB HID Permissions</h2>
+      <h2>📦 1. Downloading from GitHub, Installation &amp; USB HID Permissions</h2>
       <p>
-        DuckyDeck Studio communicates directly with your duckyPad over USB HID (`hidraw`) for real-time profile switching,
-        LED color previews, RTC clock sync, and Persistent Global Variables (`_GV0.._GV31`), and mounts or reads the
+        DuckyDeck Studio is open-source and hosted on GitHub at
+        <strong><a href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">github.com/russellmilliner/duckydeck-studio</a></strong>.
+        It communicates directly with your duckyPad over USB HID (<code>hidraw</code>) for real-time profile switching,
+        LED color previews, RTC clock sync, and Persistent Global Variables (<code>_GV0.._GV31</code>), and mounts or reads the
         duckyPad microSD card for profile storage.
       </p>
 
+      <h3>Step 1: Download or Clone from GitHub</h3>
+      <div class="grid-2" style="margin-bottom: 16px;">
+        <div class="card">
+          <h4>🐙 Option A: Clone with Git (Recommended)</h4>
+          <p>Clone the repository directly so you can easily pull updates with <code>git pull</code>:</p>
+          <pre><code>git clone https://github.com/russellmilliner/duckydeck-studio.git
+cd duckydeck-studio</code></pre>
+        </div>
+        <div class="card">
+          <h4>📥 Option B: Download ZIP or Release from GitHub</h4>
+          <p>
+            Visit <strong><a href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">github.com/russellmilliner/duckydeck-studio</a></strong>
+            and click <strong>Code → Download ZIP</strong> (or browse <strong><a href="https://github.com/russellmilliner/duckydeck-studio/releases" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">GitHub Releases</a></strong>), or download via terminal:
+          </p>
+          <pre><code>curl -L https://github.com/russellmilliner/duckydeck-studio/archive/refs/heads/master.zip -o duckydeck-studio.zip
+unzip duckydeck-studio.zip
+cd duckydeck-studio-master</code></pre>
+        </div>
+      </div>
+
+      <h3>Step 2: Install Build Prerequisites</h3>
+      <ul>
+        <li>
+          <strong>Arch Linux / CachyOS / EndeavourOS / Manjaro:</strong>
+          <pre><code>sudo pacman -S --needed base-devel rust clang cmake ninja pkgconf \
+    qt6-base qt6-declarative kirigami syntax-highlighting hidapi libusb</code></pre>
+        </li>
+        <li>
+          <strong>Fedora (40 / 41+):</strong>
+          <pre><code>sudo dnf install cargo rust clang cmake ninja-build pkgconf-pkg-config \
+    qt6-qtbase-devel qt6-qtdeclarative-devel kf6-kirigami-devel \
+    kf6-syntax-highlighting-devel hidapi-devel libusb1-devel systemd-devel</code></pre>
+        </li>
+        <li>
+          <strong>Ubuntu (24.04+) / Debian / KDE Neon:</strong>
+          <pre><code>sudo apt install build-essential cargo rustc clang cmake ninja-build pkg-config \
+    qt6-base-dev qt6-declarative-dev libkf6kirigami-dev \
+    libkf6syntaxhighlighting-dev libhidapi-dev libusb-1.0-0-dev libudev-dev</code></pre>
+        </li>
+      </ul>
+
+      <h3>Step 3: Build &amp; Install DuckyDeck Studio</h3>
+      <p>Compile the optimized release binary and install the executable, desktop launcher, icon, and <code>duckyScript 3</code> syntax highlighting definition:</p>
+      <pre><code># 1. Compile optimized release binary
+cargo build --release
+
+# 2. Install binary to ~/.local/bin
+install -Dm755 target/release/duckydeck-studio ~/.local/bin/duckydeck-studio
+
+# 3. Install duckyScript 3 syntax highlighting for KDE KSyntaxHighlighting
+install -Dm644 data/syntax/duckyscript3.xml \
+    ~/.local/share/org.kde.syntax-highlighting/syntax/duckyscript3.xml
+
+# 4. Install desktop entry, icon, and documentation
+install -Dm644 data/io.github.duckydeck.Studio.desktop \
+    ~/.local/share/applications/io.github.duckydeck.Studio.desktop
+install -Dm644 data/icons/io.github.duckydeck.Studio.svg \
+    ~/.local/share/icons/hicolor/scalable/apps/io.github.duckydeck.Studio.svg
+install -Dm644 docs/user-guide.html \
+    ~/.local/share/duckydeck-studio/docs/user-guide.html
+
+# 5. Launch DuckyDeck Studio
+~/.local/bin/duckydeck-studio</code></pre>
+
       <div class="callout">
-        <div class="callout-title">⚡ One-Click Polkit udev Rule Setup</div>
-        If Linux blocks non-root USB HID access (`PermissionDenied` on `/dev/hidraw*`), DuckyDeck Studio automatically displays an inline
-        yellow banner at the top of the window. Click <strong>Install Rules</strong> to authorize the `70-duckypad.rules` installation via Polkit, or run:
+        <div class="callout-title">⚡ Step 4: One-Click Polkit udev Rule Setup</div>
+        If Linux blocks non-root USB HID access (<code>PermissionDenied</code> on <code>/dev/hidraw*</code>), DuckyDeck Studio automatically displays an inline
+        yellow banner at the top of the window. Click <strong>Install Rules</strong> to authorize the <code>70-duckypad.rules</code> installation via Polkit, or run:
         <pre><code>sudo ./data/udev/install-udev-rules.sh</code></pre>
       </div>
 

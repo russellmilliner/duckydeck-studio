@@ -196,7 +196,25 @@ duckydeck-studio/
 
 ## 🛠️ Build & Installation Instructions
 
-### 1. Install Prerequisites
+### 1. Download or Clone from GitHub
+
+#### Option A: Clone with Git (Recommended)
+```bash
+git clone https://github.com/russellmilliner/duckydeck-studio.git
+cd duckydeck-studio
+```
+
+#### Option B: Download Source Archive (ZIP) or Release from GitHub
+Visit **[https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)** and click **Code → Download ZIP** (or browse **[GitHub Releases](https://github.com/russellmilliner/duckydeck-studio/releases)**), or download via terminal:
+```bash
+curl -L https://github.com/russellmilliner/duckydeck-studio/archive/refs/heads/master.zip -o duckydeck-studio.zip
+unzip duckydeck-studio.zip
+cd duckydeck-studio-master
+```
+
+---
+
+### 2. Install Prerequisites
 
 #### Arch Linux / CachyOS / EndeavourOS / Manjaro
 ```bash
@@ -220,7 +238,7 @@ sudo apt install build-essential cargo rustc clang cmake ninja-build pkg-config 
 
 ---
 
-### 2. Configure USB HID Permissions (`udev` Rules)
+### 3. Configure USB HID Permissions (`udev` Rules)
 
 To allow non-root access to `/dev/hidraw*` for the duckyPad Pro (`0x0483:0xd11d`) and duckyPad 2020 (`0x0483:0xd11c`), install the included `udev` rules:
 
@@ -231,7 +249,7 @@ sudo ./data/udev/install-udev-rules.sh
 
 ---
 
-### 3. Local Build & User Installation (`~/.local/bin`)
+### 4. Local Build & User Installation (`~/.local/bin`)
 
 Build the optimized release binary and install the executable, desktop launcher, icon, and `duckyScript 3` syntax highlighting definition for your user account:
 
@@ -262,7 +280,7 @@ Run the application:
 
 ---
 
-### 4. System-Wide Installation (`/usr/local`)
+### 5. System-Wide Installation (`/usr/local`)
 
 If you prefer to install DuckyDeck Studio system-wide for all users:
 
@@ -277,7 +295,7 @@ sudo ./data/udev/install-udev-rules.sh
 
 ---
 
-### 5. Building & Installing as a Flatpak
+### 6. Building & Installing as a Flatpak
 
 1. Install the KDE Plasma 6.8 Flatpak SDK and Rust/LLVM extensions:
    ```bash
@@ -313,6 +331,7 @@ A special thank you to **[dekuNukem](https://github.com/dekuNukem)** for creatin
 
 If **DuckyDeck Studio** makes your duckyPad workflow better on Linux, consider buying Russell Milliner a coffee!
 
+- **Website & User Manual:** [https://duckydeckstudio.com](https://duckydeckstudio.com)
+- **GitHub:** [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)
 - **Ko-fi:** [https://ko-fi.com/russellmilliner](https://ko-fi.com/russellmilliner)
-- **GitHub:** [https://github.com/millinr/duckydeck-studio](https://github.com/millinr/duckydeck-studio)
 
