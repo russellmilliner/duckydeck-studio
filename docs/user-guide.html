@@ -561,6 +561,9 @@
     </nav>
 
     <div class="sidebar-footer">
+      <a class="ext-btn" href="https://duckydeckstudio.com" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
+        🌐 duckydeckstudio.com
+      </a>
       <a class="ext-btn" href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
         🐙 Download on GitHub
       </a>
@@ -603,6 +606,9 @@
           <span>DuckyDeck Studio — User Guide</span>
         </h1>
         <div style="display:flex;flex-wrap:wrap;gap:10px;">
+          <a class="ext-btn" href="https://duckydeckstudio.com" target="_blank" rel="noopener noreferrer">
+            🌐 duckydeckstudio.com
+          </a>
           <a class="ext-btn" href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer">
             🐙 GitHub Repository
           </a>
@@ -1223,7 +1229,7 @@ install -Dm644 docs/user-guide.html \
           </ul>
         </li>
         <li><strong>🔔 Global Profile Change Webhook (`Settings → Global Profile Change Webhook`):</strong> Configure an HTTP webhook that fires automatically whenever the active profile changes (via UI, physical duckyPad buttons, Window Auto-Switcher, or REST API).</li>
-        <li><strong>Independent Per-Area Text Scaling (`75%`–`160%`):</strong> Adjust text scaling across the entire app at once or independently for the Left Sidebar, Center Hardware Canvas, Right Key Inspector, duckyScript 3 Code Editor, Bottom Status Bar, and System Event Log Window.</li>
+        <li><strong>Global UI Text Zoom (`75%`–`160%`, Minimum `10pt` Base Font):</strong> Adjust UI text zoom across the entire application using <kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>Ctrl</kbd>+<kbd>=</kbd> (zoom in), <kbd>Ctrl</kbd>+<kbd>-</kbd> (zoom out), or <kbd>Ctrl</kbd>+<kbd>0</kbd> (reset to `100%`), or via `Settings → Global Text Scale`. Zoom levels are saved automatically and restored on restart. All popup windows can also be closed with <kbd>Esc</kbd>.</li>
         <li><strong>System Tray (`StatusNotifierItem`):</strong> DuckyDeck Studio integrates natively with the KDE Plasma 6 System Tray, displaying a custom dynamic icon with your active profile number and color badge, quick profile switching submenu, and optional <em>Minimize / Close to System Tray</em> behavior.</li>
       </ul>
     </section>
@@ -1258,12 +1264,13 @@ install -Dm644 docs/user-guide.html \
       </div>
       <div class="grid-2">
         <div class="card">
-          <h4>🦆 Official duckyPad Website &amp; Documentation</h4>
+          <h4>🦆 Official duckyPad &amp; DuckyDeck Studio Websites</h4>
           <p>
             Explore official hardware specifications, getting started guides, DuckyScript 3 documentation, and firmware updates:
           </p>
           <ul>
-            <li><strong>Official Site:</strong> <a href="https://www.duckypad.com" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">https://www.duckypad.com</a></li>
+            <li><strong>DuckyDeck Studio Documentation:</strong> <a href="https://duckydeckstudio.com" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">https://duckydeckstudio.com</a></li>
+            <li><strong>Official duckyPad Site:</strong> <a href="https://www.duckypad.com" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">https://www.duckypad.com</a></li>
             <li><strong>duckyPad Pro GitHub:</strong> <a href="https://github.com/dekuNukem/duckyPad-Pro" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">github.com/dekuNukem/duckyPad-Pro</a></li>
             <li><strong>duckyPad (2020) GitHub:</strong> <a href="https://github.com/dekuNukem/duckyPad" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">github.com/dekuNukem/duckyPad</a></li>
           </ul>

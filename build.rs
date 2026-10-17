@@ -37,6 +37,14 @@ fn main() {
         })
         .build();
     println!("cargo:rerun-if-changed=src/cpp/app_helper.h");
+    println!("cargo:rerun-if-changed=src/bridge/device_controller.rs");
+    println!("cargo:rerun-if-changed=src/qml/Main.qml");
+    println!("cargo:rerun-if-changed=src/qml/UdevBanner.qml");
+    println!("cargo:rerun-if-changed=src/qml/HardwareCanvas.qml");
+    println!("cargo:rerun-if-changed=src/qml/PgvInspectorDrawer.qml");
+    println!("cargo:rerun-if-changed=src/qml/AutoSwitchDrawer.qml");
+    println!("cargo:rerun-if-changed=src/qml/AiArchitectModal.qml");
+    println!("cargo:rerun-if-changed=src/qml/OledDesktopWidget.qml");
     println!("cargo:rustc-link-lib=KF6ColorScheme");
     println!("cargo:rustc-link-lib=KF6ConfigCore");
     println!("cargo:rustc-link-lib=KF6IconThemes");

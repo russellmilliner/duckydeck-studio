@@ -1,5 +1,6 @@
 # <img src="data/icons/io.github.duckydeck.Studio.svg" width="36" height="36" align="top" alt="DuckyDeck Studio Icon" /> DuckyDeck Studio
 
+[![Website & Documentation](https://img.shields.io/badge/Docs%20%26%20Website-duckydeckstudio.com-38bdf8?style=for-the-badge)](https://duckydeckstudio.com)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Buy%20Me%20a%20Coffee-ff5e5b?logo=ko-fi&logoColor=white&style=for-the-badge)](https://ko-fi.com/russellmilliner)
 [![duckyPad Official Site](https://img.shields.io/badge/duckyPad-Official%20Site-f59e0b?style=for-the-badge)](https://www.duckypad.com)
 [![Tindie Store](https://img.shields.io/badge/Tindie-dekuNukem%20Store-10b981?style=for-the-badge)](https://www.tindie.com/stores/dekunukem/)
@@ -8,6 +9,8 @@
 
 **DuckyDeck Studio** is a native Linux desktop configurator, **DSVM v2 bytecode compiler**, **KDE Plasma 6 Wayland Auto-Switcher**, and **AI Macro Architect** for the **duckyPad Pro (`0x0483:0xd11d`)** and **duckyPad 2020 (`0x0483:0xd11c`)**, built with **Rust**, **CXX-Qt 0.7**, and **KDE Frameworks 6 (Kirigami + KSyntaxHighlighting)**.
 
+> 🌐 **Official Website & Online Documentation:** **[https://duckydeckstudio.com](https://duckydeckstudio.com)**
+>
 > ☕ **Enjoying DuckyDeck Studio?** Support development by buying Russell Milliner a coffee on Ko-fi: **[https://ko-fi.com/russellmilliner](https://ko-fi.com/russellmilliner)**
 >
 > 🙏 **Special Thanks to [dekuNukem](https://github.com/dekuNukem)** for creating the **[duckyPad & duckyPad Pro](https://www.duckypad.com)**! Get official hardware and accessories at **[dekuNukem's Official Tindie Store](https://www.tindie.com/stores/dekunukem/)**.
@@ -61,9 +64,9 @@
 - **🔢 Live PGV Inspector (`_GV0`..`_GV31`) & ✨ AI Macro Architect:**
   - Read and write all 32 non-volatile 32-bit Persistent Global Variables (`_GV0.._GV31`) over USB HID (`0x18`/`0x19`) in Signed, Unsigned, or Hex format.
   - Generate duckyScript 3 macros from natural language grounded in your local KDE shortcuts (`~/.config/kglobalshortcutsrc`).
-- **📋 System Event Log, Per-Area UI Text Scaling & System Tray:**
+- **📋 System Event Log, Global UI Zoom (`Ctrl++`/`Ctrl+-`) & System Tray:**
   - Built-in **System Event Log** (`DEVICE`, `PROFILE`, `AUTOSWITCH`, `SD_SYNC`, `SCRIPT`, `WEB_API`, `APP_LAUNCH`, `SYSTEM`) with search, category/severity filters, and file export.
-  - Independent text size scaling (`75%–160%`) for every area of the application, plus a dynamic KDE `StatusNotifierItem` System Tray icon showing the active profile number and color badge.
+  - Global UI text zoom (`75%–160%`, minimum `10pt` base font) with standard <kbd>Ctrl</kbd>+<kbd>+</kbd>, <kbd>Ctrl</kbd>+<kbd>=</kbd>, <kbd>Ctrl</kbd>+<kbd>-</kbd>, and <kbd>Ctrl</kbd>+<kbd>0</kbd> shortcuts persisted across restarts, plus a dynamic KDE `StatusNotifierItem` System Tray icon showing the active profile number and color badge.
 - **🗂️ Reusable Profile Templates:**
   - Create new profiles from built-in templates (*Blank*, *Media & Streaming*, *IDE & Developer*, *Desktop App & Web API Launcher*) or copy any existing profile into a reusable custom template (`~/.config/duckydeck-studio/profile_templates.json`).
 - **🖥️ Desktop OLED Companion Widget & Instant Independent Orientation (`0° / 90° / 180° / 270°`):**
@@ -132,7 +135,7 @@ DuckyDeck Studio includes a full-featured **HTTP REST API Server** (configurable
    - Never expose the plain-HTTP port directly to the public internet or untrusted networks; place it behind a TLS/HTTPS reverse proxy (Caddy, Nginx) or use an encrypted tunnel (SSH port forwarding, WireGuard, Tailscale).
 
 ### REST API Endpoint Summary (`/api/v1/*`)
-Full documentation and request/response schemas are available in **[`docs/REST_API.md`](docs/REST_API.md)**, **[`docs/openapi.yaml`](docs/openapi.yaml)**, and **[`docs/swagger.json`](docs/swagger.json)**.
+Full documentation and request/response schemas are available at **[https://duckydeckstudio.com](https://duckydeckstudio.com)** as well as in **[`docs/REST_API.md`](docs/REST_API.md)**, **[`docs/openapi.yaml`](docs/openapi.yaml)**, and **[`docs/swagger.json`](docs/swagger.json)**.
 
 | Method & Path | Description |
 | :--- | :--- |
@@ -163,9 +166,9 @@ Full documentation and request/response schemas are available in **[`docs/REST_A
 
 ## 📚 Documentation
 
-- **📖 [Web User Documentation & Manual (`docs/user-guide.html`)](docs/user-guide.html)** — Interactive dark/light web manual covering every feature, workflow, and troubleshooting tip (also accessible inside the app via **☰ → User Documentation** or **About → User Guide**).
-- **🔌 [HTTP REST API Reference (`docs/REST_API.md`)](docs/REST_API.md)** — Complete endpoint documentation, authentication guide, and `curl` examples, accompanied by **[`docs/openapi.yaml`](docs/openapi.yaml)** and **[`docs/swagger.json`](docs/swagger.json)**.
-- **🏗️ [Architecture & Design Developer Documentation (`docs/ARCHITECTURE.md`)](docs/ARCHITECTURE.md)** — In-depth technical documentation with Mermaid diagrams detailing the CXX-Qt bridge, USB HID protocol, DSVM v2 bytecode compiler, HTTP REST API server, and KWin Wayland Auto-Switcher.
+- **🌐 [Online User Documentation & Website (`https://duckydeckstudio.com`)](https://duckydeckstudio.com)** — Official online documentation, user manual, and firmware downloads (accessible directly inside the app via **☰ → User Documentation** or **About → User Guide**; offline copy at [`docs/user-guide.html`](docs/user-guide.html)).
+- **🔌 [HTTP REST API Reference (`https://duckydeckstudio.com` / `docs/REST_API.md`)](https://duckydeckstudio.com)** — Complete endpoint documentation, authentication guide, and `curl` examples, accompanied by **[`docs/REST_API.md`](docs/REST_API.md)**, **[`docs/openapi.yaml`](docs/openapi.yaml)**, and **[`docs/swagger.json`](docs/swagger.json)**.
+- **🏗️ [Architecture & Design Developer Documentation (`https://duckydeckstudio.com` / `docs/ARCHITECTURE.md`)](https://duckydeckstudio.com)** — In-depth technical documentation with Mermaid diagrams detailing the CXX-Qt bridge, USB HID protocol, DSVM v2 bytecode compiler, HTTP REST API server, and KWin Wayland Auto-Switcher ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)).
 
 ---
 

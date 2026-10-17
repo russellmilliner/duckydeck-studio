@@ -104,7 +104,6 @@ Window {
         context: Qt.WindowShortcut
         enabled: oledWidgetWindow.visible
         onActivated: oledWidgetWindow.close()
-        onAmbiguouslyActivated: oledWidgetWindow.close()
     }
 
     // Pure top-down geometry calculations (no child implicitHeight dependencies -> zero binding loops)

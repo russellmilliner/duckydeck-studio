@@ -1,7 +1,8 @@
 # <img src="../data/icons/io.github.duckydeck.Studio.svg" width="36" height="36" align="top" alt="DuckyDeck Studio Icon" /> DuckyDeck Studio — Architecture & Design Developer Documentation
 
 **Author:** Russell Milliner  
-**Repository:** [https://github.com/millinr/duckydeck-studio](https://github.com/millinr/duckydeck-studio)  
+**Website & Documentation:** [https://duckydeckstudio.com](https://duckydeckstudio.com)  
+**Repository:** [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)  
 **Support:** [☕ Buy Me a Coffee on Ko-fi (https://ko-fi.com/russellmilliner)](https://ko-fi.com/russellmilliner)  
 **License:** GPL-3.0-or-later  
 

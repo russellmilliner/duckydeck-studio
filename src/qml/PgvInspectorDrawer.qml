@@ -8,6 +8,8 @@ QQC2.Drawer {
     edge: Qt.RightEdge
     modal: true
     interactive: true
+    enter: null
+    exit: null
     closePolicy: QQC2.Popup.CloseOnEscape | QQC2.Popup.CloseOnPressOutside
     padding: Kirigami.Units.largeSpacing
     width: parent ? Math.min(parent.width * 0.85, Math.round(620 * Math.max(1.0, pgvDrawer.fontScale))) : 560
@@ -40,7 +42,6 @@ QQC2.Drawer {
         context: Qt.WindowShortcut
         enabled: pgvDrawer.opened || pgvDrawer.visible
         onActivated: pgvDrawer.close()
-        onAmbiguouslyActivated: pgvDrawer.close()
     }
 
     ListModel {

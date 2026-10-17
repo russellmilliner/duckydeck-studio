@@ -2,7 +2,7 @@ use hidapi::HidApi;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use zbus::{interface, Result as ZbusResult};
@@ -1725,6 +1725,8 @@ pub fn resolve_app_icon_for_class(resource_class: &str) -> String {
         }
     }
     search_dirs.push(PathBuf::from("/var/lib/flatpak/exports/share/applications"));
+    search_dirs.push(PathBuf::from("/run/host/usr/local/share/applications"));
+    search_dirs.push(PathBuf::from("/run/host/usr/share/applications"));
     search_dirs.push(PathBuf::from("/usr/local/share/applications"));
     search_dirs.push(PathBuf::from("/usr/share/applications"));
 
@@ -1885,7 +1887,7 @@ pub fn sync_local_desktop_and_icon(use_light_on_dark_icon: bool) {
             if trimmed.is_empty()
                 || trimmed.contains(':')
                 || !trimmed.starts_with('/')
-                || trimmed.starts_with("/var/")
+                || trimmed.starts_with("/var/lib/")
                 || trimmed.starts_with("/usr/")
             {
                 fallback_data_home
@@ -1910,9 +1912,16 @@ pub fn sync_local_desktop_and_icon(use_light_on_dark_icon: bool) {
         let _ = fs::write(icon_dir.join("io.github.duckydeck.Studio.svg"), svg_content);
     }
 
+    // When running inside Flatpak, Flatpak itself exports io.github.duckydeck.Studio.desktop on the host
+    if Path::new("/.flatpak-info").exists() {
+        return;
+    }
+
     let apps_dir = data_home.join("applications");
     if fs::create_dir_all(&apps_dir).is_ok() {
-        let exe_path = {
+        let exe_path = if let Ok(appimage) = std::env::var("APPIMAGE") {
+            appimage
+        } else {
             let home = std::env::var("HOME").unwrap_or_default();
             let local_bin = PathBuf::from(&home).join(".local/bin/duckydeck-studio");
             if !home.is_empty() && local_bin.exists() {
@@ -1949,23 +1958,28 @@ pub fn set_kde_autostart_enabled(enabled: bool) -> Result<PathBuf, String> {
             fs::create_dir_all(parent)
                 .map_err(|e| format!("Failed creating autostart directory: {e}"))?;
         }
-        let exe_path = {
+        let exec_line = if Path::new("/.flatpak-info").exists() {
+            "flatpak run io.github.duckydeck.Studio --autostart --minimized --foreground".to_string()
+        } else if let Ok(appimage) = std::env::var("APPIMAGE") {
+            format!("\"{appimage}\" --autostart --minimized --foreground")
+        } else {
             let home = std::env::var("HOME").unwrap_or_default();
             let local_bin = PathBuf::from(&home).join(".local/bin/duckydeck-studio");
-            if !home.is_empty() && local_bin.exists() {
+            let exe_path = if !home.is_empty() && local_bin.exists() {
                 local_bin.to_string_lossy().to_string()
             } else {
                 std::env::current_exe()
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_else(|_| "duckydeck-studio".to_string())
-            }
+            };
+            format!("\"{exe_path}\" --autostart --minimized --foreground")
         };
         let desktop_entry = format!(
             "[Desktop Entry]\n\
              Type=Application\n\
              Name=DuckyDeck Studio\n\
              Comment=KDE Plasma 6 Configurator & Auto-Switcher for duckyPad Pro\n\
-             Exec=\"{exe_path}\" --autostart --minimized --foreground\n\
+             Exec={exec_line}\n\
              Icon=io.github.duckydeck.Studio\n\
              Terminal=false\n\
              Categories=Utility;HardwareSettings;Qt;KDE;\n\

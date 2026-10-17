@@ -535,24 +535,27 @@ inline void ensure_window_hooks(QWindow* win) {
     });
 }
 
+inline bool is_candidate_main_window(QWindow* w) {
+    if (!w) {
+        return false;
+    }
+    if (w->objectName() == QStringLiteral("duckydeckMainWindow")) {
+        return true;
+    }
+    const QMetaObject* mo = w->metaObject();
+    return mo && mo->indexOfMethod("closeTopmostPopupWindow()") != -1;
+}
+
 inline QWindow* find_main_window() {
     QPointer<QWindow>& win = main_window_ref();
-    if (win) {
+    if (win && is_candidate_main_window(win.data())) {
         ensure_window_hooks(win.data());
         return win.data();
     }
+    win = nullptr;
     const auto windows = QGuiApplication::topLevelWindows();
     for (QWindow* w : windows) {
-        if (w && w->objectName() == QStringLiteral("duckydeckMainWindow")) {
-            win = w;
-            ensure_window_hooks(w);
-            return w;
-        }
-    }
-    for (QWindow* w : windows) {
-        if (w
-            && w->inherits("QQuickWindow")
-            && w->objectName() != QStringLiteral("duckydeckOledWidgetWindow")) {
+        if (is_candidate_main_window(w)) {
             win = w;
             ensure_window_hooks(w);
             return w;
@@ -1044,6 +1047,27 @@ inline int load_saved_ui_text_scale() {
     return std::clamp(scale, 75, 160);
 }
 
+inline bool invoke_qml_method(QObject* obj, const char* methodName) {
+    if (!obj) {
+        return false;
+    }
+    const QMetaObject* mo = obj->metaObject();
+    if (!mo) {
+        return false;
+    }
+    const QByteArray sig = QByteArray(methodName) + "()";
+    const int idx = mo->indexOfMethod(sig.constData());
+    if (idx < 0) {
+        return false;
+    }
+    const QMetaMethod mm = mo->method(idx);
+    if (mm.returnMetaType().id() == QMetaType::QVariant) {
+        QVariant ret;
+        return mm.invoke(obj, Qt::DirectConnection, Q_RETURN_ARG(QVariant, ret));
+    }
+    return mm.invoke(obj, Qt::DirectConnection);
+}
+
 class DuckyDeckGlobalKeyFilter : public QObject {
 public:
     explicit DuckyDeckGlobalKeyFilter(QObject* parent = nullptr) : QObject(parent) {}
@@ -1079,13 +1103,9 @@ protected:
                 return true;
             }
             if (mainWin) {
-                QVariant closed = false;
-                if (QMetaObject::invokeMethod(
-                        mainWin,
-                        "closeTopmostPopupWindow",
-                        Qt::DirectConnection,
-                        Q_RETURN_ARG(QVariant, closed)
-                    ) && closed.toBool()) {
+                mainWin->setProperty("lastPopupClosedByEsc", false);
+                if (invoke_qml_method(mainWin, "closeTopmostPopupWindow")
+                    && mainWin->property("lastPopupClosedByEsc").toBool()) {
                     ke->accept();
                     return true;
                 }
@@ -1101,19 +1121,19 @@ protected:
         if ((mods & Qt::ControlModifier) && !(mods & Qt::AltModifier) && !(mods & Qt::MetaModifier)) {
             if (key == Qt::Key_Plus || key == Qt::Key_Equal) {
                 if (mainWin) {
-                    QMetaObject::invokeMethod(mainWin, "zoomIn", Qt::DirectConnection);
+                    invoke_qml_method(mainWin, "zoomIn");
                     ke->accept();
                     return true;
                 }
             } else if (key == Qt::Key_Minus || key == Qt::Key_Underscore) {
                 if (mainWin) {
-                    QMetaObject::invokeMethod(mainWin, "zoomOut", Qt::DirectConnection);
+                    invoke_qml_method(mainWin, "zoomOut");
                     ke->accept();
                     return true;
                 }
             } else if (key == Qt::Key_0 || key == Qt::Key_ParenRight) {
                 if (mainWin) {
-                    QMetaObject::invokeMethod(mainWin, "resetZoom", Qt::DirectConnection);
+                    invoke_qml_method(mainWin, "resetZoom");
                     ke->accept();
                     return true;
                 }
@@ -1342,6 +1362,7 @@ inline bool duckydeck_send_key_to_active_window(
     QWindow* mainWin = duckydeck::find_main_window();
     QWindow* target = QGuiApplication::focusWindow();
     if (!target || !target->isVisible()) {
+        target = nullptr;
         const auto windows = QGuiApplication::topLevelWindows();
         for (QWindow* w : windows) {
             if (w && w != mainWin && w->isVisible()
@@ -1351,7 +1372,12 @@ inline bool duckydeck_send_key_to_active_window(
             }
         }
         if (!target) {
-            target = mainWin;
+            QWindow* oledWin = duckydeck::find_oled_widget_window();
+            if (oledWin && oledWin->isVisible() && qtKey == Qt::Key_Escape) {
+                target = oledWin;
+            } else {
+                target = mainWin;
+            }
         }
     }
     if (!target) {
@@ -1525,47 +1551,49 @@ inline int duckydeck_run_app(bool start_minimized) {
     QQmlApplicationEngine engine;
     engine.load(QUrl(QStringLiteral("qrc:/qt/qml/io/github/duckydeck/src/qml/Main.qml")));
 
-    if (!engine.rootObjects().isEmpty()) {
-        QWindow* win = qobject_cast<QWindow*>(engine.rootObjects().first());
-        if (win) {
-            duckydeck::main_window_ref() = win;
-            duckydeck::ensure_window_hooks(win);
-            win->setIcon(initialIcon);
-            if (qEnvironmentVariable("DUCKYDECK_DEMO_SHOWCASE") == QStringLiteral("1")) {
-                win->resize(1920, 1080);
-            }
-            if (start_minimized) {
-                win->setVisible(false);
-                win->hide();
-                QTimer::singleShot(0, win, [win]() {
-                    if (win) {
-                        win->setVisible(false);
-                        win->hide();
-                        duckydeck::update_tray_window_actions();
-                    }
-                });
-                QTimer::singleShot(120, win, [win]() {
-                    if (win) {
-                        win->setVisible(false);
-                        win->hide();
-                        duckydeck::update_tray_window_actions();
-                    }
-                });
-            } else {
-                win->show();
-                win->raise();
-                win->requestActivate();
-                duckydeck::update_tray_window_actions();
-            }
-            const bool shouldRestoreOledWidget =
-                qEnvironmentVariable("DUCKYDECK_SHOW_OLED_WIDGET") == QStringLiteral("1")
-                || (qEnvironmentVariable("DUCKYDECK_DEMO_SHOWCASE") != QStringLiteral("1")
-                    && duckydeck::load_oled_widget_geometry().visible);
-            if (shouldRestoreOledWidget) {
-                QTimer::singleShot(180, win, []() {
-                    duckydeck::show_oled_widget_window();
-                });
-            }
+    if (engine.rootObjects().isEmpty()) {
+        return 1;
+    }
+
+    QWindow* win = qobject_cast<QWindow*>(engine.rootObjects().first());
+    if (win) {
+        duckydeck::main_window_ref() = win;
+        duckydeck::ensure_window_hooks(win);
+        win->setIcon(initialIcon);
+        if (qEnvironmentVariable("DUCKYDECK_DEMO_SHOWCASE") == QStringLiteral("1")) {
+            win->resize(1920, 1080);
+        }
+        if (start_minimized) {
+            win->setVisible(false);
+            win->hide();
+            QTimer::singleShot(0, win, [win]() {
+                if (win) {
+                    win->setVisible(false);
+                    win->hide();
+                    duckydeck::update_tray_window_actions();
+                }
+            });
+            QTimer::singleShot(120, win, [win]() {
+                if (win) {
+                    win->setVisible(false);
+                    win->hide();
+                    duckydeck::update_tray_window_actions();
+                }
+            });
+        } else {
+            win->show();
+            win->raise();
+            win->requestActivate();
+            duckydeck::update_tray_window_actions();
+        }
+        const bool shouldRestoreOledWidget =
+            qEnvironmentVariable("DUCKYDECK_SHOW_OLED_WIDGET") == QStringLiteral("1")
+            || (qEnvironmentVariable("DUCKYDECK_DEMO_SHOWCASE") != QStringLiteral("1")
+                && duckydeck::load_oled_widget_geometry().visible);
+        if (shouldRestoreOledWidget) {
+            QTimer::singleShot(180, win, []() {
+                duckydeck::show_oled_widget_window();
+            });
         }
     }
 

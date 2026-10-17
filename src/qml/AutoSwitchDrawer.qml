@@ -342,7 +342,6 @@ Window {
             context: Qt.WindowShortcut
             enabled: drawerRoot.visible
             onActivated: drawerRoot.close()
-            onAmbiguouslyActivated: drawerRoot.close()
         }
 
         ColumnLayout {

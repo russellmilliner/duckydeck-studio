@@ -11,9 +11,15 @@ info:
     - `X-API-Token: <token>`
 
     Token comparison uses a constant-time byte comparison to prevent timing side-channel attacks.
+  contact:
+    name: DuckyDeck Studio Documentation
+    url: https://duckydeckstudio.com
   license:
     name: GPL-3.0-or-later
     url: https://www.gnu.org/licenses/gpl-3.0.html
+externalDocs:
+  description: DuckyDeck Studio User Guide & Online Documentation
+  url: https://duckydeckstudio.com
 servers:
   - url: http://127.0.0.1:28491
     description: Default Localhost Server

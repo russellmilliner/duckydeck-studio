@@ -79,7 +79,6 @@ Window {
         context: Qt.WindowShortcut
         enabled: aiDialog.visible
         onActivated: aiDialog.close()
-        onAmbiguouslyActivated: aiDialog.close()
     }
 
     ColumnLayout {

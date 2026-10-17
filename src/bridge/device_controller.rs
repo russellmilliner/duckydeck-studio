@@ -3768,14 +3768,14 @@ impl qobject::DeviceController {
 
     pub fn zoom_in_ui_text_scale(mut self: Pin<&mut Self>) -> i32 {
         let current = *self.ui_text_scale();
-        let next = (current + 10).clamp(75, 160);
+        let next = (current + 5).clamp(75, 160);
         self.as_mut().apply_ui_text_scale(next);
         next
     }
 
     pub fn zoom_out_ui_text_scale(mut self: Pin<&mut Self>) -> i32 {
         let current = *self.ui_text_scale();
-        let next = (current - 10).clamp(75, 160);
+        let next = (current - 5).clamp(75, 160);
         self.as_mut().apply_ui_text_scale(next);
         next
     }

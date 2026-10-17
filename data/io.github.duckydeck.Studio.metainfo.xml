@@ -28,6 +28,9 @@
     <modalias>usb:v0483pD11Dd*</modalias>
     <modalias>usb:v0483pD11Cd*</modalias>
   </provides>
+  <url type="homepage">https://duckydeckstudio.com</url>
+  <url type="help">https://duckydeckstudio.com</url>
+  <url type="bugtracker">https://github.com/russellmilliner/duckydeck-studio/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
     <release version="0.1.0" date="2026-10-14" />

@@ -44,7 +44,7 @@ fn sanitize_xdg_env() {
             trimmed.is_empty()
                 || trimmed.contains(':')
                 || !trimmed.starts_with('/')
-                || trimmed.starts_with("/var/")
+                || trimmed.starts_with("/var/lib/")
                 || trimmed.starts_with("/usr/")
         }
         Err(_) => true,

@@ -146,7 +146,10 @@ Kirigami.ApplicationWindow {
         ]
     }
 
+    property bool lastPopupClosedByEsc: false
+
     function closeTopmostPopupWindow() {
+        root.lastPopupClosedByEsc = false
         const popups = root.allPopupWindows()
         // 1. Prefer an actively focused popup window if one is active
         for (let i = 0; i < popups.length; ++i) {
@@ -155,8 +158,13 @@ Kirigami.ApplicationWindow {
                 if (w === macroRecorderDialog && macroRecorderDialog.isRecording) {
                     macroRecorderDialog.stopRecording()
                 }
+                if (w === oledDesktopWidget) {
+                    oledDesktopWidget.hide()
+                }
                 w.close()
-                return true
+                w.visible = false
+                root.lastPopupClosedByEsc = true
+                return
             }
         }
         // 2. Otherwise close the topmost visible popup window in priority order
@@ -166,36 +174,20 @@ Kirigami.ApplicationWindow {
                 if (w === macroRecorderDialog && macroRecorderDialog.isRecording) {
                     macroRecorderDialog.stopRecording()
                 }
+                if (w === oledDesktopWidget) {
+                    oledDesktopWidget.hide()
+                }
                 w.close()
-                return true
+                w.visible = false
+                root.lastPopupClosedByEsc = true
+                return
             }
         }
         if (root.autocompleteVisible) {
             root.autocompleteVisible = false
-            return true
+            root.lastPopupClosedByEsc = true
+            return
         }
-        return false
-    }
-
-    Shortcut {
-        sequences: ["Ctrl++", "Ctrl+=", "Ctrl+Shift++", "Ctrl+Shift+="]
-        context: Qt.ApplicationShortcut
-        onActivated: root.zoomIn()
-        onAmbiguouslyActivated: root.zoomIn()
-    }
-
-    Shortcut {
-        sequences: ["Ctrl+-", "Ctrl+_"]
-        context: Qt.ApplicationShortcut
-        onActivated: root.zoomOut()
-        onAmbiguouslyActivated: root.zoomOut()
-    }
-
-    Shortcut {
-        sequence: "Ctrl+0"
-        context: Qt.ApplicationShortcut
-        onActivated: root.resetZoom()
-        onAmbiguouslyActivated: root.resetZoom()
     }
 
 
@@ -3553,9 +3545,7 @@ Kirigami.ApplicationWindow {
                                 QQC2.Label {
                                     font.family: "monospace"
                                     font.pointSize: 10 * root.fontScale
-                                    color: tplDelegate.isSel
-                                        ? Qt.alpha(Kirigami.Theme.textColor, 0.82)
-                                        : Kirigami.Theme.disabledTextColor
+                                    color: Qt.alpha(Kirigami.Theme.textColor, 0.82)
                                     text: qsTr("%1 keys configured  •  OLED %2°")
                                         .arg(tplDelegate.keyCount)
                                         .arg(modelData.oledRotation || 0)
@@ -3805,12 +3795,13 @@ Kirigami.ApplicationWindow {
     QQC2.Dialog {
         id: deleteProfileDialog
         readonly property bool closableWithEscape: true
+        enter: null
+        exit: null
         Shortcut {
             sequence: "Escape"
             context: Qt.WindowShortcut
             enabled: deleteProfileDialog.visible
             onActivated: deleteProfileDialog.close()
-            onAmbiguouslyActivated: deleteProfileDialog.close()
         }
         anchors.centerIn: parent
         modal: true
@@ -3984,7 +3975,6 @@ Kirigami.ApplicationWindow {
             context: Qt.WindowShortcut
             enabled: settingsDialog.visible
             onActivated: settingsDialog.close()
-            onAmbiguouslyActivated: settingsDialog.close()
         }
 
         ColumnLayout {
@@ -4730,7 +4720,6 @@ Kirigami.ApplicationWindow {
             context: Qt.WindowShortcut
             enabled: webApiDestinationsDialog.visible
             onActivated: webApiDestinationsDialog.close()
-            onAmbiguouslyActivated: webApiDestinationsDialog.close()
         }
 
         ColumnLayout {
@@ -5404,9 +5393,11 @@ Kirigami.ApplicationWindow {
         }
 
         QQC2.MenuItem {
+            id: menuUserDocumentationItem
+            property string docUrl: "https://duckydeckstudio.com"
             icon.name: "help-contents"
             text: qsTr("User Documentation (Web Guide)...")
-            onTriggered: Qt.openUrlExternally("file:///home/millinr/Builds/Ducky/duckydeck-studio/docs/user-guide.html")
+            onTriggered: Qt.openUrlExternally(docUrl)
         }
 
         QQC2.MenuItem {
@@ -6073,6 +6064,46 @@ Kirigami.ApplicationWindow {
                         }
 
                         QQC2.Label {
+                            text: qsTr("Documentation:")
+                            font.bold: true
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            Layout.preferredWidth: 1
+                            spacing: 8
+
+                            QQC2.Label {
+                                id: docsLinkLbl
+                                text: "https://duckydeckstudio.com"
+                                font.family: "monospace"
+                                font.underline: docsLinkMouse.containsMouse
+                                color: root.highContrastHighlightText
+                                elide: Text.ElideMiddle
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                Layout.preferredWidth: 1
+
+                                MouseArea {
+                                    id: docsLinkMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: Qt.openUrlExternally("https://duckydeckstudio.com")
+                                }
+                            }
+
+                            QQC2.Button {
+                                icon.name: "edit-copy"
+                                text: qsTr("Copy")
+                                implicitHeight: 24
+                                font.pointSize: 10 * root.fontScale
+                                onClicked: root.copyTextToClipboard("https://duckydeckstudio.com")
+                            }
+                        }
+
+                        QQC2.Label {
                             text: qsTr("GitHub:")
                             font.bold: true
                             color: Kirigami.Theme.disabledTextColor
@@ -6277,9 +6308,11 @@ Kirigami.ApplicationWindow {
                 }
 
                 QQC2.Button {
+                    id: aboutUserGuideBtn
+                    property string docUrl: "https://duckydeckstudio.com"
                     icon.name: "help-contents"
                     text: qsTr("User Guide")
-                    onClicked: Qt.openUrlExternally("file:///home/millinr/Builds/Ducky/duckydeck-studio/docs/user-guide.html")
+                    onClicked: Qt.openUrlExternally(docUrl)
                 }
 
                 Item { Layout.fillWidth: true }
@@ -7384,7 +7417,6 @@ Kirigami.ApplicationWindow {
             context: Qt.WindowShortcut
             enabled: sdSyncDialog.visible
             onActivated: sdSyncDialog.close()
-            onAmbiguouslyActivated: sdSyncDialog.close()
         }
 
         ColumnLayout {
@@ -10865,7 +10897,6 @@ Kirigami.ApplicationWindow {
             context: Qt.WindowShortcut
             enabled: installedAppPickerDialog.visible
             onActivated: installedAppPickerDialog.close()
-            onAmbiguouslyActivated: installedAppPickerDialog.close()
         }
         title: qsTr("Select Installed Application — DuckyDeck Studio")
         width: 720
@@ -11107,7 +11138,6 @@ Kirigami.ApplicationWindow {
             context: Qt.WindowShortcut
             enabled: appLaunchConfigWindow.visible
             onActivated: appLaunchConfigWindow.close()
-            onAmbiguouslyActivated: appLaunchConfigWindow.close()
         }
         title: qsTr("Launch Desktop Application — Key %1 (%2)").arg(root.selectedSlotNumber).arg(root.selectedSlotTitle)
         width: 740
@@ -11578,7 +11608,6 @@ Kirigami.ApplicationWindow {
             context: Qt.WindowShortcut
             enabled: webApiKeyConfigWindow.visible
             onActivated: webApiKeyConfigWindow.close()
-            onAmbiguouslyActivated: webApiKeyConfigWindow.close()
         }
         title: qsTr("Web API / HTTP Webhook — Key %1 (%2)").arg(root.selectedSlotNumber).arg(root.selectedSlotTitle)
         width: 820
@@ -12405,7 +12434,6 @@ Kirigami.ApplicationWindow {
             context: Qt.WindowShortcut
             enabled: profilePropertiesWindow.visible
             onActivated: profilePropertiesWindow.close()
-            onAmbiguouslyActivated: profilePropertiesWindow.close()
         }
         title: qsTr("Profile #%1 Properties — %2").arg(profilePropertiesWindow.profNumber).arg(profilePropertiesWindow.profName)
         width: 820
@@ -13259,7 +13287,6 @@ Kirigami.ApplicationWindow {
             context: Qt.WindowShortcut
             enabled: keyPropertiesWindow.visible
             onActivated: keyPropertiesWindow.close()
-            onAmbiguouslyActivated: keyPropertiesWindow.close()
         }
         title: qsTr("Key Properties — Slot %1 (%2)").arg(keyPropertiesWindow.slotNum).arg(keyPropertiesWindow.slotTitle)
         width: 780
@@ -14042,7 +14069,6 @@ Kirigami.ApplicationWindow {
             context: Qt.WindowShortcut
             enabled: lightingAnimatorDialog.visible
             onActivated: lightingAnimatorDialog.close()
-            onAmbiguouslyActivated: lightingAnimatorDialog.close()
         }
         title: qsTr("RGB Lighting Effects & Animations — DuckyDeck Studio")
         visible: false
@@ -14800,7 +14826,6 @@ Kirigami.ApplicationWindow {
             context: Qt.WindowShortcut
             enabled: macroRecorderDialog.visible
             onActivated: { if (macroRecorderDialog.isRecording) macroRecorderDialog.stopRecording(); macroRecorderDialog.close() }
-            onAmbiguouslyActivated: { if (macroRecorderDialog.isRecording) macroRecorderDialog.stopRecording(); macroRecorderDialog.close() }
         }
         title: qsTr("Live Macro Recorder (DuckyScript 3) — DuckyDeck Studio")
         visible: false
@@ -15579,7 +15604,6 @@ Kirigami.ApplicationWindow {
             context: Qt.WindowShortcut
             enabled: oledIconPickerDialog.visible
             onActivated: oledIconPickerDialog.close()
-            onAmbiguouslyActivated: oledIconPickerDialog.close()
         }
         title: qsTr("OLED Button Icon Picker — %1").arg(root.selectedSlotBadge)
         width: 680
@@ -16179,7 +16203,9 @@ Kirigami.ApplicationWindow {
                                     font.family: "monospace"
                                     font.pointSize: 10 * root.fontScale
                                     font.bold: true
-                                    color: Kirigami.Theme.disabledTextColor
+                                    color: iconTileMouse.containsMouse
+                                        ? Kirigami.Theme.textColor
+                                        : Qt.alpha(Kirigami.Theme.textColor, 0.82)
                                     elide: Text.ElideRight
                                 }
                             }
@@ -16889,7 +16915,7 @@ Kirigami.ApplicationWindow {
             // 5. Script Editor Box Scrollbar (always-on vertical HighContrastScrollBar + multi-line scrolling)
             root.selectedSlotNumber = 1
             root.inspectorMode = "code"
-            editorContainer.editorExpanded = true
+            root.showScriptPreviewInBuilder = true
             root.syncWindowWidthToEditorState()
             var savedScriptText = scriptEditor.text
             root.loadingSlotData = true
@@ -17377,12 +17403,15 @@ Kirigami.ApplicationWindow {
             onTriggered: {
                 var totalStepsPerTheme = uiTestSuiteRunner.windowSteps.length
                 if (uiTestSuiteRunner.phase === 0) {
-                    // Run behavioral checks first, then switch to dark theme
-                    uiTestSuiteRunner.runBehavioralSuite()
-                    uiTestSuiteRunner.currentTheme = "dark"
-                    deviceController.applyAppThemeMode("dark")
-                    uiTestSuiteRunner.stepIndex = 0
                     uiTestSuiteRunner.phase = 1
+                    uiTestSuiteRunner.stepIndex = 0
+                    uiTestSuiteRunner.currentTheme = "dark"
+                    try {
+                        uiTestSuiteRunner.runBehavioralSuite()
+                    } catch (errBehavior) {
+                        uiTestSuiteRunner.recordBehavior("behavioral_suite_exception", false, String(errBehavior))
+                    }
+                    deviceController.applyAppThemeMode("dark")
                     return
                 }
 

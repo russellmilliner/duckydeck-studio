@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
 description = "KDE Plasma 6 / Kirigami Configurator & AI Macro Architect for duckyPad Pro"
+homepage = "https://duckydeckstudio.com"
+documentation = "https://duckydeckstudio.com"
+repository = "https://github.com/russellmilliner/duckydeck-studio"
 
 [dependencies]
 # Qt 6 / QML Bridge (KDAB CXX-Qt)

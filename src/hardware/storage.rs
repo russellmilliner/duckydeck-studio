@@ -1295,7 +1295,7 @@ fn data_home_dir() -> PathBuf {
             if trimmed.is_empty()
                 || trimmed.contains(':')
                 || !trimmed.starts_with('/')
-                || trimmed.starts_with("/var/")
+                || trimmed.starts_with("/var/lib/")
                 || trimmed.starts_with("/usr/")
             {
                 fallback
@@ -3537,6 +3537,18 @@ fn firmware_release_metadata(
 
 pub fn list_available_duckypad_pro_firmwares(current_version: &str) -> Vec<FirmwareVersionEntry> {
     let mut candidate_dirs: Vec<(PathBuf, bool)> = Vec::new();
+    for sys_fw_dir in [
+        "/app/share/duckydeck-studio/firmware",
+        "/usr/local/share/duckydeck-studio/firmware",
+        "/usr/share/duckydeck-studio/firmware",
+    ] {
+        candidate_dirs.push((PathBuf::from(sys_fw_dir), true));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(bin_dir) = exe.parent() {
+            candidate_dirs.push((bin_dir.join("../share/duckydeck-studio/firmware"), true));
+        }
+    }
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     candidate_dirs.push((manifest_dir.join("firmware/releases"), true));
     candidate_dirs.push((manifest_dir.join("firmware/duckyPad-Pro/firmware"), true));
@@ -5750,6 +5762,8 @@ pub fn scan_installed_desktop_apps() -> Vec<InstalledDesktopApp> {
     for sys_dir in [
         "/var/lib/flatpak/exports/share/applications",
         "/var/lib/snapd/desktop/applications",
+        "/run/host/usr/local/share/applications",
+        "/run/host/usr/share/applications",
         "/usr/local/share/applications",
         "/usr/share/applications",
     ] {
@@ -5996,7 +6010,22 @@ pub fn execute_app_launch(cfg: &AppLaunchConfig) -> AppLaunchExecutionResult {
     }
 
     let program = tokens.remove(0);
-    let mut cmd = Command::new(&program);
+    let mut cmd = if Path::new("/.flatpak-info").exists() {
+        let mut c = Command::new("flatpak-spawn");
+        c.arg("--host").arg(&program);
+        c
+    } else {
+        let mut c = Command::new(&program);
+        if std::env::var_os("APPIMAGE").is_some() || std::env::var_os("APPDIR").is_some() {
+            c.env_remove("LD_LIBRARY_PATH")
+                .env_remove("QT_PLUGIN_PATH")
+                .env_remove("QML2_IMPORT_PATH")
+                .env_remove("QML_IMPORT_PATH")
+                .env_remove("APPDIR")
+                .env_remove("APPIMAGE");
+        }
+        c
+    };
     cmd.args(&tokens)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
