@@ -450,6 +450,7 @@ Window {
                 spacing: 8
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "view-refresh"
                     text: qsTr("Refresh Summary")
                     onClicked: sdSyncDialog.refreshUnsyncedSummaryModel()
@@ -458,6 +459,7 @@ Window {
                 Item { Layout.fillWidth: true }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "document-save"
                     text: qsTr("⬆ Sync Changes to duckyPad SD Now")
                     enabled: !deviceController.sdSyncBusy
@@ -471,6 +473,7 @@ Window {
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "window-close"
                     text: qsTr("Close")
                     onClicked: unsyncedChangesDialog.close()
@@ -721,6 +724,7 @@ Window {
                     }
 
                     QQC2.Button {
+                        font.pointSize: 10 * root.fontScale
                         text: qsTr("All (%1)").arg(firmwareUpdateDialog.availableFirmwares.length)
                         highlighted: firmwareUpdateDialog.vendorFilter === "all"
                         onClicked: {
@@ -730,6 +734,7 @@ Window {
                     }
 
                     QQC2.Button {
+                        font.pointSize: 10 * root.fontScale
                         icon.source: root.effectiveThemeMode === "light"
                             ? "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-light.svg"
                             : "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-dark.svg"
@@ -742,6 +747,7 @@ Window {
                     }
 
                     QQC2.Button {
+                        font.pointSize: 10 * root.fontScale
                         text: qsTr("✔ Official dekuNukem")
                         highlighted: firmwareUpdateDialog.vendorFilter === "official"
                         onClicked: {
@@ -753,6 +759,7 @@ Window {
                     Item { Layout.fillWidth: true }
 
                     QQC2.Button {
+                        font.pointSize: 10 * root.fontScale
                         icon.name: "download"
                         text: deviceController.firmwareFetchBusy
                             ? qsTr("Fetching Official...")
@@ -770,6 +777,7 @@ Window {
                     spacing: 6
 
                     QQC2.Button {
+                        font.pointSize: 10 * root.fontScale
                         icon.name: "internet-services"
                         text: qsTr("Open Official Releases Page (GitHub)")
                         onClicked: Qt.openUrlExternally("https://github.com/dekuNukem/duckyPad-Pro/releases")
@@ -780,6 +788,7 @@ Window {
                     Item { Layout.fillWidth: true }
 
                     QQC2.Button {
+                        font.pointSize: 10 * root.fontScale
                         icon.name: "document-open"
                         text: firmwareUpdateDialog.customFirmwarePath.length > 0
                             ? qsTr("Custom: %1").arg(firmwareUpdateDialog.selectedTargetLabel())
@@ -788,6 +797,7 @@ Window {
                     }
 
                     QQC2.Button {
+                        font.pointSize: 10 * root.fontScale
                         visible: firmwareUpdateDialog.customFirmwarePath.length > 0
                         icon.name: "edit-clear"
                         text: qsTr("Clear Custom")
@@ -840,6 +850,7 @@ Window {
                         spacing: 10
 
                         QQC2.Button {
+                            font.pointSize: 10 * root.fontScale
                             icon.name: "download"
                             text: deviceController.firmwareFetchBusy
                                 ? qsTr("Fetching...")
@@ -850,12 +861,14 @@ Window {
                         }
 
                         QQC2.Button {
+                            font.pointSize: 10 * root.fontScale
                             icon.name: "internet-services"
                             text: qsTr("Open dekuNukem Releases Page")
                             onClicked: Qt.openUrlExternally("https://github.com/dekuNukem/duckyPad-Pro/releases")
                         }
 
                         QQC2.Button {
+                            font.pointSize: 10 * root.fontScale
                             icon.name: "document-open"
                             text: qsTr("Browse Local .bin...")
                             onClicked: customFirmwareFileDialog.open()
@@ -1113,6 +1126,7 @@ Window {
                 spacing: 8
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "view-refresh"
                     text: qsTr("Refresh & Fetch Official")
                     enabled: !deviceController.firmwareCheckBusy && !deviceController.firmwareFetchBusy && !deviceController.sdSyncBusy
@@ -1124,6 +1138,7 @@ Window {
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "help-contents"
                     text: qsTr("Official Guide")
                     onClicked: deviceController.openFirmwareUpdatePage()
@@ -1132,6 +1147,7 @@ Window {
                 Item { Layout.fillWidth: true }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "system-software-update"
                     readonly property var selItem: firmwareUpdateDialog.selectedFirmwareItem()
                     readonly property bool needsDownloadFirst: firmwareUpdateDialog.customFirmwarePath.length === 0
@@ -1165,6 +1181,7 @@ Window {
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "window-close"
                     text: qsTr("Close")
                     onClicked: firmwareUpdateDialog.close()
@@ -1390,6 +1407,7 @@ Window {
             spacing: 8
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 icon.name: "document-save"
                 text: qsTr("⬆ Sync to duckyPad SD")
                 enabled: !deviceController.sdSyncBusy
@@ -1403,6 +1421,7 @@ Window {
             }
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 icon.name: "view-list-details"
                 text: qsTr("📋 Changes Summary")
                 enabled: !deviceController.sdSyncBusy
@@ -1410,6 +1429,7 @@ Window {
             }
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 icon.name: "view-refresh"
                 text: qsTr("⬇ Reload from SD")
                 enabled: !deviceController.sdSyncBusy && (deviceController.connected || deviceController.sdMountPath.length > 0)
@@ -1419,6 +1439,7 @@ Window {
             Item { Layout.fillWidth: true }
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 icon.name: deviceController.sdSyncResultState === "success" ? "dialog-ok-apply" : "window-close"
                 text: deviceController.sdSyncBusy
                     ? qsTr("Syncing...")

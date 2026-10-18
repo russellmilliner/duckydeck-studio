@@ -118,6 +118,7 @@ Window {
     readonly property real currentScaleMultiplier: Math.max(0.8, Math.min(3.0, oledSide / 128.0))
 
     property real pendingScaleMultiplier: 1.5
+    property int profileHardwareOledRotation: 0
     property int profileOledRotation: 0
     readonly property int effectiveRotation: profileOledRotation
     readonly property int gridCols: (profileOledRotation === 90 || profileOledRotation === 270) ? 5 : 4
@@ -137,6 +138,21 @@ Window {
             return (4 - colIdx) * 4 + rowIdx + 1
         }
         return rowIdx * 4 + colIdx + 1
+    }
+
+    function cellSlotForIndex(idx) {
+        const item = keyCellRepeater.itemAt(idx)
+        return item ? item.slotNum : 0
+    }
+
+    function cellDisp1ForIndex(idx) {
+        const item = keyCellRepeater.itemAt(idx)
+        return item ? String(item.disp1 || "") : ""
+    }
+
+    function cellTextRotationForIndex(idx) {
+        const item = keyCellRepeater.itemAt(idx)
+        return item && item.labelRotation !== undefined ? Number(item.labelRotation) : 0
     }
 
     onProfileOledRotationChanged: {
@@ -214,10 +230,14 @@ Window {
                     for (let i = 0; i < parr.length; ++i) {
                         const p = parr[i]
                         if (p.number === controller.activeProfile) {
+                            const hwRot = p.oledRotation !== undefined
+                                ? Number(p.oledRotation)
+                                : (p.isLandscape ? 90 : 0)
                             const nextRot =
                                 p.effectiveWidgetRotation !== undefined
                                     ? Number(p.effectiveWidgetRotation)
-                                    : (p.oledRotation !== undefined ? Number(p.oledRotation) : (p.isLandscape ? 90 : 0))
+                                    : hwRot
+                            oledWidgetWindow.profileHardwareOledRotation = hwRot
                             oledWidgetWindow.profileOledRotation = nextRot
                             break
                         }
@@ -582,7 +602,8 @@ Window {
                         const nextRot = cur === 0 ? 90 : (cur === 90 ? 180 : (cur === 180 ? 270 : 0))
                         oledWidgetWindow.profileOledRotation = nextRot
                         if (oledWidgetWindow.controller) {
-                            oledWidgetWindow.controller.setActiveProfileWidgetRotation(nextRot)
+                            const targetArg = (nextRot === oledWidgetWindow.profileHardwareOledRotation) ? -1 : nextRot
+                            oledWidgetWindow.controller.setActiveProfileWidgetRotation(targetArg)
                         }
                     }
                     contentItem: Text {
@@ -897,7 +918,7 @@ Window {
             border.width: 1
 
             readonly property int knobDiameter: Math.max(15, Math.round(oledWidgetWindow.oledSide * 0.082))
-            readonly property int encFontSize: Math.max(10, Math.round(oledWidgetWindow.oledSide * 0.050))
+            readonly property int encFontSize: Math.max(10, Math.round(oledWidgetWindow.oledSide * 0.056))
             readonly property int profileBtnHeight: Math.max(20, Math.round(21 * oledWidgetWindow.uiScale))
 
             ColumnLayout {
@@ -940,7 +961,7 @@ Window {
                             color: "#f8fafc"
                             font.family: "sans-serif"
                             font.bold: true
-                            font.pointSize: 10
+                            font.pixelSize: Math.max(9, Math.round(parent.height * 0.56))
                         }
                     }
 
@@ -948,7 +969,7 @@ Window {
                         text: oledWidgetWindow.enc1Summary
                         font.family: "monospace"
                         font.bold: true
-                        font.pointSize: Math.max(10, bottomFooterBar.encFontSize)
+                        font.pixelSize: bottomFooterBar.encFontSize
                         color: "#7dd3fc"
                         elide: Text.ElideRight
                         Layout.fillWidth: true
@@ -987,7 +1008,7 @@ Window {
                             color: "#f8fafc"
                             font.family: "sans-serif"
                             font.bold: true
-                            font.pointSize: 10
+                            font.pixelSize: Math.max(9, Math.round(parent.height * 0.56))
                         }
                     }
 
@@ -995,7 +1016,7 @@ Window {
                         text: oledWidgetWindow.enc2Summary
                         font.family: "monospace"
                         font.bold: true
-                        font.pointSize: Math.max(10, bottomFooterBar.encFontSize)
+                        font.pixelSize: bottomFooterBar.encFontSize
                         color: "#7dd3fc"
                         elide: Text.ElideRight
                         Layout.fillWidth: true
@@ -1024,7 +1045,7 @@ Window {
                             text: qsTr("− Profile")
                             color: "#f8fafc"
                             font.bold: true
-                            font.pointSize: Math.max(10, Math.round(10 * oledWidgetWindow.uiScale))
+                            font.pixelSize: Math.max(10, Math.round(bottomFooterBar.profileBtnHeight * 0.52))
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
@@ -1055,7 +1076,7 @@ Window {
                             text: qsTr("+ Profile")
                             color: "#f8fafc"
                             font.bold: true
-                            font.pointSize: Math.max(10, Math.round(10 * oledWidgetWindow.uiScale))
+                            font.pixelSize: Math.max(10, Math.round(bottomFooterBar.profileBtnHeight * 0.52))
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
@@ -1079,7 +1100,7 @@ Window {
                         Text {
                             anchors.centerIn: parent
                             text: "◢"
-                            font.pointSize: Math.max(10, Math.round(10 * oledWidgetWindow.uiScale))
+                            font.pixelSize: Math.max(10, Math.round(bottomFooterBar.profileBtnHeight * 0.52))
                             color: "#64748b"
                         }
 
@@ -1172,7 +1193,7 @@ Window {
                             color: "#020617"
                             font.family: "sans-serif"
                             font.bold: true
-                            font.pointSize: Math.max(10, Math.round(parent.height * 0.52))
+                            font.pixelSize: Math.max(10, Math.round(parent.height * 0.62))
                             elide: Text.ElideRight
                         }
                     }
@@ -1186,53 +1207,93 @@ Window {
                         anchors.right: parent.right
 
                         Repeater {
+                            id: keyCellRepeater
                             model: 20
 
                             delegate: Rectangle {
+                                id: keyCellRect
+                                objectName: "oledWidgetCell_" + index
                                 required property int index
-                                readonly property int colIdx: index % oledScreenContent.gridCols
-                                readonly property int rowIdx: Math.floor(index / oledScreenContent.gridCols)
+                                readonly property int currentRot: oledWidgetWindow.profileOledRotation
+                                readonly property bool isLandscapeCell: currentRot === 90 || currentRot === 270
+                                readonly property int cols: isLandscapeCell ? 5 : 4
+                                readonly property int colIdx: index % cols
+                                readonly property int rowIdx: Math.floor(index / cols)
                                 readonly property int slotNum: {
-                                    const rot = oledWidgetWindow.profileOledRotation
+                                    const rot = currentRot
+                                    const c = colIdx
+                                    const r = rowIdx
                                     if (rot === 90) {
-                                        return colIdx * 4 + (3 - rowIdx) + 1
+                                        return c * 4 + (3 - r) + 1
                                     } else if (rot === 180) {
-                                        return (4 - rowIdx) * 4 + (3 - colIdx) + 1
+                                        return (4 - r) * 4 + (3 - c) + 1
                                     } else if (rot === 270) {
-                                        return (4 - colIdx) * 4 + rowIdx + 1
+                                        return (4 - c) * 4 + r + 1
                                     }
-                                    return rowIdx * 4 + colIdx + 1
-                                }
-                                readonly property var itemData: {
-                                    // Re-evaluate whenever slotItems, rotation, or dataRevision changes
-                                    const _rev = oledWidgetWindow.dataRevision
-                                    const _items = oledWidgetWindow.slotItems
-                                    const _rot = oledWidgetWindow.profileOledRotation
-                                    return oledWidgetWindow.slotDataFor(slotNum)
+                                    return r * 4 + c + 1
                                 }
                                 readonly property string l1: {
                                     const _rev = oledWidgetWindow.dataRevision
-                                    return itemData.l1 || ""
+                                    const _items = oledWidgetWindow.slotItems
+                                    const _rot = currentRot
+                                    return oledWidgetWindow.slotDataFor(slotNum).l1 || ""
                                 }
                                 readonly property string l2: {
                                     const _rev = oledWidgetWindow.dataRevision
-                                    return itemData.l2 || ""
+                                    const _items = oledWidgetWindow.slotItems
+                                    const _rot = currentRot
+                                    return oledWidgetWindow.slotDataFor(slotNum).l2 || ""
                                 }
                                 readonly property string wl1: {
                                     const _rev = oledWidgetWindow.dataRevision
-                                    return (itemData.wl1 || "").trim()
+                                    const _items = oledWidgetWindow.slotItems
+                                    const _rot = currentRot
+                                    return (oledWidgetWindow.slotDataFor(slotNum).wl1 || "").trim()
                                 }
                                 readonly property string wl2: {
                                     const _rev = oledWidgetWindow.dataRevision
-                                    return (itemData.wl2 || "").trim()
+                                    const _items = oledWidgetWindow.slotItems
+                                    const _rot = currentRot
+                                    return (oledWidgetWindow.slotDataFor(slotNum).wl2 || "").trim()
+                                }
+                                readonly property int slotR: {
+                                    const _rev = oledWidgetWindow.dataRevision
+                                    const _items = oledWidgetWindow.slotItems
+                                    const _rot = currentRot
+                                    const d = oledWidgetWindow.slotDataFor(slotNum)
+                                    return d.r !== undefined ? d.r : 0
+                                }
+                                readonly property int slotG: {
+                                    const _rev = oledWidgetWindow.dataRevision
+                                    const _items = oledWidgetWindow.slotItems
+                                    const _rot = currentRot
+                                    const d = oledWidgetWindow.slotDataFor(slotNum)
+                                    return d.g !== undefined ? d.g : 170
+                                }
+                                readonly property int slotB: {
+                                    const _rev = oledWidgetWindow.dataRevision
+                                    const _items = oledWidgetWindow.slotItems
+                                    const _rot = currentRot
+                                    const d = oledWidgetWindow.slotDataFor(slotNum)
+                                    return d.b !== undefined ? d.b : 255
+                                }
+                                readonly property bool slotHasScript: {
+                                    const _rev = oledWidgetWindow.dataRevision
+                                    const _items = oledWidgetWindow.slotItems
+                                    const _rot = currentRot
+                                    return !!oledWidgetWindow.slotDataFor(slotNum).hasScript
                                 }
                                 readonly property string disp1: wl1.length > 0
                                     ? wl1
-                                    : oledWidgetWindow.sliceOledLabel(l1, oledScreenContent.isLandscapeRot ? 4 : 5)
+                                    : oledWidgetWindow.sliceOledLabel(l1, isLandscapeCell ? 4 : 5)
                                 readonly property string disp2: wl2.length > 0
                                     ? wl2
-                                    : oledWidgetWindow.sliceOledLabel(l2, oledScreenContent.isLandscapeRot ? 4 : 5)
+                                    : oledWidgetWindow.sliceOledLabel(l2, isLandscapeCell ? 4 : 5)
                                 readonly property bool isSel: oledWidgetWindow.selectedSlot === slotNum
+
+                                readonly property real labelBoxWidth: Math.max(16, (isLandscapeCell ? height : width) - 4)
+                                readonly property real labelBoxHeight: Math.max(16, isLandscapeCell ? width : height)
+                                readonly property alias labelRotation: cellLabelColumn.rotation
 
                                 x: Math.round(colIdx * oledScreenContent.cellWidth)
                                 y: Math.round(rowIdx * oledScreenContent.cellHeight)
@@ -1248,62 +1309,68 @@ Window {
                                 Rectangle {
                                     visible: oledWidgetWindow.showRgbDots
                                         && !parent.isSel
-                                        && (parent.disp1.length > 0 || parent.disp2.length > 0 || !!parent.itemData.hasScript)
+                                        && (parent.disp1.length > 0 || parent.disp2.length > 0 || parent.slotHasScript)
                                     anchors.top: parent.top
                                     anchors.right: parent.right
-                                    anchors.margins: Math.max(2, Math.round(parent.height * 0.08))
-                                    width: Math.max(3, Math.round(parent.height * 0.14))
+                                    anchors.margins: Math.max(2, Math.round(Math.min(parent.width, parent.height) * 0.08))
+                                    width: Math.max(3, Math.round(Math.min(parent.width, parent.height) * 0.14))
                                     height: width
                                     radius: width / 2
                                     color: Qt.rgba(
-                                        (parent.itemData.r !== undefined ? parent.itemData.r : 0) / 255.0,
-                                        (parent.itemData.g !== undefined ? parent.itemData.g : 170) / 255.0,
-                                        (parent.itemData.b !== undefined ? parent.itemData.b : 255) / 255.0,
+                                        parent.slotR / 255.0,
+                                        parent.slotG / 255.0,
+                                        parent.slotB / 255.0,
                                         1.0
                                     )
                                 }
 
-                                // Centered Key Button Labels
+                                // Centered Key Button Labels (rotates with key orientation)
                                 Column {
+                                    id: cellLabelColumn
+                                    objectName: "oledCellLabelColumn"
                                     anchors.centerIn: parent
-                                    width: parent.width - 4
+                                    width: keyCellRect.labelBoxWidth
+                                    rotation: keyCellRect.currentRot
+                                    transformOrigin: Item.Center
                                     spacing: 0
 
                                     Text {
-                                        readonly property bool isIcon1: oledWidgetWindow.isSingleIconLabel(parent.parent.disp1)
-                                        readonly property bool isLong1: parent.parent.wl1.length > 5
-                                        visible: parent.parent.disp1.length > 0
+                                        objectName: "oledCellText1"
+                                        readonly property bool isIcon1: oledWidgetWindow.isSingleIconLabel(keyCellRect.disp1)
+                                        readonly property bool isLong1: keyCellRect.wl1.length > 5
+                                        visible: keyCellRect.disp1.length > 0
                                         width: parent.width
                                         horizontalAlignment: Text.AlignHCenter
                                         verticalAlignment: Text.AlignVCenter
-                                        text: parent.parent.disp1
-                                        color: parent.parent.isSel ? "#020617" : "#f8fafc"
+                                        text: keyCellRect.disp1
+                                        color: keyCellRect.isSel ? "#020617" : "#f8fafc"
                                         font.family: (isIcon1 || isLong1) ? "sans-serif" : "monospace"
                                         font.bold: true
-                                        font.pointSize: isIcon1
-                                            ? Math.max(10, Math.round(parent.parent.height * (parent.parent.disp2.length > 0 ? 0.34 : 0.44)))
-                                            : 10
+                                        font.pixelSize: isIcon1
+                                            ? Math.max(10, Math.round(keyCellRect.labelBoxHeight * (keyCellRect.disp2.length > 0 ? 0.42 : 0.54)))
+                                            : Math.max(9, Math.round(keyCellRect.labelBoxHeight * (keyCellRect.disp2.length > 0 ? 0.34 : 0.42)))
                                         fontSizeMode: Text.HorizontalFit
-                                        minimumPointSize: 10
+                                        minimumPixelSize: 7
                                         elide: Text.ElideRight
                                     }
 
                                     Text {
-                                        readonly property bool isIcon2: oledWidgetWindow.isSingleIconLabel(parent.parent.disp2)
-                                        readonly property bool isLong2: parent.parent.wl2.length > 5
-                                        visible: parent.parent.disp2.length > 0
+                                        objectName: "oledCellText2"
+                                        readonly property bool isIcon2: oledWidgetWindow.isSingleIconLabel(keyCellRect.disp2)
+                                        readonly property bool isLong2: keyCellRect.wl2.length > 5
+                                        visible: keyCellRect.disp2.length > 0
                                         width: parent.width
                                         horizontalAlignment: Text.AlignHCenter
                                         verticalAlignment: Text.AlignVCenter
-                                        text: parent.parent.disp2
-                                        color: parent.parent.isSel ? "#0f172a" : "#cbd5e1"
+                                        text: keyCellRect.disp2
+                                        color: keyCellRect.isSel ? "#0f172a" : "#cbd5e1"
                                         font.family: (isIcon2 || isLong2) ? "sans-serif" : "monospace"
                                         font.bold: true
-                                        font.pointSize: isIcon2
-                                            ? Math.max(10, Math.round(parent.parent.height * (parent.parent.disp1.length > 0 ? 0.32 : 0.42)))
-                                            : 10
+                                        font.pixelSize: isIcon2
+                                            ? Math.max(10, Math.round(keyCellRect.labelBoxHeight * (keyCellRect.disp1.length > 0 ? 0.40 : 0.52)))
+                                            : Math.max(9, Math.round(keyCellRect.labelBoxHeight * (keyCellRect.disp1.length > 0 ? 0.32 : 0.40)))
                                         fontSizeMode: Text.HorizontalFit
-                                        minimumPointSize: 10
+                                        minimumPixelSize: 7
                                         elide: Text.ElideRight
                                     }
                                 }

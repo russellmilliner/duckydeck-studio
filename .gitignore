@@ -5,5 +5,3 @@
 /firmware/.esp-idf/
 /firmware/.espressif/
 /firmware/duckyPad-Pro/firmware/dpp_fw/build/
-/firmware/releases/*.bin
-

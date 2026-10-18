@@ -18,8 +18,8 @@ Window {
     property var controller: null
     property var profileChoices: []
     property var profileNumbers: []
-    property var fallbackChoices: [qsTr("None (Stay on active profile)")]
-    property var fallbackNumbers: [0]
+    property var fallbackChoices: []
+    property var fallbackNumbers: []
     property int editingRuleIndex: -1
     property string ruleFilterText: ""
     property int totalRuleCount: 0
@@ -86,6 +86,59 @@ Window {
         }
     }
 
+    component HighContrastCheckBox: QQC2.CheckBox {
+        id: hcCheck
+        spacing: 8
+        onCheckedChanged: hcCheckMarkCanvas.requestPaint()
+        indicator: Rectangle {
+            objectName: "highContrastCheckBoxBox"
+            implicitWidth: 18
+            implicitHeight: 18
+            width: 18
+            height: 18
+            x: hcCheck.leftPadding
+            y: hcCheck.topPadding + Math.round((hcCheck.availableHeight - height) / 2)
+            radius: 4
+            color: hcCheck.checked
+                ? Kirigami.Theme.highlightColor
+                : (hcCheck.down
+                    ? Qt.alpha(Kirigami.Theme.textColor, 0.22)
+                    : Kirigami.Theme.backgroundColor)
+            border.width: (hcCheck.checked || hcCheck.hovered || hcCheck.visualFocus) ? 2 : 1.5
+            border.color: hcCheck.checked
+                ? Kirigami.Theme.highlightColor
+                : (hcCheck.hovered || hcCheck.visualFocus
+                    ? Kirigami.Theme.highlightColor
+                    : Qt.alpha(Kirigami.Theme.textColor, 0.78))
+
+            function pixelMetric(name) {
+                return name === "checkboxlabelspacing" ? 8 : 18
+            }
+
+            Canvas {
+                id: hcCheckMarkCanvas
+                anchors.fill: parent
+                visible: hcCheck.checked
+                onPaint: {
+                    const ctx = getContext("2d")
+                    ctx.reset()
+                    const lum = 0.2126 * Kirigami.Theme.highlightColor.r
+                        + 0.7152 * Kirigami.Theme.highlightColor.g
+                        + 0.0722 * Kirigami.Theme.highlightColor.b
+                    ctx.strokeStyle = lum > 0.52 ? "#020617" : "#ffffff"
+                    ctx.lineWidth = 2.2
+                    ctx.lineCap = "round"
+                    ctx.lineJoin = "round"
+                    ctx.beginPath()
+                    ctx.moveTo(4.0, 9.5)
+                    ctx.lineTo(7.5, 13.0)
+                    ctx.lineTo(14.0, 5.0)
+                    ctx.stroke()
+                }
+            }
+        }
+    }
+
     ListModel {
         id: rulesModel
     }
@@ -119,6 +172,7 @@ Window {
     }
 
     QQC2.Menu {
+        font.pointSize: 10 * drawerRoot.fontScale
         id: ruleContextMenu
         modal: true
 
@@ -200,8 +254,8 @@ Window {
             const pArr = JSON.parse(controller.profilesJson || "[]")
             const choices = []
             const nums = []
-            const fbChoices = [qsTr("None (Stay on active profile)")]
-            const fbNums = [0]
+            const fbChoices = []
+            const fbNums = []
 
             for (let i = 0; i < pArr.length; ++i) {
                 const p = pArr[i]
@@ -229,6 +283,15 @@ Window {
         try {
             const rArr = JSON.parse(controller.autoSwitchRulesJson || "[]")
             drawerRoot.totalRuleCount = rArr.length
+            if (drawerRoot.editingRuleIndex >= 0 && drawerRoot.editingRuleIndex < rArr.length) {
+                const editedRule = rArr[drawerRoot.editingRuleIndex]
+                if (editedRule && editedRule.targetProfile) {
+                    const editedProfIdx = drawerRoot.profileNumbers.indexOf(editedRule.targetProfile)
+                    if (editedProfIdx >= 0) {
+                        targetProfileCombo.currentIndex = editedProfIdx
+                    }
+                }
+            }
             const q = drawerRoot.ruleFilterText.trim().toLowerCase()
             const nextItems = []
             for (let i = 0; i < rArr.length; ++i) {
@@ -300,6 +363,9 @@ Window {
             drawerRoot.syncFromController()
         }
         function onProfilesJsonChanged() {
+            drawerRoot.syncFromController()
+        }
+        function onDefaultFallbackProfileChanged() {
             drawerRoot.syncFromController()
         }
         function onAutoSwitchSettleMsChanged() {
@@ -881,7 +947,7 @@ Window {
                                         }
                                     }
 
-                                    QQC2.CheckBox {
+                                    HighContrastCheckBox {
                                         id: matchAllBrowsersCheck
                                         Layout.alignment: Qt.AlignVCenter
                                         checked: classInput.text.trim().toLowerCase() === "*browser*"
@@ -1020,10 +1086,11 @@ Window {
                         spacing: 8
 
                         QQC2.Label {
+                            id: configuredRulesHeaderLabel
                             Layout.alignment: Qt.AlignVCenter
                             text: drawerRoot.ruleFilterText.trim().length > 0
-                                ? qsTr("Configured Rules (%1 of %2) — Double-click to Edit • Right-click for Options").arg(rulesModel.count).arg(drawerRoot.totalRuleCount)
-                                : qsTr("Configured Rules (%1) — Drag to Reorder • Double-click to Edit • Right-click for Options").arg(drawerRoot.totalRuleCount)
+                                ? qsTr("Configured Rules (%1 of %2)").arg(rulesModel.count).arg(drawerRoot.totalRuleCount)
+                                : qsTr("Configured Rules (%1)").arg(drawerRoot.totalRuleCount)
                             font.bold: true
                             font.pointSize: 11 * drawerRoot.fontScale
                             color: Kirigami.Theme.textColor
@@ -1031,34 +1098,50 @@ Window {
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
                             Layout.preferredWidth: 1
+                            QQC2.ToolTip.visible: rulesHeaderHover.hovered
+                            QQC2.ToolTip.text: rulesListView.canReorder
+                                ? qsTr("Drag to Reorder • Double-click to Edit • Right-click for Options")
+                                : qsTr("Double-click to Edit • Right-click for Options")
+                            HoverHandler { id: rulesHeaderHover }
                         }
 
                         QQC2.TextField {
                             id: ruleFilterField
-                            Layout.minimumWidth: 140
-                            Layout.preferredWidth: 220
+                            objectName: "ruleFilterField"
+                            Layout.minimumWidth: 160
+                            Layout.preferredWidth: 250
                             Layout.alignment: Qt.AlignVCenter
                             placeholderText: qsTr("Filter rules by class, title, URL, or profile...")
                             selectByMouse: true
                             font.pointSize: 10 * drawerRoot.fontScale
+                            rightPadding: clearRuleFilterBtn.visible ? 28 : 8
                             onTextChanged: {
                                 drawerRoot.ruleFilterText = text
                                 drawerRoot.syncFromController()
                             }
-                        }
 
-                        QQC2.ToolButton {
-                            visible: ruleFilterField.text.length > 0
-                            Layout.alignment: Qt.AlignVCenter
-                            text: "✕"
-                            implicitWidth: 26
-                            implicitHeight: 26
-                            font.pointSize: 10 * drawerRoot.fontScale
-                            onClicked: {
-                                ruleFilterField.text = ""
+                            QQC2.ToolButton {
+                                id: clearRuleFilterBtn
+                                objectName: "clearRuleFilterButton"
+                                visible: ruleFilterField.text.length > 0
+                                anchors.right: parent.right
+                                anchors.rightMargin: 3
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 22
+                                height: 22
+                                implicitWidth: 22
+                                implicitHeight: 22
+                                padding: 0
+                                flat: true
+                                text: "✕"
+                                font.pointSize: 9 * drawerRoot.fontScale
+                                onClicked: {
+                                    ruleFilterField.text = ""
+                                    ruleFilterField.forceActiveFocus()
+                                }
+                                QQC2.ToolTip.visible: hovered
+                                QQC2.ToolTip.text: qsTr("Clear filter")
                             }
-                            QQC2.ToolTip.visible: hovered
-                            QQC2.ToolTip.text: qsTr("Clear filter")
                         }
                     }
 
@@ -1110,6 +1193,7 @@ Window {
 
                             delegate: Item {
                                 id: ruleDelegate
+                                objectName: "autoSwitchRuleDelegate"
                                 required property int index
                                 required property int ruleIndex
                                 required property bool ruleEnabled
@@ -1148,6 +1232,12 @@ Window {
                                 )
                                 height: 60
                                 z: isBeingDragged ? 100 : 1
+
+                                QQC2.ToolTip.visible: ruleDragMouse.containsMouse && !ruleDragMouse.dragging && !ruleEnableCheck.hovered
+                                QQC2.ToolTip.delay: 300
+                                QQC2.ToolTip.text: rulesListView.canReorder
+                                    ? qsTr("Drag to Reorder • Double-click to Edit • Right-click for Options")
+                                    : qsTr("Double-click to Edit • Right-click for Options")
 
                                 // Drop target slot outline shown in the target gap while dragging
                                 Rectangle {
@@ -1325,7 +1415,9 @@ Window {
                                             }
                                         }
 
-                                        QQC2.CheckBox {
+                                        HighContrastCheckBox {
+                                            id: ruleEnableCheck
+                                            font.pointSize: 10 * drawerRoot.fontScale
                                             Layout.alignment: Qt.AlignVCenter
                                             checked: ruleEnabled
                                             onToggled: {
@@ -1431,6 +1523,7 @@ Window {
                 Item { Layout.fillWidth: true }
 
                 QQC2.Button {
+                    font.pointSize: 10 * drawerRoot.fontScale
                     icon.name: "window-close"
                     text: qsTr("Close")
                     highlighted: true

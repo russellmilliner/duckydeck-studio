@@ -1782,12 +1782,29 @@ mod ui_test_suite {
             total_scrollbars_inspected
         );
 
+        let total_keycaps_audited = report
+            .get("summary")
+            .and_then(|s| s.get("totalKeycapsAudited"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        assert!(
+            total_keycaps_audited >= 160,
+            "Expected at least 160 keycap instances to be audited across themes and zoom levels up to 115%, got {}",
+            total_keycaps_audited
+        );
+
         let required_behaviors = [
             "resizable_windows_scrollbar_style_matches_profiles_box",
             "script_editor_has_scrollbar",
             "settings_removed_area_text_sizes_and_min_10pt_font",
             "ctrl_plus_equal_minus_zoom_and_restart_persistence",
             "all_popup_windows_closable_with_esc",
+            "option_c_keycap_layout_no_overlap",
+            "no_overflows_at_zoom_levels_up_to_115_percent",
+            "new_profile_group_has_default_fallback",
+            "fallback_profile_cannot_be_deleted",
+            "profile_reorder_and_add_updates_autoswitch_rules",
+            "deleted_profile_rule_reassigned_to_fallback",
         ];
         for req_name in required_behaviors {
             let behavior_passed = report

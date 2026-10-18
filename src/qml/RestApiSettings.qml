@@ -19,6 +19,59 @@ ColumnLayout {
     property string restApiFeedback: ""
     property string globalWebhookFeedback: ""
 
+    component HighContrastCheckBox: QQC2.CheckBox {
+        id: hcCheck
+        spacing: 8
+        onCheckedChanged: hcCheckMarkCanvas.requestPaint()
+        indicator: Rectangle {
+            objectName: "highContrastCheckBoxBox"
+            implicitWidth: 18
+            implicitHeight: 18
+            width: 18
+            height: 18
+            x: hcCheck.leftPadding
+            y: hcCheck.topPadding + Math.round((hcCheck.availableHeight - height) / 2)
+            radius: 4
+            color: hcCheck.checked
+                ? Kirigami.Theme.highlightColor
+                : (hcCheck.down
+                    ? Qt.alpha(Kirigami.Theme.textColor, 0.22)
+                    : Kirigami.Theme.backgroundColor)
+            border.width: (hcCheck.checked || hcCheck.hovered || hcCheck.visualFocus) ? 2 : 1.5
+            border.color: hcCheck.checked
+                ? Kirigami.Theme.highlightColor
+                : (hcCheck.hovered || hcCheck.visualFocus
+                    ? Kirigami.Theme.highlightColor
+                    : Qt.alpha(Kirigami.Theme.textColor, 0.78))
+
+            function pixelMetric(name) {
+                return name === "checkboxlabelspacing" ? 8 : 18
+            }
+
+            Canvas {
+                id: hcCheckMarkCanvas
+                anchors.fill: parent
+                visible: hcCheck.checked
+                onPaint: {
+                    const ctx = getContext("2d")
+                    ctx.reset()
+                    const lum = 0.2126 * Kirigami.Theme.highlightColor.r
+                        + 0.7152 * Kirigami.Theme.highlightColor.g
+                        + 0.0722 * Kirigami.Theme.highlightColor.b
+                    ctx.strokeStyle = lum > 0.52 ? "#020617" : "#ffffff"
+                    ctx.lineWidth = 2.2
+                    ctx.lineCap = "round"
+                    ctx.lineJoin = "round"
+                    ctx.beginPath()
+                    ctx.moveTo(4.0, 9.5)
+                    ctx.lineTo(7.5, 13.0)
+                    ctx.lineTo(14.0, 5.0)
+                    ctx.stroke()
+                }
+            }
+        }
+    }
+
     function syncRestApiFieldsFromController() {
         restApiEnableCheck.checked = deviceController.restApiEnabled
         restApiIpField.text = deviceController.restApiBindIp || "127.0.0.1"
@@ -155,7 +208,8 @@ ColumnLayout {
                 }
             }
 
-            QQC2.CheckBox {
+            HighContrastCheckBox {
+                font.pointSize: 10 * restApiSettingsRoot.fontScale
                 id: restApiEnableCheck
                 Layout.fillWidth: true
                 text: qsTr("Enable HTTP REST API Server (/api/v1/*)")
@@ -216,7 +270,8 @@ ColumnLayout {
                 }
             }
 
-            QQC2.CheckBox {
+            HighContrastCheckBox {
+                font.pointSize: 10 * restApiSettingsRoot.fontScale
                 id: restApiRequireAuthCheck
                 Layout.fillWidth: true
                 text: qsTr("Require Bearer Token Authentication (Recommended — header 'Authorization: Bearer <token>')")
@@ -246,12 +301,14 @@ ColumnLayout {
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * restApiSettingsRoot.fontScale
                     text: restApiSettingsRoot.showRestToken ? qsTr("Hide") : qsTr("Show")
                     implicitHeight: 28
                     onClicked: restApiSettingsRoot.showRestToken = !restApiSettingsRoot.showRestToken
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * restApiSettingsRoot.fontScale
                     icon.name: "edit-copy"
                     text: qsTr("Copy Token")
                     implicitHeight: 28
@@ -267,6 +324,7 @@ ColumnLayout {
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * restApiSettingsRoot.fontScale
                     icon.name: "view-refresh"
                     text: qsTr("Generate Token")
                     implicitHeight: 28
@@ -283,6 +341,7 @@ ColumnLayout {
                 spacing: 8
 
                 QQC2.Button {
+                    font.pointSize: 10 * restApiSettingsRoot.fontScale
                     icon.name: "dialog-ok-apply"
                     text: qsTr("Apply & Restart REST API Server")
                     highlighted: true
@@ -305,6 +364,7 @@ ColumnLayout {
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * restApiSettingsRoot.fontScale
                     icon.name: "edit-reset"
                     text: qsTr("Reset Defaults (127.0.0.1:28491)")
                     onClicked: {
@@ -364,6 +424,7 @@ ColumnLayout {
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * restApiSettingsRoot.fontScale
                     icon.name: "network-transmit-receive"
                     text: deviceController.webApiTestBusy ? qsTr("Testing...") : qsTr("Test Webhook")
                     enabled: !deviceController.webApiTestBusy && globalWebhookUrlField.text.trim().length > 0
@@ -383,6 +444,7 @@ ColumnLayout {
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * restApiSettingsRoot.fontScale
                     icon.name: "document-save"
                     text: qsTr("Save Global Webhook")
                     highlighted: true
@@ -390,7 +452,7 @@ ColumnLayout {
                 }
             }
 
-            QQC2.CheckBox {
+            HighContrastCheckBox {
                 id: globalWebhookEnableCheck
                 Layout.fillWidth: true
                 text: qsTr("Call this HTTP Webhook whenever the active profile changes (UI, Hardware buttons, Window Auto-Switcher, or REST API)")
@@ -410,6 +472,7 @@ ColumnLayout {
                 spacing: 8
 
                 QQC2.ComboBox {
+                    font.pointSize: 10 * restApiSettingsRoot.fontScale
                     id: globalWebhookMethodCombo
                     Layout.preferredWidth: 105
                     model: ["GET", "POST", "PUT", "PATCH", "DELETE"]

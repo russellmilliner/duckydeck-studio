@@ -47,7 +47,7 @@ pub async fn check_latest_duckypad_firmware(
     };
 
     let client = reqwest::Client::builder()
-        .user_agent("DuckyDeck-Studio/0.1.0")
+        .user_agent(concat!("DuckyDeck-Studio/", env!("CARGO_PKG_VERSION")))
         .timeout(std::time::Duration::from_secs(6))
         .build()
         .map_err(|e| format!("HTTP client error: {e}"))?;
@@ -433,7 +433,7 @@ pub async fn fetch_official_firmwares_from_site(
     current_version: &str,
 ) -> Result<Vec<FirmwareVersionEntry>, String> {
     let client = reqwest::Client::builder()
-        .user_agent("DuckyDeck-Studio/0.1.0")
+        .user_agent(concat!("DuckyDeck-Studio/", env!("CARGO_PKG_VERSION")))
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| format!("HTTP client init failed: {e}"))?;
@@ -690,7 +690,7 @@ pub async fn download_official_firmware_binary(
     };
 
     let client = reqwest::Client::builder()
-        .user_agent("DuckyDeck-Studio/0.1.0")
+        .user_agent(concat!("DuckyDeck-Studio/", env!("CARGO_PKG_VERSION")))
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| format!("HTTP client error: {e}"))?;

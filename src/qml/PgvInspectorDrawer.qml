@@ -34,6 +34,7 @@ QQC2.Drawer {
     readonly property real fontScale: (controller && controller.uiTextScale > 0
         ? controller.uiTextScale
         : 100) / 100.0
+    font.pointSize: 10.5 * pgvDrawer.fontScale
     property string searchFilter: ""
     property int dirtyCount: 0
 

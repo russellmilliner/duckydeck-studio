@@ -389,8 +389,9 @@ Item {
         }
     }
 
-    readonly property real canvasScale: (canvasRoot.controller && canvasRoot.controller.canvasTextScale > 0
-        ? canvasRoot.controller.canvasTextScale
+    readonly property real canvasScale: 1.0
+    readonly property real uiFontScale: (canvasRoot.controller && canvasRoot.controller.uiTextScale > 0
+        ? canvasRoot.controller.uiTextScale
         : 100) / 100.0
 
     readonly property int requiredWidthForFullHeight: Math.max(
@@ -660,6 +661,7 @@ Item {
 
     QQC2.Menu {
         id: slotContextMenu
+        font.pointSize: 10.5 * canvasRoot.uiFontScale
 
         QQC2.MenuItem {
             icon.name: "document-properties"
@@ -796,6 +798,7 @@ Item {
 
                         QQC2.Label {
                             text: qsTr("Onboard")
+                            font.pointSize: 10.5 * canvasRoot.uiFontScale
                             font.bold: onboardTabBtn.isActiveTab
                             color: onboardTabBtn.isActiveTab
                                 ? canvasRoot.highContrastHighlightText
@@ -873,6 +876,7 @@ Item {
 
                         QQC2.Label {
                             text: qsTr("Expansion")
+                            font.pointSize: 10.5 * canvasRoot.uiFontScale
                             font.bold: expansionTabBtn.isActiveTab
                             color: expansionTabBtn.isActiveTab
                                 ? canvasRoot.highContrastHighlightText
@@ -900,6 +904,7 @@ Item {
                     checked: canvasRoot.oledScriptMode
                     icon.name: "video-television"
                     display: QQC2.AbstractButton.TextBesideIcon
+                    font.pointSize: 10.5 * canvasRoot.uiFontScale
                     text: canvasRoot.oledScriptMode ? qsTr("OLED VM") : qsTr("OLED Grid")
                     onToggled: {
                         canvasRoot.oledScriptMode = checked
@@ -913,6 +918,7 @@ Item {
 
         Rectangle {
             id: pcbChassis
+            objectName: "pcbChassis"
             Kirigami.Theme.colorSet: Kirigami.Theme.View
             Kirigami.Theme.inherit: false
             readonly property color frameBorderColor: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
@@ -997,8 +1003,14 @@ Item {
                             readonly property color ledColor: animActive
                                 ? Qt.rgba(animR / 255.0, animG / 255.0, animB / 255.0, 1.0)
                                 : baseLedColor
+                            readonly property bool hasFooterBadges: keycapItem.hasAppLaunch
+                                || keycapItem.hasWebApi
+                                || keycapItem.hasAnim
+                                || keycapItem.hasRel
+                                || keycapItem.hasLoop
                             property real dragOffsetX: 0
                             property real dragOffsetY: 0
+                            objectName: "keycapItem_" + slot
 
                             z: isDraggingThis ? 100 : (isDropTarget ? 10 : 1)
 
@@ -1014,6 +1026,7 @@ Item {
 
                             Rectangle {
                                 id: keyVisual
+                                objectName: "keyVisual"
                                 width: parent.width
                                 height: parent.height
                                 x: keycapItem.isDraggingThis ? keycapItem.dragOffsetX : 0
@@ -1029,21 +1042,44 @@ Item {
                                         ? Kirigami.Theme.highlightColor
                                         : pcbChassis.frameBorderColor)
 
+                                QQC2.Label {
+                                    id: keySlotNumberLabel
+                                    objectName: "keySlotNumberLabel"
+                                    x: 6
+                                    y: 1
+                                    width: 14
+                                    height: 10
+                                    horizontalAlignment: Text.AlignLeft
+                                    verticalAlignment: Text.AlignVCenter
+                                    text: keycapItem.slot
+                                    font.pixelSize: 8
+                                    font.bold: true
+                                    font.family: "monospace"
+                                    elide: Text.ElideRight
+                                    color: keycapItem.isSelected
+                                        ? Kirigami.Theme.textColor
+                                        : Kirigami.Theme.disabledTextColor
+                                }
+
                                 Rectangle {
-                                    anchors.top: parent.top
-                                    anchors.topMargin: 3
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    width: keycapItem.animActive ? 34 : 28
+                                    id: keyLedBar
+                                    objectName: "keyLedBar"
+                                    x: 22
+                                    y: 4
+                                    width: keycapItem.animActive ? 36 : 34
                                     height: 4
                                     radius: 2
                                     color: keycapItem.ledColor
                                 }
 
                                 Rectangle {
+                                    id: keyInnerWell
+                                    objectName: "keyInnerWell"
                                     anchors.fill: parent
                                     anchors.margins: 5
-                                    anchors.topMargin: 9
+                                    anchors.topMargin: 12
                                     radius: 6
+                                    clip: true
                                     color: keycapItem.isDropTarget
                                         ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(Kirigami.Theme.positiveTextColor.r, Kirigami.Theme.positiveTextColor.g, Kirigami.Theme.positiveTextColor.b, 0.28))
                                         : (keyMouse.pressed || keycapItem.animActive
@@ -1060,128 +1096,164 @@ Item {
                                                 ? Qt.rgba(keycapItem.ledColor.r, keycapItem.ledColor.g, keycapItem.ledColor.b, 0.85)
                                                 : Qt.rgba(r / 255.0, g / 255.0, b / 255.0, 0.5)))
 
-                                    QQC2.Label {
-                                        anchors.top: parent.top
-                                        anchors.left: parent.left
-                                        anchors.margins: 3
-                                        text: keycapItem.slot
-                                        font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
-                                        font.bold: true
-                                        color: Kirigami.Theme.disabledTextColor
-                                    }
-
-                                    Row {
-                                        anchors.top: parent.top
-                                        anchors.right: parent.right
-                                        anchors.margins: 3
-                                        spacing: 2
-
-                                        Rectangle {
-                                            visible: keycapItem.hasAnim
-                                            radius: 3
-                                            color: Qt.alpha("#a855f7", 0.24)
-                                            border.color: Qt.alpha("#a855f7", 0.75)
-                                            border.width: 1
-                                            width: fxBadgeLbl.implicitWidth + 4
-                                            height: 14
-
-                                            QQC2.Label {
-                                                id: fxBadgeLbl
-                                                anchors.centerIn: parent
-                                                text: "FX"
-                                                font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
-                                                font.bold: true
-                                                color: "#c084fc"
-                                            }
-                                        }
-                                        Rectangle {
-                                            visible: keycapItem.hasAppLaunch
-                                            radius: 3
-                                            color: Qt.alpha("#f59e0b", 0.22)
-                                            border.color: Qt.alpha("#f59e0b", 0.75)
-                                            border.width: 1
-                                            width: appBadgeLbl.implicitWidth + 5
-                                            height: 14
-
-                                            QQC2.Label {
-                                                id: appBadgeLbl
-                                                anchors.centerIn: parent
-                                                text: "💻APP"
-                                                font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
-                                                font.bold: true
-                                                color: "#f59e0b"
-                                            }
-                                        }
-                                        Rectangle {
-                                            visible: keycapItem.hasWebApi
-                                            radius: 3
-                                            color: Qt.alpha("#f59e0b", 0.22)
-                                            border.color: Qt.alpha("#f59e0b", 0.75)
-                                            border.width: 1
-                                            width: apiBadgeLbl.implicitWidth + 5
-                                            height: 14
-
-                                            QQC2.Label {
-                                                id: apiBadgeLbl
-                                                anchors.centerIn: parent
-                                                text: "💻API"
-                                                font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
-                                                font.bold: true
-                                                color: "#f59e0b"
-                                            }
-                                        }
-                                        QQC2.Label {
-                                            visible: keycapItem.hasRel
-                                            text: "↑"
-                                            font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
-                                            font.bold: true
-                                            color: Kirigami.Theme.highlightColor
-                                        }
-                                        QQC2.Label {
-                                            visible: keycapItem.hasLoop
-                                            text: "∞"
-                                            font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
-                                            font.bold: true
-                                            color: Kirigami.Theme.neutralTextColor
-                                        }
-                                    }
-
                                     Column {
-                                        anchors.centerIn: parent
-                                        anchors.verticalCenterOffset: keycapItem.l2.length > 0 ? 2 : 0
-                                        width: parent.width - 4
-                                        spacing: 1
+                                        id: keyLabelColumn
+                                        objectName: "keyLabelColumn"
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        anchors.verticalCenterOffset: (keycapItem.hasFooterBadges && !keycapItem.isDropTarget) ? -6 : 0
+                                        width: parent.width - 6
+                                        spacing: 0
 
                                         QQC2.Label {
+                                            id: keyLine1Label
+                                            objectName: "keyLine1Label"
                                             readonly property bool isIcon1: canvasRoot.isSingleIconLabel(keycapItem.l1)
                                             width: parent.width
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
                                             text: keycapItem.l1
-                                            font.pointSize: isIcon1
-                                                ? Math.max(11, Math.round((keycapItem.l2.length > 0 ? 12 : 15) * canvasRoot.canvasScale))
-                                                : Math.max(10, Math.round(10 * canvasRoot.canvasScale))
+                                            font.pixelSize: isIcon1
+                                                ? (keycapItem.l2.length > 0 ? 13 : 16)
+                                                : (keycapItem.l2.length > 0 ? 10 : 11)
                                             fontSizeMode: Text.HorizontalFit
-                                            minimumPointSize: 10
+                                            minimumPixelSize: 7
                                             elide: Text.ElideRight
                                             font.bold: true
                                             color: Kirigami.Theme.textColor
                                         }
                                         QQC2.Label {
+                                            id: keyLine2Label
+                                            objectName: "keyLine2Label"
                                             readonly property bool isIcon2: canvasRoot.isSingleIconLabel(keycapItem.l2)
                                             visible: keycapItem.l2.length > 0
                                             width: parent.width
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
                                             text: keycapItem.l2
-                                            font.pointSize: isIcon2
-                                                ? Math.max(11, Math.round((keycapItem.l1.length > 0 ? 11 : 14) * canvasRoot.canvasScale))
-                                                : Math.max(10, Math.round(10 * canvasRoot.canvasScale))
+                                            font.pixelSize: isIcon2
+                                                ? (keycapItem.l1.length > 0 ? 12 : 15)
+                                                : 9
                                             fontSizeMode: Text.HorizontalFit
-                                            minimumPointSize: 10
+                                            minimumPixelSize: 7
                                             elide: Text.ElideRight
                                             font.weight: Font.Medium
                                             color: Kirigami.Theme.disabledTextColor
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        id: keyFooterDivider
+                                        objectName: "keyFooterDivider"
+                                        visible: keycapItem.hasFooterBadges && !keycapItem.isDropTarget
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.leftMargin: 4
+                                        anchors.rightMargin: 4
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 13
+                                        height: 1
+                                        color: Qt.alpha(Kirigami.Theme.textColor, 0.12)
+                                    }
+
+                                    Row {
+                                        id: keyFooterRow
+                                        objectName: "keyFooterRow"
+                                        visible: keycapItem.hasFooterBadges && !keycapItem.isDropTarget
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 2
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        spacing: 2
+
+                                        Rectangle {
+                                            visible: keycapItem.hasAppLaunch
+                                            radius: 2
+                                            color: Qt.alpha("#f59e0b", canvasRoot.isLightTheme ? 0.16 : 0.22)
+                                            border.color: Qt.alpha(canvasRoot.isLightTheme ? "#d97706" : "#f59e0b", 0.65)
+                                            border.width: 1
+                                            width: appBadgeLbl.implicitWidth + 3
+                                            height: 10
+
+                                            QQC2.Label {
+                                                id: appBadgeLbl
+                                                anchors.centerIn: parent
+                                                text: "APP"
+                                                font.pixelSize: 7
+                                                font.bold: true
+                                                color: canvasRoot.isLightTheme ? "#92400e" : "#fbbf24"
+                                            }
+                                        }
+                                        Rectangle {
+                                            visible: keycapItem.hasWebApi && !keycapItem.hasAppLaunch
+                                            radius: 2
+                                            color: Qt.alpha("#f59e0b", canvasRoot.isLightTheme ? 0.16 : 0.22)
+                                            border.color: Qt.alpha(canvasRoot.isLightTheme ? "#d97706" : "#f59e0b", 0.65)
+                                            border.width: 1
+                                            width: apiBadgeLbl.implicitWidth + 3
+                                            height: 10
+
+                                            QQC2.Label {
+                                                id: apiBadgeLbl
+                                                anchors.centerIn: parent
+                                                text: "API"
+                                                font.pixelSize: 7
+                                                font.bold: true
+                                                color: canvasRoot.isLightTheme ? "#92400e" : "#fbbf24"
+                                            }
+                                        }
+                                        Rectangle {
+                                            visible: keycapItem.hasAnim
+                                            radius: 2
+                                            color: Qt.alpha("#a855f7", canvasRoot.isLightTheme ? 0.15 : 0.24)
+                                            border.color: Qt.alpha(canvasRoot.isLightTheme ? "#7e22ce" : "#a855f7", 0.65)
+                                            border.width: 1
+                                            width: fxBadgeLbl.implicitWidth + 3
+                                            height: 10
+
+                                            QQC2.Label {
+                                                id: fxBadgeLbl
+                                                anchors.centerIn: parent
+                                                text: "FX"
+                                                font.pixelSize: 7
+                                                font.bold: true
+                                                color: canvasRoot.isLightTheme ? "#6b21a8" : "#c084fc"
+                                            }
+                                        }
+                                        Rectangle {
+                                            visible: keycapItem.hasRel
+                                            radius: 2
+                                            color: Qt.alpha("#0284c7", canvasRoot.isLightTheme ? 0.14 : 0.20)
+                                            border.color: Qt.alpha(canvasRoot.isLightTheme ? "#0284c7" : "#38bdf8", 0.60)
+                                            border.width: 1
+                                            width: relBadgeLbl.implicitWidth + 3
+                                            height: 10
+
+                                            QQC2.Label {
+                                                id: relBadgeLbl
+                                                anchors.centerIn: parent
+                                                text: "↑"
+                                                font.pixelSize: 7
+                                                font.bold: true
+                                                color: canvasRoot.isLightTheme ? "#0369a1" : "#38bdf8"
+                                            }
+                                        }
+                                        Rectangle {
+                                            visible: keycapItem.hasLoop
+                                            radius: 2
+                                            color: Qt.alpha("#10b981", canvasRoot.isLightTheme ? 0.14 : 0.20)
+                                            border.color: Qt.alpha(canvasRoot.isLightTheme ? "#059669" : "#34d399", 0.60)
+                                            border.width: 1
+                                            width: loopBadgeLbl.implicitWidth + 3
+                                            height: 10
+
+                                            QQC2.Label {
+                                                id: loopBadgeLbl
+                                                anchors.centerIn: parent
+                                                text: "∞"
+                                                font.pixelSize: 7
+                                                font.bold: true
+                                                color: canvasRoot.isLightTheme ? "#047857" : "#34d399"
+                                            }
                                         }
                                     }
 
@@ -1191,15 +1263,15 @@ Item {
                                         anchors.bottomMargin: 2
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         radius: 3
-                                        width: dropModeLbl.implicitWidth + 8
-                                        height: 15
+                                        width: dropModeLbl.implicitWidth + 6
+                                        height: 13
                                         color: Kirigami.Theme.positiveTextColor
 
                                         QQC2.Label {
                                             id: dropModeLbl
                                             anchors.centerIn: parent
                                             text: canvasRoot.dragShiftMode ? qsTr("→ Shift") : qsTr("⇄ Swap")
-                                            font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
+                                            font.pixelSize: 9
                                             font.bold: true
                                             color: Kirigami.Theme.backgroundColor
                                         }
@@ -1487,9 +1559,9 @@ Item {
                                                 color: isSel ? "#020617" : "#f8fafc"
                                                 font.family: icon1 ? "sans-serif" : "monospace"
                                                 font.bold: true
-                                                font.pointSize: icon1 ? (s2.length > 0 ? 10 : 11) : 10
+                                                font.pixelSize: icon1 ? (s2.length > 0 ? 10 : 12) : (s2.length > 0 ? 8 : 9)
                                                 fontSizeMode: Text.HorizontalFit
-                                                minimumPointSize: 10
+                                                minimumPixelSize: 6
                                                 elide: Text.ElideRight
                                             }
 
@@ -1502,9 +1574,9 @@ Item {
                                                 color: isSel ? "#020617" : "#f8fafc"
                                                 font.family: icon2 ? "sans-serif" : "monospace"
                                                 font.bold: true
-                                                font.pointSize: icon2 ? (s1.length > 0 ? 10 : 11) : 10
+                                                font.pixelSize: icon2 ? (s1.length > 0 ? 10 : 12) : 8
                                                 fontSizeMode: Text.HorizontalFit
-                                                minimumPointSize: 10
+                                                minimumPixelSize: 6
                                                 elide: Text.ElideRight
                                             }
                                         }
@@ -1540,9 +1612,9 @@ Item {
                             }
                             contentItem: Text {
                                 text: "− Profile"
-                                font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
+                                font.pixelSize: 10
                                 fontSizeMode: Text.HorizontalFit
-                                minimumPointSize: 10
+                                minimumPixelSize: 8
                                 font.bold: true
                                 color: Kirigami.Theme.textColor
                                 horizontalAlignment: Text.AlignHCenter
@@ -1592,9 +1664,9 @@ Item {
                             }
                             contentItem: Text {
                                 text: "+ Profile"
-                                font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
+                                font.pixelSize: 10
                                 fontSizeMode: Text.HorizontalFit
-                                minimumPointSize: 10
+                                minimumPixelSize: 8
                                 font.bold: true
                                 color: Kirigami.Theme.textColor
                                 horizontalAlignment: Text.AlignHCenter
@@ -1636,7 +1708,7 @@ Item {
                     elide: Text.ElideRight
                     text: qsTr("Expansion Modules (4 Modules × 8 Channels) • Drag to swap, Right-click for Copy/Paste")
                     font.bold: true
-                    font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
+                    font.pointSize: 10.5 * canvasRoot.uiFontScale
                     color: Kirigami.Theme.textColor
                 }
 
@@ -1699,9 +1771,9 @@ Item {
                                         ? ("M" + moduleNum + "·C" + chanNum + ": " + expLabel)
                                         : ("M" + moduleNum + "·C" + chanNum)
                                     font.bold: true
-                                    font.pointSize: Math.max(11, Math.round(12 * canvasRoot.canvasScale))
+                                    font.pixelSize: Math.max(10, Math.min(14, Math.round(expSlotItem.height * 0.34)))
                                     fontSizeMode: Text.Fit
-                                    minimumPointSize: 10
+                                    minimumPixelSize: 8
                                     elide: Text.ElideRight
                                     color: Kirigami.Theme.textColor
                                 }
@@ -1713,9 +1785,9 @@ Item {
                                     text: isDropTarget
                                         ? (canvasRoot.dragShiftMode ? qsTr("→ Shift Here") : qsTr("⇄ Swap Here"))
                                         : ("Slot " + slotNum)
-                                    font.pointSize: Math.max(10, Math.round(10 * canvasRoot.canvasScale))
+                                    font.pixelSize: Math.max(9, Math.min(12, Math.round(expSlotItem.height * 0.28)))
                                     fontSizeMode: Text.Fit
-                                    minimumPointSize: 10
+                                    minimumPixelSize: 7
                                     elide: Text.ElideRight
                                     font.bold: isDropTarget
                                     color: isDropTarget ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.disabledTextColor
@@ -1832,9 +1904,9 @@ Item {
                 width: 132
                 horizontalAlignment: Text.AlignHCenter
                 text: encRoot.encoderTitle
-                font.pointSize: Math.max(10, Math.round(10 * encRoot.textScale))
+                font.pixelSize: 11
                 fontSizeMode: Text.HorizontalFit
-                minimumPointSize: 10
+                minimumPixelSize: 9
                 elide: Text.ElideRight
                 font.bold: true
                 color: Kirigami.Theme.textColor
@@ -1863,16 +1935,16 @@ Item {
                         QQC2.Label {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "⟲"
-                            font.pointSize: Math.max(11, Math.round(12 * encRoot.textScale))
+                            font.pixelSize: 13
                             color: Kirigami.Theme.highlightColor
                         }
                         QQC2.Label {
                             width: parent.width
                             horizontalAlignment: Text.AlignHCenter
                             text: encRoot.ccwLabel
-                            font.pointSize: Math.max(10, Math.round(10 * encRoot.textScale))
+                            font.pixelSize: 10
                             fontSizeMode: Text.HorizontalFit
-                            minimumPointSize: 10
+                            minimumPixelSize: 7
                             elide: Text.ElideRight
                             font.bold: true
                             color: Kirigami.Theme.textColor
@@ -1927,15 +1999,16 @@ Item {
 
                     Column {
                         anchors.centerIn: parent
+                        anchors.verticalCenterOffset: 2
                         width: parent.width - 6
                         spacing: 0
                         QQC2.Label {
                             width: parent.width
                             horizontalAlignment: Text.AlignHCenter
                             text: "PUSH"
-                            font.pointSize: Math.max(10, Math.round(10 * encRoot.textScale))
+                            font.pixelSize: 8
                             fontSizeMode: Text.HorizontalFit
-                            minimumPointSize: 10
+                            minimumPixelSize: 7
                             elide: Text.ElideRight
                             font.bold: true
                             color: Kirigami.Theme.disabledTextColor
@@ -1944,9 +2017,9 @@ Item {
                             width: parent.width
                             horizontalAlignment: Text.AlignHCenter
                             text: encRoot.pushLabel
-                            font.pointSize: Math.max(10, Math.round(10 * encRoot.textScale))
+                            font.pixelSize: 10
                             fontSizeMode: Text.HorizontalFit
-                            minimumPointSize: 10
+                            minimumPixelSize: 7
                             elide: Text.ElideRight
                             font.bold: true
                             color: Kirigami.Theme.textColor
@@ -2003,16 +2076,16 @@ Item {
                         QQC2.Label {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "⟳"
-                            font.pointSize: Math.max(11, Math.round(12 * encRoot.textScale))
+                            font.pixelSize: 13
                             color: Kirigami.Theme.highlightColor
                         }
                         QQC2.Label {
                             width: parent.width
                             horizontalAlignment: Text.AlignHCenter
                             text: encRoot.cwLabel
-                            font.pointSize: Math.max(10, Math.round(10 * encRoot.textScale))
+                            font.pixelSize: 10
                             fontSizeMode: Text.HorizontalFit
-                            minimumPointSize: 10
+                            minimumPixelSize: 7
                             elide: Text.ElideRight
                             font.bold: true
                             color: Kirigami.Theme.textColor

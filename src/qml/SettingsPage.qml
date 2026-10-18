@@ -78,6 +78,59 @@ Window {
         }
     }
 
+    component HighContrastCheckBox: QQC2.CheckBox {
+        id: hcCheck
+        spacing: 8
+        onCheckedChanged: hcCheckMarkCanvas.requestPaint()
+        indicator: Rectangle {
+            objectName: "highContrastCheckBoxBox"
+            implicitWidth: 18
+            implicitHeight: 18
+            width: 18
+            height: 18
+            x: hcCheck.leftPadding
+            y: hcCheck.topPadding + Math.round((hcCheck.availableHeight - height) / 2)
+            radius: 4
+            color: hcCheck.checked
+                ? Kirigami.Theme.highlightColor
+                : (hcCheck.down
+                    ? Qt.alpha(Kirigami.Theme.textColor, 0.22)
+                    : Kirigami.Theme.backgroundColor)
+            border.width: (hcCheck.checked || hcCheck.hovered || hcCheck.visualFocus) ? 2 : 1.5
+            border.color: hcCheck.checked
+                ? Kirigami.Theme.highlightColor
+                : (hcCheck.hovered || hcCheck.visualFocus
+                    ? Kirigami.Theme.highlightColor
+                    : Qt.alpha(Kirigami.Theme.textColor, 0.78))
+
+            function pixelMetric(name) {
+                return name === "checkboxlabelspacing" ? 8 : 18
+            }
+
+            Canvas {
+                id: hcCheckMarkCanvas
+                anchors.fill: parent
+                visible: hcCheck.checked
+                onPaint: {
+                    const ctx = getContext("2d")
+                    ctx.reset()
+                    const lum = 0.2126 * Kirigami.Theme.highlightColor.r
+                        + 0.7152 * Kirigami.Theme.highlightColor.g
+                        + 0.0722 * Kirigami.Theme.highlightColor.b
+                    ctx.strokeStyle = lum > 0.52 ? "#020617" : "#ffffff"
+                    ctx.lineWidth = 2.2
+                    ctx.lineCap = "round"
+                    ctx.lineJoin = "round"
+                    ctx.beginPath()
+                    ctx.moveTo(4.0, 9.5)
+                    ctx.lineTo(7.5, 13.0)
+                    ctx.lineTo(14.0, 5.0)
+                    ctx.stroke()
+                }
+            }
+        }
+    }
+
     Window {
         id: newProfileGroupDialog
         readonly property bool closableWithEscape: true
@@ -192,6 +245,7 @@ Window {
                 spacing: 8
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "document-save-all"
                     text: qsTr("Save Current Group...")
                     onClicked: saveProfileGroupFileDialog.open()
@@ -200,12 +254,14 @@ Window {
                 Item { Layout.fillWidth: true }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "dialog-cancel"
                     text: qsTr("Cancel")
                     onClicked: newProfileGroupDialog.close()
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "document-new"
                     text: qsTr("Create New Group")
                     highlighted: true
@@ -381,6 +437,7 @@ Window {
                         }
 
                         QQC2.ComboBox {
+                            font.pointSize: 10 * root.fontScale
                             id: saveSourceProfileCombo
                             Layout.preferredWidth: 185
                             Layout.minimumWidth: 130
@@ -421,6 +478,7 @@ Window {
                         }
 
                         QQC2.TextField {
+                            font.pointSize: 10 * root.fontScale
                             id: tplSaveNameField
                             Layout.fillWidth: true
                             Layout.minimumWidth: 140
@@ -430,6 +488,7 @@ Window {
                         }
 
                         QQC2.Button {
+                            font.pointSize: 10 * root.fontScale
                             icon.name: "bookmark-new"
                             text: qsTr("Save as Template")
                             highlighted: true
@@ -463,6 +522,7 @@ Window {
                         }
 
                         QQC2.TextField {
+                            font.pointSize: 10 * root.fontScale
                             id: tplSaveDescField
                             Layout.fillWidth: true
                             maximumLength: 140
@@ -642,6 +702,7 @@ Window {
                     }
 
                     QQC2.TextField {
+                        font.pointSize: 10 * root.fontScale
                         id: tplNewProfileNameField
                         Layout.preferredWidth: 180
                         Layout.minimumWidth: 120
@@ -653,6 +714,7 @@ Window {
                     }
 
                     QQC2.Button {
+                        font.pointSize: 10 * root.fontScale
                         icon.name: "list-add"
                         text: qsTr("Create New Profile from Selected")
                         highlighted: true
@@ -680,6 +742,7 @@ Window {
                     spacing: 8
 
                     QQC2.Button {
+                        font.pointSize: 10 * root.fontScale
                         visible: profileTemplatesDialog.targetProfileNumber > 0
                         icon.name: "document-new-from-template"
                         text: qsTr("Apply to Profile #%1 (%2)")
@@ -701,6 +764,7 @@ Window {
                     }
 
                     QQC2.Button {
+                        font.pointSize: 10 * root.fontScale
                         readonly property var curTpl: profileTemplatesDialog.selectedTemplate()
                         readonly property bool canDelete: curTpl !== null && !(curTpl.builtIn !== undefined ? curTpl.builtIn : curTpl.builtin)
                         visible: canDelete
@@ -717,6 +781,7 @@ Window {
                     Item { Layout.fillWidth: true }
 
                     QQC2.Button {
+                        font.pointSize: 10 * root.fontScale
                         icon.name: "window-close"
                         text: qsTr("Close")
                         onClicked: profileTemplatesDialog.close()
@@ -815,12 +880,14 @@ Window {
                 Item { Layout.fillWidth: true }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "dialog-cancel"
                     text: qsTr("Cancel")
                     onClicked: renameProfileDialog.close()
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "dialog-ok-apply"
                     text: qsTr("Rename")
                     highlighted: true
@@ -1043,12 +1110,14 @@ Window {
                         QQC2.Label {
                             text: qsTr("Version:")
                             font.bold: true
+                            font.pointSize: 10.5 * root.fontScale
                             color: Kirigami.Theme.disabledTextColor
                         }
                         QQC2.Label {
                             text: qsTr("v%1 (DSVM v2 Bytecode Compiler)").arg(deviceController.appVersion)
                             font.family: "monospace"
                             font.bold: true
+                            font.pointSize: 10.5 * root.fontScale
                             color: Kirigami.Theme.textColor
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
@@ -1059,11 +1128,13 @@ Window {
                         QQC2.Label {
                             text: qsTr("Author:")
                             font.bold: true
+                            font.pointSize: 10.5 * root.fontScale
                             color: Kirigami.Theme.disabledTextColor
                         }
                         QQC2.Label {
                             text: deviceController.appAuthor
                             font.bold: true
+                            font.pointSize: 10.5 * root.fontScale
                             color: Kirigami.Theme.textColor
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
@@ -1074,6 +1145,7 @@ Window {
                         QQC2.Label {
                             text: qsTr("Documentation:")
                             font.bold: true
+                            font.pointSize: 10.5 * root.fontScale
                             color: Kirigami.Theme.disabledTextColor
                         }
                         RowLayout {
@@ -1086,6 +1158,7 @@ Window {
                                 id: docsLinkLbl
                                 text: "https://duckydeckstudio.com"
                                 font.family: "monospace"
+                                font.pointSize: 10.5 * root.fontScale
                                 font.underline: docsLinkMouse.containsMouse
                                 color: root.highContrastHighlightText
                                 elide: Text.ElideMiddle
@@ -1114,6 +1187,7 @@ Window {
                         QQC2.Label {
                             text: qsTr("GitHub:")
                             font.bold: true
+                            font.pointSize: 10.5 * root.fontScale
                             color: Kirigami.Theme.disabledTextColor
                         }
                         RowLayout {
@@ -1126,6 +1200,7 @@ Window {
                                 id: githubLinkLbl
                                 text: deviceController.appGithubUrl
                                 font.family: "monospace"
+                                font.pointSize: 10.5 * root.fontScale
                                 font.underline: githubMouse.containsMouse
                                 color: root.highContrastHighlightText
                                 elide: Text.ElideMiddle
@@ -1154,6 +1229,7 @@ Window {
                         QQC2.Label {
                             text: qsTr("Ko-fi Support:")
                             font.bold: true
+                            font.pointSize: 10.5 * root.fontScale
                             color: Kirigami.Theme.disabledTextColor
                         }
                         RowLayout {
@@ -1166,6 +1242,7 @@ Window {
                                 id: kofiLinkLbl
                                 text: "https://ko-fi.com/russellmilliner"
                                 font.family: "monospace"
+                                font.pointSize: 10.5 * root.fontScale
                                 font.underline: kofiLinkMouse.containsMouse
                                 color: root.isLightTheme ? "#c81e1e" : "#ff5e5b"
                                 elide: Text.ElideMiddle
@@ -1194,11 +1271,13 @@ Window {
                         QQC2.Label {
                             text: qsTr("Special Thanks:")
                             font.bold: true
+                            font.pointSize: 10.5 * root.fontScale
                             color: Kirigami.Theme.disabledTextColor
                         }
                         QQC2.Label {
                             text: qsTr("Thank you to dekuNukem for creating the duckyPad & duckyPad Pro!")
                             font.bold: true
+                            font.pointSize: 10.5 * root.fontScale
                             color: root.highContrastPositiveText
                             wrapMode: Text.WordWrap
                             Layout.fillWidth: true
@@ -1209,6 +1288,7 @@ Window {
                         QQC2.Label {
                             text: qsTr("duckyPad Links:")
                             font.bold: true
+                            font.pointSize: 10.5 * root.fontScale
                             color: Kirigami.Theme.disabledTextColor
                         }
                         RowLayout {
@@ -1220,6 +1300,7 @@ Window {
                             QQC2.Label {
                                 text: "duckypad.com"
                                 font.family: "monospace"
+                                font.pointSize: 10.5 * root.fontScale
                                 font.underline: duckySiteMouse.containsMouse
                                 color: root.highContrastHighlightText
 
@@ -1234,12 +1315,14 @@ Window {
 
                             QQC2.Label {
                                 text: "•"
+                                font.pointSize: 10.5 * root.fontScale
                                 color: Kirigami.Theme.disabledTextColor
                             }
 
                             QQC2.Label {
                                 text: "Tindie Store (dekuNukem)"
                                 font.family: "monospace"
+                                font.pointSize: 10.5 * root.fontScale
                                 font.underline: tindieSiteMouse.containsMouse
                                 color: root.highContrastHighlightText
 
@@ -1258,11 +1341,13 @@ Window {
                         QQC2.Label {
                             text: qsTr("License:")
                             font.bold: true
+                            font.pointSize: 10.5 * root.fontScale
                             color: Kirigami.Theme.disabledTextColor
                         }
                         QQC2.Label {
                             text: qsTr("GPL-3.0-or-later")
                             font.family: "monospace"
+                            font.pointSize: 10.5 * root.fontScale
                             color: Kirigami.Theme.textColor
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
@@ -1272,6 +1357,7 @@ Window {
                         QQC2.Label {
                             text: qsTr("Device Status:")
                             font.bold: true
+                            font.pointSize: 10.5 * root.fontScale
                             color: Kirigami.Theme.disabledTextColor
                         }
                         QQC2.Label {
@@ -1282,6 +1368,7 @@ Window {
                                     .arg(deviceController.serialNumber)
                                 : deviceController.modelName
                             font.family: "monospace"
+                            font.pointSize: 10.5 * root.fontScale
                             color: Kirigami.Theme.textColor
                             elide: Text.ElideRight
                             Layout.fillWidth: true
@@ -1300,18 +1387,21 @@ Window {
                 QQC2.Button {
                     icon.name: "internet-web-browser"
                     text: qsTr("GitHub")
+                    font.pointSize: 10.5 * root.fontScale
                     onClicked: Qt.openUrlExternally(deviceController.appGithubUrl)
                 }
 
                 QQC2.Button {
                     icon.name: "internet-web-browser"
                     text: qsTr("duckyPad Site")
+                    font.pointSize: 10.5 * root.fontScale
                     onClicked: Qt.openUrlExternally("https://www.duckypad.com")
                 }
 
                 QQC2.Button {
                     icon.name: "internet-web-browser"
                     text: qsTr("Tindie Store")
+                    font.pointSize: 10.5 * root.fontScale
                     onClicked: Qt.openUrlExternally("https://www.tindie.com/stores/dekunukem/")
                 }
 
@@ -1319,6 +1409,7 @@ Window {
                     id: aboutUserGuideBtn
                     icon.name: "help-contents"
                     text: qsTr("User Guide")
+                    font.pointSize: 10.5 * root.fontScale
                     onClicked: deviceController.openUserGuide()
                 }
 
@@ -1326,6 +1417,7 @@ Window {
 
                 QQC2.Button {
                     text: qsTr("Close")
+                    font.pointSize: 10.5 * root.fontScale
                     highlighted: true
                     onClicked: aboutDialog.close()
                 }
@@ -1484,6 +1576,22 @@ Window {
             return ok
         }
 
+        Connections {
+            target: deviceController
+            function onProfilesJsonChanged() {
+                if (!profilePropertiesWindow.visible || profilePropertiesWindow.profNumber <= 0) return
+                try {
+                    const obj = JSON.parse(deviceController.getProfilePropertiesJson(profilePropertiesWindow.profNumber))
+                    if (obj.oledRotation !== undefined) {
+                        profilePropertiesWindow.profOledRotation = Number(obj.oledRotation)
+                    }
+                    if (obj.widgetRotation !== undefined) {
+                        profilePropertiesWindow.profWidgetRotation = Number(obj.widgetRotation)
+                    }
+                } catch (e) {}
+            }
+        }
+
         ColumnLayout {
             anchors.fill: parent
             anchors.margins: 14
@@ -1585,6 +1693,7 @@ Window {
                                 }
 
                                 QQC2.TextField {
+                                    font.pointSize: 10 * root.fontScale
                                     id: profNameField
                                     Layout.fillWidth: true
                                     Layout.minimumWidth: 80
@@ -1601,7 +1710,7 @@ Window {
                                 spacing: 8
 
                                 QQC2.Label {
-                                    text: qsTr("Default Key Color (BG_COLOR):")
+                                    text: qsTr("Default Key Color:")
                                     font.bold: true
                                     font.pointSize: 10 * root.fontScale
                                     width: 195
@@ -1621,6 +1730,7 @@ Window {
                                 }
 
                                 QQC2.TextField {
+                                    font.pointSize: 10 * root.fontScale
                                     id: profBgColorField
                                     width: 100
                                     maximumLength: 7
@@ -1634,6 +1744,7 @@ Window {
                                 }
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     icon.name: "color-picker"
                                     text: qsTr("Open Color Picker...")
                                     onClicked: {
@@ -1656,7 +1767,7 @@ Window {
                                 spacing: 8
 
                                 QQC2.Label {
-                                    text: qsTr("Keydown Color (KEYDOWN_COLOR):")
+                                    text: qsTr("Keydown Color:")
                                     font.bold: true
                                     font.pointSize: 10 * root.fontScale
                                     width: 195
@@ -1664,7 +1775,8 @@ Window {
                                     verticalAlignment: Text.AlignVCenter
                                 }
 
-                                QQC2.CheckBox {
+                                HighContrastCheckBox {
+                                    font.pointSize: 10 * root.fontScale
                                     id: profKeydownEnableCheck
                                     text: qsTr("Enable Custom Keydown Color")
                                     onToggled: profilePropertiesWindow.saveAllProfileProperties()
@@ -1683,6 +1795,7 @@ Window {
                                 }
 
                                 QQC2.TextField {
+                                    font.pointSize: 10 * root.fontScale
                                     id: profKeydownColorField
                                     visible: profKeydownEnableCheck.checked
                                     width: 100
@@ -1718,7 +1831,7 @@ Window {
                                 wrapMode: Text.WordWrap
                             }
 
-                            QQC2.CheckBox {
+                            HighContrastCheckBox {
                                 id: profDimUnusedCheck
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
@@ -1751,37 +1864,45 @@ Window {
                                     spacing: 6
 
                                     QQC2.Button {
+                                        font.pointSize: 10 * root.fontScale
                                         text: qsTr("0° (Portrait)")
                                         highlighted: profilePropertiesWindow.profOledRotation === 0
                                         onClicked: {
                                             profilePropertiesWindow.profOledRotation = 0
+                                            profilePropertiesWindow.profWidgetRotation = -1
                                             profilePropertiesWindow.saveAllProfileProperties()
                                         }
                                     }
 
                                     QQC2.Button {
+                                        font.pointSize: 10 * root.fontScale
                                         text: qsTr("90° (Landscape CW)")
                                         highlighted: profilePropertiesWindow.profOledRotation === 90
                                         onClicked: {
                                             profilePropertiesWindow.profOledRotation = 90
+                                            profilePropertiesWindow.profWidgetRotation = -1
                                             profilePropertiesWindow.saveAllProfileProperties()
                                         }
                                     }
 
                                     QQC2.Button {
+                                        font.pointSize: 10 * root.fontScale
                                         text: qsTr("180° (Inverted)")
                                         highlighted: profilePropertiesWindow.profOledRotation === 180
                                         onClicked: {
                                             profilePropertiesWindow.profOledRotation = 180
+                                            profilePropertiesWindow.profWidgetRotation = -1
                                             profilePropertiesWindow.saveAllProfileProperties()
                                         }
                                     }
 
                                     QQC2.Button {
+                                        font.pointSize: 10 * root.fontScale
                                         text: qsTr("270° (Landscape CCW)")
                                         highlighted: profilePropertiesWindow.profOledRotation === 270
                                         onClicked: {
                                             profilePropertiesWindow.profOledRotation = 270
+                                            profilePropertiesWindow.profWidgetRotation = -1
                                             profilePropertiesWindow.saveAllProfileProperties()
                                         }
                                     }
@@ -1808,6 +1929,7 @@ Window {
                                     spacing: 6
 
                                     QQC2.Button {
+                                        font.pointSize: 10 * root.fontScale
                                         text: qsTr("Follow OLED (%1°)").arg(profilePropertiesWindow.profOledRotation)
                                         highlighted: profilePropertiesWindow.profWidgetRotation < 0
                                         onClicked: {
@@ -1817,6 +1939,7 @@ Window {
                                     }
 
                                     QQC2.Button {
+                                        font.pointSize: 10 * root.fontScale
                                         text: qsTr("0°")
                                         highlighted: profilePropertiesWindow.profWidgetRotation === 0
                                         onClicked: {
@@ -1826,6 +1949,7 @@ Window {
                                     }
 
                                     QQC2.Button {
+                                        font.pointSize: 10 * root.fontScale
                                         text: qsTr("90°")
                                         highlighted: profilePropertiesWindow.profWidgetRotation === 90
                                         onClicked: {
@@ -1835,6 +1959,7 @@ Window {
                                     }
 
                                     QQC2.Button {
+                                        font.pointSize: 10 * root.fontScale
                                         text: qsTr("180°")
                                         highlighted: profilePropertiesWindow.profWidgetRotation === 180
                                         onClicked: {
@@ -1844,6 +1969,7 @@ Window {
                                     }
 
                                     QQC2.Button {
+                                        font.pointSize: 10 * root.fontScale
                                         text: qsTr("270°")
                                         highlighted: profilePropertiesWindow.profWidgetRotation === 270
                                         onClicked: {
@@ -1862,7 +1988,7 @@ Window {
                                 text: qsTr("Note: Physical OLED 180° & 270° require DuckyDeck Studio Firmware v1.0.0+. Desktop Widget Orientation (💻) is a host-only setting that updates the on-screen Desktop OLED Widget immediately without requiring a microSD card sync.")
                             }
 
-                            QQC2.CheckBox {
+                            HighContrastCheckBox {
                                 id: profUpperHsCheck
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
@@ -1907,6 +2033,7 @@ Window {
                                 spacing: 6
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     text: qsTr("✨ Profile RGB Lighting FX...")
                                     onClicked: {
                                         if (deviceController.activeProfile !== profilePropertiesWindow.profNumber) {
@@ -1919,6 +2046,7 @@ Window {
                                 }
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     icon.name: "bookmark-new"
                                     text: qsTr("Save as Template...")
                                     onClicked: {
@@ -1930,6 +2058,7 @@ Window {
                                 }
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     icon.name: "crosshairs"
                                     text: qsTr("Bind Window...")
                                     onClicked: {
@@ -1943,6 +2072,7 @@ Window {
                                 }
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     icon.name: "preferences-system-windows"
                                     text: qsTr("Auto-Switch Rules...")
                                     onClicked: autoSwitchDrawer.open()
@@ -1981,6 +2111,7 @@ Window {
                                 }
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     icon.name: "network-transmit-receive"
                                     text: deviceController.webApiTestBusy ? qsTr("Testing...") : qsTr("Test Webhook")
                                     enabled: !deviceController.webApiTestBusy && profWebhookUrlField.text.trim().length > 0
@@ -2000,7 +2131,7 @@ Window {
                                 }
                             }
 
-                            QQC2.CheckBox {
+                            HighContrastCheckBox {
                                 id: profWebhookEnableCheck
                                 Layout.fillWidth: true
                                 text: qsTr("Trigger this HTTP Webhook whenever Profile #%1 becomes active (UI, Hardware, Auto-Switch, or REST API)").arg(profilePropertiesWindow.profNumber)
@@ -2019,6 +2150,7 @@ Window {
                                 spacing: 8
 
                                 QQC2.ComboBox {
+                                    font.pointSize: 10 * root.fontScale
                                     id: profWebhookMethodCombo
                                     Layout.preferredWidth: 105
                                     model: ["GET", "POST", "PUT", "PATCH", "DELETE"]
@@ -2164,6 +2296,7 @@ Window {
                 Item { Layout.fillWidth: true }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "dialog-ok-apply"
                     text: qsTr("Save & Close")
                     highlighted: true
@@ -2176,6 +2309,7 @@ Window {
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "window-close"
                     text: qsTr("Close")
                     onClicked: profilePropertiesWindow.close()
@@ -2414,6 +2548,7 @@ Window {
                                 spacing: 8
 
                                 QQC2.TextField {
+                                    font.pointSize: 10 * root.fontScale
                                     id: keyPropLabel1Field
                                     Layout.fillWidth: true
                                     Layout.minimumWidth: 80
@@ -2439,6 +2574,7 @@ Window {
                                 }
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     text: qsTr("★ Icon...")
                                     font.bold: true
                                     onClicked: oledIconPickerDialog.openForKeyProperties(1)
@@ -2462,6 +2598,7 @@ Window {
                                 visible: keyPropertiesWindow.slotNum <= 20
 
                                 QQC2.TextField {
+                                    font.pointSize: 10 * root.fontScale
                                     id: keyPropLabel2Field
                                     Layout.fillWidth: true
                                     Layout.minimumWidth: 80
@@ -2486,6 +2623,7 @@ Window {
                                 }
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     text: qsTr("★ Icon...")
                                     font.bold: true
                                     onClicked: oledIconPickerDialog.openForKeyProperties(2)
@@ -2507,6 +2645,7 @@ Window {
                                 spacing: 8
 
                                 QQC2.TextField {
+                                    font.pointSize: 10 * root.fontScale
                                     id: keyPropWidgetLabel1Field
                                     Layout.fillWidth: true
                                     Layout.minimumWidth: 80
@@ -2540,6 +2679,7 @@ Window {
                                 visible: keyPropertiesWindow.slotNum <= 20
 
                                 QQC2.TextField {
+                                    font.pointSize: 10 * root.fontScale
                                     id: keyPropWidgetLabel2Field
                                     Layout.fillWidth: true
                                     Layout.minimumWidth: 80
@@ -2584,6 +2724,7 @@ Window {
                                 }
 
                                 QQC2.TextField {
+                                    font.pointSize: 10 * root.fontScale
                                     id: keyPropColorField
                                     Layout.preferredWidth: 96
                                     maximumLength: 7
@@ -2592,12 +2733,14 @@ Window {
                                 }
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     icon.name: "color-picker"
                                     text: qsTr("Color Picker...")
                                     onClicked: duckyColorPickerWindow.openForKey(keyPropertiesWindow.slotNum, keyPropColorField.text.trim())
                                 }
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     icon.name: "edit-clear"
                                     text: qsTr("Use Profile Default")
                                     onClicked: {
@@ -2640,7 +2783,7 @@ Window {
                                 wrapMode: Text.WordWrap
                             }
 
-                            QQC2.CheckBox {
+                            HighContrastCheckBox {
                                 id: keyPropDontRepeatCheck
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
@@ -2655,7 +2798,7 @@ Window {
                                 }
                             }
 
-                            QQC2.CheckBox {
+                            HighContrastCheckBox {
                                 id: keyPropAllowAbortCheck
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
@@ -2688,22 +2831,26 @@ Window {
                             spacing: 6
 
                             QQC2.Button {
+                                font.pointSize: 10 * root.fontScale
                                 visible: keyPropertiesWindow.slotNum <= 20
                                 text: qsTr("✨ Key RGB FX...")
                                 onClicked: lightingAnimatorDialog.openFor("key", keyPropertiesWindow.slotNum)
                             }
 
                             QQC2.Button {
+                                font.pointSize: 10 * root.fontScale
                                 text: qsTr("🚀 Launch App Window...")
                                 onClicked: appLaunchConfigWindow.openWindow(keyPropertiesWindow.slotNum)
                             }
 
                             QQC2.Button {
+                                font.pointSize: 10 * root.fontScale
                                 text: qsTr("🌐 Web API Window...")
                                 onClicked: webApiKeyConfigWindow.openWindow(keyPropertiesWindow.slotNum)
                             }
 
                             QQC2.Button {
+                                font.pointSize: 10 * root.fontScale
                                 text: qsTr("🔴 Record Macro...")
                                 onClicked: macroRecorderDialog.openRecorder()
                             }
@@ -2785,6 +2932,7 @@ Window {
                 Item { Layout.fillWidth: true }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "dialog-ok-apply"
                     text: qsTr("Save & Close")
                     highlighted: true
@@ -2796,6 +2944,7 @@ Window {
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "window-close"
                     text: qsTr("Close")
                     onClicked: keyPropertiesWindow.close()
@@ -2856,6 +3005,7 @@ Window {
             }
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 text: "−"
                 implicitWidth: 32
                 font.bold: true
@@ -2874,6 +3024,7 @@ Window {
             }
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 text: "+"
                 implicitWidth: 32
                 font.bold: true
@@ -2884,6 +3035,7 @@ Window {
             }
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 icon.name: "edit-reset"
                 text: qsTr("Reset Zoom (100%)")
                 enabled: deviceController.uiTextScale !== 100
@@ -2973,6 +3125,7 @@ Window {
                                 spacing: 6
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     text: qsTr("◐ System")
                                     checkable: true
                                     checked: deviceController.appThemeMode === "system"
@@ -2981,6 +3134,7 @@ Window {
                                 }
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     text: qsTr("☀ Light")
                                     checkable: true
                                     checked: deviceController.appThemeMode === "light"
@@ -2989,6 +3143,7 @@ Window {
                                 }
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     text: qsTr("🌙 Dark")
                                     checkable: true
                                     checked: deviceController.appThemeMode === "dark"
@@ -3011,6 +3166,7 @@ Window {
                                 spacing: 6
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     text: qsTr("◐ System")
                                     checkable: true
                                     checked: deviceController.trayIconMode === "auto"
@@ -3019,6 +3175,7 @@ Window {
                                 }
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     text: qsTr("☀ Light Panel")
                                     checkable: true
                                     checked: deviceController.trayIconMode === "light"
@@ -3027,6 +3184,7 @@ Window {
                                 }
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     text: qsTr("🌙 Dark Panel")
                                     checkable: true
                                     checked: deviceController.trayIconMode === "dark"
@@ -3048,14 +3206,16 @@ Window {
                             Layout.fillWidth: true
                             spacing: 4
 
-                            QQC2.CheckBox {
+                            HighContrastCheckBox {
+                                font.pointSize: 10 * root.fontScale
                                 Layout.fillWidth: true
                                 text: qsTr("Start on KDE System Login (Autostart, Minimized to Tray)")
                                 checked: deviceController.autostartEnabled
                                 onToggled: deviceController.applyAutostartEnabled(checked)
                             }
 
-                            QQC2.CheckBox {
+                            HighContrastCheckBox {
+                                font.pointSize: 10 * root.fontScale
                                 Layout.fillWidth: true
                                 text: qsTr("Keep Running in Taskbar on Window Close")
                                 checked: deviceController.closeToTray
@@ -3074,6 +3234,7 @@ Window {
             Item { Layout.fillWidth: true }
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 icon.name: "window-close"
                 text: qsTr("Close")
                 highlighted: true

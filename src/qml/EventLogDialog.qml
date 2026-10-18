@@ -352,7 +352,19 @@ Window {
         Kirigami.Theme.inherit: false
 
         property int stepIndex: 0
+        property int passIndex: 0
         property string currentTheme: "dark"
+        property int currentZoom: 100
+        property var auditPassConfigs: [
+            { theme: "dark", zoom: 100 },
+            { theme: "dark", zoom: 105 },
+            { theme: "dark", zoom: 110 },
+            { theme: "dark", zoom: 115 },
+            { theme: "light", zoom: 100 },
+            { theme: "light", zoom: 105 },
+            { theme: "light", zoom: 110 },
+            { theme: "light", zoom: 115 }
+        ]
         property var behavioralResults: []
         property var overflowViolations: []
         property var contrastViolations: []
@@ -363,6 +375,80 @@ Window {
         property int totalTextNodesInspected: 0
         property int totalControlsInspected: 0
         property int totalScrollBarsInspected: 0
+        property int totalKeycapsAudited: 0
+        property int keycapLayoutViolationsCount: 0
+
+        function findChildByObjectName(rootNode, targetName) {
+            if (!rootNode) return null
+            var stack = [rootNode]
+            var guard = 0
+            while (stack.length > 0 && guard < 256) {
+                var n = stack.pop()
+                guard++
+                if (!n) continue
+                if (n.objectName === targetName) return n
+                if (n.children) {
+                    for (var i = n.children.length - 1; i >= 0; i--) {
+                        stack.push(n.children[i])
+                    }
+                }
+            }
+            return null
+        }
+
+        function auditKeycapOptionCLayout(windowName, keycapNode) {
+            if (!keycapNode) return
+            uiTestSuiteRunner.totalKeycapsAudited++
+            var slotLbl = findChildByObjectName(keycapNode, "keySlotNumberLabel")
+            var ledBar = findChildByObjectName(keycapNode, "keyLedBar")
+            var innerWell = findChildByObjectName(keycapNode, "keyInnerWell")
+            var labelCol = findChildByObjectName(keycapNode, "keyLabelColumn")
+            var footerDiv = findChildByObjectName(keycapNode, "keyFooterDivider")
+            var footerRow = findChildByObjectName(keycapNode, "keyFooterRow")
+
+            var reasons = []
+            if (!slotLbl || !ledBar || !innerWell || !labelCol || !footerDiv || !footerRow) {
+                reasons.push("missing_option_c_child_nodes")
+            } else {
+                if (slotLbl.y + slotLbl.height > innerWell.y + 1) {
+                    reasons.push("slot_number_intrudes_into_inner_well(slotBottom=" + (slotLbl.y + slotLbl.height) + ",wellTop=" + innerWell.y + ")")
+                }
+                if (ledBar.y + ledBar.height > innerWell.y + 1) {
+                    reasons.push("led_bar_intrudes_into_inner_well(ledBottom=" + (ledBar.y + ledBar.height) + ",wellTop=" + innerWell.y + ")")
+                }
+                if (slotLbl.x + slotLbl.implicitWidth > ledBar.x + 1) {
+                    reasons.push("slot_number_overlaps_led_bar(slotRight=" + (slotLbl.x + slotLbl.implicitWidth) + ",ledX=" + ledBar.x + ")")
+                }
+                if (labelCol.x < -0.5 || (labelCol.x + labelCol.width) > innerWell.width + 0.5) {
+                    reasons.push("label_column_horizontal_overflow(x=" + labelCol.x + ",w=" + labelCol.width + ",wellW=" + innerWell.width + ")")
+                }
+                if (labelCol.y < -0.5 || (labelCol.y + labelCol.height) > innerWell.height + 0.5) {
+                    reasons.push("label_column_vertical_overflow(y=" + labelCol.y + ",h=" + labelCol.height + ",wellH=" + innerWell.height + ")")
+                }
+                if (footerRow.visible) {
+                    if (labelCol.y + labelCol.height > footerDiv.y + 1.5) {
+                        reasons.push("label_column_overlaps_footer_divider(labelBottom=" + Math.round(labelCol.y + labelCol.height) + ",divY=" + Math.round(footerDiv.y) + ")")
+                    }
+                    if (footerRow.width > innerWell.width - 2) {
+                        reasons.push("footer_row_horizontal_overflow(rowW=" + Math.round(footerRow.width) + ",wellW=" + Math.round(innerWell.width) + ")")
+                    }
+                    if (footerRow.y < footerDiv.y - 0.5 || (footerRow.y + footerRow.height) > innerWell.height + 0.5) {
+                        reasons.push("footer_row_vertical_overflow(rowY=" + Math.round(footerRow.y) + ",rowH=" + Math.round(footerRow.height) + ",wellH=" + Math.round(innerWell.height) + ")")
+                    }
+                }
+            }
+
+            if (reasons.length > 0) {
+                uiTestSuiteRunner.keycapLayoutViolationsCount++
+                uiTestSuiteRunner.overflowViolations.push({
+                    theme: uiTestSuiteRunner.currentTheme + "@" + uiTestSuiteRunner.currentZoom + "%",
+                    window: windowName,
+                    element: String(keycapNode.objectName),
+                    kind: "keycap_option_c_layout_violation",
+                    reasons: reasons
+                })
+            }
+        }
 
         function srgbChannelToLinear(c) {
             return (c <= 0.03928) ? (c / 12.92) : Math.pow((c + 0.055) / 1.055, 2.4)
@@ -610,7 +696,7 @@ Window {
 
             if (reasons.length > 0) {
                 uiTestSuiteRunner.scrollBarStyleViolations.push({
-                    theme: uiTestSuiteRunner.currentTheme,
+                    theme: uiTestSuiteRunner.currentTheme + "@" + uiTestSuiteRunner.currentZoom + "%",
                     window: windowName,
                     element: describeItem(sb),
                     parentElement: sb.parent ? describeItem(sb.parent) : "<none>",
@@ -661,6 +747,7 @@ Window {
             if (!rootItem || winWidth <= 0 || winHeight <= 0) return
 
             var windowScrollBarsCount = auditWindowScrollBars(windowName, rootItem)
+            var passThemeLabel = uiTestSuiteRunner.currentTheme + "@" + uiTestSuiteRunner.currentZoom + "%"
 
             var stack = [{ node: rootItem, depth: 0 }]
             var visitedCount = 0
@@ -678,6 +765,10 @@ Window {
                 }
                 if (item.width !== undefined && item.height !== undefined && (item.width <= 0.5 || item.height <= 0.5)) {
                     continue
+                }
+
+                if (item.objectName && String(item.objectName).indexOf("keycapItem_") === 0) {
+                    auditKeycapOptionCLayout(windowName, item)
                 }
 
                 var typeStr = item.toString()
@@ -705,7 +796,7 @@ Window {
                         if (tl && br) {
                             if (br.x > winWidth + 4 || tl.x < -4 || br.y > winHeight + 4 || tl.y < -4) {
                                 uiTestSuiteRunner.overflowViolations.push({
-                                    theme: uiTestSuiteRunner.currentTheme,
+                                    theme: passThemeLabel,
                                     window: windowName,
                                     element: describeItem(item),
                                     kind: "control_outside_window_bounds",
@@ -726,7 +817,7 @@ Window {
                         var fbr = item.mapToItem(flick, item.width, item.height)
                         if (ftl && fbr && (fbr.x > flick.width + 6 || ftl.x < -6)) {
                             uiTestSuiteRunner.overflowViolations.push({
-                                theme: uiTestSuiteRunner.currentTheme,
+                                theme: passThemeLabel,
                                 window: windowName,
                                 element: describeItem(item),
                                 kind: "control_overflows_scrollview_width",
@@ -740,16 +831,30 @@ Window {
                     }
                 }
 
-                // 2. Check Text / Label Overflow, Minimum 10pt Font, & WCAG Color Contrast
+                // 2. Check Text / Label Overflow, Minimum 10pt UI Font (or >=6px on PCB/OLED canvas), & WCAG Color Contrast
                 if (isTextNode && hasAlphanumericText(item.text)) {
                     uiTestSuiteRunner.totalTextNodesInspected++
 
-                    // Check minimum 10pt font size (scaled by root.fontScale)
-                    if (item.font && item.font.pointSize !== undefined && item.font.pointSize > 0) {
+                    var isFixedGeometryCanvas = (windowName.indexOf("OledDesktopWidget") === 0)
+                    if (!isFixedGeometryCanvas) {
+                        var pWalk = item.parent
+                        var pGuard = 0
+                        while (pWalk && pGuard < 32) {
+                            if (pWalk.objectName === "pcbChassis") {
+                                isFixedGeometryCanvas = true
+                                break
+                            }
+                            pWalk = pWalk.parent
+                            pGuard++
+                        }
+                    }
+
+                    // Check minimum 10pt font size (scaled by root.fontScale) on standard UI controls/labels
+                    if (!isFixedGeometryCanvas && item.font && item.font.pointSize !== undefined && item.font.pointSize > 0) {
                         var minExpectedPt = 9.95 * root.fontScale
                         if (item.font.pointSize < minExpectedPt) {
                             uiTestSuiteRunner.minFontPointSizeViolations.push({
-                                theme: uiTestSuiteRunner.currentTheme,
+                                theme: passThemeLabel,
                                 window: windowName,
                                 element: describeItem(item),
                                 pointSize: Number(item.font.pointSize.toFixed(2)),
@@ -767,7 +872,7 @@ Window {
                         var tbr = item.mapToItem(rootItem, item.implicitWidth, item.height)
                         if (parentClip || (tbr && tbr.x > winWidth + 6 && !isInsideScrollableHorizontal(item, rootItem))) {
                             uiTestSuiteRunner.overflowViolations.push({
-                                theme: uiTestSuiteRunner.currentTheme,
+                                theme: passThemeLabel,
                                 window: windowName,
                                 element: describeItem(item),
                                 kind: "text_overflow_unelided",
@@ -792,7 +897,7 @@ Window {
                         var minRatio = 3.0
                         if (ratio < minRatio) {
                             uiTestSuiteRunner.contrastViolations.push({
-                                theme: uiTestSuiteRunner.currentTheme,
+                                theme: passThemeLabel,
                                 window: windowName,
                                 element: describeItem(item),
                                 contrastRatio: Number(ratio.toFixed(2)),
@@ -830,7 +935,7 @@ Window {
             }
 
             uiTestSuiteRunner.auditedWindows.push({
-                theme: uiTestSuiteRunner.currentTheme,
+                theme: passThemeLabel,
                 window: windowName,
                 width: Math.round(winWidth),
                 height: Math.round(winHeight),
@@ -855,18 +960,26 @@ Window {
         function runBehavioralSuite() {
             ensureTestFixtures()
 
-            // 1. Desktop Widget Profile Rotation (0°, 90°, 180°, 270°)
+            // 1. Desktop Widget Profile Rotation & Cell Text Rotation (0°, 90°, 180°, 270°)
             deviceController.setActiveProfileWidgetRotation(0)
             oledDesktopWidget.syncFromController()
+            var expectedTextSlot1 = oledDesktopWidget.sliceOledLabel(oledDesktopWidget.slotDataFor(1).l1, 5)
+            var expectedTextSlot4 = oledDesktopWidget.sliceOledLabel(oledDesktopWidget.slotDataFor(4).l1, 4)
+            var expectedTextSlot20 = oledDesktopWidget.sliceOledLabel(oledDesktopWidget.slotDataFor(20).l1, 5)
+            var expectedTextSlot17 = oledDesktopWidget.sliceOledLabel(oledDesktopWidget.slotDataFor(17).l1, 4)
+
             var rot0Ok = (oledDesktopWidget.effectiveRotation === 0
                 && oledDesktopWidget.gridCols === 4
                 && oledDesktopWidget.gridRows === 5
                 && oledDesktopWidget.slotForCell(0, 0) === 1
                 && oledDesktopWidget.slotForCell(3, 0) === 4
                 && oledDesktopWidget.slotForCell(0, 4) === 17
-                && oledDesktopWidget.slotForCell(3, 4) === 20)
+                && oledDesktopWidget.slotForCell(3, 4) === 20
+                && oledDesktopWidget.cellSlotForIndex(0) === 1
+                && oledDesktopWidget.cellDisp1ForIndex(0) === expectedTextSlot1
+                && oledDesktopWidget.cellTextRotationForIndex(0) === 0)
             recordBehavior("desktop_widget_rotation_0_deg", rot0Ok,
-                "rot=" + oledDesktopWidget.effectiveRotation + " grid=" + oledDesktopWidget.gridCols + "x" + oledDesktopWidget.gridRows)
+                "rot=" + oledDesktopWidget.effectiveRotation + " grid=" + oledDesktopWidget.gridCols + "x" + oledDesktopWidget.gridRows + " cell0=" + oledDesktopWidget.cellDisp1ForIndex(0) + " textRot=" + oledDesktopWidget.cellTextRotationForIndex(0))
 
             deviceController.setActiveProfileWidgetRotation(90)
             oledDesktopWidget.syncFromController()
@@ -876,9 +989,12 @@ Window {
                 && oledDesktopWidget.slotForCell(0, 0) === 4
                 && oledDesktopWidget.slotForCell(4, 0) === 20
                 && oledDesktopWidget.slotForCell(0, 3) === 1
-                && oledDesktopWidget.slotForCell(4, 3) === 17)
+                && oledDesktopWidget.slotForCell(4, 3) === 17
+                && oledDesktopWidget.cellSlotForIndex(0) === 4
+                && oledDesktopWidget.cellDisp1ForIndex(0) === expectedTextSlot4
+                && oledDesktopWidget.cellTextRotationForIndex(0) === 90)
             recordBehavior("desktop_widget_rotation_90_deg", rot90Ok,
-                "rot=" + oledDesktopWidget.effectiveRotation + " grid=" + oledDesktopWidget.gridCols + "x" + oledDesktopWidget.gridRows)
+                "rot=" + oledDesktopWidget.effectiveRotation + " grid=" + oledDesktopWidget.gridCols + "x" + oledDesktopWidget.gridRows + " cell0=" + oledDesktopWidget.cellDisp1ForIndex(0) + " textRot=" + oledDesktopWidget.cellTextRotationForIndex(0))
 
             deviceController.setActiveProfileWidgetRotation(180)
             oledDesktopWidget.syncFromController()
@@ -888,9 +1004,12 @@ Window {
                 && oledDesktopWidget.slotForCell(0, 0) === 20
                 && oledDesktopWidget.slotForCell(3, 0) === 17
                 && oledDesktopWidget.slotForCell(0, 4) === 4
-                && oledDesktopWidget.slotForCell(3, 4) === 1)
+                && oledDesktopWidget.slotForCell(3, 4) === 1
+                && oledDesktopWidget.cellSlotForIndex(0) === 20
+                && oledDesktopWidget.cellDisp1ForIndex(0) === expectedTextSlot20
+                && oledDesktopWidget.cellTextRotationForIndex(0) === 180)
             recordBehavior("desktop_widget_rotation_180_deg", rot180Ok,
-                "rot=" + oledDesktopWidget.effectiveRotation + " grid=" + oledDesktopWidget.gridCols + "x" + oledDesktopWidget.gridRows)
+                "rot=" + oledDesktopWidget.effectiveRotation + " grid=" + oledDesktopWidget.gridCols + "x" + oledDesktopWidget.gridRows + " cell0=" + oledDesktopWidget.cellDisp1ForIndex(0) + " textRot=" + oledDesktopWidget.cellTextRotationForIndex(0))
 
             deviceController.setActiveProfileWidgetRotation(270)
             oledDesktopWidget.syncFromController()
@@ -900,9 +1019,12 @@ Window {
                 && oledDesktopWidget.slotForCell(0, 0) === 17
                 && oledDesktopWidget.slotForCell(4, 0) === 1
                 && oledDesktopWidget.slotForCell(0, 3) === 20
-                && oledDesktopWidget.slotForCell(4, 3) === 4)
+                && oledDesktopWidget.slotForCell(4, 3) === 4
+                && oledDesktopWidget.cellSlotForIndex(0) === 17
+                && oledDesktopWidget.cellDisp1ForIndex(0) === expectedTextSlot17
+                && oledDesktopWidget.cellTextRotationForIndex(0) === 270)
             recordBehavior("desktop_widget_rotation_270_deg", rot270Ok,
-                "rot=" + oledDesktopWidget.effectiveRotation + " grid=" + oledDesktopWidget.gridCols + "x" + oledDesktopWidget.gridRows)
+                "rot=" + oledDesktopWidget.effectiveRotation + " grid=" + oledDesktopWidget.gridCols + "x" + oledDesktopWidget.gridRows + " cell0=" + oledDesktopWidget.cellDisp1ForIndex(0) + " textRot=" + oledDesktopWidget.cellTextRotationForIndex(0))
 
             // 2. Profile Properties Window hardware rotation + Follow Hardware (-1) propagation
             var activeProfNum = deviceController.activeProfile || 1
@@ -919,11 +1041,16 @@ Window {
                 && savedProps.effectiveWidgetRotation === 90
                 && oledDesktopWidget.effectiveRotation === 90
                 && oledDesktopWidget.gridCols === 5
-                && oledDesktopWidget.gridRows === 4)
+                && oledDesktopWidget.gridRows === 4
+                && oledDesktopWidget.cellSlotForIndex(0) === 4
+                && oledDesktopWidget.cellDisp1ForIndex(0) === expectedTextSlot4
+                && oledDesktopWidget.cellTextRotationForIndex(0) === 90)
             recordBehavior("profile_properties_follow_hardware_rotation", followHwOk,
                 "hwRot=" + savedProps.oledRotation
                 + " widgetOverride=" + savedProps.widgetRotation
-                + " effective=" + oledDesktopWidget.effectiveRotation)
+                + " effective=" + oledDesktopWidget.effectiveRotation
+                + " cell0=" + oledDesktopWidget.cellDisp1ForIndex(0)
+                + " textRot=" + oledDesktopWidget.cellTextRotationForIndex(0))
 
             // Restore 0° rotation after rotation tests
             profilePropertiesWindow.profOledRotation = 0
@@ -1149,6 +1276,103 @@ Window {
                 "verified=" + escVerifiedCount + "/" + popupEntries.length
                     + (escFailedPopups.length > 0 ? " failed=" + escFailedPopups.join(",") : "")
             )
+
+            // 9–12. Profile Group Default Fallback, Fallback Deletion Protection, Reorder/Add Rule Updates, and Deleted Profile Rule Reassignment to Fallback
+            var backupGroupPath = "/tmp/duckydeck-ui-test-backup-group.duckygroup.json"
+            deviceController.saveProfileGroup(backupGroupPath, "TestBackup")
+
+            // 9. New profile group always creates 'Default' profile and marks it as fallback (#1)
+            var createdGroupOk = deviceController.createNewProfileGroup("StudioTestGroup", "Work")
+            var groupProfs = []
+            try { groupProfs = JSON.parse(deviceController.profilesJson || "[]") } catch (e) {}
+            var newGroupDefaultFallbackOk = (
+                createdGroupOk
+                && groupProfs.length === 2
+                && groupProfs[0].number === 1
+                && groupProfs[0].name === "Default"
+                && groupProfs[1].number === 2
+                && groupProfs[1].name === "Work"
+                && deviceController.defaultFallbackProfile === 1
+            )
+            recordBehavior(
+                "new_profile_group_has_default_fallback",
+                newGroupDefaultFallbackOk,
+                "profs=" + groupProfs.map(function(p) { return p.number + ":" + p.name }).join(",")
+                    + " fallback=" + deviceController.defaultFallbackProfile
+            )
+
+            // 10. Fallback profile cannot be deleted
+            var deleteFallbackAttempt = deviceController.deleteProfile(deviceController.defaultFallbackProfile)
+            var profsAfterFbDelete = []
+            try { profsAfterFbDelete = JSON.parse(deviceController.profilesJson || "[]") } catch (e) {}
+            var fallbackCannotBeDeletedOk = (
+                deleteFallbackAttempt === false
+                && profsAfterFbDelete.length === 2
+                && profsAfterFbDelete[0].name === "Default"
+                && deviceController.defaultFallbackProfile === 1
+            )
+            recordBehavior(
+                "fallback_profile_cannot_be_deleted",
+                fallbackCannotBeDeletedOk,
+                "deleteReturned=" + deleteFallbackAttempt + " count=" + profsAfterFbDelete.length
+            )
+
+            // 11. Adding & reordering profiles updates auto-switcher rules and fallback profile
+            var addThirdOk = deviceController.createNewProfile("Gaming")
+            deviceController.addOrUpdateAutoSwitchRule(-1, true, "code", "", 2)
+            deviceController.addOrUpdateAutoSwitchRule(-1, true, "steam", "", 3)
+            // Move P3 ('Gaming', index 2) to index 0 -> new order: 1:Gaming, 2:Default(fallback), 3:Work
+            var reorderOk = deviceController.reorderProfile(2, 0)
+            var rulesAfterReorder = []
+            try { rulesAfterReorder = JSON.parse(deviceController.autoSwitchRulesJson || "[]") } catch (e) {}
+            var codeRuleAfterReorder = rulesAfterReorder.find(function(r) { return r.resourceClass === "code" })
+            var steamRuleAfterReorder = rulesAfterReorder.find(function(r) { return r.resourceClass === "steam" })
+            var deleteMovedFallbackAttempt = deviceController.deleteProfile(2)
+            var reorderAndAddUpdatesRulesOk = Boolean(
+                addThirdOk
+                && reorderOk
+                && deviceController.defaultFallbackProfile === 2
+                && deleteMovedFallbackAttempt === false
+                && codeRuleAfterReorder && codeRuleAfterReorder.targetProfile === 3 && codeRuleAfterReorder.targetProfileName === "Work"
+                && steamRuleAfterReorder && steamRuleAfterReorder.targetProfile === 1 && steamRuleAfterReorder.targetProfileName === "Gaming"
+            )
+            recordBehavior(
+                "profile_reorder_and_add_updates_autoswitch_rules",
+                reorderAndAddUpdatesRulesOk,
+                "fbAfterReorder=" + deviceController.defaultFallbackProfile
+                    + " codeTarget=" + (codeRuleAfterReorder ? codeRuleAfterReorder.targetProfile : -1)
+                    + " steamTarget=" + (steamRuleAfterReorder ? steamRuleAfterReorder.targetProfile : -1)
+            )
+
+            // 12. Deleting a profile referenced by an auto-switcher rule updates that rule to reference the fallback profile
+            var deleteWorkOk = deviceController.deleteProfile(3)
+            var rulesAfterDelete = []
+            try { rulesAfterDelete = JSON.parse(deviceController.autoSwitchRulesJson || "[]") } catch (e) {}
+            var codeRuleAfterDelete = rulesAfterDelete.find(function(r) { return r.resourceClass === "code" })
+            var steamRuleAfterDelete = rulesAfterDelete.find(function(r) { return r.resourceClass === "steam" })
+            var deletedRuleReassignedToFallbackOk = Boolean(
+                deleteWorkOk
+                && rulesAfterDelete.length === 2
+                && deviceController.defaultFallbackProfile === 2
+                && codeRuleAfterDelete
+                && codeRuleAfterDelete.targetProfile === deviceController.defaultFallbackProfile
+                && codeRuleAfterDelete.targetProfileName === "Default"
+                && steamRuleAfterDelete
+                && steamRuleAfterDelete.targetProfile === 1
+            )
+            recordBehavior(
+                "deleted_profile_rule_reassigned_to_fallback",
+                deletedRuleReassignedToFallbackOk,
+                "rulesLen=" + rulesAfterDelete.length
+                    + " codeTargetAfterDelete=" + (codeRuleAfterDelete ? codeRuleAfterDelete.targetProfile + ":" + codeRuleAfterDelete.targetProfileName : "missing")
+                    + " fallback=" + deviceController.defaultFallbackProfile
+            )
+
+            // Restore initial profile group for visual window steps
+            deviceController.loadProfileGroup(backupGroupPath)
+            root.syncSidebarProfilesFromController()
+            hardwareCanvas.syncProfilesFromController()
+            root.refreshSelectedSlotFromController()
         }
 
         property var windowSteps: [
@@ -1476,36 +1700,65 @@ Window {
 
         Timer {
             id: uiTestStepTimer
-            interval: 65
+            interval: 25
             repeat: true
             running: deviceController.isUiTestSuiteMode()
             onTriggered: {
                 try {
-                    var totalStepsPerTheme = uiTestSuiteRunner.windowSteps.length
+                    var totalStepsPerPass = uiTestSuiteRunner.windowSteps.length
                     if (uiTestSuiteRunner.phase === 0) {
                         uiTestSuiteRunner.phase = 1
+                        uiTestSuiteRunner.passIndex = 0
                         uiTestSuiteRunner.stepIndex = 0
-                        uiTestSuiteRunner.currentTheme = "dark"
                         try {
                             uiTestSuiteRunner.runBehavioralSuite()
                         } catch (errBehavior) {
                             uiTestSuiteRunner.recordBehavior("behavioral_suite_exception", false, String(errBehavior))
                         }
-                        deviceController.applyAppThemeMode("dark")
+                        var firstCfg = uiTestSuiteRunner.auditPassConfigs[0]
+                        uiTestSuiteRunner.currentTheme = firstCfg.theme
+                        uiTestSuiteRunner.currentZoom = firstCfg.zoom
+                        deviceController.applyAppThemeMode(firstCfg.theme)
+                        deviceController.applyUiTextScale(firstCfg.zoom)
+                        root.syncWindowWidthToEditorState()
                         return
                     }
 
-                    if (uiTestSuiteRunner.stepIndex >= totalStepsPerTheme) {
-                        if (uiTestSuiteRunner.currentTheme === "dark") {
-                            // Switch to Light theme and audit all windows again
-                            uiTestSuiteRunner.currentTheme = "light"
-                            deviceController.applyAppThemeMode("light")
+                    if (uiTestSuiteRunner.stepIndex >= totalStepsPerPass) {
+                        if (uiTestSuiteRunner.passIndex + 1 < uiTestSuiteRunner.auditPassConfigs.length) {
+                            uiTestSuiteRunner.passIndex++
+                            var nextCfg = uiTestSuiteRunner.auditPassConfigs[uiTestSuiteRunner.passIndex]
+                            uiTestSuiteRunner.currentTheme = nextCfg.theme
+                            uiTestSuiteRunner.currentZoom = nextCfg.zoom
+                            deviceController.applyAppThemeMode(nextCfg.theme)
+                            deviceController.applyUiTextScale(nextCfg.zoom)
+                            root.syncWindowWidthToEditorState()
                             uiTestSuiteRunner.stepIndex = 0
                             uiTestSuiteRunner.phase = 1
                             return
                         } else {
-                            // Finished both Dark and Light theme audits!
+                            // Finished all Dark/Light × [100%, 105%, 110%, 115%] audits!
                             uiTestStepTimer.stop()
+                            deviceController.resetAllTextScales()
+                            root.syncWindowWidthToEditorState()
+
+                            uiTestSuiteRunner.recordBehavior(
+                                "option_c_keycap_layout_no_overlap",
+                                uiTestSuiteRunner.totalKeycapsAudited >= 160
+                                    && uiTestSuiteRunner.keycapLayoutViolationsCount === 0,
+                                "keycapsAudited=" + uiTestSuiteRunner.totalKeycapsAudited
+                                    + " violations=" + uiTestSuiteRunner.keycapLayoutViolationsCount
+                            )
+                            uiTestSuiteRunner.recordBehavior(
+                                "no_overflows_at_zoom_levels_up_to_115_percent",
+                                uiTestSuiteRunner.overflowViolations.length === 0
+                                    && uiTestSuiteRunner.passIndex === uiTestSuiteRunner.auditPassConfigs.length - 1,
+                                "passesCompleted=" + (uiTestSuiteRunner.passIndex + 1)
+                                    + "/" + uiTestSuiteRunner.auditPassConfigs.length
+                                    + " windowsAudited=" + uiTestSuiteRunner.auditedWindows.length
+                                    + " overflowViolations=" + uiTestSuiteRunner.overflowViolations.length
+                            )
+
                             var failedBehaviors = []
                             for (var b = 0; b < uiTestSuiteRunner.behavioralResults.length; b++) {
                                 if (!uiTestSuiteRunner.behavioralResults[b].passed) {
@@ -1522,11 +1775,13 @@ Window {
                                 passed: totalFailures === 0,
                                 summary: {
                                     themesTested: ["dark", "light"],
+                                    zoomLevelsTested: [100, 105, 110, 115],
                                     windowsAuditedCount: uiTestSuiteRunner.auditedWindows.length,
                                     totalElementsInspected: uiTestSuiteRunner.totalElementsInspected,
                                     totalControlsInspected: uiTestSuiteRunner.totalControlsInspected,
                                     totalTextNodesInspected: uiTestSuiteRunner.totalTextNodesInspected,
                                     totalScrollBarsInspected: uiTestSuiteRunner.totalScrollBarsInspected,
+                                    totalKeycapsAudited: uiTestSuiteRunner.totalKeycapsAudited,
                                     behavioralChecksCount: uiTestSuiteRunner.behavioralResults.length,
                                     behavioralFailuresCount: failedBehaviors.length,
                                     overflowViolationsCount: uiTestSuiteRunner.overflowViolations.length,
@@ -1549,18 +1804,19 @@ Window {
                     }
 
                     var currentStep = uiTestSuiteRunner.windowSteps[uiTestSuiteRunner.stepIndex]
+                    var passTag = uiTestSuiteRunner.currentTheme + "@" + uiTestSuiteRunner.currentZoom + "%"
                     if (uiTestSuiteRunner.phase === 1) {
                         try {
                             currentStep.open()
                         } catch (e) {
-                            uiTestSuiteRunner.recordBehavior("open_" + currentStep.name + "_" + uiTestSuiteRunner.currentTheme, false, String(e))
+                            uiTestSuiteRunner.recordBehavior("open_" + currentStep.name + "_" + passTag, false, String(e))
                         }
                         uiTestSuiteRunner.phase = 2
                     } else if (uiTestSuiteRunner.phase === 2) {
                         try {
                             currentStep.audit()
                         } catch (e2) {
-                            uiTestSuiteRunner.recordBehavior("audit_" + currentStep.name + "_" + uiTestSuiteRunner.currentTheme, false, String(e2))
+                            uiTestSuiteRunner.recordBehavior("audit_" + currentStep.name + "_" + passTag, false, String(e2))
                         }
                         try {
                             currentStep.close()

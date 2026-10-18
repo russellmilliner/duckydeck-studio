@@ -242,7 +242,7 @@ impl Default for SwitcherState {
             return Self {
                 enabled: cfg.enabled,
                 paused_for_editing: false,
-                default_profile: cfg.default_profile,
+                default_profile: Some(cfg.default_profile.unwrap_or(1).max(1)),
                 rules: cfg.rules,
                 mouse_settle_ms: cfg.mouse_settle_ms.clamp(0, 5000),
                 window_dwell_ms: cfg.window_dwell_ms.clamp(0, 5000),

@@ -63,6 +63,59 @@ Window {
         }
     }
 
+    component HighContrastCheckBox: QQC2.CheckBox {
+        id: hcCheck
+        spacing: 8
+        onCheckedChanged: hcCheckMarkCanvas.requestPaint()
+        indicator: Rectangle {
+            objectName: "highContrastCheckBoxBox"
+            implicitWidth: 18
+            implicitHeight: 18
+            width: 18
+            height: 18
+            x: hcCheck.leftPadding
+            y: hcCheck.topPadding + Math.round((hcCheck.availableHeight - height) / 2)
+            radius: 4
+            color: hcCheck.checked
+                ? Kirigami.Theme.highlightColor
+                : (hcCheck.down
+                    ? Qt.alpha(Kirigami.Theme.textColor, 0.22)
+                    : Kirigami.Theme.backgroundColor)
+            border.width: (hcCheck.checked || hcCheck.hovered || hcCheck.visualFocus) ? 2 : 1.5
+            border.color: hcCheck.checked
+                ? Kirigami.Theme.highlightColor
+                : (hcCheck.hovered || hcCheck.visualFocus
+                    ? Kirigami.Theme.highlightColor
+                    : Qt.alpha(Kirigami.Theme.textColor, 0.78))
+
+            function pixelMetric(name) {
+                return name === "checkboxlabelspacing" ? 8 : 18
+            }
+
+            Canvas {
+                id: hcCheckMarkCanvas
+                anchors.fill: parent
+                visible: hcCheck.checked
+                onPaint: {
+                    const ctx = getContext("2d")
+                    ctx.reset()
+                    const lum = 0.2126 * Kirigami.Theme.highlightColor.r
+                        + 0.7152 * Kirigami.Theme.highlightColor.g
+                        + 0.0722 * Kirigami.Theme.highlightColor.b
+                    ctx.strokeStyle = lum > 0.52 ? "#020617" : "#ffffff"
+                    ctx.lineWidth = 2.2
+                    ctx.lineCap = "round"
+                    ctx.lineJoin = "round"
+                    ctx.beginPath()
+                    ctx.moveTo(4.0, 9.5)
+                    ctx.lineTo(7.5, 13.0)
+                    ctx.lineTo(14.0, 5.0)
+                    ctx.stroke()
+                }
+            }
+        }
+    }
+
     function findWebApiDestinationIndex(nameStr, methodStr, urlStr, headersStr) {
         const list = root.webApiDestinationsList || []
         const cleanName = (nameStr || "").trim().toLowerCase()
@@ -284,6 +337,7 @@ Window {
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "list-add"
                     text: qsTr("New Destination")
                     onClicked: webApiDestinationsDialog.clearForm()
@@ -463,6 +517,7 @@ Window {
                                     }
 
                                     QQC2.Button {
+                                        font.pointSize: 10 * root.fontScale
                                         icon.name: "edit-delete"
                                         implicitHeight: 26
                                         implicitWidth: 30
@@ -529,6 +584,7 @@ Window {
                         }
 
                         QQC2.TextField {
+                            font.pointSize: 10 * root.fontScale
                             id: destManagerNameField
                             Layout.fillWidth: true
                             Layout.minimumWidth: 80
@@ -544,6 +600,7 @@ Window {
                         }
 
                         QQC2.ComboBox {
+                            font.pointSize: 10 * root.fontScale
                             id: destManagerMethodCombo
                             model: root.webApiMethods
                             font.bold: true
@@ -563,6 +620,7 @@ Window {
                         }
 
                         QQC2.TextField {
+                            font.pointSize: 10 * root.fontScale
                             id: destManagerUrlField
                             Layout.fillWidth: true
                             Layout.minimumWidth: 80
@@ -613,12 +671,14 @@ Window {
                         Item { Layout.fillWidth: true }
 
                         QQC2.Button {
+                            font.pointSize: 10 * root.fontScale
                             text: qsTr("Clear")
                             enabled: destManagerNameField.text.length > 0 || destManagerUrlField.text.length > 0 || destManagerHeadersField.text.length > 0
                             onClicked: webApiDestinationsDialog.clearForm()
                         }
 
                         QQC2.Button {
+                            font.pointSize: 10 * root.fontScale
                             icon.name: "document-save"
                             text: webApiDestinationsDialog.editingOriginalName.length > 0
                                 ? qsTr("Save Changes to Destination")
@@ -672,6 +732,7 @@ Window {
                 Item { Layout.fillWidth: true }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "window-close"
                     text: qsTr("Close")
                     highlighted: true
@@ -864,6 +925,7 @@ Window {
             }
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 icon.name: "network-server"
                 text: qsTr("Manage Destinations...")
                 onClicked: {
@@ -877,6 +939,7 @@ Window {
             }
 
             QQC2.Switch {
+                font.pointSize: 10 * root.fontScale
                 id: webApiEnabledCheck
                 text: checked ? qsTr("Enabled") : qsTr("Disabled")
                 font.bold: true
@@ -959,6 +1022,7 @@ Window {
                             }
 
                             QQC2.Button {
+                                font.pointSize: 10 * root.fontScale
                                 icon.name: "document-save"
                                 text: qsTr("Save HA Connection")
                                 onClicked: {
@@ -1025,6 +1089,7 @@ Window {
                             }
 
                             QQC2.Button {
+                                font.pointSize: 10 * root.fontScale
                                 text: webApiKeyConfigWindow.haShowToken ? qsTr("Hide") : qsTr("Show")
                                 onClicked: webApiKeyConfigWindow.haShowToken = !webApiKeyConfigWindow.haShowToken
                             }
@@ -1035,6 +1100,7 @@ Window {
                             spacing: 8
 
                             QQC2.ComboBox {
+                                font.pointSize: 10 * root.fontScale
                                 id: haDomainCombo
                                 width: 150
                                 model: [
@@ -1060,6 +1126,7 @@ Window {
                             }
 
                             QQC2.TextField {
+                                font.pointSize: 10 * root.fontScale
                                 id: haSearchQueryField
                                 width: Math.max(200, haCardCol.width - 340)
                                 selectByMouse: true
@@ -1068,6 +1135,7 @@ Window {
                             }
 
                             QQC2.Button {
+                                font.pointSize: 10 * root.fontScale
                                 icon.name: "edit-find"
                                 text: qsTr("🔍 Search Entities")
                                 highlighted: true
@@ -1252,6 +1320,7 @@ Window {
                             }
 
                             QQC2.ComboBox {
+                                font.pointSize: 10 * root.fontScale
                                 id: webApiDestinationCombo
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 120
@@ -1283,6 +1352,7 @@ Window {
                             spacing: 8
 
                             QQC2.ComboBox {
+                                font.pointSize: 10 * root.fontScale
                                 id: webApiMethodCombo
                                 Layout.preferredWidth: 105
                                 model: root.webApiMethods
@@ -1290,6 +1360,7 @@ Window {
                             }
 
                             QQC2.TextField {
+                                font.pointSize: 10 * root.fontScale
                                 id: webApiUrlField
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 100
@@ -1397,6 +1468,7 @@ Window {
                             }
 
                             QQC2.ComboBox {
+                                font.pointSize: 10 * root.fontScale
                                 id: webApiTriggerModeCombo
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 120
@@ -1410,6 +1482,7 @@ Window {
                             }
 
                             QQC2.ComboBox {
+                                font.pointSize: 10 * root.fontScale
                                 id: webApiFkeyCombo
                                 visible: webApiTriggerModeCombo.currentIndex === 1
                                 Layout.preferredWidth: 96
@@ -1430,6 +1503,7 @@ Window {
                             }
 
                             QQC2.TextField {
+                                font.pointSize: 10 * root.fontScale
                                 id: webApiOledField
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 100
@@ -1440,7 +1514,8 @@ Window {
                                 onTextEdited: webApiKeyConfigWindow.syncWebApiBuilderToScript()
                             }
 
-                            QQC2.CheckBox {
+                            HighContrastCheckBox {
+                                font.pointSize: 10 * root.fontScale
                                 id: webApiLedCheck
                                 checked: true
                                 text: qsTr("Flash Key LED Cyan")
@@ -1457,6 +1532,7 @@ Window {
             spacing: 8
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 icon.name: "media-playback-start"
                 text: qsTr("Test Webhook Now")
                 enabled: webApiUrlField.text.trim().length > 0
@@ -1469,6 +1545,7 @@ Window {
             }
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 icon.name: "edit-clear"
                 text: qsTr("Disable / Clear")
                 onClicked: {
@@ -1483,6 +1560,7 @@ Window {
             Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 icon.name: "dialog-ok-apply"
                 text: qsTr("Save & Close")
                 highlighted: true
@@ -1494,6 +1572,7 @@ Window {
             }
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 icon.name: "window-close"
                 text: qsTr("Close")
                 onClicked: webApiKeyConfigWindow.close()

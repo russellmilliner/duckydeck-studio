@@ -585,6 +585,13 @@ pub fn import_profile_from_path_impl(
             suffix += 1;
         }
 
+        let mut old_to_new: std::collections::HashMap<u8, u8> =
+            std::collections::HashMap::with_capacity(rust.profiles.len());
+        for (idx, p) in rust.profiles.iter_mut().enumerate() {
+            let new_num = (idx + 1) as u8;
+            old_to_new.insert(p.number, new_num);
+            p.number = new_num;
+        }
         let next_num = (rust.profiles.len() + 1).clamp(1, 64) as u8;
         imported_profile.number = next_num;
         imported_profile.name = candidate_name.clone();
@@ -601,9 +608,6 @@ pub fn import_profile_from_path_impl(
         }
 
         rust.profiles.push(imported_profile);
-        for (idx, p) in rust.profiles.iter_mut().enumerate() {
-            p.number = (idx + 1) as u8;
-        }
         if let Some(ref sd_root) = rust.sd_root_path {
             if let Err(e) = save_profile_order_to_sd(sd_root, &rust.profiles) {
                 record_system_event(
@@ -620,6 +624,18 @@ pub fn import_profile_from_path_impl(
         }
 
         let rules_snapshot = if let Ok(mut sw) = rust.switcher_state.lock() {
+            let old_fb = sw.default_profile.unwrap_or(1);
+            let mapped_fb = old_to_new
+                .get(&old_fb)
+                .copied()
+                .unwrap_or(old_fb)
+                .clamp(1, next_num);
+            sw.default_profile = Some(mapped_fb);
+            for rule in &mut sw.rules {
+                if let Some(&mapped_target) = old_to_new.get(&rule.target_profile) {
+                    rule.target_profile = mapped_target;
+                }
+            }
             for mut r in imported_rules {
                 r.target_profile = next_num;
                 let already_exists = sw.rules.iter().any(|existing| {
@@ -881,19 +897,21 @@ pub fn load_profile_group_impl(
         bundle.group_name.trim().to_string()
     };
 
-    let (profiles_json, rules_json) = {
+    let (profiles_json, rules_json, new_fb) = {
         let rust = controller.as_mut().rust_mut().get_mut();
         rust.profiles = bundle.profiles;
         let sn = rust.serial_number.to_string();
         sync_profiles_to_device_cache(&sn, &rust.profiles);
 
+        let fb_clamped = bundle
+            .default_fallback_profile
+            .unwrap_or(1)
+            .clamp(1, prof_count as u8);
         let rules_snapshot = if let Ok(mut sw) = rust.switcher_state.lock() {
             if !bundle.auto_switch_rules.is_empty() {
                 sw.rules = bundle.auto_switch_rules;
             }
-            if let Some(fb) = bundle.default_fallback_profile {
-                sw.default_profile = Some(fb.clamp(1, prof_count as u8));
-            }
+            sw.default_profile = Some(fb_clamped);
             sw.loaded_from_disk = true;
             if let Err(e) = sw.save_to_disk() {
                 record_system_event(
@@ -910,9 +928,10 @@ pub fn load_profile_group_impl(
         let p_json =
             DeviceControllerRust::serialize_profiles_summary(&rust.profiles, &rules_snapshot);
         let r_json = DeviceControllerRust::serialize_rules(&rules_snapshot, &rust.profiles);
-        (p_json, r_json)
+        (p_json, r_json, fb_clamped as i32)
     };
 
+    controller.as_mut().set_default_fallback_profile(new_fb);
     controller
         .as_mut()
         .set_profiles_json(QString::from(&profiles_json));
@@ -945,25 +964,34 @@ pub fn create_new_profile_group_impl(
         .filter(|c| c.is_ascii_alphanumeric() || *c == ' ' || *c == '-' || *c == '_')
         .take(16)
         .collect();
-    let first_prof_name = if clean_prof_name.trim().is_empty() {
-        "Profile 1".to_string()
-    } else {
-        clean_prof_name.trim().to_string()
-    };
+    let custom_prof_name = clean_prof_name.trim().to_string();
 
-    let new_prof = DuckyProfile {
+    let default_prof = DuckyProfile {
         number: 1,
-        name: first_prof_name.clone(),
-        folder_name_override: Some(format!("profile_{first_prof_name}")),
+        name: "Default".to_string(),
+        folder_name_override: Some("profile_Default".to_string()),
         bg_color: [0, 170, 255],
         keydown_color: Some([255, 255, 255]),
         dim_unused_keys: true,
         ..Default::default()
     };
 
+    let mut initial_profiles = vec![default_prof];
+    if !custom_prof_name.is_empty() && !custom_prof_name.eq_ignore_ascii_case("Default") {
+        initial_profiles.push(DuckyProfile {
+            number: 2,
+            name: custom_prof_name.clone(),
+            folder_name_override: Some(format!("profile_{custom_prof_name}")),
+            bg_color: [0, 170, 255],
+            keydown_color: Some([255, 255, 255]),
+            dim_unused_keys: true,
+            ..Default::default()
+        });
+    }
+
     let (profiles_json, rules_json) = {
         let rust = controller.as_mut().rust_mut().get_mut();
-        rust.profiles = vec![new_prof];
+        rust.profiles = initial_profiles;
         let sn = rust.serial_number.to_string();
         sync_profiles_to_device_cache(&sn, &rust.profiles);
 
@@ -989,6 +1017,7 @@ pub fn create_new_profile_group_impl(
         (p_json, r_json)
     };
 
+    controller.as_mut().set_default_fallback_profile(1);
     controller
         .as_mut()
         .set_profiles_json(QString::from(&profiles_json));
@@ -997,8 +1026,10 @@ pub fn create_new_profile_group_impl(
         .set_auto_switch_rules_json(QString::from(&rules_json));
     controller.as_mut().select_profile(1);
     controller.as_mut().sync_active_profile_state();
-    controller.as_mut().set_status_message(QString::from(&format!(
-            "✓ Created new Profile Group '{group_label}' starting with Profile #1 ('{first_prof_name}')"
+    controller
+        .as_mut()
+        .set_status_message(QString::from(&format!(
+            "✓ Created new Profile Group '{group_label}' with 'Default' as Fallback Profile (#1)"
         )));
     true
 }

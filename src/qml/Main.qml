@@ -84,6 +84,7 @@ Kirigami.ApplicationWindow {
 
     color: Kirigami.Theme.backgroundColor
     readonly property bool isLightTheme: (0.2126 * root.color.r + 0.7152 * root.color.g + 0.0722 * root.color.b) > 0.45
+    readonly property string effectiveThemeMode: isLightTheme ? "light" : "dark"
     readonly property color highContrastHighlightText: isLightTheme ? "#0369a1" : Kirigami.Theme.highlightColor
     readonly property color highContrastPositiveText: isLightTheme ? "#15803d" : "#4ade80"
     readonly property color highContrastWarningText: isLightTheme ? "#b45309" : "#fbbf24"
@@ -92,8 +93,15 @@ Kirigami.ApplicationWindow {
     readonly property real fontScale: (deviceController && deviceController.uiTextScale > 0
         ? deviceController.uiTextScale
         : 100) / 100.0
+    readonly property real fontCaption: Math.round(10.0 * root.fontScale * 10) / 10
+    readonly property real fontBody: Math.round(10.5 * root.fontScale * 10) / 10
+    readonly property real fontSubheading: Math.round(11.5 * root.fontScale * 10) / 10
+    readonly property real fontHeading: Math.round(13.0 * root.fontScale * 10) / 10
+    readonly property real fontDisplay: Math.round(15.0 * root.fontScale * 10) / 10
+    readonly property real fontMono: Math.round(10.5 * root.fontScale * 10) / 10
+    font.pointSize: root.fontBody
     readonly property real sidebarScale: root.fontScale
-    readonly property real canvasScale: root.fontScale
+    readonly property real canvasScale: 1.0
     readonly property real inspectorScale: root.fontScale
     readonly property real editorScale: root.fontScale
     readonly property real statusBarScale: root.fontScale
@@ -312,6 +320,59 @@ Kirigami.ApplicationWindow {
     }
     ListModel {
         id: commandReferenceModel
+    }
+
+    component HighContrastCheckBox: QQC2.CheckBox {
+        id: hcCheck
+        spacing: 8
+        onCheckedChanged: hcCheckMarkCanvas.requestPaint()
+        indicator: Rectangle {
+            objectName: "highContrastCheckBoxBox"
+            implicitWidth: 18
+            implicitHeight: 18
+            width: 18
+            height: 18
+            x: hcCheck.leftPadding
+            y: hcCheck.topPadding + Math.round((hcCheck.availableHeight - height) / 2)
+            radius: 4
+            color: hcCheck.checked
+                ? Kirigami.Theme.highlightColor
+                : (hcCheck.down
+                    ? Qt.alpha(Kirigami.Theme.textColor, 0.22)
+                    : Kirigami.Theme.backgroundColor)
+            border.width: (hcCheck.checked || hcCheck.hovered || hcCheck.visualFocus) ? 2 : 1.5
+            border.color: hcCheck.checked
+                ? Kirigami.Theme.highlightColor
+                : (hcCheck.hovered || hcCheck.visualFocus
+                    ? Kirigami.Theme.highlightColor
+                    : Qt.alpha(Kirigami.Theme.textColor, 0.78))
+
+            function pixelMetric(name) {
+                return name === "checkboxlabelspacing" ? 8 : 18
+            }
+
+            Canvas {
+                id: hcCheckMarkCanvas
+                anchors.fill: parent
+                visible: hcCheck.checked
+                onPaint: {
+                    const ctx = getContext("2d")
+                    ctx.reset()
+                    const lum = 0.2126 * Kirigami.Theme.highlightColor.r
+                        + 0.7152 * Kirigami.Theme.highlightColor.g
+                        + 0.0722 * Kirigami.Theme.highlightColor.b
+                    ctx.strokeStyle = lum > 0.52 ? "#020617" : "#ffffff"
+                    ctx.lineWidth = 2.2
+                    ctx.lineCap = "round"
+                    ctx.lineJoin = "round"
+                    ctx.beginPath()
+                    ctx.moveTo(4.0, 9.5)
+                    ctx.lineTo(7.5, 13.0)
+                    ctx.lineTo(14.0, 5.0)
+                    ctx.stroke()
+                }
+            }
+        }
     }
 
     readonly property var duckyScriptCatalog: [
@@ -1415,6 +1476,7 @@ Kirigami.ApplicationWindow {
 
     // Profile Right-Click Context Menu
     QQC2.Menu {
+        font.pointSize: 10 * root.fontScale
         id: profileContextMenu
         title: qsTr("Profile Actions")
 
@@ -1433,32 +1495,6 @@ Kirigami.ApplicationWindow {
             text: qsTr("Properties...")
             onTriggered: {
                 profilePropertiesWindow.openForProfile(root.contextMenuProfileNumber)
-            }
-        }
-
-        QQC2.MenuSeparator {}
-
-        QQC2.MenuItem {
-            icon.name: "go-up"
-            text: qsTr("Move Profile Up")
-            enabled: profileSidebarList.canReorder && root.contextMenuProfileIndex > 0
-            onTriggered: {
-                const savedY = profileSidebarList.contentY
-                deviceController.reorderProfile(root.contextMenuProfileIndex, root.contextMenuProfileIndex - 1)
-                root.refreshSelectedSlotFromController()
-                profileSidebarList.contentY = savedY
-            }
-        }
-
-        QQC2.MenuItem {
-            icon.name: "go-down"
-            text: qsTr("Move Profile Down")
-            enabled: profileSidebarList.canReorder && root.contextMenuProfileIndex < profileSidebarList.count - 1
-            onTriggered: {
-                const savedY = profileSidebarList.contentY
-                deviceController.reorderProfile(root.contextMenuProfileIndex, root.contextMenuProfileIndex + 1)
-                root.refreshSelectedSlotFromController()
-                profileSidebarList.contentY = savedY
             }
         }
 
@@ -1510,8 +1546,11 @@ Kirigami.ApplicationWindow {
 
         QQC2.MenuItem {
             icon.name: "edit-delete"
-            text: qsTr("Delete Profile...")
+            text: root.contextMenuProfileNumber === deviceController.defaultFallbackProfile
+                ? qsTr("Delete Profile... (Fallback Profile)")
+                : qsTr("Delete Profile...")
             enabled: profileSidebarList.count > 1
+                && root.contextMenuProfileNumber !== deviceController.defaultFallbackProfile
             onTriggered: {
                 deleteProfileDialog.open()
             }
@@ -1543,15 +1582,19 @@ Kirigami.ApplicationWindow {
             spacing: 8
 
             QQC2.Label {
+                font.pointSize: 10 * root.fontScale
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: qsTr("Are you sure you want to delete Profile #%1 (%2)?\n\nAny Auto-Switcher rules targeting this profile will also be removed, and remaining profiles will be renumbered.")
+                text: qsTr("Are you sure you want to delete Profile #%1 (%2)?\n\nAny Auto-Switcher rules targeting this profile will be updated to reference the Fallback Profile, and remaining profiles will be renumbered.")
                     .arg(root.contextMenuProfileNumber)
                     .arg(root.contextMenuProfileName)
             }
         }
 
         onAccepted: {
+            if (root.contextMenuProfileNumber === deviceController.defaultFallbackProfile) {
+                return
+            }
             const savedY = profileSidebarList.contentY
             root.selectingProfileFromClick = true
             if (deviceController.deleteProfile(root.contextMenuProfileNumber)) {
@@ -1648,6 +1691,7 @@ Kirigami.ApplicationWindow {
 
     // Profile Sync Status Menu
     QQC2.Menu {
+        font.pointSize: 10 * root.fontScale
         id: profileSyncMenu
         title: qsTr("Profile Sync Status")
 
@@ -1703,6 +1747,7 @@ Kirigami.ApplicationWindow {
 
     // Hamburger Menu for Action Buttons
     QQC2.Menu {
+        font.pointSize: 10 * root.fontScale
         id: hamburgerMenu
         title: qsTr("Menu")
         onAboutToShow: deviceController.refreshSdMountStatus()
@@ -2084,6 +2129,7 @@ Kirigami.ApplicationWindow {
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     id: hamburgerMenuBtn
                     icon.name: "application-menu"
                     display: QQC2.AbstractButton.IconOnly
@@ -2162,19 +2208,52 @@ Kirigami.ApplicationWindow {
                                 font.pointSize: 10 * root.fontScale
                                 color: Kirigami.Theme.disabledTextColor
                                 Layout.fillWidth: true
+
+                                HoverHandler {
+                                    id: profilesHeaderHover
+                                }
+
+                                QQC2.ToolTip.visible: profilesHeaderHover.hovered
+                                QQC2.ToolTip.delay: 200
+                                QQC2.ToolTip.text: qsTr("Drag ⠿ to Reorder • Double-click to Rename • Right-click for Options")
                             }
                         }
 
                         // Filter Search Input
                         QQC2.TextField {
                             id: profileFilterField
+                            objectName: "profileFilterField"
                             Layout.fillWidth: true
-                            placeholderText: qsTr("Filter profiles or apps (drag ⠿ to reorder)...")
+                            placeholderText: qsTr("Filter profiles or apps...")
                             selectByMouse: true
                             font.pointSize: 10 * root.fontScale
+                            rightPadding: clearProfileFilterBtn.visible ? 28 : 8
                             onTextChanged: {
                                 root.profileFilterText = text
                                 root.syncSidebarProfilesFromController()
+                            }
+
+                            QQC2.ToolButton {
+                                id: clearProfileFilterBtn
+                                objectName: "clearProfileFilterButton"
+                                visible: profileFilterField.text.length > 0
+                                anchors.right: parent.right
+                                anchors.rightMargin: 3
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 22
+                                height: 22
+                                implicitWidth: 22
+                                implicitHeight: 22
+                                padding: 0
+                                flat: true
+                                text: "✕"
+                                font.pointSize: 9 * root.fontScale
+                                onClicked: {
+                                    profileFilterField.text = ""
+                                    profileFilterField.forceActiveFocus()
+                                }
+                                QQC2.ToolTip.visible: hovered
+                                QQC2.ToolTip.text: qsTr("Clear profile filter")
                             }
                         }
 
@@ -2257,6 +2336,15 @@ Kirigami.ApplicationWindow {
                                     HoverHandler {
                                         id: profRowHover
                                     }
+
+                                    QQC2.ToolTip.visible: profMouse.containsMouse
+                                        && !profMouse.dragging
+                                        && !profSwatchMouse.containsMouse
+                                        && !(appIconHover.hovered && profDelegate.boundTooltip.length > 0)
+                                    QQC2.ToolTip.delay: 300
+                                    QQC2.ToolTip.text: profileSidebarList.canReorder
+                                        ? qsTr("Drag ⠿ to Reorder • Double-click to Rename • Right-click for Options")
+                                        : qsTr("Double-click to Rename • Right-click for Options")
 
                                     // Drop target slot outline shown in the target gap while dragging
                                     Rectangle {
@@ -2610,7 +2698,7 @@ Kirigami.ApplicationWindow {
                                         const chosenName = newProfileNameField.text.trim().length > 0
                                             ? newProfileNameField.text.trim()
                                             : fallbackName
-                                        if (deviceController.createProfileFromTemplate(tplId, chosenName)) {
+                                        if (deviceController.createProfileFromTemplate(chosenName, tplId)) {
                                             newProfileNameField.text = ""
                                             root.showNewProfileInput = false
                                             root.syncSidebarProfilesFromController()
@@ -2669,6 +2757,7 @@ Kirigami.ApplicationWindow {
                                 QQC2.ToolTip.text: qsTr("Manage Profile Templates and Profile Groups (.duckygroup.json)")
 
                                 QQC2.Menu {
+                                    font.pointSize: 10 * root.fontScale
                                     id: profileGroupMenu
                                     title: qsTr("Templates & Profile Groups")
 
@@ -2734,6 +2823,7 @@ Kirigami.ApplicationWindow {
                                 }
 
                                 QQC2.Switch {
+                                    font.pointSize: 10 * root.fontScale
                                     checked: deviceController.autoSwitchEnabled
                                     implicitHeight: 22
                                     onToggled: {
@@ -3552,7 +3642,7 @@ Kirigami.ApplicationWindow {
                                     anchors.bottomMargin: 3
                                     spacing: 6
 
-                                    QQC2.CheckBox {
+                                    HighContrastCheckBox {
                                         id: disableRepeatCheck
                                         text: qsTr("No Repeat on Held (Run Once)")
                                         font.bold: checked
@@ -3567,7 +3657,7 @@ Kirigami.ApplicationWindow {
 
                                     Item { Layout.fillWidth: true }
 
-                                    QQC2.CheckBox {
+                                    HighContrastCheckBox {
                                         id: allowAbortCheck
                                         text: qsTr("Allow Abort")
                                         font.pointSize: 10 * root.fontScale
@@ -3984,27 +4074,38 @@ Kirigami.ApplicationWindow {
                                         selectByMouse: true
                                         placeholderText: qsTr("🔍 Filter duckyScript 3 commands, keys, $_VARS, OLED, RGB...")
                                         text: root.commandRefSearchText
+                                        rightPadding: clearCmdRefBtn.visible ? 28 : 8
                                         onTextEdited: {
                                             root.commandRefSearchText = text
                                             root.refreshCommandReferenceModel()
                                         }
-                                    }
 
-                                    QQC2.ToolButton {
-                                        visible: commandRefSearchField.text.length > 0
-                                        text: "✕"
-                                        implicitWidth: Math.round(24 * root.inspectorScale)
-                                        implicitHeight: Math.round(24 * root.inspectorScale)
-                                        onClicked: {
-                                            commandRefSearchField.text = ""
-                                            root.commandRefSearchText = ""
-                                            root.refreshCommandReferenceModel()
+                                        QQC2.ToolButton {
+                                            id: clearCmdRefBtn
+                                            visible: commandRefSearchField.text.length > 0
+                                            anchors.right: parent.right
+                                            anchors.rightMargin: 3
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 20
+                                            height: 20
+                                            implicitWidth: 20
+                                            implicitHeight: 20
+                                            padding: 0
+                                            flat: true
+                                            text: "✕"
+                                            font.pointSize: 9 * root.fontScale
+                                            onClicked: {
+                                                commandRefSearchField.text = ""
+                                                root.commandRefSearchText = ""
+                                                root.refreshCommandReferenceModel()
+                                                commandRefSearchField.forceActiveFocus()
+                                            }
+                                            QQC2.ToolTip.visible: hovered
+                                            QQC2.ToolTip.text: qsTr("Clear search filter")
                                         }
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Clear search filter")
                                     }
 
-                                    QQC2.CheckBox {
+                                    HighContrastCheckBox {
                                         id: autocompleteToggleCheck
                                         checked: root.autocompleteEnabled
                                         text: qsTr("⚡ Live Autocomplete")

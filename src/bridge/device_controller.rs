@@ -1096,7 +1096,13 @@ impl Default for DeviceControllerRust {
             };
 
         let auto_enabled = switcher.enabled;
-        let fallback_prof = switcher.default_profile.unwrap_or(0) as i32;
+        let max_init_prof = profiles.len().max(1) as u8;
+        let clamped_fb = switcher
+            .default_profile
+            .unwrap_or(1)
+            .clamp(1, max_init_prof);
+        switcher.default_profile = Some(clamped_fb);
+        let fallback_prof = clamped_fb as i32;
         let settle_ms = switcher.mouse_settle_ms.clamp(0, 5000);
         let dwell_ms = switcher.window_dwell_ms.clamp(0, 5000);
         let tray_mode = switcher.tray_icon_mode.clone();
@@ -1479,13 +1485,19 @@ impl qobject::DeviceController {
             sync_state,
             sync_detail,
             unsynced_json,
+            effective_fallback,
         ) = {
             let rust = self.rust();
-            let rules_vec = rust
-                .switcher_state
-                .lock()
-                .map(|s| s.rules.clone())
-                .unwrap_or_default();
+            let max_prof = rust.profiles.len().max(1) as u8;
+            let (rules_vec, fb_num) = if let Ok(mut s) = rust.switcher_state.lock() {
+                let fb = s.default_profile.unwrap_or(1).clamp(1, max_prof);
+                if s.default_profile != Some(fb) {
+                    s.default_profile = Some(fb);
+                }
+                (s.rules.clone(), fb as i32)
+            } else {
+                (Vec::new(), 1)
+            };
             let profiles_json =
                 DeviceControllerRust::serialize_profiles_summary(&rust.profiles, &rules_vec);
             let rules_json = DeviceControllerRust::serialize_rules(&rules_vec, &rust.profiles);
@@ -1531,6 +1543,7 @@ impl qobject::DeviceController {
                     sync_state,
                     sync_detail,
                     unsynced_json,
+                    fb_num,
                 )
             } else {
                 (
@@ -1542,10 +1555,15 @@ impl qobject::DeviceController {
                     sync_state,
                     sync_detail,
                     unsynced_json,
+                    fb_num,
                 )
             }
         };
 
+        if *self.default_fallback_profile() != effective_fallback {
+            self.as_mut()
+                .set_default_fallback_profile(effective_fallback);
+        }
         if self.active_profile_name().to_string() != prof_name {
             self.as_mut()
                 .set_active_profile_name(QString::from(&prof_name));
@@ -2232,11 +2250,16 @@ impl qobject::DeviceController {
 
         let (next_num, saved_to_sd) = {
             let rust = self.as_mut().rust_mut().get_mut();
-            let max_num = rust.profiles.iter().map(|p| p.number).max().unwrap_or(0);
-            if max_num >= 64 {
+            if rust.profiles.len() >= 64 {
                 return false;
             }
-            let next_num = max_num + 1;
+            let mut old_to_new: HashMap<u8, u8> = HashMap::with_capacity(rust.profiles.len());
+            for (idx, prof) in rust.profiles.iter_mut().enumerate() {
+                let new_num = (idx + 1) as u8;
+                old_to_new.insert(prof.number, new_num);
+                prof.number = new_num;
+            }
+            let next_num = (rust.profiles.len() + 1) as u8;
             let is_dpp = rust
                 .sd_root_path
                 .as_ref()
@@ -2282,6 +2305,36 @@ impl qobject::DeviceController {
             }
 
             rust.profiles.push(new_prof);
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                let mut rules_changed = false;
+                let old_fb = sw.default_profile.unwrap_or(1);
+                let mapped_fb = old_to_new
+                    .get(&old_fb)
+                    .copied()
+                    .unwrap_or(old_fb)
+                    .clamp(1, next_num);
+                if sw.default_profile != Some(mapped_fb) {
+                    sw.default_profile = Some(mapped_fb);
+                    rules_changed = true;
+                }
+                for rule in &mut sw.rules {
+                    if let Some(&mapped_target) = old_to_new.get(&rule.target_profile) {
+                        if rule.target_profile != mapped_target {
+                            rule.target_profile = mapped_target;
+                            rules_changed = true;
+                        }
+                    }
+                }
+                if rules_changed {
+                    if let Err(e) = sw.save_to_disk() {
+                        record_system_event(
+                            "WARN",
+                            "CONFIG",
+                            format!("Failed saving switcher state after profile add: {e}"),
+                        );
+                    }
+                }
+            }
             let sn = rust.serial_number.to_string();
             sync_profiles_to_device_cache(&sn, &rust.profiles);
             if saved {
@@ -2400,6 +2453,20 @@ impl qobject::DeviceController {
             return false;
         }
         let target_num = profile_number as u8;
+        let current_fb = self
+            .rust()
+            .switcher_state
+            .lock()
+            .ok()
+            .and_then(|sw| sw.default_profile)
+            .unwrap_or_else(|| (*self.default_fallback_profile()).max(1) as u8);
+        if target_num == current_fb {
+            self.as_mut().set_status_message(QString::from(&format!(
+                "Cannot delete Profile #{target_num} because it is the Fallback Profile"
+            )));
+            return false;
+        }
+
         let active_old_num = *self.active_profile() as u8;
         let mut new_active_num = active_old_num as i32;
         let mut new_fallback_num: Option<i32> = None;
@@ -2456,26 +2523,24 @@ impl qobject::DeviceController {
                 }
 
                 if let Ok(mut sw) = rust.switcher_state.lock() {
-                    let before_len = sw.rules.len();
-                    sw.rules.retain(|r| r.target_profile != target_num);
-                    let mut rules_changed = sw.rules.len() != before_len;
+                    let mut rules_changed = false;
+                    let old_fb = sw.default_profile.unwrap_or(current_fb);
+                    let mapped_fb = old_to_new.get(&old_fb).copied().unwrap_or(1);
+                    if sw.default_profile != Some(mapped_fb) {
+                        sw.default_profile = Some(mapped_fb);
+                        rules_changed = true;
+                    }
+                    new_fallback_num = Some(mapped_fb as i32);
+
                     for rule in &mut sw.rules {
-                        if let Some(&mapped_target) = old_to_new.get(&rule.target_profile) {
-                            if rule.target_profile != mapped_target {
-                                rule.target_profile = mapped_target;
+                        if rule.target_profile == target_num {
+                            if rule.target_profile != mapped_fb {
+                                rule.target_profile = mapped_fb;
                                 rules_changed = true;
                             }
-                        }
-                    }
-                    if let Some(fb) = sw.default_profile {
-                        if fb == target_num {
-                            sw.default_profile = Some(1);
-                            new_fallback_num = Some(1);
-                            rules_changed = true;
-                        } else if let Some(&mapped_fb) = old_to_new.get(&fb) {
-                            if fb != mapped_fb {
-                                sw.default_profile = Some(mapped_fb);
-                                new_fallback_num = Some(mapped_fb as i32);
+                        } else if let Some(&mapped_target) = old_to_new.get(&rule.target_profile) {
+                            if rule.target_profile != mapped_target {
+                                rule.target_profile = mapped_target;
                                 rules_changed = true;
                             }
                         }
@@ -2564,6 +2629,7 @@ impl qobject::DeviceController {
         let to_idx = to_index as usize;
 
         let active_old_num = *self.active_profile() as u8;
+        let current_fb = (*self.default_fallback_profile()).max(1) as u8;
         let mut new_active_num = active_old_num as i32;
         let mut new_fallback_num: Option<i32> = None;
 
@@ -2591,21 +2657,22 @@ impl qobject::DeviceController {
 
             if let Ok(mut sw) = rust.switcher_state.lock() {
                 let mut rules_changed = false;
-                for rule in &mut sw.rules {
-                    if let Some(&mapped_target) = old_to_new.get(&rule.target_profile) {
-                        if rule.target_profile != mapped_target {
-                            rule.target_profile = mapped_target;
-                            rules_changed = true;
-                        }
-                    }
+                let old_fb = sw.default_profile.unwrap_or(current_fb);
+                let mapped_fb = old_to_new.get(&old_fb).copied().unwrap_or(1);
+                if sw.default_profile != Some(mapped_fb) {
+                    sw.default_profile = Some(mapped_fb);
+                    rules_changed = true;
                 }
-                if let Some(fb) = sw.default_profile {
-                    if let Some(&mapped_fb) = old_to_new.get(&fb) {
-                        if fb != mapped_fb {
-                            sw.default_profile = Some(mapped_fb);
-                            new_fallback_num = Some(mapped_fb as i32);
-                            rules_changed = true;
-                        }
+                new_fallback_num = Some(mapped_fb as i32);
+
+                for rule in &mut sw.rules {
+                    let mapped_target = old_to_new
+                        .get(&rule.target_profile)
+                        .copied()
+                        .unwrap_or(mapped_fb);
+                    if rule.target_profile != mapped_target {
+                        rule.target_profile = mapped_target;
+                        rules_changed = true;
                     }
                 }
                 if rules_changed || sw.loaded_from_disk {
@@ -3835,17 +3902,18 @@ impl qobject::DeviceController {
     }
 
     pub fn set_auto_switch_config(mut self: Pin<&mut Self>, enabled: bool, default_profile: i32) {
-        let fallback = if (1..=64).contains(&default_profile) {
-            Some(default_profile as u8)
-        } else {
-            None
-        };
-
-        {
+        let effective_fb = {
             let rust = self.as_mut().rust_mut().get_mut();
+            let max_prof = rust.profiles.len().max(1) as u8;
+            let mut chosen_fb = 1u8;
             if let Ok(mut sw) = rust.switcher_state.lock() {
+                chosen_fb = if (1..=64).contains(&default_profile) {
+                    (default_profile as u8).clamp(1, max_prof)
+                } else {
+                    sw.default_profile.unwrap_or(1).clamp(1, max_prof)
+                };
                 sw.enabled = enabled;
-                sw.default_profile = fallback;
+                sw.default_profile = Some(chosen_fb);
                 if let Err(e) = sw.save_to_disk() {
                     record_system_event(
                         "WARN",
@@ -3854,11 +3922,11 @@ impl qobject::DeviceController {
                     );
                 }
             }
-        }
+            chosen_fb as i32
+        };
 
         self.as_mut().set_auto_switch_enabled(enabled);
-        self.as_mut()
-            .set_default_fallback_profile(fallback.unwrap_or(0) as i32);
+        self.as_mut().set_default_fallback_profile(effective_fb);
         self.as_mut().apply_auto_switch_for_current_window();
         self.as_mut().sync_active_profile_state();
     }
@@ -5737,10 +5805,30 @@ impl qobject::DeviceController {
         let p_name = profile_name.to_string();
         let key = change_key.to_string();
 
+        let current_fb = self
+            .rust()
+            .switcher_state
+            .lock()
+            .ok()
+            .and_then(|sw| sw.default_profile)
+            .unwrap_or_else(|| (*self.default_fallback_profile()).max(1) as u8);
+        if key == "profile_added" && p_num == current_fb {
+            let status =
+                format!("⚠ Cannot discard Profile #{p_num} because it is the Fallback Profile");
+            self.as_mut().set_status_message(QString::from(&status));
+            return false;
+        }
+
+        let mut new_fallback_num: Option<i32> = None;
         let res = {
             let rust = self.as_mut().rust_mut().get_mut();
             let sn = rust.serial_number.to_string();
             let sd_root = rust.sd_root_path.clone();
+            let old_profiles: Vec<(u8, String)> = rust
+                .profiles
+                .iter()
+                .map(|p| (p.number, p.name.clone()))
+                .collect();
             let out = discard_unsynced_change_in_profiles(
                 &sn,
                 &mut rust.profiles,
@@ -5750,8 +5838,58 @@ impl qobject::DeviceController {
                 &key,
             );
             if out.is_ok() {
+                let mut old_to_new: HashMap<u8, u8> = HashMap::with_capacity(old_profiles.len());
+                for (old_num, old_name) in &old_profiles {
+                    if let Some(found) = rust
+                        .profiles
+                        .iter()
+                        .find(|p| p.name.eq_ignore_ascii_case(old_name))
+                    {
+                        old_to_new.insert(*old_num, found.number);
+                    }
+                }
                 if let Ok(mut sw) = rust.switcher_state.lock() {
+                    let mut rules_changed = false;
+                    let max_p = rust.profiles.len().max(1) as u8;
+                    let old_fb = sw.default_profile.unwrap_or(current_fb);
+                    let mapped_fb = old_to_new
+                        .get(&old_fb)
+                        .copied()
+                        .unwrap_or(old_fb)
+                        .clamp(1, max_p);
+                    if sw.default_profile != Some(mapped_fb) {
+                        sw.default_profile = Some(mapped_fb);
+                        rules_changed = true;
+                    }
+                    new_fallback_num = Some(mapped_fb as i32);
+
+                    if matches!(key.as_str(), "profile_added" | "profile_deleted" | "order") {
+                        for rule in &mut sw.rules {
+                            if key == "profile_added" && rule.target_profile == p_num {
+                                if rule.target_profile != mapped_fb {
+                                    rule.target_profile = mapped_fb;
+                                    rules_changed = true;
+                                }
+                            } else if let Some(&mapped_target) =
+                                old_to_new.get(&rule.target_profile)
+                            {
+                                if rule.target_profile != mapped_target {
+                                    rule.target_profile = mapped_target;
+                                    rules_changed = true;
+                                }
+                            }
+                        }
+                    }
                     sw.align_rules_with_profiles(&rust.profiles);
+                    if rules_changed || sw.loaded_from_disk {
+                        if let Err(e) = sw.save_to_disk() {
+                            record_system_event(
+                                "WARN",
+                                "CONFIG",
+                                format!("Failed saving switcher state after discard: {e}"),
+                            );
+                        }
+                    }
                 }
                 if sn != "-" && !sn.is_empty() {
                     sync_profiles_to_device_cache(&sn, &rust.profiles);
@@ -5764,6 +5902,9 @@ impl qobject::DeviceController {
 
         match res {
             Ok(msg) => {
+                if let Some(fb) = new_fallback_num {
+                    self.as_mut().set_default_fallback_profile(fb);
+                }
                 let max_prof = self.rust().profiles.len().max(1) as i32;
                 let cur_active = *self.active_profile();
                 if cur_active > max_prof {
@@ -6277,11 +6418,19 @@ impl qobject::DeviceController {
         profile_name: QString,
         template_id: QString,
     ) -> bool {
-        let tpl_id = template_id.to_string();
+        let raw_p = profile_name.to_string();
+        let raw_t = template_id.to_string();
+        let (trimmed, tpl_id) = if (raw_p.starts_with("builtin_") || raw_p.starts_with("user_"))
+            && !raw_t.starts_with("builtin_")
+            && !raw_t.starts_with("user_")
+        {
+            (raw_t.trim().to_string(), raw_p)
+        } else {
+            (raw_p.trim().to_string(), raw_t)
+        };
         if tpl_id.trim().is_empty() || tpl_id == "builtin_blank" {
-            return self.create_new_profile(profile_name);
+            return self.create_new_profile(QString::from(&trimmed));
         }
-        let trimmed = profile_name.to_string().trim().to_string();
         if trimmed.is_empty() {
             return false;
         }
@@ -6296,11 +6445,16 @@ impl qobject::DeviceController {
 
         let res = {
             let rust = self.as_mut().rust_mut().get_mut();
-            let max_num = rust.profiles.iter().map(|p| p.number).max().unwrap_or(0);
-            if max_num >= 64 {
+            if rust.profiles.len() >= 64 {
                 return false;
             }
-            let next_num = max_num + 1;
+            let mut old_to_new: HashMap<u8, u8> = HashMap::with_capacity(rust.profiles.len());
+            for (idx, prof) in rust.profiles.iter_mut().enumerate() {
+                let new_num = (idx + 1) as u8;
+                old_to_new.insert(prof.number, new_num);
+                prof.number = new_num;
+            }
+            let next_num = (rust.profiles.len() + 1) as u8;
             let mut new_prof = instantiate_profile_from_template(&tpl_id, next_num, &clean_name);
             let is_dpp = rust
                 .sd_root_path
@@ -6327,6 +6481,36 @@ impl qobject::DeviceController {
                 }
             }
             rust.profiles.push(new_prof);
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                let mut rules_changed = false;
+                let old_fb = sw.default_profile.unwrap_or(1);
+                let mapped_fb = old_to_new
+                    .get(&old_fb)
+                    .copied()
+                    .unwrap_or(old_fb)
+                    .clamp(1, next_num);
+                if sw.default_profile != Some(mapped_fb) {
+                    sw.default_profile = Some(mapped_fb);
+                    rules_changed = true;
+                }
+                for rule in &mut sw.rules {
+                    if let Some(&mapped_target) = old_to_new.get(&rule.target_profile) {
+                        if rule.target_profile != mapped_target {
+                            rule.target_profile = mapped_target;
+                            rules_changed = true;
+                        }
+                    }
+                }
+                if rules_changed {
+                    if let Err(e) = sw.save_to_disk() {
+                        record_system_event(
+                            "WARN",
+                            "CONFIG",
+                            format!("Failed saving switcher state after template profile add: {e}"),
+                        );
+                    }
+                }
+            }
             if let Some(ref sd_root) = rust.sd_root_path {
                 if let Err(e) = save_profile_order_to_sd(sd_root, &rust.profiles) {
                     record_system_event(

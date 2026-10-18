@@ -532,49 +532,86 @@ PlasmoidItem {
                                 model: 20
 
                                 delegate: Rectangle {
+                                    id: keyCellRect
                                     required property int index
-                                    readonly property int colIdx: index % oledScreenContent.gridCols
-                                    readonly property int rowIdx: Math.floor(index / oledScreenContent.gridCols)
+                                    readonly property int currentRot: root.profileOledRotation
+                                    readonly property bool isLandscapeCell: currentRot === 90 || currentRot === 270
+                                    readonly property int cols: isLandscapeCell ? 5 : 4
+                                    readonly property int colIdx: index % cols
+                                    readonly property int rowIdx: Math.floor(index / cols)
                                     readonly property int slotNum: {
-                                        const rot = root.profileOledRotation
+                                        const rot = currentRot
+                                        const c = colIdx
+                                        const r = rowIdx
                                         if (rot === 90) {
-                                            return colIdx * 4 + (3 - rowIdx) + 1
+                                            return c * 4 + (3 - r) + 1
                                         } else if (rot === 180) {
-                                            return (4 - rowIdx) * 4 + (3 - colIdx) + 1
+                                            return (4 - r) * 4 + (3 - c) + 1
                                         } else if (rot === 270) {
-                                            return (4 - colIdx) * 4 + rowIdx + 1
+                                            return (4 - c) * 4 + r + 1
                                         }
-                                        return rowIdx * 4 + colIdx + 1
-                                    }
-                                    readonly property var itemData: {
-                                        const _rev = root.dataRevision
-                                        const _ = root.slotsList
-                                        const _rot = root.profileOledRotation
-                                        return root.slotDataFor(slotNum)
+                                        return r * 4 + c + 1
                                     }
                                     readonly property string l1: {
                                         const _rev = root.dataRevision
-                                        return itemData.l1 || ""
+                                        const _items = root.slotsList
+                                        const _rot = currentRot
+                                        return root.slotDataFor(slotNum).l1 || ""
                                     }
                                     readonly property string l2: {
                                         const _rev = root.dataRevision
-                                        return itemData.l2 || ""
+                                        const _items = root.slotsList
+                                        const _rot = currentRot
+                                        return root.slotDataFor(slotNum).l2 || ""
                                     }
                                     readonly property string wl1: {
                                         const _rev = root.dataRevision
-                                        return (itemData.wl1 || "").trim()
+                                        const _items = root.slotsList
+                                        const _rot = currentRot
+                                        return (root.slotDataFor(slotNum).wl1 || "").trim()
                                     }
                                     readonly property string wl2: {
                                         const _rev = root.dataRevision
-                                        return (itemData.wl2 || "").trim()
+                                        const _items = root.slotsList
+                                        const _rot = currentRot
+                                        return (root.slotDataFor(slotNum).wl2 || "").trim()
+                                    }
+                                    readonly property int slotR: {
+                                        const _rev = root.dataRevision
+                                        const _items = root.slotsList
+                                        const _rot = currentRot
+                                        const d = root.slotDataFor(slotNum)
+                                        return d.r !== undefined ? d.r : 0
+                                    }
+                                    readonly property int slotG: {
+                                        const _rev = root.dataRevision
+                                        const _items = root.slotsList
+                                        const _rot = currentRot
+                                        const d = root.slotDataFor(slotNum)
+                                        return d.g !== undefined ? d.g : 170
+                                    }
+                                    readonly property int slotB: {
+                                        const _rev = root.dataRevision
+                                        const _items = root.slotsList
+                                        const _rot = currentRot
+                                        const d = root.slotDataFor(slotNum)
+                                        return d.b !== undefined ? d.b : 255
+                                    }
+                                    readonly property bool slotHasScript: {
+                                        const _rev = root.dataRevision
+                                        const _items = root.slotsList
+                                        const _rot = currentRot
+                                        return !!root.slotDataFor(slotNum).hasScript
                                     }
                                     readonly property string disp1: wl1.length > 0
                                         ? wl1
-                                        : l1.slice(0, oledScreenContent.isLandscapeRot ? 4 : 6)
+                                        : l1.slice(0, isLandscapeCell ? 4 : 6)
                                     readonly property string disp2: wl2.length > 0
                                         ? wl2
-                                        : l2.slice(0, oledScreenContent.isLandscapeRot ? 4 : 6)
+                                        : l2.slice(0, isLandscapeCell ? 4 : 6)
                                     readonly property bool isSel: root.selectedSlot === slotNum
+                                    readonly property real labelBoxWidth: Math.max(16, (isLandscapeCell ? height : width) - 4)
+                                    readonly property real labelBoxHeight: Math.max(16, isLandscapeCell ? width : height)
 
                                     x: Math.round(colIdx * oledScreenContent.cellWidth)
                                     y: Math.round(rowIdx * oledScreenContent.cellHeight)
@@ -589,52 +626,55 @@ PlasmoidItem {
                                     // RGB LED indicator dot
                                     Rectangle {
                                         visible: !parent.isSel
-                                            && (parent.disp1.length > 0 || parent.disp2.length > 0 || !!parent.itemData.hasScript)
+                                            && (parent.disp1.length > 0 || parent.disp2.length > 0 || parent.slotHasScript)
                                         anchors.top: parent.top
                                         anchors.right: parent.right
-                                        anchors.margins: Math.max(2, Math.round(parent.height * 0.08))
-                                        width: Math.max(3, Math.round(parent.height * 0.14))
+                                        anchors.margins: Math.max(2, Math.round(Math.min(parent.width, parent.height) * 0.08))
+                                        width: Math.max(3, Math.round(Math.min(parent.width, parent.height) * 0.14))
                                         height: width
                                         radius: Math.max(1, Math.round(width / 2))
                                         color: Qt.rgba(
-                                            (parent.itemData.r !== undefined ? parent.itemData.r : 0) / 255.0,
-                                            (parent.itemData.g !== undefined ? parent.itemData.g : 170) / 255.0,
-                                            (parent.itemData.b !== undefined ? parent.itemData.b : 255) / 255.0,
+                                            parent.slotR / 255.0,
+                                            parent.slotG / 255.0,
+                                            parent.slotB / 255.0,
                                             1.0
                                         )
                                     }
 
-                                    // Centered Key Button Labels
+                                    // Centered Key Button Labels (rotates with key orientation)
                                     Column {
+                                        id: cellLabelColumn
                                         anchors.centerIn: parent
-                                        width: parent.width - 4
+                                        width: keyCellRect.labelBoxWidth
+                                        rotation: keyCellRect.currentRot
+                                        transformOrigin: Item.Center
                                         spacing: 0
 
                                         Text {
-                                            visible: parent.parent.disp1.length > 0
+                                            visible: keyCellRect.disp1.length > 0
                                             width: parent.width
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
-                                            text: parent.parent.disp1
-                                            color: parent.parent.isSel ? "#020617" : "#f8fafc"
-                                            font.family: parent.parent.wl1.length > 5 ? "sans-serif" : "monospace"
+                                            text: keyCellRect.disp1
+                                            color: keyCellRect.isSel ? "#020617" : "#f8fafc"
+                                            font.family: keyCellRect.wl1.length > 5 ? "sans-serif" : "monospace"
                                             font.bold: true
-                                            font.pixelSize: Math.max(8, Math.round(parent.parent.height * 0.34))
+                                            font.pixelSize: Math.max(8, Math.round(keyCellRect.labelBoxHeight * 0.34))
                                             fontSizeMode: Text.HorizontalFit
                                             minimumPixelSize: 6
                                             elide: Text.ElideRight
                                         }
 
                                         Text {
-                                            visible: parent.parent.disp2.length > 0
+                                            visible: keyCellRect.disp2.length > 0
                                             width: parent.width
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
-                                            text: parent.parent.disp2
-                                            color: parent.parent.isSel ? "#0f172a" : "#cbd5e1"
-                                            font.family: parent.parent.wl2.length > 5 ? "sans-serif" : "monospace"
+                                            text: keyCellRect.disp2
+                                            color: keyCellRect.isSel ? "#0f172a" : "#cbd5e1"
+                                            font.family: keyCellRect.wl2.length > 5 ? "sans-serif" : "monospace"
                                             font.bold: true
-                                            font.pixelSize: Math.max(7, Math.round(parent.parent.height * 0.30))
+                                            font.pixelSize: Math.max(7, Math.round(keyCellRect.labelBoxHeight * 0.30))
                                             fontSizeMode: Text.HorizontalFit
                                             minimumPixelSize: 6
                                             elide: Text.ElideRight

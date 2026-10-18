@@ -1380,7 +1380,7 @@ inline void duckydeck_apply_ui_font_scale(int32_t scalePercent) {
     }
     const int clamped = std::clamp(static_cast<int>(scalePercent), 75, 160);
     QFont f = QGuiApplication::font();
-    const double basePt = 10.0;
+    const double basePt = 10.5;
     f.setPointSizeF(std::round(basePt * (static_cast<double>(clamped) / 100.0) * 10.0) / 10.0);
     QGuiApplication::setFont(f);
 }

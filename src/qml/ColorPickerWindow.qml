@@ -64,6 +64,59 @@ Window {
         }
     }
 
+    component HighContrastCheckBox: QQC2.CheckBox {
+        id: hcCheck
+        spacing: 8
+        onCheckedChanged: hcCheckMarkCanvas.requestPaint()
+        indicator: Rectangle {
+            objectName: "highContrastCheckBoxBox"
+            implicitWidth: 18
+            implicitHeight: 18
+            width: 18
+            height: 18
+            x: hcCheck.leftPadding
+            y: hcCheck.topPadding + Math.round((hcCheck.availableHeight - height) / 2)
+            radius: 4
+            color: hcCheck.checked
+                ? Kirigami.Theme.highlightColor
+                : (hcCheck.down
+                    ? Qt.alpha(Kirigami.Theme.textColor, 0.22)
+                    : Kirigami.Theme.backgroundColor)
+            border.width: (hcCheck.checked || hcCheck.hovered || hcCheck.visualFocus) ? 2 : 1.5
+            border.color: hcCheck.checked
+                ? Kirigami.Theme.highlightColor
+                : (hcCheck.hovered || hcCheck.visualFocus
+                    ? Kirigami.Theme.highlightColor
+                    : Qt.alpha(Kirigami.Theme.textColor, 0.78))
+
+            function pixelMetric(name) {
+                return name === "checkboxlabelspacing" ? 8 : 18
+            }
+
+            Canvas {
+                id: hcCheckMarkCanvas
+                anchors.fill: parent
+                visible: hcCheck.checked
+                onPaint: {
+                    const ctx = getContext("2d")
+                    ctx.reset()
+                    const lum = 0.2126 * Kirigami.Theme.highlightColor.r
+                        + 0.7152 * Kirigami.Theme.highlightColor.g
+                        + 0.0722 * Kirigami.Theme.highlightColor.b
+                    ctx.strokeStyle = lum > 0.52 ? "#020617" : "#ffffff"
+                    ctx.lineWidth = 2.2
+                    ctx.lineCap = "round"
+                    ctx.lineJoin = "round"
+                    ctx.beginPath()
+                    ctx.moveTo(4.0, 9.5)
+                    ctx.lineTo(7.5, 13.0)
+                    ctx.lineTo(14.0, 5.0)
+                    ctx.stroke()
+                }
+            }
+        }
+    }
+
     property var allProfileAnimationsStore: ({}) // { "P1": { profile: {...}, keys: { "1": {...} } } }
 
     function lightingStoreFilePath() {
@@ -535,6 +588,7 @@ Window {
                     }
 
                     QQC2.Button {
+                        font.pointSize: 10 * root.fontScale
                         text: qsTr("🎛 Profile #%1 (%2)")
                             .arg(deviceController.activeProfile)
                             .arg(deviceController.activeProfileName)
@@ -549,6 +603,7 @@ Window {
                     }
 
                     QQC2.Button {
+                        font.pointSize: 10 * root.fontScale
                         text: qsTr("⌨ Individual Key")
                         checkable: true
                         checked: lightingAnimatorDialog.targetScope === "key"
@@ -561,6 +616,7 @@ Window {
                     }
 
                     QQC2.ComboBox {
+                        font.pointSize: 10 * root.fontScale
                         id: animKeySelectorCombo
                         visible: lightingAnimatorDialog.targetScope === "key"
                         Layout.preferredWidth: 150
@@ -582,6 +638,7 @@ Window {
                     Item { Layout.fillWidth: true }
 
                     QQC2.Switch {
+                        font.pointSize: 10 * root.fontScale
                         checked: lightingAnimatorDialog.animEnabled
                         text: lightingAnimatorDialog.animEnabled ? qsTr("Enabled") : qsTr("Disabled")
                         font.bold: true
@@ -647,6 +704,7 @@ Window {
                                 }
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     text: qsTr("⚡ On Keypress + When Idle (Both)")
                                     checkable: true
                                     checked: lightingAnimatorDialog.animTrigger === "both"
@@ -658,6 +716,7 @@ Window {
                                 }
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     text: qsTr("👆 On Keypress Only")
                                     checkable: true
                                     checked: lightingAnimatorDialog.animTrigger === "keypress"
@@ -669,6 +728,7 @@ Window {
                                 }
 
                                 QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
                                     text: qsTr("🌙 When Idle Only")
                                     checkable: true
                                     checked: lightingAnimatorDialog.animTrigger === "idle"
@@ -694,6 +754,7 @@ Window {
                                 }
 
                                 QQC2.SpinBox {
+                                    font.pointSize: 10 * root.fontScale
                                     from: 0
                                     to: 300
                                     value: lightingAnimatorDialog.animIdleTimeoutSec
@@ -972,7 +1033,7 @@ Window {
                             anchors.margins: 8
                             spacing: 6
 
-                            QQC2.CheckBox {
+                            HighContrastCheckBox {
                                 id: animPushHwCheck
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
@@ -991,7 +1052,7 @@ Window {
                                 }
                             }
 
-                            QQC2.CheckBox {
+                            HighContrastCheckBox {
                                 id: animCompileScriptCheck
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
@@ -1043,6 +1104,7 @@ Window {
                 spacing: 8
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     text: qsTr("🗑 Disable / Clear Effect")
                     onClicked: {
                         lightingAnimatorDialog.animEnabled = false
@@ -1060,6 +1122,7 @@ Window {
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     text: qsTr("▶ Preview Burst Now")
                     onClicked: {
                         lightingAnimatorDialog.animEnabled = true
@@ -1082,11 +1145,13 @@ Window {
                 Item { Layout.fillWidth: true }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     text: qsTr("Close")
                     onClicked: lightingAnimatorDialog.close()
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     text: qsTr("💾 Save & Apply Animation")
                     highlighted: true
                     font.bold: true
@@ -1563,6 +1628,7 @@ Window {
                     Layout.fillWidth: true
                     spacing: 6
                     QQC2.Label {
+                        font.pointSize: 10 * root.fontScale
                         text: "R"
                         font.bold: true
                         color: root.isLightTheme ? "#dc2626" : "#f87171"
@@ -1580,6 +1646,7 @@ Window {
                         }
                     }
                     QQC2.SpinBox {
+                        font.pointSize: 10 * root.fontScale
                         from: 0
                         to: 255
                         value: duckyColorPickerWindow.redVal
@@ -1597,6 +1664,7 @@ Window {
                     Layout.fillWidth: true
                     spacing: 6
                     QQC2.Label {
+                        font.pointSize: 10 * root.fontScale
                         text: "G"
                         font.bold: true
                         color: root.highContrastPositiveText
@@ -1614,6 +1682,7 @@ Window {
                         }
                     }
                     QQC2.SpinBox {
+                        font.pointSize: 10 * root.fontScale
                         from: 0
                         to: 255
                         value: duckyColorPickerWindow.greenVal
@@ -1631,6 +1700,7 @@ Window {
                     Layout.fillWidth: true
                     spacing: 6
                     QQC2.Label {
+                        font.pointSize: 10 * root.fontScale
                         text: "B"
                         font.bold: true
                         color: root.isLightTheme ? "#2563eb" : "#60a5fa"
@@ -1648,6 +1718,7 @@ Window {
                         }
                     }
                     QQC2.SpinBox {
+                        font.pointSize: 10 * root.fontScale
                         from: 0
                         to: 255
                         value: duckyColorPickerWindow.blueVal
@@ -1954,6 +2025,7 @@ Window {
             spacing: 8
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 visible: duckyColorPickerWindow.pickerMode === "key"
                 icon.name: "edit-clear"
                 text: qsTr("Reset to Profile Default")
@@ -1971,12 +2043,14 @@ Window {
             Item { Layout.fillWidth: true }
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 icon.name: "dialog-cancel"
                 text: qsTr("Cancel")
                 onClicked: duckyColorPickerWindow.close()
             }
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 icon.name: "dialog-ok-apply"
                 text: qsTr("Apply Color")
                 highlighted: true

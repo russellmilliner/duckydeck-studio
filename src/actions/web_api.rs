@@ -661,7 +661,7 @@ pub async fn execute_web_api_request(input_cfg: &WebApiConfig) -> WebApiExecutio
 
     let start = std::time::Instant::now();
     let client = match reqwest::Client::builder()
-        .user_agent("DuckyDeck-Studio/0.1.0")
+        .user_agent(concat!("DuckyDeck-Studio/", env!("CARGO_PKG_VERSION")))
         .timeout(std::time::Duration::from_secs(10))
         .build()
     {
@@ -919,7 +919,7 @@ pub async fn fetch_and_search_home_assistant_entities(
 
     let states_url = format!("{}/api/states", saved.base_url);
     let client = reqwest::Client::builder()
-        .user_agent("DuckyDeck-Studio/0.1.0")
+        .user_agent(concat!("DuckyDeck-Studio/", env!("CARGO_PKG_VERSION")))
         .timeout(std::time::Duration::from_secs(8))
         .build()
         .map_err(|e| format!("HTTP client error: {e}"))?;

@@ -69,6 +69,59 @@ Window {
         }
     }
 
+    component HighContrastCheckBox: QQC2.CheckBox {
+        id: hcCheck
+        spacing: 8
+        onCheckedChanged: hcCheckMarkCanvas.requestPaint()
+        indicator: Rectangle {
+            objectName: "highContrastCheckBoxBox"
+            implicitWidth: 18
+            implicitHeight: 18
+            width: 18
+            height: 18
+            x: hcCheck.leftPadding
+            y: hcCheck.topPadding + Math.round((hcCheck.availableHeight - height) / 2)
+            radius: 4
+            color: hcCheck.checked
+                ? Kirigami.Theme.highlightColor
+                : (hcCheck.down
+                    ? Qt.alpha(Kirigami.Theme.textColor, 0.22)
+                    : Kirigami.Theme.backgroundColor)
+            border.width: (hcCheck.checked || hcCheck.hovered || hcCheck.visualFocus) ? 2 : 1.5
+            border.color: hcCheck.checked
+                ? Kirigami.Theme.highlightColor
+                : (hcCheck.hovered || hcCheck.visualFocus
+                    ? Kirigami.Theme.highlightColor
+                    : Qt.alpha(Kirigami.Theme.textColor, 0.78))
+
+            function pixelMetric(name) {
+                return name === "checkboxlabelspacing" ? 8 : 18
+            }
+
+            Canvas {
+                id: hcCheckMarkCanvas
+                anchors.fill: parent
+                visible: hcCheck.checked
+                onPaint: {
+                    const ctx = getContext("2d")
+                    ctx.reset()
+                    const lum = 0.2126 * Kirigami.Theme.highlightColor.r
+                        + 0.7152 * Kirigami.Theme.highlightColor.g
+                        + 0.0722 * Kirigami.Theme.highlightColor.b
+                    ctx.strokeStyle = lum > 0.52 ? "#020617" : "#ffffff"
+                    ctx.lineWidth = 2.2
+                    ctx.lineCap = "round"
+                    ctx.lineJoin = "round"
+                    ctx.beginPath()
+                    ctx.moveTo(4.0, 9.5)
+                    ctx.lineTo(7.5, 13.0)
+                    ctx.lineTo(14.0, 5.0)
+                    ctx.stroke()
+                }
+            }
+        }
+    }
+
     ListModel {
         id: installedAppsModel
     }
@@ -278,6 +331,7 @@ Window {
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "view-refresh"
                     text: qsTr("Rescan")
                     onClicked: {
@@ -436,6 +490,7 @@ Window {
                 spacing: 8
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     text: qsTr("📁 Browse File System...")
                     onClicked: {
                         installedAppPickerDialog.close()
@@ -446,6 +501,7 @@ Window {
                 Item { Layout.fillWidth: true }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "window-close"
                     text: qsTr("Cancel")
                     onClicked: installedAppPickerDialog.close()
@@ -781,6 +837,7 @@ Window {
 
                 // Start / Stop Recording Button
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     text: macroRecorderDialog.isRecording
                         ? qsTr("⏹ Stop Recording (%1)").arg(macroRecorderDialog.rawEvents.length)
                         : qsTr("🔴 Start Recording")
@@ -797,6 +854,7 @@ Window {
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     text: qsTr("🧹 Clear")
                     enabled: macroRecorderDialog.rawEvents.length > 0 && !macroRecorderDialog.isRecording
                     implicitHeight: 34
@@ -836,6 +894,7 @@ Window {
                         }
 
                         QQC2.Button {
+                            font.pointSize: 10 * root.fontScale
                             text: qsTr("⏱ Exact Timings (Real Delays)")
                             highlighted: macroRecorderDialog.timingMode === "exact"
                             font.bold: macroRecorderDialog.timingMode === "exact"
@@ -848,6 +907,7 @@ Window {
                         }
 
                         QQC2.Button {
+                            font.pointSize: 10 * root.fontScale
                             text: qsTr("⚡ As Fast As Possible (No Delays)")
                             highlighted: macroRecorderDialog.timingMode === "fast"
                             font.bold: macroRecorderDialog.timingMode === "fast"
@@ -860,6 +920,7 @@ Window {
                         }
 
                         QQC2.Button {
+                            font.pointSize: 10 * root.fontScale
                             text: qsTr("📏 Fixed Step Delay")
                             highlighted: macroRecorderDialog.timingMode === "fixed"
                             font.bold: macroRecorderDialog.timingMode === "fixed"
@@ -870,6 +931,7 @@ Window {
                         }
 
                         QQC2.SpinBox {
+                            font.pointSize: 10 * root.fontScale
                             visible: macroRecorderDialog.timingMode === "fixed"
                             from: 5
                             to: 2000
@@ -904,7 +966,7 @@ Window {
                             verticalAlignment: Text.AlignVCenter
                         }
 
-                        QQC2.CheckBox {
+                        HighContrastCheckBox {
                             checked: macroRecorderDialog.captureKeyboard
                             text: qsTr("⌨ Keyboard Keys (Taps & Holds)")
                             font.bold: true
@@ -912,7 +974,7 @@ Window {
                             onToggled: macroRecorderDialog.captureKeyboard = checked
                         }
 
-                        QQC2.CheckBox {
+                        HighContrastCheckBox {
                             checked: macroRecorderDialog.captureMouseClicks
                             text: qsTr("🖱 Mouse Clicks & Scroll")
                             font.bold: true
@@ -922,7 +984,7 @@ Window {
                             QQC2.ToolTip.text: qsTr("Captures LMOUSE, RMOUSE, MMOUSE, and MOUSE_SCROLL events")
                         }
 
-                        QQC2.CheckBox {
+                        HighContrastCheckBox {
                             checked: macroRecorderDialog.captureMouseMoves
                             text: qsTr("📐 Mouse Moves (MOUSE_MOVE)")
                             font.bold: true
@@ -1191,11 +1253,13 @@ Window {
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     text: qsTr("Close")
                     onClicked: macroRecorderDialog.close()
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     text: qsTr("📥 Append to Key Script")
                     enabled: root.hasSelectedSlot && recordedScriptEditor.text.trim().length > 0
                     onClicked: {
@@ -1212,6 +1276,7 @@ Window {
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     text: qsTr("⚡ Replace Key Script")
                     highlighted: true
                     font.bold: true
@@ -1659,6 +1724,7 @@ Window {
                 }
 
                 QQC2.ComboBox {
+                    font.pointSize: 10 * root.fontScale
                     id: iconPlacementCombo
                     Layout.preferredWidth: 220
                     model: oledIconPickerDialog.targetSupportsTwoLines
@@ -1689,6 +1755,7 @@ Window {
                 }
 
                 QQC2.ComboBox {
+                    font.pointSize: 10 * root.fontScale
                     id: iconCategoryCombo
                     Layout.preferredWidth: 165
                     model: oledIconPickerDialog.categories
@@ -1699,6 +1766,7 @@ Window {
                 }
 
                 QQC2.TextField {
+                    font.pointSize: 10 * root.fontScale
                     id: iconSearchInput
                     Layout.fillWidth: true
                     placeholderText: qsTr("Search icons (e.g. play, vol, git, arrow)...")
@@ -1719,6 +1787,7 @@ Window {
                 }
 
                 QQC2.TextField {
+                    font.pointSize: 10 * root.fontScale
                     Layout.preferredWidth: 110
                     maximumLength: 10
                     font.family: "monospace"
@@ -1738,6 +1807,7 @@ Window {
                 }
 
                 QQC2.TextField {
+                    font.pointSize: 10 * root.fontScale
                     visible: oledIconPickerDialog.targetSupportsTwoLines
                     Layout.preferredWidth: 110
                     maximumLength: 10
@@ -1750,6 +1820,7 @@ Window {
                 }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     visible: oledIconPickerDialog.targetSupportsTwoLines
                     text: qsTr("⇅ Swap L1/L2")
                     onClicked: {
@@ -1875,6 +1946,7 @@ Window {
                 spacing: 8
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     icon.name: "edit-clear"
                     text: qsTr("Clear Labels")
                     onClicked: oledIconPickerDialog.applyValues("", "")
@@ -1883,6 +1955,7 @@ Window {
                 Item { Layout.fillWidth: true }
 
                 QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
                     text: qsTr("Done")
                     highlighted: true
                     font.bold: true
@@ -1977,6 +2050,7 @@ Window {
             }
 
             QQC2.Switch {
+                font.pointSize: 10 * root.fontScale
                 id: appLaunchEnabledCheck
                 text: checked ? qsTr("Enabled") : qsTr("Disabled")
                 font.bold: true
@@ -2050,6 +2124,7 @@ Window {
                             spacing: 8
 
                             QQC2.Button {
+                                font.pointSize: 10 * root.fontScale
                                 icon.name: "applications-all"
                                 text: qsTr("Choose Installed Application...")
                                 highlighted: true
@@ -2065,6 +2140,7 @@ Window {
                             }
 
                             QQC2.Button {
+                                font.pointSize: 10 * root.fontScale
                                 icon.name: "document-open"
                                 text: qsTr("Browse Script / Executable...")
                                 onClicked: appExecutableFileDialog.open()
@@ -2098,6 +2174,7 @@ Window {
                                 font.pointSize: 10 * root.fontScale
                             }
                             QQC2.TextField {
+                                font.pointSize: 10 * root.fontScale
                                 id: appLaunchCommandField
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 100
@@ -2119,6 +2196,7 @@ Window {
                                 font.pointSize: 10 * root.fontScale
                             }
                             QQC2.TextField {
+                                font.pointSize: 10 * root.fontScale
                                 id: appLaunchArgsField
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 100
@@ -2135,6 +2213,7 @@ Window {
                                 font.pointSize: 10 * root.fontScale
                             }
                             QQC2.TextField {
+                                font.pointSize: 10 * root.fontScale
                                 id: appLaunchWorkDirField
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 100
@@ -2173,6 +2252,7 @@ Window {
                             }
 
                             QQC2.ComboBox {
+                                font.pointSize: 10 * root.fontScale
                                 id: appLaunchTriggerModeCombo
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 120
@@ -2185,6 +2265,7 @@ Window {
                             }
 
                             QQC2.ComboBox {
+                                font.pointSize: 10 * root.fontScale
                                 id: appLaunchFkeyCombo
                                 visible: appLaunchTriggerModeCombo.currentIndex === 1
                                 Layout.preferredWidth: 96
@@ -2198,7 +2279,8 @@ Window {
                             Layout.fillWidth: true
                             spacing: 12
 
-                            QQC2.CheckBox {
+                            HighContrastCheckBox {
+                                font.pointSize: 10 * root.fontScale
                                 id: appLaunchTerminalCheck
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
@@ -2206,7 +2288,8 @@ Window {
                                 onToggled: appLaunchConfigWindow.syncAppLaunchBuilderToScript()
                             }
 
-                            QQC2.CheckBox {
+                            HighContrastCheckBox {
+                                font.pointSize: 10 * root.fontScale
                                 id: appLaunchLedCheck
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
@@ -2227,6 +2310,7 @@ Window {
                             }
 
                             QQC2.TextField {
+                                font.pointSize: 10 * root.fontScale
                                 id: appLaunchOledField
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 100
@@ -2310,6 +2394,7 @@ Window {
             spacing: 8
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 icon.name: "media-playback-start"
                 text: qsTr("Test Launch Now")
                 enabled: appLaunchCommandField.text.trim().length > 0
@@ -2322,6 +2407,7 @@ Window {
             }
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 icon.name: "edit-clear"
                 text: qsTr("Disable / Clear")
                 onClicked: {
@@ -2338,6 +2424,7 @@ Window {
             Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 icon.name: "dialog-ok-apply"
                 text: qsTr("Save & Close")
                 highlighted: true
@@ -2349,6 +2436,7 @@ Window {
             }
 
             QQC2.Button {
+                font.pointSize: 10 * root.fontScale
                 icon.name: "window-close"
                 text: qsTr("Close")
                 onClicked: appLaunchConfigWindow.close()
