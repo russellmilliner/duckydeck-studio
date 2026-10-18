@@ -1980,9 +1980,9 @@ Kirigami.ApplicationWindow {
         aiModal: aiModal
         oledDesktopWidget: oledDesktopWidget
         hardwareCanvas: hardwareCanvas
-        profilesBoxScrollBar: profilesBoxScrollBar
+        profilesBoxScrollBar: mainProfilesBoxScrollBar
         scriptScrollView: scriptScrollView
-        scriptEditorVerticalScrollBar: scriptEditorVerticalScrollBar
+        scriptEditorVerticalScrollBar: mainScriptEditorVerticalScrollBar
         scriptEditor: scriptEditor
     }
 
@@ -2281,7 +2281,7 @@ Kirigami.ApplicationWindow {
                                 readonly property bool canReorder: root.profileFilterText.trim().length === 0
 
                                 QQC2.ScrollBar.vertical: HighContrastScrollBar {
-                                    id: profilesBoxScrollBar
+                                    id: mainProfilesBoxScrollBar
                                     parent: profileSidebarList
                                     anchors.top: parent.top
                                     anchors.right: parent.right
@@ -4449,7 +4449,7 @@ Kirigami.ApplicationWindow {
                                 flickableDirection: Flickable.HorizontalAndVerticalFlick
 
                                 QQC2.ScrollBar.vertical: HighContrastScrollBar {
-                                    id: scriptEditorVerticalScrollBar
+                                    id: mainScriptEditorVerticalScrollBar
                                     objectName: "highContrastScrollBar"
                                     parent: scriptScrollView
                                     anchors.top: scriptScrollView.top
