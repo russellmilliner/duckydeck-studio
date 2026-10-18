@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "DuckyDeck Studio HTTP REST API",
-    "version": "0.1.24",
-    "description": "Local and LAN HTTP REST API for **DuckyDeck Studio**, a native Linux (Rust + CXX-Qt + KDE Plasma 6 Kirigami) configurator and automation daemon for the **duckyPad Pro** (`0x0483:0xd11d`) and **duckyPad (2020)** (`0x0483:0xd11c`).\n\n### Authentication\nWhen **Require API Token Authentication** is enabled (recommended and on by default), every request except `GET /api/v1/health`, `GET /api/v1/openapi.json`, `GET /api/v1/swagger.json`, and `GET /api/v1/openapi.yaml` must include the API token via either:\n- `Authorization: Bearer <token>`\n- `X-API-Token: <token>`\n\nToken comparison uses a constant-time byte comparison to prevent timing side-channel attacks.\n",
+    "version": "0.1.2",
+    "description": "Local and LAN HTTP REST API for **DuckyDeck Studio** (`v0.1.2`), a native Linux (Rust + CXX-Qt + KDE Plasma 6 Kirigami) configurator and automation daemon for the **duckyPad Pro** (`0x0483:0xd11d`) and **duckyPad (2020)** (`0x0483:0xd11c`).\n\n- **Website & User Guide**: [https://duckydeckstudio.com](https://duckydeckstudio.com)\n- **GitHub Repository**: [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)\n\n### Authentication\nWhen **Require API Token Authentication** is enabled (recommended and on by default), every request except `GET /api/v1/health`, `GET /api/v1/openapi.json`, `GET /api/v1/swagger.json`, and `GET /api/v1/openapi.yaml` must include the API token via either:\n- `Authorization: Bearer <token>`\n- `X-API-Token: <token>`\n\nToken comparison uses a constant-time byte comparison to prevent timing side-channel attacks.\n",
     "contact": {
       "name": "DuckyDeck Studio Documentation",
       "url": "https://duckydeckstudio.com"
@@ -54,7 +54,7 @@
     },
     {
       "name": "Global Variables (PGV)",
-      "description": "Read and write duckyPad Pro Persistent Global Variables (PGV 1-16)"
+      "description": "Read and write duckyPad Pro 32 Persistent Global Variables (_GV0.._GV31)"
     },
     {
       "name": "RGB LEDs & Device Control",
@@ -102,7 +102,7 @@
                     },
                     "version": {
                       "type": "string",
-                      "example": "0.1.24"
+                      "example": "0.1.2"
                     },
                     "authRequired": {
                       "type": "boolean",
@@ -1111,7 +1111,7 @@
         "tags": [
           "Global Variables (PGV)"
         ],
-        "summary": "Read all 16 Persistent Global Variables (PGV 1-16)",
+        "summary": "Read all 32 Persistent Global Variables (_GV0.._GV31)",
         "responses": {
           "200": {
             "description": "PGV values",
@@ -1135,8 +1135,8 @@
                         "properties": {
                           "index": {
                             "type": "integer",
-                            "minimum": 1,
-                            "maximum": 16
+                            "minimum": 0,
+                            "maximum": 31
                           },
                           "value": {
                             "type": "integer"
@@ -1155,8 +1155,8 @@
         "tags": [
           "Global Variables (PGV)"
         ],
-        "summary": "Update one or more Persistent Global Variables (PGV 1-16)",
-        "description": "Accepts either `{ \"index\": 1, \"value\": 42 }` for a single variable or `{ \"values\": [{ \"index\": 1, \"value\": 42 }] }` for batch updates.",
+        "summary": "Update one or more Persistent Global Variables (_GV0.._GV31)",
+        "description": "Accepts either `{ \"index\": 0, \"value\": 42 }` for a single variable or `{ \"values\": [{ \"index\": 0, \"value\": 42 }] }` for batch updates.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1172,8 +1172,8 @@
                     "properties": {
                       "index": {
                         "type": "integer",
-                        "minimum": 1,
-                        "maximum": 16
+                        "minimum": 0,
+                        "maximum": 31
                       },
                       "value": {
                         "type": "integer"
@@ -1197,8 +1197,8 @@
                           "properties": {
                             "index": {
                               "type": "integer",
-                              "minimum": 1,
-                              "maximum": 16
+                              "minimum": 0,
+                              "maximum": 31
                             },
                             "value": {
                               "type": "integer"
@@ -1832,7 +1832,7 @@
           },
           "version": {
             "type": "string",
-            "example": "0.1.24"
+            "example": "0.1.2"
           },
           "connected": {
             "type": "boolean",

@@ -13,7 +13,7 @@
         "Id": "io.github.duckydeck.oled",
         "License": "GPL-3.0-or-later",
         "Name": "DuckyDeck OLED Display",
-        "Version": "1.0.1",
+        "Version": "1.0.2",
         "Website": "https://duckydeckstudio.com"
     },
     "X-Plasma-API-Minimum-Version": "6.0"

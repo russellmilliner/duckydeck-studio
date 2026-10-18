@@ -154,6 +154,10 @@ Kirigami.ApplicationWindow {
         ]
     }
 
+    function openAboutWindow() {
+        aboutDialog.openAboutWindow()
+    }
+
     property bool lastPopupClosedByEsc: false
 
     function closeTopmostPopupWindow() {

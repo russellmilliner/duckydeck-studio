@@ -1,8 +1,15 @@
 # <img src="../data/icons/io.github.duckydeck.Studio.svg" width="36" height="36" align="top" alt="DuckyDeck Studio Icon" /> DuckyDeck Studio — Architecture & Design Developer Documentation
 
+[![Version v0.1.2](https://img.shields.io/badge/Version-v0.1.2-38bdf8?style=for-the-badge)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz)
+[![Firmware v1.0.0](https://img.shields.io/badge/Custom_Firmware-v1.0.0-10b981?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.0.0)
+[![Website duckydeckstudio.com](https://img.shields.io/badge/Website-duckydeckstudio.com-0ea5e9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://duckydeckstudio.com)
+[![GitHub Repository](https://img.shields.io/badge/GitHub-russellmilliner%2Fduckydeck--studio-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio)
+
+**Application Version:** `v0.1.2` (Custom Firmware `v1.0.0`, KDE Plasma 6 Applet `v1.0.2`)  
 **Author:** Russell Milliner  
-**Website & Documentation:** [https://duckydeckstudio.com](https://duckydeckstudio.com)  
-**Repository:** [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)  
+**Official Website & User Guide:** [https://duckydeckstudio.com](https://duckydeckstudio.com)  
+**GitHub Repository & Releases:** [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)  
+**REST API Reference:** [`docs/REST_API.md`](REST_API.md) ([https://duckydeckstudio.com/REST_API.md](https://duckydeckstudio.com/REST_API.md))  
 **Support:** [☕ Buy Me a Coffee on Ko-fi (https://ko-fi.com/russellmilliner)](https://ko-fi.com/russellmilliner)  
 **License:** GPL-3.0-or-later  
 
@@ -10,7 +17,7 @@
 
 ## 1. System Overview & Design Philosophy
 
-**DuckyDeck Studio** is a native Linux desktop configurator, **DSVM v2 bytecode compiler**, **KDE Plasma 6 Wayland Auto-Switcher**, and **host automation daemon** for the **duckyPad Pro (`0x0483:0xd11d`)** and **duckyPad 2020 (`0x0483:0xd11c`)**.
+**DuckyDeck Studio** (`v0.1.2`) is a native Linux desktop configurator, **DSVM v2 bytecode compiler**, **KDE Plasma 6 Wayland Auto-Switcher**, and **host automation daemon** for the **duckyPad Pro (`0x0483:0xd11d`)** and **duckyPad 2020 (`0x0483:0xd11c`)**.
 
 ### Core Design Goals
 1. **Zero-Runtime-Wrapper Native Stack:** Built directly in **Rust (2021 edition)** bridged to **Qt 6 / KDE Frameworks 6 (Kirigami + KSyntaxHighlighting)** via **CXX-Qt 0.7**, avoiding Electron/Python packaging overhead while delivering native KDE Breeze theming and Wayland integration.
@@ -26,18 +33,19 @@
 flowchart TB
     subgraph UI["Qt 6 / KDE Kirigami QML Frontend"]
         MainQML["src/qml/Main.qml\n(ApplicationWindow Shell, Sidebar & Script Editor)"]
-        CanvasQML["src/qml/HardwareCanvas.qml\n(4x5 RGB Matrix, Dual Encoders,\n128x128 OLED Simulator, 32ch Exp)"]
+        CanvasQML["src/qml/HardwareCanvas.qml\n(4x5 RGB Matrix, Option C Header-Footer Keycaps,\nDual Encoders, 128x128 OLED Simulator, 32ch Exp)"]
         BuildersQML["src/qml/WebApiBuilder.qml &\nsrc/qml/AppLaunchBuilder.qml"]
         DialogsQML["src/qml/ColorPickerWindow.qml,\nsrc/qml/SettingsPage.qml,\nsrc/qml/SdSyncDialog.qml,\nsrc/qml/EventLogDialog.qml"]
         AutoSwitchQML["src/qml/AutoSwitchDrawer.qml\n(KWin Rules & Window Picker UI)"]
         PgvQML["src/qml/PgvInspectorDrawer.qml\n(_GV0.._GV31 Live Inspector)"]
         AiQML["src/qml/AiArchitectModal.qml\n(Macro Template Generator)"]
+        WidgetQML["src/qml/OledDesktopWidget.qml\n(Floating 4-Way Rotated Desktop OLED Widget)"]
         UdevQML["src/qml/UdevBanner.qml\n(Polkit udev Installer Banner)"]
     end
 
     subgraph Bridge["CXX-Qt 0.7 QObject Bridge & Native Helpers"]
         DC["DeviceController\n(src/bridge/device_controller.rs)\nQProperties + QInvokables + Qt Thread Queue"]
-        Tray["QSystemTrayIcon & KF6 Helper\n(src/cpp/app_helper.h)\nDynamic Tray Badge + Palette Bridge"]
+        Tray["QSystemTrayIcon & KF6 Helper\n(src/cpp/app_helper.h)\nDynamic Tray Badge + About Action + Palette Bridge"]
     end
 
     subgraph Core["Rust Core Subsystems"]
@@ -45,7 +53,7 @@ flowchart TB
         Actions["Host Action Subsystems\n(src/actions/web_api.rs,\nsrc/actions/app_launch.rs,\nsrc/actions/desktop_apps.rs)"]
         DSVM["DSVM v2 Bytecode Compiler\n(src/vm/compiler.rs)\nduckyScript 3 -> .dsb Binary"]
         Perms["Permissions & Polkit\n(src/hardware/permissions.rs)\n/sys/class/hidraw + pkexec"]
-        KWin["KWin Wayland Auto-Switcher\n(src/kwin/auto_switcher.rs)\nzbus D-Bus Service + Window Picker"]
+        KWin["KWin Wayland Auto-Switcher\n(src/kwin/auto_switcher.rs)\nzbus D-Bus Service + Rule Remapper"]
         AI["KDE Shortcut Scraper\n(src/ai/shortcut_scraper.rs)\n~/.config/kglobalshortcutsrc"]
         API["Embedded REST API Server\n(src/api_server.rs)\n/api/v1/* + Async Job Worker"]
     end
@@ -62,6 +70,7 @@ flowchart TB
     AutoSwitchQML <--> DC
     PgvQML <--> DC
     AiQML <--> DC
+    WidgetQML <--> DC
     UdevQML <--> DC
 
     DC <--> Tray
@@ -83,12 +92,12 @@ flowchart TB
 
 | Path | Responsibility |
 | :--- | :--- |
-| [`Cargo.toml`](../Cargo.toml) | Crate manifest (`cxx-qt 0.7`, `hidapi`, `zbus`, `tokio`, `reqwest`, `keyring`, `serde`, `serde_json`, `sha2`). |
+| [`Cargo.toml`](../Cargo.toml) | Crate manifest (`version = "0.1.2"`, `cxx-qt 0.7`, `hidapi`, `zbus`, `tokio`, `reqwest`, `keyring`, `serde`, `serde_json`, `sha2`). |
 | [`build.rs`](../build.rs) | `CxxQtBuilder` configuration registering QML module `io.github.duckydeck` and compiling [`src/bridge/device_controller.rs`](../src/bridge/device_controller.rs). |
 | [`src/main.rs`](../src/main.rs) | Application entrypoint: CLI & D-Bus single-instance IPC client, `QApplication` initialization, `KSyntaxHighlighting` registration, and QML engine startup. |
 | [`src/paths.rs`](../src/paths.rs) | XDG directory helpers (`XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_RUNTIME_DIR`) and environment sanitization. |
 | [`src/api_server.rs`](../src/api_server.rs) | Embedded HTTP/1.1 REST API Server (`/api/v1/*`) with Bearer auth, connection cap, payload size guard, and async job worker. |
-| [`src/bridge/device_controller.rs`](../src/bridge/device_controller.rs) | Central `#[cxx_qt::bridge]` `DeviceController` QObject, background thread orchestration, and QInvokable wrappers. |
+| [`src/bridge/device_controller.rs`](../src/bridge/device_controller.rs) | Central `#[cxx_qt::bridge]` `DeviceController` QObject, profile fallback & Auto-Switcher synchronization invariants, background thread orchestration, and QInvokable wrappers. |
 | [`src/bridge/event_log.rs`](../src/bridge/event_log.rs) | Thread-safe ring buffer (`SYSTEM_EVENT_LOG`), log file appender, and JSON serializer for system diagnostics. |
 | [`src/bridge/rest_routes.rs`](../src/bridge/rest_routes.rs) | REST API route table and request handlers executed via the `DeviceController` bridge. |
 | [`src/bridge/serialize.rs`](../src/bridge/serialize.rs) | JSON serializers for profiles, slots, unsynced diffs, and templates exposed to QML and the REST API. |
@@ -102,22 +111,22 @@ flowchart TB
 | [`src/actions/app_launch.rs`](../src/actions/app_launch.rs) | Desktop Application Launcher metadata parser/generator (`// @DUCKYDECK_APPLAUNCH`), process spawner, and `_GV31` / `F13–F24` registries. |
 | [`src/actions/desktop_apps.rs`](../src/actions/desktop_apps.rs) | XDG `.desktop` entry scanner across system, user, and Flatpak directories. |
 | [`src/vm/compiler.rs`](../src/vm/compiler.rs) | Pure-Rust duckyScript 3 → DSVM v2 (`.dsb`) two-pass bytecode compiler and syntax verifier. |
-| [`src/kwin/auto_switcher.rs`](../src/kwin/auto_switcher.rs) | KWin Wayland script injector, `zbus` D-Bus service (`io.github.duckydeck.Studio` at `/KWinBridge`), window picker, and persisted rules (`kwin_rules.json`). |
+| [`src/kwin/auto_switcher.rs`](../src/kwin/auto_switcher.rs) | KWin Wayland script injector, `zbus` D-Bus service (`io.github.duckydeck.Studio` at `/KWinBridge`), window picker, profile reorder/deletion rule remapper, and persisted rules (`kwin_rules.json`). |
 | [`src/ai/shortcut_scraper.rs`](../src/ai/shortcut_scraper.rs) | Parses `~/.config/kglobalshortcutsrc` and converts KDE shortcuts into duckyScript 3 syntax (`kde_shortcut_to_duckyscript`). |
-| [`src/cpp/app_helper.h`](../src/cpp/app_helper.h) | C++ helper bridging `QSystemTrayIcon`, `KColorScheme`, `KIconLoader`, and `KSyntaxHighlighting` into the QML engine. |
-| [`src/qml/Main.qml`](../src/qml/Main.qml) | Primary `Kirigami.ApplicationWindow` shell, profile sidebar, and duckyScript 3 code editor. |
-| [`src/qml/HardwareCanvas.qml`](../src/qml/HardwareCanvas.qml) | Interactive 4×5 RGB key matrix, dual rotary encoders, 128×128 OLED simulator (`Canvas`), and 32-channel expansion module view. |
+| [`src/cpp/app_helper.h`](../src/cpp/app_helper.h) | C++ helper bridging `QSystemTrayIcon` (dynamic profile badge, SD status, Auto-Switcher/Autostart toggles, and `"About DuckyDeck Studio"` dialog trigger), `KColorScheme`, `KIconLoader`, and `KSyntaxHighlighting` into the QML engine. |
+| [`src/qml/Main.qml`](../src/qml/Main.qml) | Primary `Kirigami.ApplicationWindow` shell, profile sidebar (with inline `✕` filter clear button, hover tooltips, and `HighContrastCheckBox`/`HighContrastScrollBar`), and duckyScript 3 code editor. |
+| [`src/qml/HardwareCanvas.qml`](../src/qml/HardwareCanvas.qml) | Interactive 4×5 RGB key matrix using the **Option C Header-Footer Split** keycap layout, dual rotary encoders, 128×128 OLED simulator (`Canvas`), and 32-channel expansion module view. |
 | [`src/qml/ColorPickerWindow.qml`](../src/qml/ColorPickerWindow.qml) | Custom HSV/RGB color picker window, saved/used color palettes, and RGB lighting animation builder. |
 | [`src/qml/WebApiBuilder.qml`](../src/qml/WebApiBuilder.qml) | Visual Web API / Webhook key builder and saved destinations manager. |
 | [`src/qml/AppLaunchBuilder.qml`](../src/qml/AppLaunchBuilder.qml) | Visual Desktop Application Launcher builder, installed app picker, macro recorder, and OLED icon picker. |
-| [`src/qml/SettingsPage.qml`](../src/qml/SettingsPage.qml) | Application Settings window, Profile Properties, Key Properties, Profile Templates, and About dialog. |
+| [`src/qml/SettingsPage.qml`](../src/qml/SettingsPage.qml) | Application Settings window, Profile Properties, Key Properties, Profile Templates, and standalone `About DuckyDeck Studio` dialog (`openAboutWindow()`). |
 | [`src/qml/RestApiSettings.qml`](../src/qml/RestApiSettings.qml) | HTTP REST API Server and Global Profile Change Webhook configuration section inside Settings. |
 | [`src/qml/SdSyncDialog.qml`](../src/qml/SdSyncDialog.qml) | microSD sync progress dialog, unsynced changes diff viewer, and Firmware Manager dialog. |
-| [`src/qml/EventLogDialog.qml`](../src/qml/EventLogDialog.qml) | System Event Log viewer, filter/export controls, and automated UI test suite runner. |
-| [`src/qml/AutoSwitchDrawer.qml`](../src/qml/AutoSwitchDrawer.qml) | KWin Wayland Auto-Switcher rules & interactive window picker dialog. |
+| [`src/qml/EventLogDialog.qml`](../src/qml/EventLogDialog.qml) | System Event Log viewer, filter/export controls, and automated scene-graph UI test suite runner (`--ui-test-suite` across Dark/Light themes at `100%` and `115%` zoom levels). |
+| [`src/qml/AutoSwitchDrawer.qml`](../src/qml/AutoSwitchDrawer.qml) | KWin Wayland Auto-Switcher rules (with inline `✕` filter clear button & hover reorder tooltips) & interactive window picker dialog. |
 | [`src/qml/PgvInspectorDrawer.qml`](../src/qml/PgvInspectorDrawer.qml) | Live Signed/Unsigned/Hex editor for `_GV0.._GV31`. |
 | [`src/qml/AiArchitectModal.qml`](../src/qml/AiArchitectModal.qml) | Macro Template Generator (experimental) modal dialog with KDE shortcut selector. |
-| [`src/qml/OledDesktopWidget.qml`](../src/qml/OledDesktopWidget.qml) | Floating desktop OLED companion widget window. |
+| [`src/qml/OledDesktopWidget.qml`](../src/qml/OledDesktopWidget.qml) | Floating desktop OLED companion widget window supporting 4-way orientation (`0°/90°/180°/270°`) with both key-grid remapping and in-key label rotation. |
 | [`src/qml/UdevBanner.qml`](../src/qml/UdevBanner.qml) | Inline Polkit 1-click udev setup warning banner. |
 
 ---
@@ -237,19 +246,33 @@ sequenceDiagram
 ### D-Bus Interface Methods (`io.github.duckydeck.KWinBridge`)
 1. `ReportActiveWindow(window_class: &str, window_title: &str)`: Invoked by the injected KWin script whenever the active Wayland window changes; evaluates `AutoSwitchRule` entries and switches the duckyPad profile unless paused because the script editor is open (`paused_for_editing`).
 2. `ReportPickedWindow(window_class: &str, window_title: &str)`: Invoked when the user picks a window with the interactive KWin crosshair picker.
-3. `DispatchIpcCommand(command: &str) -> u32`: Used by [`src/main.rs`](../src/main.rs) (`send_ipc_command_to_running_instance`) for single-instance activation and CLI remote commands (`show`, `minimize`, `toggle`, `quit`, `toggle-oled-widget`, `switch-profile:<n>`, `trigger-fkey:<F13..F24>`).
+3. `DispatchIpcCommand(command: &str) -> u32`: Used by [`src/main.rs`](../src/main.rs) (`send_ipc_command_to_running_instance`) and [`src/cpp/app_helper.h`](../src/cpp/app_helper.h) for single-instance activation, system tray actions, and CLI remote commands (`show`, `show-about`, `minimize`, `toggle`, `quit`, `toggle-oled-widget`, `switch-profile:<n>`, `trigger-fkey:<F13..F24>`).
+
+### Profile Fallback & Auto-Switcher Rule Synchronization Invariants
+- **Default Fallback Profile Guarantee**: Whenever a new profile group is initialized or loaded (`load_profiles_from_root` / `reset_to_factory_defaults` in [`src/bridge/device_controller.rs`](../src/bridge/device_controller.rs)), if no profiles exist, Profile `#1` (`"Default"`) is automatically created and `fallback_profile` is clamped to a valid `1..=profiles.len()` index (defaulting to `#1`).
+- **Non-Deletable Fallback Profile**: [`delete_profile`](../src/bridge/device_controller.rs) rejects deletion of the currently configured `fallback_profile` so that unmatched windows and deleted-profile rules always have a valid fallback target.
+- **Automatic Rule & Fallback Remapping**:
+  - **On Profile Reorder (`remap_rules_on_profile_reorder`)**: Moving a profile from `from_num` to `to_num` atomically updates `fallback_profile`, every `AutoSwitchRule::profile_number`, and `profile_name` in `~/.config/duckydeck-studio/kwin_rules.json`.
+  - **On Profile Deletion (`remap_rules_on_profile_delete`)**: Deleting a profile shifts higher-numbered `fallback_profile` and rule indices down by `1`, and automatically reassigns any `AutoSwitchRule` that referenced the deleted profile to the updated `fallback_profile`.
 
 ---
 
-## 8. Color Picker & Palette Persistence (`src/qml/ColorPickerWindow.qml`)
+## 8. Keycap Layout, Desktop OLED Widget, Color Picker & UI Verification
 
-The custom Color Picker window (`duckyColorPickerWindow` in [`src/qml/ColorPickerWindow.qml`](../src/qml/ColorPickerWindow.qml)) provides two synchronized palettes:
-1. **Saved Colors (`saved_colors_json`):**
-   - Stored in `SwitcherState::saved_colors` (`Vec<String>` of normalized `#rrggbb` strings) and persisted in `~/.config/duckydeck-studio/kwin_rules.json`.
-   - Exposed to QML via `deviceController.savedColorsJson`, `savePaletteColor(hex)`, and `removePaletteColor(hex)`.
-2. **Used Colors (`used_colors_json`):**
-   - Computed dynamically by [`collect_used_colors_json`](../src/bridge/serialize.rs) across all loaded profiles (`prof.bg_color` and every slot's `custom_rgb`).
-   - Automatically refreshes whenever a profile or key color is modified.
+### 8.1 Option C Header-Footer Split Keycap Layout (`src/qml/HardwareCanvas.qml`)
+Each mechanical keycap cell in the 4×5 hardware matrix uses a non-overlapping 3-zone vertical structure:
+1. **Top Header Strip (`15px`)**: Displays the compact key slot number (`1..20`) on the left alongside a pill-shaped per-key RGB LED color bar (`keyLedBar`) on the right.
+2. **Center OLED Preview Area**: Renders the two-line key label (`labelLine1` / `labelLine2`, with automatic 1-bit icon badge scaling) centered cleanly with zero overlap against key numbers or action badges.
+3. **Bottom Footer Strip (`15px`)**: Displays host-action badges (`APP` or `API` pill) on the left and repeat/abort execution flags (`↻` / `⏹`) on the right.
+
+### 8.2 Desktop OLED Companion Widget & KDE Plasma Applet Orientation (`src/qml/OledDesktopWidget.qml`)
+- Supports per-profile orientation (`DW_ROTATION`: `-1` Match Hardware OLED, `0°`, `90°`, `180°`, `270°`), synced immediately via `activeProfileWidgetRotation` whenever edited in Profile Properties or via the REST API.
+- Applies both **grid coordinate remapping** (`remapGridCoords(r, c, rot)`) across the 4×5 matrix and **in-key text label rotation** (`cellLabelColumn.rotation: root.effectiveRotation`) with swapped width/height constraints at `90°` and `270°` so text inside each key rotates to match physical orientation.
+
+### 8.3 Color Picker, High-Contrast Controls & Automated Scene-Graph UI Test Suite
+- **Color Picker (`src/qml/ColorPickerWindow.qml`)**: Provides synchronized **Saved Colors** (`saved_colors_json` persisted in `kwin_rules.json`) and dynamically computed **Used Colors** (`collect_used_colors_json` across all loaded profiles and slots).
+- **High-Contrast Controls (`HighContrastCheckBox` & `HighContrastScrollBar`)**: Custom QML control components with explicit dark/light mode border luminance (`#94a3b8` unchecked border in Dark Mode, `#475569` in Light Mode) and hover feedback across all windows.
+- **Automated Scene-Graph UI Test Suite (`--ui-test-suite` in `src/qml/EventLogDialog.qml`)**: Walks every window, drawer, and dialog in both **Dark Mode** and **Light Mode** across **`100%` (`1.0x`)** and **`115%` (`1.15x`)** UI zoom levels, verifying zero text truncation, zero overlapping siblings (`KEYCAP_HEADER_OVERLAP` / `KEYCAP_FOOTER_OVERLAP`), and WCAG contrast ratios.
 
 ---
 

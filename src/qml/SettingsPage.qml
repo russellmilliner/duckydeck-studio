@@ -900,6 +900,7 @@ Window {
 
     Window {
         id: aboutDialog
+        objectName: "duckydeckAboutDialog"
         readonly property bool closableWithEscape: true
         title: qsTr("About DuckyDeck Studio v%1").arg(deviceController.appVersion)
         width: 720
@@ -907,8 +908,8 @@ Window {
         minimumWidth: 680
         minimumHeight: 510
         visible: false
-        transientParent: root
-        modality: Qt.WindowModal
+        transientParent: (root && root.visible) ? root : null
+        modality: (root && root.visible) ? Qt.WindowModal : Qt.NonModal
         flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint
 
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
@@ -916,6 +917,9 @@ Window {
         color: Kirigami.Theme.backgroundColor
 
         function openAboutWindow() {
+            aboutDialog.transientParent = (root && root.visible) ? root : null
+            aboutDialog.modality = (root && root.visible) ? Qt.WindowModal : Qt.NonModal
+            aboutDialog.showNormal()
             aboutDialog.show()
             aboutDialog.raise()
             aboutDialog.requestActivate()

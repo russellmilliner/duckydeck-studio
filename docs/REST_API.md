@@ -1,8 +1,15 @@
 # DuckyDeck Studio HTTP REST API Reference
 
-DuckyDeck Studio includes a built-in, low-latency HTTP/1.1 REST API server (`src/api_server.rs`) that exposes full programmatic control over your **duckyPad Pro** (`0x0483:0xd11d`) and **duckyPad (2020)** (`0x0483:0xd11c`), profiles, mechanical key & rotary encoder slots, duckyScript 3 DSVM compiler, Persistent Global Variables (PGV), live RGB LED overrides, and microSD synchronization.
+[![Version v0.1.2](https://img.shields.io/badge/Version-v0.1.2-38bdf8?style=for-the-badge)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz)
+[![Website duckydeckstudio.com](https://img.shields.io/badge/Website-duckydeckstudio.com-0ea5e9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://duckydeckstudio.com)
+[![GitHub Repository](https://img.shields.io/badge/GitHub-russellmilliner%2Fduckydeck--studio-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio)
 
-- **Online Documentation & User Guide**: [https://duckydeckstudio.com](https://duckydeckstudio.com)
+DuckyDeck Studio (`v0.1.2`) includes a built-in, low-latency HTTP/1.1 REST API server (`src/api_server.rs`) that exposes full programmatic control over your **duckyPad Pro** (`0x0483:0xd11d`, Custom Firmware `v1.0.0`) and **duckyPad (2020)** (`0x0483:0xd11c`), profiles, mechanical key & rotary encoder slots, duckyScript 3 DSVM compiler, 32 Persistent Global Variables (`_GV0.._GV31`), live RGB LED overrides, and microSD synchronization.
+
+- **Application Version**: `v0.1.2` (Custom Firmware `v1.0.0`)
+- **Official Website & User Guide**: [https://duckydeckstudio.com](https://duckydeckstudio.com)
+- **GitHub Repository & Releases**: [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)
+- **System Architecture Reference**: [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) ([https://duckydeckstudio.com/ARCHITECTURE.md](https://duckydeckstudio.com/ARCHITECTURE.md))
 - **OpenAPI 3.0.3 YAML Specification**: [`docs/openapi.yaml`](openapi.yaml) (`GET /api/v1/openapi.yaml`)
 - **Swagger / OpenAPI 3.0 JSON Specification**: [`docs/swagger.json`](swagger.json) (`GET /api/v1/swagger.json` or `GET /api/v1/openapi.json`)
 
@@ -17,7 +24,7 @@ DuckyDeck Studio includes a built-in, low-latency HTTP/1.1 REST API server (`src
      - `127.0.0.1` *(Default)* — Localhost only; accessible only from processes on the same machine.
      - `0.0.0.0` — Listen on all network interfaces (LAN / Home Assistant / Node-RED / Companion).
    - **TCP Port**: Default is `28491` (`1024..65535`).
-   - **Require API Token Authentication**: Enabled by default. Uses a 48-character random hexadecimal token stored in `~/.config/duckydeck/switcher_rules.json`.
+   - **Require API Token Authentication**: Enabled by default. Uses a 48-character random hexadecimal token stored in the OS secret keyring (with non-secret settings in `~/.config/duckydeck-studio/kwin_rules.json`).
 
 ---
 
@@ -46,7 +53,7 @@ X-API-Token: <YOUR_API_TOKEN>
 
 | Method | Endpoint | Auth | Description |
 | :--- | :--- | :---: | :--- |
-| `GET` | `/api/v1/health` | No | Liveness probe, version, and whether auth is required |
+| `GET` | `/api/v1/health` | No | Liveness probe, version (`0.1.2`), and whether auth is required |
 | `GET` | `/api/v1/openapi.json` | No | OpenAPI 3.0 / Swagger JSON specification |
 | `GET` | `/api/v1/swagger.json` | No | Alias for `/api/v1/openapi.json` |
 | `GET` | `/api/v1/openapi.yaml` | No | OpenAPI 3.0 YAML specification |
@@ -54,10 +61,10 @@ X-API-Token: <YOUR_API_TOKEN>
 | `GET` | `/api/v1/profiles` | Yes | List all loaded profiles (1..64) and active profile number |
 | `POST` | `/api/v1/profiles` | Yes | Create a new profile or duplicate an existing profile (`duplicateFrom`) |
 | `POST` | `/api/v1/profiles/select` | Yes | Select a profile in Studio and optionally switch physical duckyPad (`switchHardware`) |
-| `POST` | `/api/v1/profiles/reorder` | Yes | Move `fromProfile` to `toProfile` and renumber profile folders |
+| `POST` | `/api/v1/profiles/reorder` | Yes | Move `fromProfile` to `toProfile`, renumber profile folders, and sync Auto-Switcher rules |
 | `GET` | `/api/v1/profiles/{number}` | Yes | Get full profile properties and all 26 key/encoder slots |
 | `PUT` / `PATCH` | `/api/v1/profiles/{number}` | Yes | Update profile properties (name, colors, OLED & Desktop Widget rotation, webhook) |
-| `DELETE` | `/api/v1/profiles/{number}` | Yes | Delete profile `{number}` |
+| `DELETE` | `/api/v1/profiles/{number}` | Yes | Delete profile `{number}` (Fallback Profile is protected; deleted profile rules reassign to Fallback) |
 | `GET` | `/api/v1/profiles/{number}/slots` | Yes | List all 26 slots (`1..20` keys, `21..26` rotary encoders) in profile `{number}` |
 | `GET` | `/api/v1/profiles/{number}/slots/{slot}` | Yes | Get configuration and duckyScript for slot `{slot}` (`1..26`) |
 | `PUT` / `POST` / `PATCH` | `/api/v1/profiles/{number}/slots/{slot}` | Yes | Update slot labels (`l1`, `l2`, `wl1`, `wl2`), RGB color, script, flags, or template |
@@ -65,8 +72,8 @@ X-API-Token: <YOUR_API_TOKEN>
 | `POST` | `/api/v1/profiles/{number}/slots/{slot}/trigger` | Yes | Remotely execute the host action (`@HOST_APP`, `@HA_ACTION`, `@WEBHOOK`) on slot `{slot}` |
 | `POST` | `/api/v1/dsvm/compile` | Yes | Compile & validate duckyScript 3 source code into `.dsb` bytecode |
 | `GET` | `/api/v1/templates` | Yes | List all built-in and user-saved key templates |
-| `GET` | `/api/v1/pgv` | Yes | Read all 16 Persistent Global Variables (`PGV 1..16`) |
-| `PUT` / `POST` | `/api/v1/pgv` | Yes | Update one or more Persistent Global Variables (`PGV 1..16`) |
+| `GET` | `/api/v1/pgv` | Yes | Read all 32 Persistent Global Variables (`_GV0.._GV31`) |
+| `PUT` / `POST` | `/api/v1/pgv` | Yes | Update one or more Persistent Global Variables (`_GV0.._GV31`) |
 | `POST` | `/api/v1/leds` | Yes | Live-override per-key RGB LEDs over USB HID or restore profile LEDs |
 | `POST` | `/api/v1/sd/sync` | Yes | Start async microSD profile & `.dsb` sync (`202 Accepted` + `jobId`) |
 | `POST` | `/api/v1/sd/reload` | Yes | Reload profiles from microSD card or local cache |
@@ -74,7 +81,7 @@ X-API-Token: <YOUR_API_TOKEN>
 | `POST` | `/api/v1/sd/unmount` | Yes | Start async microSD flush, unmount, and eject (`202 Accepted` + `jobId`) |
 | `POST` | `/api/v1/device/sleep` | Yes | Put connected duckyPad into sleep mode |
 | `POST` | `/api/v1/device/wake` | Yes | Wake connected duckyPad from sleep mode |
-| `POST` | `/api/v1/device/reboot` | Yes | Start async soft-reboot into normal operating mode (`202 Accepted` + `jobId`) |
+| `POST` | `/api/v1/sd/reboot` / `/device/reboot` | Yes | Start async soft-reboot into normal operating mode (`202 Accepted` + `jobId`) |
 | `POST` | `/api/v1/device/sync-rtc` | Yes | Synchronize duckyPad Pro real-time clock (RTC) with host system time |
 | `GET` | `/api/v1/jobs/{id}` | Yes | Poll status (`running`, `completed`, `failed`) of an async job |
 | `GET` | `/api/v1/logs` | Yes | Retrieve recent system, HID, script, and automation event logs |
@@ -103,7 +110,7 @@ curl -s "$DUCKY_URL/api/v1/health"
 {
   "ok": true,
   "service": "duckydeck-studio",
-  "version": "0.1.24",
+  "version": "0.1.2",
   "authRequired": true
 }
 ```
@@ -118,7 +125,7 @@ curl -s -H "Authorization: Bearer $DUCKY_TOKEN" "$DUCKY_URL/api/v1/status"
 ```json
 {
   "ok": true,
-  "version": "0.1.24",
+  "version": "0.1.2",
   "connected": true,
   "sdCardMode": false,
   "sdMounted": false,

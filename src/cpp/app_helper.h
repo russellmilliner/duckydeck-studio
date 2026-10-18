@@ -653,6 +653,23 @@ inline void hide_main_window_to_tray() {
     update_tray_window_actions();
 }
 
+inline void show_about_window() {
+    if (QWindow* mainWin = find_main_window()) {
+        QMetaObject::invokeMethod(mainWin, "openAboutWindow", Qt::QueuedConnection);
+        return;
+    }
+    const auto windows = QGuiApplication::allWindows();
+    for (QWindow* w : windows) {
+        if (w && w->objectName() == QStringLiteral("duckydeckAboutDialog")) {
+            w->showNormal();
+            w->show();
+            w->raise();
+            w->requestActivate();
+            return;
+        }
+    }
+}
+
 inline void quit_duckydeck_application() {
     save_oled_widget_appearance_now();
     QCoreApplication::quit();
@@ -810,6 +827,10 @@ public:
             toggle_oled_widget_window();
             return;
         }
+        if (cmd == QStringLiteral("show-about")) {
+            show_about_window();
+            return;
+        }
         if (cmd == QStringLiteral("restart")) {
             restart_duckydeck_application();
             return;
@@ -945,6 +966,12 @@ private:
         m_hideAction = m_menu->addAction(QStringLiteral("Minimize to Tray"));
         QObject::connect(m_hideAction, &QAction::triggered, []() {
             hide_main_window_to_tray();
+        });
+
+        QAction* aboutAction =
+            m_menu->addAction(QIcon::fromTheme(QStringLiteral("help-about")), QStringLiteral("About DuckyDeck Studio"));
+        QObject::connect(aboutAction, &QAction::triggered, []() {
+            show_about_window();
         });
 
         m_menu->addSeparator();

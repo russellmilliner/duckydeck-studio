@@ -522,9 +522,9 @@
           <rect x="86" y="72" width="24" height="34" rx="3" fill="#000000" stroke="#94a3b8" stroke-width="2"/>
         </svg>
         <span>DuckyDeck Studio</span>
-        <span class="brand-badge">v0.1.1</span>
+        <span class="brand-badge">v0.1.2</span>
       </a>
-      <div class="brand-sub">User Manual &amp; Feature Reference</div>
+      <div class="brand-sub">User Manual &amp; Feature Reference (v0.1.2)</div>
     </div>
 
     <div class="search-box">
@@ -565,7 +565,10 @@
         🌐 duckydeckstudio.com
       </a>
       <a class="ext-btn" href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
-        🐙 Download on GitHub
+        🐙 GitHub Repository
+      </a>
+      <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
+        ⬇ Download Release v0.1.2
       </a>
       <a class="kofi-btn" href="https://ko-fi.com/russellmilliner" target="_blank" rel="noopener noreferrer">
         ☕ Buy Me a Coffee on Ko-fi
@@ -603,7 +606,7 @@
             <circle cx="98" cy="55" r="10" fill="#262b36" stroke="#38bdf8" stroke-width="2.5"/>
             <rect x="86" y="72" width="24" height="34" rx="3" fill="#000000" stroke="#94a3b8" stroke-width="2"/>
           </svg>
-          <span>DuckyDeck Studio — User Guide</span>
+          <span>DuckyDeck Studio — User Guide (v0.1.2)</span>
         </h1>
         <div style="display:flex;flex-wrap:wrap;gap:10px;">
           <a class="ext-btn" href="https://duckydeckstudio.com" target="_blank" rel="noopener noreferrer">
@@ -611,6 +614,15 @@
           </a>
           <a class="ext-btn" href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer">
             🐙 GitHub Repository
+          </a>
+          <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz" target="_blank" rel="noopener noreferrer">
+            ⬇ Download Release v0.1.2
+          </a>
+          <a class="ext-btn" href="ARCHITECTURE.md" target="_blank" rel="noopener noreferrer">
+            🏗️ Architecture Reference
+          </a>
+          <a class="ext-btn" href="REST_API.md" target="_blank" rel="noopener noreferrer">
+            🔌 REST API Reference
           </a>
           <a class="ext-btn" href="https://www.duckypad.com" target="_blank" rel="noopener noreferrer">
             🦆 Official duckyPad Site
@@ -624,11 +636,19 @@
         </div>
       </div>
       <p>
-        <strong>DuckyDeck Studio</strong> is a native Linux configurator, <strong>DSVM v2 bytecode compiler</strong>,
+        <strong>DuckyDeck Studio (<code>v0.1.2</code>)</strong> is a native Linux configurator, <strong>DSVM v2 bytecode compiler</strong>,
         <strong>Wayland Auto-Switcher</strong>, and <strong>Macro Template Generator (experimental)</strong> for the
         <strong>duckyPad Pro (2024)</strong> and <strong>duckyPad (2020)</strong>, crafted with Rust, CXX-Qt, and KDE Plasma 6 Kirigami.
       </p>
-      <div class="callout success" style="margin-top: 16px;">
+      <div class="callout" style="margin-top: 14px;">
+        <div class="callout-title">🏷️ Version &amp; Official Links</div>
+        <strong>Application Version:</strong> <code>v0.1.2</code> &nbsp;•&nbsp;
+        <strong>Custom Firmware:</strong> <code>v1.0.0</code> &nbsp;•&nbsp;
+        <strong>KDE Plasma 6 Applet:</strong> <code>v1.0.2</code><br/>
+        <strong>Official Website &amp; Docs:</strong> <a href="https://duckydeckstudio.com" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">https://duckydeckstudio.com</a> &nbsp;•&nbsp;
+        <strong>GitHub Repository:</strong> <a href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">https://github.com/russellmilliner/duckydeck-studio</a>
+      </div>
+      <div class="callout success" style="margin-top: 12px;">
         <div class="callout-title">🙏 Special Thanks to dekuNukem</div>
         A huge thank you to <strong><a href="https://github.com/dekuNukem" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">dekuNukem</a></strong> for designing, engineering, and open-sourcing the incredible
         <strong><a href="https://www.duckypad.com" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">duckyPad &amp; duckyPad Pro</a></strong> hardware and DuckyScript 3 ecosystem!
@@ -636,11 +656,12 @@
         <strong><a href="https://www.tindie.com/stores/dekunukem/" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">dekuNukem's Official Tindie Store</a></strong>.
       </div>
       <div class="badge-row">
+        <span class="pill accent">Version v0.1.2</span>
         <span class="pill accent">duckyPad Pro (0x0483:0xd11d)</span>
         <span class="pill accent">duckyPad 2020 (0x0483:0xd11c)</span>
         <span class="pill">DuckyDeck Studio FW v1.0.0</span>
         <span class="pill">DSVM v2 .dsb Bytecode Compiler</span>
-        <span class="pill">Profile Templates</span>
+        <span class="pill">Profile Templates &amp; Protected Fallback</span>
         <span class="pill">KDE Plasma 6 Wayland Auto-Switcher</span>
         <span class="pill">Saved &amp; Used RGB Palettes</span>
         <span class="pill">App Launcher &amp; Web API Triggers</span>
@@ -925,13 +946,19 @@ install -Dm644 docs/user-guide.html \
         <li><strong>⚙ Profile Settings (OLED, Instant Desktop Widget Orientation &amp; Profile Change Webhook):</strong> Click the <strong>⚙ Profile Settings</strong> button in the center toolbar (or right-click a profile → <em>Profile Properties...</em>) to configure:
           <ul>
             <li><strong>Hardware OLED Orientation (`0°`, `90°`, `180°`, `270°`):</strong> Rotates the physical duckyPad Pro OLED screen and key grid (`180°` &amp; `270°` require DuckyDeck Studio Firmware `v1.0.0`).</li>
-            <li><strong>💻 Desktop Widget Orientation (`Follow OLED`, `0°`, `90°`, `180°`, `270°`):</strong> Independently orient the floating on-screen Desktop Widget without changing how the physical duckyPad sits on your desk! <strong>Changes apply immediately and do not require a microSD card sync.</strong></li>
+            <li><strong>💻 Desktop Widget Orientation (`Follow OLED`, `0°`, `90°`, `180°`, `270°`):</strong> Independently orient the floating on-screen Desktop Widget (rotating both the key grid positions and the text labels inside each key) without changing how the physical duckyPad sits on your desk! <strong>Changes apply immediately and do not require a microSD card sync.</strong></li>
             <li><strong>🔔 Profile Change Webhook (On Profile Activated):</strong> Configure a per-profile HTTP webhook (`GET`/`POST`/`PUT`/`PATCH`/`DELETE`, URL, custom headers, and JSON body with placeholders `{{profile_number}}`, `{{profile_name}}`, `{{previous_profile_number}}`, `{{previous_profile_name}}`, `{{source}}`, `{{device_serial}}`, `{{timestamp}}`) that fires automatically whenever that profile becomes active.</li>
             <li><strong>Dim Unused Keys (`DIM_UNUSED_KEYS`):</strong> Automatically turns off LEDs on unconfigured keys.</li>
           </ul>
         </li>
-        <li><strong>Reorder Profiles:</strong> Drag any profile by its <code>⠿</code> handle (or right-click and choose <em>Move Profile Up / Down</em>). Associated Auto-Switcher rules automatically update to follow the moved profile!</li>
-        <li><strong>Profile Groups (`.duckygroup.json`):</strong> Click <strong>Groups ▾</strong> at the bottom of the sidebar (or in the `☰` menu) to save all profiles and Auto-Switcher rules into a single portable `.duckygroup.json` bundle, load an existing bundle, or start a fresh workspace.</li>
+        <li><strong>Filter, Reorder &amp; Fallback Protection:</strong>
+          <ul>
+            <li><strong>Filter Profiles:</strong> Type in the profile filter box to filter by profile name or bound application; click the inline <code>✕</code> button inside the filter box to clear the filter.</li>
+            <li><strong>Reorder Profiles:</strong> Hover over any profile to view the helper tooltip (<em>"Drag ⠿ to Reorder • Double-click to Rename • Right-click for Options"</em>) and drag its <code>⠿</code> handle to reorder. All Auto-Switcher rules and the Fallback Profile setting automatically update to follow reordered profiles!</li>
+            <li><strong>Protected Fallback Profile (`★ FALLBACK`):</strong> Every profile group automatically ensures a default Fallback Profile exists. The Fallback Profile cannot be deleted, and if another profile referenced by an Auto-Switcher rule is deleted, that rule automatically updates to reference the Fallback Profile.</li>
+          </ul>
+        </li>
+        <li><strong>Profile Groups (`.duckygroup.json`):</strong> Click <strong>Groups ▾</strong> at the bottom of the sidebar (or in the `☰` menu) to save all profiles and Auto-Switcher rules into a single portable `.duckygroup.json` bundle, load an existing bundle, or start a fresh workspace (which automatically initializes Profile #1 as the Default Fallback Profile).</li>
       </ul>
     </section>
 
@@ -939,6 +966,13 @@ install -Dm644 docs/user-guide.html \
     <section id="canvas">
       <h2>🎹 4. Interactive Hardware Canvas &amp; OLED Simulator</h2>
       <ul>
+        <li><strong>Header-Footer Split Keycap Layout:</strong> Each keycap in the 4×5 matrix uses a clean, non-overlapping three-zone layout tested up to 115%+ UI zoom:
+          <ul>
+            <li><strong>Top Header Bar:</strong> Compact key number (`1..20`) on the left next to the pill-shaped per-key RGB LED color bar on the right.</li>
+            <li><strong>Center OLED Label Preview:</strong> Displays Line 1 and Line 2 labels (plus crisp 1-bit pixel-art icons) centered inside the keycap.</li>
+            <li><strong>Bottom Footer Strip:</strong> Shows host-action pills (<code>APP</code> or <code>API</code>) on the left and repeat/abort indicators (<code>↻</code> / <code>⏹</code>) on the right.</li>
+          </ul>
+        </li>
         <li><strong>Select / Deselect a Slot:</strong> Left-click any key (1–20), encoder action (21–26), or expansion slot (27–58) to open the Right Inspector. Click the selected key again (or click <code>✕</code> in the inspector header) to close the inspector.</li>
         <li><strong>Drag-and-Drop Swap vs. Shift:</strong>
           <ul>
@@ -1100,7 +1134,7 @@ install -Dm644 docs/user-guide.html \
         <li>Click <strong>📦 Pick Installed App...</strong> to search all installed desktop applications (`.desktop` entries from `/usr/share/applications`, Flatpak exports, and `~/.local/share/applications`) with icons, descriptions, and categories—or type any custom command and arguments.</li>
         <li>Choose the <strong>Trigger Mode</strong>:
           <ul>
-            <li><strong>Silent Host Launch (`_GV19`) (Default — No Keyboard Shortcut Needed):</strong> Pressing the key on the duckyPad writes a unique profile+slot token to `_GV19`. DuckyDeck Studio's background HID listener detects the change and spawns the application directly on your Linux desktop!</li>
+            <li><strong>Silent Host Launch (`_GV31`) (Default — No Keyboard Shortcut Needed):</strong> Pressing the key on the duckyPad writes a unique profile+slot token to `_GV31`. DuckyDeck Studio's background HID listener detects the change and spawns the application directly on your Linux desktop!</li>
             <li><strong>F13–F24 Global Hotkey (`evdev`):</strong> Emits `F13`–`F24` over USB HID keyboard and triggers the launch via DuckyDeck Studio's background `evdev` listener.</li>
           </ul>
         </li>
@@ -1152,9 +1186,10 @@ install -Dm644 docs/user-guide.html \
       </p>
       <ul>
         <li><strong>🎯 Crosshair Window Picker:</strong> Right-click any profile in the sidebar and select <strong>Bind Window to This Profile (Pick Window)...</strong> (or click <strong>Pick Window</strong> inside the <em>Rules</em> dialog). Click any open window on your desktop to automatically capture its `resourceClass`, window title, and application icon.</li>
+        <li><strong>Filter &amp; Reorder Rules:</strong> Filter rules using the search box (with an inline <code>✕</code> clear button) and hover over any rule row to view the helper tooltip (<em>"Drag ⠿ to Reorder • Double-click to Edit • Right-click for Options"</em>).</li>
         <li><strong>Browser Tab Title Matching:</strong> When picking a web browser (Zen Browser, Firefox, Chrome, Brave, Vivaldi, etc.), DuckyDeck Studio automatically strips the browser suffix so your rule matches the specific web app or tab title (e.g. `Miniflux`, `GitHub`, `YouTube`), or you can use `*browser*` to match all web browsers.</li>
         <li><strong>Automatic Pause While Editing:</strong> Whenever the Right Key Inspector is open, the Auto-Switcher automatically pauses (`AUTO-SWITCHER (PAUSED)`) so switching to a browser or terminal to copy a URL or command won't yank the active profile away from the key you're editing!</li>
-        <li><strong>Floating OLED Desktop Widget:</strong> Mirrors the 128×128 OLED screen on your desktop with configurable scale (`1x`–`3x`), transparency (`0%`–`85%`, persisted across restarts), multi-monitor screen &amp; KWin Wayland position memory, and instant independent per-profile orientation (`Follow OLED`, `0°`, `90°`, `180°`, `270°`) that does not require a microSD card sync.</li>
+        <li><strong>Floating OLED Desktop Widget &amp; 4-Way Rotated Key Labels:</strong> Mirrors the 128×128 OLED screen on your desktop with configurable scale (`1x`–`3x`), transparency (`0%`–`85%`, persisted across restarts), multi-monitor screen &amp; KWin Wayland position memory, and instant independent per-profile orientation (`Follow OLED`, `0°`, `90°`, `180°`, `270°`) that rotates both the key grid positions and the text inside each key without requiring a microSD card sync.</li>
       </ul>
       <div class="screenshot-frame">
         <a href="screenshots/10-wayland-auto-switcher.png" target="_blank"><img src="screenshots/10-wayland-auto-switcher.png" alt="KWin Wayland Auto-Switcher Rules Dialog" loading="lazy" /></a>
@@ -1169,8 +1204,8 @@ install -Dm644 docs/user-guide.html \
         Open <strong>Variables (`_GV`)...</strong> from the `☰` menu to inspect and live-edit all 32 32-bit non-volatile Persistent Global Variables (`_GV0` through `_GV31`) over USB HID commands `0x18` (read) and `0x19` (write) in Signed Decimal, Unsigned Decimal, or Hexadecimal format.
       </p>
       <div class="callout warn">
-        <div class="callout-title">Reserved Bridge PGVs (`_GV18`–`_GV20`)</div>
-        DuckyDeck Studio uses <code>_GV18</code> for instant Web API triggers, <code>_GV19</code> for instant Application Launch triggers, and <code>_GV20</code> for System Actions when using the default Silent USB HID Listener trigger mode.
+        <div class="callout-title">Reserved Bridge PGV (`_GV31`)</div>
+        DuckyDeck Studio uses <code>_GV31</code> (encoded via <code>encode_pgv31_trigger</code>) for instant Web API and Desktop Application Launch triggers when using the default Silent USB HID Listener trigger mode.
       </div>
     </section>
 
@@ -1229,8 +1264,8 @@ install -Dm644 docs/user-guide.html \
           </ul>
         </li>
         <li><strong>🔔 Global Profile Change Webhook (`Settings → Global Profile Change Webhook`):</strong> Configure an HTTP webhook that fires automatically whenever the active profile changes (via UI, physical duckyPad buttons, Window Auto-Switcher, or REST API).</li>
-        <li><strong>Global UI Text Zoom (`75%`–`160%`, Minimum `10pt` Base Font):</strong> Adjust UI text zoom across the entire application using <kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>Ctrl</kbd>+<kbd>=</kbd> (zoom in), <kbd>Ctrl</kbd>+<kbd>-</kbd> (zoom out), or <kbd>Ctrl</kbd>+<kbd>0</kbd> (reset to `100%`), or via `Settings → Global Text Scale`. Zoom levels are saved automatically and restored on restart. All popup windows can also be closed with <kbd>Esc</kbd>.</li>
-        <li><strong>System Tray (`StatusNotifierItem`):</strong> DuckyDeck Studio integrates natively with the KDE Plasma 6 System Tray, displaying a custom dynamic icon with your active profile number and color badge, quick profile switching submenu, and optional <em>Minimize / Close to System Tray</em> behavior.</li>
+        <li><strong>Global UI Text Zoom (`75%`–`160%`, Minimum `10pt` Base Font) &amp; High-Contrast Controls:</strong> Adjust UI text zoom across the entire application using <kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>Ctrl</kbd>+<kbd>=</kbd> (zoom in), <kbd>Ctrl</kbd>+<kbd>-</kbd> (zoom out), or <kbd>Ctrl</kbd>+<kbd>0</kbd> (reset to `100%`), or via `Settings → Global Text Scale`. All checkboxes and scrollbars feature high-contrast borders in both Dark and Light modes, and all popup windows can be closed with <kbd>Esc</kbd>.</li>
+        <li><strong>System Tray (`StatusNotifierItem`):</strong> DuckyDeck Studio integrates natively with the KDE Plasma 6 System Tray, displaying a custom dynamic icon with your active profile number and color badge, live Profile &amp; SD Sync status headers, <strong>Show / Hide DuckyDeck Studio</strong>, <strong>Toggle Desktop OLED Widget</strong>, <strong>Enable Window Auto-Switcher</strong>, <strong>Autostart at Login</strong>, <strong>About DuckyDeck Studio</strong>, and <strong>Quit DuckyDeck Studio</strong>.</li>
       </ul>
     </section>
 
