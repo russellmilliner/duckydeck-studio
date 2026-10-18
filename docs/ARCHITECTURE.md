@@ -1,6 +1,7 @@
 # <img src="../data/icons/io.github.duckydeck.Studio.svg" width="36" height="36" align="top" alt="DuckyDeck Studio Icon" /> DuckyDeck Studio — Architecture & Design Developer Documentation
 
 [![Version v0.1.2](https://img.shields.io/badge/Version-v0.1.2-38bdf8?style=for-the-badge)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz)
+[![Flatpak v0.1.2](https://img.shields.io/badge/Flatpak-v0.1.2-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak)
 [![Firmware v1.0.0](https://img.shields.io/badge/Custom_Firmware-v1.0.0-10b981?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.0.0)
 [![Website duckydeckstudio.com](https://img.shields.io/badge/Website-duckydeckstudio.com-0ea5e9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://duckydeckstudio.com)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-russellmilliner%2Fduckydeck--studio-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio)
@@ -8,7 +9,9 @@
 **Application Version:** `v0.1.2` (Custom Firmware `v1.0.0`, KDE Plasma 6 Applet `v1.0.2`)  
 **Author:** Russell Milliner  
 **Official Website & User Guide:** [https://duckydeckstudio.com](https://duckydeckstudio.com)  
+**HTML Architecture Reference:** [`docs/architecture.html`](architecture.html) ([https://duckydeckstudio.com/architecture.html](https://duckydeckstudio.com/architecture.html))  
 **GitHub Repository & Releases:** [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)  
+**Flatpak Release Bundle:** [`duckydeck-studio-v0.1.2-x86_64.flatpak`](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak)  
 **REST API Reference:** [`docs/REST_API.md`](REST_API.md) ([https://duckydeckstudio.com/REST_API.md](https://duckydeckstudio.com/REST_API.md))  
 **Support:** [☕ Buy Me a Coffee on Ko-fi (https://ko-fi.com/russellmilliner)](https://ko-fi.com/russellmilliner)  
 **License:** GPL-3.0-or-later  
@@ -326,14 +329,31 @@ DuckyDeck Studio embeds a bounded, stoppable/restartable HTTP/1.1 REST API serve
 
 ---
 
-## 10. Building, Testing & Extending
+## 10. Flatpak Sandbox Architecture, Building & Testing
 
-### Running Unit, Compiler & Lint Checks
+### Flatpak Sandbox & Host Command Bridging (`io.github.duckydeck.Studio.yml` & `scripts/build-flatpak.sh`)
+- Built against `org.kde.Platform//6.8` and `org.kde.Sdk//6.8` with `rust-stable` and `llvm18` SDK extensions.
+- **USB HID & Block Device Discovery:** Uses `--device=all` and `--filesystem=/run/udev:ro` for direct `/dev/hidraw*` and `/dev/disk/by-label` / `/dev/disk/by-id` enumeration.
+- **USB Mass Storage (`udisksctl`) Host Bridging:** Inside Flatpak (`/.flatpak-info` present), [`src/hardware/msc.rs`](../src/hardware/msc.rs) invokes `udisksctl`, `umount`, `sync`, and host `/proc/mounts` checks via `flatpak-spawn --host` (`--talk-name=org.freedesktop.Flatpak` and `--system-talk-name=org.freedesktop.UDisks2`) while reading/writing mounted volumes via `--filesystem=/run/media:rw` and `--filesystem=/media:rw`.
+- **Bundled Custom Firmware Discovery:** [`src/hardware/firmware.rs`](../src/hardware/firmware.rs) scans `/app/share/duckydeck-studio/firmware`, `/app/share/duckydeck-studio/firmware/releases`, and embeds `DPP_FW_1.0.0_ad2acc81.bin` as a compile-time fallback so the DuckyDeck Studio `v1.0.0` firmware is always available in the Firmware Manager.
+
+### Running Unit, Compiler, Native UI & Flatpak UI Checks
 ```bash
+# 1. Run formatting, clippy (-D warnings), unit tests, and architecture path verification:
 bash scripts/check.sh
+
+# 2. Run the Native QML UI Overflow, Contrast & Behavioral Test Suite:
+cargo test ui_test_suite::test_full_qml_ui_overflow_and_contrast_suite -- --ignored --nocapture
+
+# 3. Build & install the Flatpak bundle:
+bash scripts/build-flatpak.sh
+flatpak install --user -y --reinstall target/release/duckydeck-studio-v0.1.2-x86_64.flatpak
+
+# 4. Run the Flatpak QML UI Overflow, Contrast & Behavioral Test Suite:
+bash scripts/test-flatpak-ui.sh
 ```
 
-### Building the Release Binary
+### Building the Native Release Binary
 ```bash
 cargo build --release
 install -Dm755 target/release/duckydeck-studio ~/.local/bin/duckydeck-studio

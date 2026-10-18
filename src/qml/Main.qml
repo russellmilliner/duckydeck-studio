@@ -12,9 +12,9 @@ Kirigami.ApplicationWindow {
     id: root
     objectName: "duckydeckMainWindow"
     title: qsTr("DuckyDeck Studio v%1 — %2").arg(deviceController.appVersion).arg(deviceController.modelName)
-    readonly property int currentScreenWidth: (root.screen && root.screen.width > 0)
+    readonly property int currentScreenWidth: (root.screen && root.screen.width > 1024)
         ? root.screen.width
-        : (Screen.width > 0 ? Screen.width : 1920)
+        : (Screen.width > 1024 ? Screen.width : 1920)
     readonly property int maxCenterColumnWidth: Math.max(
         460,
         Math.round(root.currentScreenWidth * 0.30)
@@ -31,11 +31,11 @@ Kirigami.ApplicationWindow {
             + Kirigami.Units.largeSpacing * 2
             + 180
     )
-    readonly property int expandedWindowWidth: Math.min(
-        Math.max(1280, Math.round(root.currentScreenWidth * 0.96)),
-        Math.max(
-            1520,
-            compactWindowWidth + inspectorCard.minContentWidth + 8
+    readonly property int expandedWindowWidth: Math.max(
+        compactWindowWidth + inspectorCard.minContentWidth + 8,
+        Math.min(
+            Math.max(1280, Math.round(root.currentScreenWidth * 0.96)),
+            1520
         )
     )
     readonly property int requiredWindowWidth: root.hasSelectedSlot

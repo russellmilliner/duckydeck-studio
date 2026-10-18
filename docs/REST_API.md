@@ -1,6 +1,7 @@
 # DuckyDeck Studio HTTP REST API Reference
 
 [![Version v0.1.2](https://img.shields.io/badge/Version-v0.1.2-38bdf8?style=for-the-badge)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz)
+[![Flatpak v0.1.2](https://img.shields.io/badge/Flatpak-v0.1.2-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak)
 [![Website duckydeckstudio.com](https://img.shields.io/badge/Website-duckydeckstudio.com-0ea5e9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://duckydeckstudio.com)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-russellmilliner%2Fduckydeck--studio-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio)
 
@@ -8,8 +9,8 @@ DuckyDeck Studio (`v0.1.2`) includes a built-in, low-latency HTTP/1.1 REST API s
 
 - **Application Version**: `v0.1.2` (Custom Firmware `v1.0.0`)
 - **Official Website & User Guide**: [https://duckydeckstudio.com](https://duckydeckstudio.com)
-- **GitHub Repository & Releases**: [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)
-- **System Architecture Reference**: [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) ([https://duckydeckstudio.com/ARCHITECTURE.md](https://duckydeckstudio.com/ARCHITECTURE.md))
+- **System Architecture Reference**: [`docs/architecture.html`](architecture.html) ([https://duckydeckstudio.com/architecture.html](https://duckydeckstudio.com/architecture.html)) · [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)
+- **GitHub Repository & Releases**: [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio) · [Flatpak Bundle (`v0.1.2`)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak)
 - **OpenAPI 3.0.3 YAML Specification**: [`docs/openapi.yaml`](openapi.yaml) (`GET /api/v1/openapi.yaml`)
 - **Swagger / OpenAPI 3.0 JSON Specification**: [`docs/swagger.json`](swagger.json) (`GET /api/v1/swagger.json` or `GET /api/v1/openapi.json`)
 

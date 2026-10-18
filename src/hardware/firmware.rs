@@ -273,25 +273,50 @@ fn firmware_release_metadata(
     }
 }
 
+const EMBEDDED_STUDIO_FW_FILENAME: &str = "DPP_FW_1.0.0_ad2acc81.bin";
+const EMBEDDED_STUDIO_FW_BYTES: &[u8] =
+    include_bytes!("../../firmware/releases/DPP_FW_1.0.0_ad2acc81.bin");
+
+fn ensure_embedded_studio_firmware_cached() -> PathBuf {
+    let user_fw_dir = crate::paths::data_dir().join("firmware");
+    let target_path = user_fw_dir.join(EMBEDDED_STUDIO_FW_FILENAME);
+    let needs_write = match fs::metadata(&target_path) {
+        Ok(meta) => meta.len() != EMBEDDED_STUDIO_FW_BYTES.len() as u64,
+        Err(_) => true,
+    };
+    if needs_write && fs::create_dir_all(&user_fw_dir).is_ok() {
+        let _ = fs::write(&target_path, EMBEDDED_STUDIO_FW_BYTES);
+    }
+    user_fw_dir
+}
+
 pub fn list_available_duckypad_pro_firmwares(current_version: &str) -> Vec<FirmwareVersionEntry> {
     let mut candidate_dirs: Vec<(PathBuf, bool)> = Vec::new();
     for sys_fw_dir in [
         "/app/share/duckydeck-studio/firmware",
+        "/app/share/duckydeck-studio/firmware/releases",
         "/usr/local/share/duckydeck-studio/firmware",
+        "/usr/local/share/duckydeck-studio/firmware/releases",
         "/usr/share/duckydeck-studio/firmware",
+        "/usr/share/duckydeck-studio/firmware/releases",
     ] {
         candidate_dirs.push((PathBuf::from(sys_fw_dir), true));
     }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(bin_dir) = exe.parent() {
             candidate_dirs.push((bin_dir.join("../share/duckydeck-studio/firmware"), true));
+            candidate_dirs.push((
+                bin_dir.join("../share/duckydeck-studio/firmware/releases"),
+                true,
+            ));
         }
     }
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     candidate_dirs.push((manifest_dir.join("firmware/releases"), true));
     candidate_dirs.push((manifest_dir.join("firmware/duckyPad-Pro/firmware"), true));
+    let user_fw_dir = ensure_embedded_studio_firmware_cached();
     candidate_dirs.push((official_firmware_cache_dir(), false));
-    candidate_dirs.push((crate::paths::data_dir().join("firmware"), false));
+    candidate_dirs.push((user_fw_dir, false));
 
     let mut by_key: std::collections::BTreeMap<(u8, u32, u32, u32, String), FirmwareVersionEntry> =
         std::collections::BTreeMap::new();

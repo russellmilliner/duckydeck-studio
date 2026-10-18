@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DuckyDeck Studio — Architecture &amp; Developer Reference (v0.1.2)</title>
+  <link rel="icon" type="image/svg+xml" href="../data/icons/io.github.duckydeck.Studio.svg" />
+  <style>
+    :root {
+      --bg-primary: #14171f;
+      --bg-secondary: #1c202b;
+      --bg-tertiary: #252b3b;
+      --bg-card: #1e2330;
+      --text-primary: #eef2f8;
+      --text-secondary: #a6b2c6;
+      --text-muted: #728098;
+      --accent: #3daee9;
+      --accent-hover: #5bc0f8;
+      --accent-soft: rgba(61, 174, 233, 0.14);
+      --border: #2e364a;
+      --success: #2ecc71;
+      --warning: #f39c12;
+      --danger: #e74c3c;
+      --kofi: #ff5e5b;
+      --kofi-hover: #ff7875;
+      --purple: #a78bfa;
+      --pink: #f472b6;
+      --orange: #fb923c;
+      --code-bg: #10131a;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+
+    [data-theme="light"] {
+      --bg-primary: #f5f7fa;
+      --bg-secondary: #ffffff;
+      --bg-tertiary: #eaeef5;
+      --bg-card: #ffffff;
+      --text-primary: #1d2433;
+      --text-secondary: #4a5568;
+      --text-muted: #718096;
+      --accent: #0077b6;
+      --accent-hover: #0096c7;
+      --accent-soft: rgba(0, 119, 182, 0.10);
+      --border: #d8e0ec;
+      --code-bg: #edf1f7;
+      --shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: "Inter", "Noto Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.65;
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* Sidebar Navigation */
+    .sidebar {
+      width: 290px;
+      background-color: var(--bg-secondary);
+      border-right: 1px solid var(--border);
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+      z-index: 100;
+      overflow-y: auto;
+    }
+
+    .sidebar-header {
+      padding: 20px 18px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      text-decoration: none;
+    }
+
+    .brand-badge {
+      font-family: monospace;
+      font-size: 0.75rem;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      padding: 2px 7px;
+      border-radius: 5px;
+    }
+
+    .brand-sub {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .search-box {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 0.86rem;
+      outline: none;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent);
+    }
+
+    .nav-scroll {
+      flex: 1;
+      padding: 12px 10px;
+      overflow-y: auto;
+    }
+
+    .nav-group-title {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      padding: 10px 10px 4px;
+    }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 6px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.88rem;
+      transition: all 0.15s ease;
+    }
+
+    .nav-link:hover,
+    .nav-link.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .sidebar-footer {
+      padding: 14px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .kofi-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: var(--kofi);
+      color: #ffffff !important;
+      font-weight: 700;
+      font-size: 0.88rem;
+      padding: 9px 14px;
+      border-radius: 8px;
+      text-decoration: none;
+      box-shadow: 0 3px 10px rgba(255, 94, 91, 0.35);
+      transition: transform 0.12s ease, background 0.15s ease;
+    }
+
+    .kofi-btn:hover {
+      background: var(--kofi-hover);
+      transform: translateY(-1px);
+    }
+
+    .theme-btn {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      padding: 7px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+
+    .theme-btn:hover {
+      border-color: var(--accent);
+    }
+
+    /* Main Content */
+    .main-content {
+      margin-left: 290px;
+      flex: 1;
+      max-width: 1080px;
+      padding: 40px 48px 80px;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 32px;
+      margin-bottom: 36px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    .hero h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .hero p {
+      color: var(--text-secondary);
+      font-size: 1.02rem;
+      max-width: 820px;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .pill {
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+
+    .pill.accent {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    section {
+      margin-bottom: 48px;
+      scroll-margin-top: 24px;
+    }
+
+    h2 {
+      font-size: 1.48rem;
+      font-weight: 700;
+      padding-bottom: 10px;
+      margin-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    h3 {
+      font-size: 1.12rem;
+      font-weight: 700;
+      margin: 22px 0 10px;
+      color: var(--text-primary);
+    }
+
+    p {
+      margin-bottom: 12px;
+      color: var(--text-secondary);
+    }
+
+    ul, ol {
+      margin: 8px 0 16px 22px;
+      color: var(--text-secondary);
+    }
+
+    li {
+      margin-bottom: 6px;
+    }
+
+    li strong {
+      color: var(--text-primary);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+      margin: 16px 0;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin: 16px 0;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .card h4 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .arch-diagram {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin: 16px 0 24px;
+      box-shadow: var(--shadow);
+      overflow-x: auto;
+    }
+
+    .arch-layer {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+      background: var(--bg-secondary);
+    }
+
+    .arch-layer-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+
+    .arch-boxes {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+    }
+
+    .arch-box {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.84rem;
+    }
+
+    .arch-box strong {
+      display: block;
+      color: var(--text-primary);
+      margin-bottom: 3px;
+    }
+
+    .arch-box span {
+      color: var(--text-secondary);
+      font-size: 0.79rem;
+    }
+
+    .arch-arrow {
+      text-align: center;
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 0.9rem;
+      margin: -6px 0 8px;
+    }
+
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 14px 18px;
+      border-radius: 0 8px 8px 0;
+      margin: 16px 0;
+    }
+
+    .callout.warn {
+      border-left-color: var(--warning);
+      background: rgba(243, 156, 18, 0.12);
+    }
+
+    .callout.success {
+      border-left-color: var(--success);
+      background: rgba(46, 204, 113, 0.12);
+    }
+
+    .callout-title {
+      font-weight: 700;
+      font-size: 0.9rem;
+      margin-bottom: 4px;
+      color: var(--text-primary);
+    }
+
+    code {
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      font-size: 0.86em;
+      background: var(--code-bg);
+      color: var(--accent);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      margin: 12px 0 18px;
+      position: relative;
+    }
+
+    pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      color: var(--text-primary);
+      font-size: 0.85rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 22px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+
+    th {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      font-weight: 700;
+    }
+
+    td {
+      color: var(--text-secondary);
+    }
+
+    .ext-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg-tertiary);
+      color: var(--accent) !important;
+      border: 1px solid var(--accent);
+      font-weight: 700;
+      font-size: 0.85rem;
+      padding: 8px 13px;
+      border-radius: 8px;
+      text-decoration: none;
+      transition: transform 0.12s ease, background 0.15s ease;
+    }
+
+    .ext-btn:hover {
+      background: var(--accent-soft);
+      transform: translateY(-1px);
+    }
+
+    @media (max-width: 900px) {
+      .sidebar {
+        position: static;
+        width: 100%;
+        height: auto;
+      }
+      body {
+        flex-direction: column;
+      }
+      .main-content {
+        margin-left: 0;
+        padding: 24px 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar Navigation -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <a href="#overview" class="brand">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="28" height="28" style="flex-shrink:0;">
+          <rect x="8" y="8" width="112" height="112" rx="20" fill="#16181d" stroke="#38bdf8" stroke-width="4"/>
+          <rect x="20" y="22" width="18" height="18" rx="4" fill="#00aaff"/>
+          <rect x="42" y="22" width="18" height="18" rx="4" fill="#00aaff"/>
+          <rect x="64" y="22" width="18" height="18" rx="4" fill="#00aaff"/>
+          <rect x="20" y="44" width="18" height="18" rx="4" fill="#28dc64"/>
+          <rect x="42" y="44" width="18" height="18" rx="4" fill="#28dc64"/>
+          <rect x="64" y="44" width="18" height="18" rx="4" fill="#28dc64"/>
+          <rect x="20" y="66" width="18" height="18" rx="4" fill="#ffb400"/>
+          <rect x="42" y="66" width="18" height="18" rx="4" fill="#ffb400"/>
+          <rect x="64" y="66" width="18" height="18" rx="4" fill="#ffb400"/>
+          <rect x="20" y="88" width="18" height="18" rx="4" fill="#ff3c3c"/>
+          <rect x="42" y="88" width="18" height="18" rx="4" fill="#b450ff"/>
+          <rect x="64" y="88" width="18" height="18" rx="4" fill="#b450ff"/>
+          <circle cx="98" cy="31" r="10" fill="#262b36" stroke="#38bdf8" stroke-width="2.5"/>
+          <circle cx="98" cy="55" r="10" fill="#262b36" stroke="#38bdf8" stroke-width="2.5"/>
+          <rect x="86" y="72" width="24" height="34" rx="3" fill="#000000" stroke="#94a3b8" stroke-width="2"/>
+        </svg>
+        <span>DuckyDeck Studio</span>
+        <span class="brand-badge">v0.1.2</span>
+      </a>
+      <div class="brand-sub">Architecture &amp; Developer Guide (v0.1.2)</div>
+    </div>
+
+    <div class="search-box">
+      <input type="text" id="docSearch" class="search-input" placeholder="🔍 Filter architecture sections..." oninput="filterSections(this.value)" />
+    </div>
+
+    <nav class="nav-scroll" id="navLinks">
+      <div class="nav-group-title">System Design</div>
+      <a class="nav-link" href="#overview">🏛️ 1. System Overview &amp; Philosophy</a>
+      <a class="nav-link" href="#architecture">🗺️ 2. High-Level Architecture</a>
+      <a class="nav-link" href="#modules">📂 3. Repository &amp; Module Structure</a>
+      <a class="nav-link" href="#bridge">🔗 4. CXX-Qt Bridge &amp; _GV31 Triggers</a>
+
+      <div class="nav-group-title">Hardware &amp; Compiler</div>
+      <a class="nav-link" href="#hardware">🔌 5. USB HID, MSC &amp; Flatpak Bridge</a>
+      <a class="nav-link" href="#compiler">⚙️ 6. DSVM v2 Bytecode Compiler</a>
+      <a class="nav-link" href="#wayland">🪟 7. Wayland Auto-Switcher &amp; D-Bus</a>
+      <a class="nav-link" href="#ui-verification">🎨 8. Keycap UI &amp; Scene-Graph Tests</a>
+
+      <div class="nav-group-title">Persistence, API &amp; Build</div>
+      <a class="nav-link" href="#persistence">💾 9. Persistence &amp; Portability</a>
+      <a class="nav-link" href="#rest-api">🌐 9.7 Embedded REST API Server</a>
+      <a class="nav-link" href="#flatpak">📦 10. Flatpak Sandbox &amp; Packaging</a>
+      <a class="nav-link" href="#building">🛠️ 11. Building, Testing &amp; Extending</a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <a class="ext-btn" href="user-guide.html" style="justify-content:center;">
+        📖 User Guide &amp; Manual
+      </a>
+      <a class="ext-btn" href="https://duckydeckstudio.com" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
+        🌐 duckydeckstudio.com
+      </a>
+      <a class="ext-btn" href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
+        🐙 GitHub Repository
+      </a>
+      <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
+        📦 Download Flatpak v0.1.2
+      </a>
+      <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
+        ⬇ Download Tarball v0.1.2
+      </a>
+      <a class="kofi-btn" href="https://ko-fi.com/russellmilliner" target="_blank" rel="noopener noreferrer">
+        ☕ Buy Me a Coffee on Ko-fi
+      </a>
+      <button class="theme-btn" onclick="toggleTheme()">🌗 Toggle Dark / Light Theme</button>
+    </div>
+  </aside>
+
+  <!-- Main Architecture Documentation Content -->
+  <main class="main-content">
+    <div class="hero" id="overview">
+      <div class="hero-top">
+        <h1 style="display:flex;align-items:center;gap:14px;">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="44" height="44" style="flex-shrink:0;">
+            <rect x="8" y="8" width="112" height="112" rx="20" fill="#16181d" stroke="#38bdf8" stroke-width="4"/>
+            <rect x="20" y="22" width="18" height="18" rx="4" fill="#00aaff"/>
+            <rect x="42" y="22" width="18" height="18" rx="4" fill="#00aaff"/>
+            <rect x="64" y="22" width="18" height="18" rx="4" fill="#00aaff"/>
+            <rect x="20" y="44" width="18" height="18" rx="4" fill="#28dc64"/>
+            <rect x="42" y="44" width="18" height="18" rx="4" fill="#28dc64"/>
+            <rect x="64" y="44" width="18" height="18" rx="4" fill="#28dc64"/>
+            <rect x="20" y="66" width="18" height="18" rx="4" fill="#ffb400"/>
+            <rect x="42" y="66" width="18" height="18" rx="4" fill="#ffb400"/>
+            <rect x="64" y="66" width="18" height="18" rx="4" fill="#ffb400"/>
+            <rect x="20" y="88" width="18" height="18" rx="4" fill="#ff3c3c"/>
+            <rect x="42" y="88" width="18" height="18" rx="4" fill="#b450ff"/>
+            <rect x="64" y="88" width="18" height="18" rx="4" fill="#b450ff"/>
+            <circle cx="98" cy="31" r="10" fill="#262b36" stroke="#38bdf8" stroke-width="2.5"/>
+            <circle cx="98" cy="55" r="10" fill="#262b36" stroke="#38bdf8" stroke-width="2.5"/>
+            <rect x="86" y="72" width="24" height="34" rx="3" fill="#000000" stroke="#94a3b8" stroke-width="2"/>
+          </svg>
+          <span>DuckyDeck Studio — Architecture &amp; Developer Reference (v0.1.2)</span>
+        </h1>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;">
+          <a class="ext-btn" href="user-guide.html">
+            📖 User Guide &amp; Manual
+          </a>
+          <a class="ext-btn" href="https://duckydeckstudio.com" target="_blank" rel="noopener noreferrer">
+            🌐 duckydeckstudio.com
+          </a>
+          <a class="ext-btn" href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer">
+            🐙 GitHub Repository
+          </a>
+          <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak" target="_blank" rel="noopener noreferrer">
+            📦 Flatpak Bundle (v0.1.2)
+          </a>
+          <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz" target="_blank" rel="noopener noreferrer">
+            ⬇ Linux Tarball (v0.1.2)
+          </a>
+          <a class="ext-btn" href="REST_API.md" target="_blank" rel="noopener noreferrer">
+            🔌 REST API Reference
+          </a>
+          <a class="ext-btn" href="openapi.yaml" target="_blank" rel="noopener noreferrer">
+            📄 OpenAPI 3.0.3 Spec
+          </a>
+          <a class="kofi-btn" href="https://ko-fi.com/russellmilliner" target="_blank" rel="noopener noreferrer">
+            ☕ Support on Ko-fi
+          </a>
+        </div>
+      </div>
+
+      <p>
+        <strong>DuckyDeck Studio (<code>v0.1.2</code>)</strong> is a native Linux desktop configurator,
+        <strong>DSVM v2 bytecode compiler</strong>, <strong>KDE Plasma 6 Wayland Auto-Switcher</strong>, and
+        <strong>host automation daemon</strong> for the <strong>duckyPad Pro (<code>0x0483:0xd11d</code>)</strong> and
+        <strong>duckyPad 2020 (<code>0x0483:0xd11c</code>)</strong>.
+      </p>
+
+      <div class="callout" style="margin-top: 14px;">
+        <div class="callout-title">🏷️ Release Metadata &amp; Official Links</div>
+        <strong>Application Version:</strong> <code>v0.1.2</code> &nbsp;•&nbsp;
+        <strong>Custom Firmware:</strong> <code>v1.0.0</code> (<code>DPP_FW_1.0.0_ad2acc81.bin</code>) &nbsp;•&nbsp;
+        <strong>KDE Plasma 6 Applet:</strong> <code>v1.0.2</code><br/>
+        <strong>Website &amp; User Guide:</strong> <a href="https://duckydeckstudio.com" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">https://duckydeckstudio.com</a> &nbsp;•&nbsp;
+        <strong>Architecture Reference:</strong> <a href="https://duckydeckstudio.com/architecture.html" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">https://duckydeckstudio.com/architecture.html</a> &nbsp;•&nbsp;
+        <strong>GitHub Repository:</strong> <a href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">https://github.com/russellmilliner/duckydeck-studio</a>
+      </div>
+
+      <div class="badge-row">
+        <span class="pill accent">Rust 2021 Edition</span>
+        <span class="pill accent">CXX-Qt 0.7 Bridge</span>
+        <span class="pill accent">Qt 6 &amp; KDE Kirigami 6</span>
+        <span class="pill accent">Flatpak org.kde.Platform//6.8</span>
+        <span class="pill">Two-Pass DSVM v2 Compiler</span>
+        <span class="pill">zbus KWin Wayland Bridge</span>
+        <span class="pill">Embedded HTTP/1.1 REST API</span>
+        <span class="pill">Automated Scene-Graph UI Test Suite</span>
+      </div>
+    </div>
+
+    <!-- 1. Core Design Philosophy -->
+    <section id="philosophy">
+      <h2>🏛️ 1. System Overview &amp; Core Design Philosophy</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h4>⚡ 1. Zero-Runtime-Wrapper Native Stack</h4>
+          <p>
+            Built directly in <strong>Rust (2021 edition)</strong> bridged to <strong>Qt 6 / KDE Frameworks 6 (Kirigami + KSyntaxHighlighting)</strong>
+            via <strong>CXX-Qt 0.7</strong>, avoiding Electron or Python runtime overhead while delivering native KDE Breeze theming, fractional HiDPI scaling, and first-class Wayland integration.
+          </p>
+        </div>
+        <div class="card">
+          <h4>💾 2. Offline-First &amp; Deterministic SD Sync</h4>
+          <p>
+            All profile edits, key scripts, RGB LED overrides, and rule bindings are immediately persisted to a per-device local cache
+            (<code>~/.local/share/duckydeck-studio/profile_cache/&lt;serial&gt;/</code>) and compared against the hardware microSD state using SHA-256 content fingerprinting before writing and read-back validating <code>.dsb</code> bytecode.
+          </p>
+        </div>
+        <div class="card">
+          <h4>⚙️ 3. Pure-Rust DSVM v2 Compiler</h4>
+          <p>
+            Compiles <code>duckyScript 3</code> (<code>keyN.txt</code> / <code>keyN-release.txt</code>) directly into duckyPad virtual machine bytecode (<code>.dsb</code>)
+            with live syntax diagnostics, Shunting-Yard RPN expression evaluation, control flow (<code>IF</code>/<code>ELSE</code>/<code>WHILE</code>), functions, OLED graphics primitives, and PGV (<code>_GV0.._GV31</code>) access.
+          </p>
+        </div>
+        <div class="card">
+          <h4>🔄 4. Bidirectional Hardware-Host Automation</h4>
+          <p>
+            Combines KWin Wayland window focus events (<code>zbus</code> D-Bus listener) for automatic profile switching (<code>Host → duckyPad</code>)
+            with USB HID PGV polling (<code>_GV31</code> encoded via <code>encode_pgv31_trigger</code>) and global <code>F13–F24</code> shortcut triggers for Web API webhooks and Desktop Application Launching (<code>duckyPad → Host</code>).
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. High-Level System Architecture -->
+    <section id="architecture">
+      <h2>🗺️ 2. High-Level System Architecture</h2>
+      <p>
+        DuckyDeck Studio is structured into four cleanly separated layers communicating across a thread-safe CXX-Qt bridge:
+      </p>
+
+      <div class="arch-diagram">
+        <div class="arch-layer">
+          <div class="arch-layer-title">Layer 1 — Qt 6 / KDE Kirigami QML Frontend (src/qml/*.qml)</div>
+          <div class="arch-boxes">
+            <div class="arch-box">
+              <strong>Main.qml</strong>
+              <span>ApplicationWindow Shell, Profiles Sidebar, Inline Filter &amp; duckyScript 3 Editor</span>
+            </div>
+            <div class="arch-box">
+              <strong>HardwareCanvas.qml</strong>
+              <span>4×5 RGB Matrix, Option C Header-Footer Keycaps, Dual Encoders, 128×128 OLED Simulator</span>
+            </div>
+            <div class="arch-box">
+              <strong>OledDesktopWidget.qml</strong>
+              <span>Floating Companion Widget with 0°/90°/180°/270° Grid &amp; In-Key Label Rotation</span>
+            </div>
+            <div class="arch-box">
+              <strong>Builders &amp; Dialogs</strong>
+              <span>WebApiBuilder, AppLaunchBuilder, AutoSwitchDrawer, ColorPickerWindow, SdSyncDialog, SettingsPage, EventLogDialog</span>
+            </div>
+          </div>
+        </div>
+        <div class="arch-arrow">⇅ QProperty Bindings &amp; QInvokable Calls (Single-Thread Qt Affinity)</div>
+        <div class="arch-layer">
+          <div class="arch-layer-title">Layer 2 — CXX-Qt 0.7 QObject Bridge &amp; Native KF6 Helpers</div>
+          <div class="arch-boxes">
+            <div class="arch-box">
+              <strong>DeviceController (src/bridge/device_controller.rs)</strong>
+              <span>Central QObject, CxxQtThread Queue, Profile/Rule Invariants &amp; State Synchronization</span>
+            </div>
+            <div class="arch-box">
+              <strong>Bridge Submodules (src/bridge/*.rs)</strong>
+              <span>rest_routes.rs, serialize.rs, event_log.rs, showcase.rs</span>
+            </div>
+            <div class="arch-box">
+              <strong>KF6 C++ Helper (src/cpp/app_helper.h)</strong>
+              <span>QSystemTrayIcon (Dynamic Profile Badge + About Action), KColorScheme, KSyntaxHighlighting</span>
+            </div>
+          </div>
+        </div>
+        <div class="arch-arrow">⇅ Thread-Safe Rust APIs, Arc&lt;Mutex&lt;...&gt;&gt; Registries &amp; CxxQtThread Queues</div>
+        <div class="arch-layer">
+          <div class="arch-layer-title">Layer 3 — Pure-Rust Core Subsystems</div>
+          <div class="arch-boxes">
+            <div class="arch-box">
+              <strong>Hardware &amp; Storage (src/hardware/*.rs)</strong>
+              <span>storage.rs (HID), profile.rs (SD/Cache), msc.rs (udisksctl / Flatpak Host Spawn), firmware.rs, permissions.rs</span>
+            </div>
+            <div class="arch-box">
+              <strong>DSVM v2 Compiler (src/vm/compiler.rs)</strong>
+              <span>Two-Pass duckyScript 3 → .dsb Bytecode Compiler, RPN Evaluator &amp; Syntax Verifier</span>
+            </div>
+            <div class="arch-box">
+              <strong>Host Actions (src/actions/*.rs)</strong>
+              <span>web_api.rs (HTTP/HA + Keyring), app_launch.rs (Desktop Spawner), desktop_apps.rs (.desktop Scanner)</span>
+            </div>
+            <div class="arch-box">
+              <strong>Wayland &amp; REST API</strong>
+              <span>auto_switcher.rs (KWin 6 D-Bus + Rule Remapper), api_server.rs (HTTP/1.1 /api/v1/*), shortcut_scraper.rs</span>
+            </div>
+          </div>
+        </div>
+        <div class="arch-arrow">⇅ USB HID (0x0483:0xd11d / 0xd11c), Session D-Bus &amp; Flatpak Host Portal</div>
+        <div class="arch-layer" style="margin-bottom:0;">
+          <div class="arch-layer-title">Layer 4 — Background Worker Threads &amp; External Interfaces</div>
+          <div class="arch-boxes">
+            <div class="arch-box">
+              <strong>USB Hotplug &amp; _GV31 Poller</strong>
+              <span>Polls HID 0x00 &amp; 0x18, decodes _GV31 triggers (0x5741xxxx), re-arms _GV31=0 via 0x19</span>
+            </div>
+            <div class="arch-box">
+              <strong>Tokio zbus D-Bus Service</strong>
+              <span>io.github.duckydeck.Studio at /KWinBridge for KWin Active-Window Hooks &amp; CLI IPC</span>
+            </div>
+            <div class="arch-box">
+              <strong>Async REST Job Worker</strong>
+              <span>Executes non-blocking 202 Accepted SD Sync, Mount, Unmount &amp; Reboot jobs</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Repository & Module Structure -->
+    <section id="modules">
+      <h2>📂 3. Repository &amp; Module Structure</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Path</th>
+            <th>Responsibility</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Cargo.toml</code></td>
+            <td>Crate manifest (<code>version = "0.1.2"</code>, <code>cxx-qt 0.7</code>, <code>hidapi</code>, <code>zbus</code>, <code>tokio</code>, <code>reqwest</code>, <code>keyring</code>, <code>serde</code>, <code>serde_json</code>, <code>sha2</code>).</td>
+          </tr>
+          <tr>
+            <td><code>build.rs</code></td>
+            <td><code>CxxQtBuilder</code> configuration registering QML module <code>io.github.duckydeck</code> and compiling <code>src/bridge/device_controller.rs</code>.</td>
+          </tr>
+          <tr>
+            <td><code>src/main.rs</code></td>
+            <td>Application entrypoint: CLI &amp; D-Bus single-instance IPC client, <code>QApplication</code> initialization, <code>KSyntaxHighlighting</code> registration, QML startup, and automated Native + Flatpak UI test suites.</td>
+          </tr>
+          <tr>
+            <td><code>src/paths.rs</code></td>
+            <td>XDG directory helpers (<code>XDG_CONFIG_HOME</code>, <code>XDG_DATA_HOME</code>, <code>XDG_CACHE_HOME</code>, <code>XDG_RUNTIME_DIR</code>) and environment sanitization.</td>
+          </tr>
+          <tr>
+            <td><code>src/api_server.rs</code></td>
+            <td>Embedded HTTP/1.1 REST API Server (<code>/api/v1/*</code>) with constant-time Bearer auth, 8-slot connection cap, 2 MB payload guard, and async job worker.</td>
+          </tr>
+          <tr>
+            <td><code>src/bridge/device_controller.rs</code></td>
+            <td>Central <code>#[cxx_qt::bridge]</code> <code>DeviceController</code> QObject, profile fallback &amp; Auto-Switcher synchronization invariants, background thread orchestration, and QInvokable wrappers.</td>
+          </tr>
+          <tr>
+            <td><code>src/bridge/event_log.rs</code></td>
+            <td>Thread-safe ring buffer (<code>SYSTEM_EVENT_LOG</code>), log file appender, and JSON serializer for system diagnostics.</td>
+          </tr>
+          <tr>
+            <td><code>src/bridge/rest_routes.rs</code></td>
+            <td>REST API route table and request handlers executed via the <code>DeviceController</code> bridge.</td>
+          </tr>
+          <tr>
+            <td><code>src/bridge/serialize.rs</code></td>
+            <td>JSON serializers for profiles, slots, unsynced diffs, and templates exposed to QML and the REST API.</td>
+          </tr>
+          <tr>
+            <td><code>src/bridge/showcase.rs</code></td>
+            <td>Built-in profile templates, SVG icon helpers (<code>known_site_svg</code>), and optional <code>--features demo</code> showcase generator.</td>
+          </tr>
+          <tr>
+            <td><code>src/hardware/storage.rs</code></td>
+            <td>USB HID transport (<code>hidapi</code>), device discovery, RTC sync, PGV burst read/write (<code>0x18</code>/<code>0x19</code>), and submodule re-exports.</td>
+          </tr>
+          <tr>
+            <td><code>src/hardware/profile.rs</code></td>
+            <td><code>DuckyProfile</code> and <code>DuckyKeySlot</code> parser/writer (<code>config.txt</code>, <code>profile_info.txt</code>), SHA-256 diffing, and local cache management.</td>
+          </tr>
+          <tr>
+            <td><code>src/hardware/msc.rs</code></td>
+            <td>USB Mass Storage (<code>0x14</code>) mounting/unmounting via <code>udisksctl</code> (bridged via <code>flatpak-spawn --host</code> inside Flatpak) and microSD capacity inspection.</td>
+          </tr>
+          <tr>
+            <td><code>src/hardware/firmware.rs</code></td>
+            <td>Embedded DuckyDeck Studio custom firmware (<code>DPP_FW_1.0.0_ad2acc81.bin</code>), official dekuNukem release catalog downloader, and IEEE CRC32 integrity verification.</td>
+          </tr>
+          <tr>
+            <td><code>src/hardware/permissions.rs</code></td>
+            <td>Inspects <code>/sys/class/hidraw</code> device nodes for <code>PermissionDenied</code> and invokes <code>pkexec</code> (or <code>flatpak-spawn --host pkexec</code>) to install <code>70-duckypad.rules</code>.</td>
+          </tr>
+          <tr>
+            <td><code>src/actions/web_api.rs</code></td>
+            <td>Web API / Webhook &amp; Home Assistant client, OS keyring secret storage, and <code>_GV31</code> trigger encoding (<code>encode_pgv31_trigger</code>).</td>
+          </tr>
+          <tr>
+            <td><code>src/actions/app_launch.rs</code></td>
+            <td>Desktop Application Launcher metadata parser/generator (<code>// @DUCKYDECK_APPLAUNCH</code>), host-aware process spawner, and <code>_GV31</code> / <code>F13–F24</code> registries.</td>
+          </tr>
+          <tr>
+            <td><code>src/actions/desktop_apps.rs</code></td>
+            <td>XDG <code>.desktop</code> entry scanner across system, user, and Flatpak directories.</td>
+          </tr>
+          <tr>
+            <td><code>src/vm/compiler.rs</code></td>
+            <td>Pure-Rust duckyScript 3 → DSVM v2 (<code>.dsb</code>) two-pass bytecode compiler and syntax verifier.</td>
+          </tr>
+          <tr>
+            <td><code>src/kwin/auto_switcher.rs</code></td>
+            <td>KWin Wayland script injector, <code>zbus</code> D-Bus service (<code>io.github.duckydeck.Studio</code> at <code>/KWinBridge</code>), window picker, profile reorder/deletion rule remapper, and persisted rules (<code>kwin_rules.json</code>).</td>
+          </tr>
+          <tr>
+            <td><code>src/ai/shortcut_scraper.rs</code></td>
+            <td>Parses <code>~/.config/kglobalshortcutsrc</code> and converts KDE shortcuts into duckyScript 3 syntax (<code>kde_shortcut_to_duckyscript</code>).</td>
+          </tr>
+          <tr>
+            <td><code>src/cpp/app_helper.h</code></td>
+            <td>C++ helper bridging <code>QSystemTrayIcon</code> (dynamic profile badge, SD status, Auto-Switcher/Autostart toggles, and <code>"About DuckyDeck Studio"</code> dialog trigger), <code>KColorScheme</code>, <code>KIconLoader</code>, and <code>KSyntaxHighlighting</code> into QML.</td>
+          </tr>
+          <tr>
+            <td><code>src/qml/*.qml</code></td>
+            <td>14 QML components: <code>Main.qml</code>, <code>HardwareCanvas.qml</code>, <code>OledDesktopWidget.qml</code>, <code>AutoSwitchDrawer.qml</code>, <code>ColorPickerWindow.qml</code>, <code>WebApiBuilder.qml</code>, <code>AppLaunchBuilder.qml</code>, <code>SettingsPage.qml</code>, <code>RestApiSettings.qml</code>, <code>SdSyncDialog.qml</code>, <code>EventLogDialog.qml</code>, <code>PgvInspectorDrawer.qml</code>, <code>AiArchitectModal.qml</code>, and <code>UdevBanner.qml</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 4. CXX-Qt Bridge & _GV31 Trigger Protocol -->
+    <section id="bridge">
+      <h2>🔗 4. CXX-Qt Concurrency Model &amp; <code>_GV31</code> Trigger Encoding</h2>
+      <p>
+        Because Qt GUI objects (<code>QObject</code>) have strict single-thread affinity on the Qt main event loop thread,
+        <code>src/bridge/device_controller.rs</code> separates state into Qt-thread-owned fields and thread-safe shared registries:
+      </p>
+      <ul>
+        <li><strong>Qt-Thread Owned State (<code>DeviceControllerRust</code>):</strong> Holds <code>profiles: Vec&lt;DuckyProfile&gt;</code> (up to 64 profiles), <code>sd_root_path: Option&lt;PathBuf&gt;</code>, and <code>copied_slot: Option&lt;DuckyKeySlot&gt;</code>.</li>
+        <li><strong>Thread-Safe Shared State (<code>Arc&lt;Mutex&lt;...&gt;&gt;</code> / Atomics):</strong> Holds <code>switcher_state</code>, <code>WEB_API_REGISTRY</code>, <code>WEB_API_PGV_REGISTRY</code>, <code>APP_LAUNCH_FKEY_REGISTRY</code>, <code>APP_LAUNCH_PGV_REGISTRY</code>, and <code>SYSTEM_EVENT_LOG</code>.</li>
+        <li><strong>Cross-Thread UI Updates (<code>CxxQtThread</code>):</strong> Background worker threads never mutate <code>QProperty</code> values directly; they capture <code>let qt_thread = self.qt_thread();</code> and queue closures onto the Qt event loop via <code>qt_thread.queue(move |mut qobject| { ... })</code>.</li>
+      </ul>
+
+      <h3>Unified <code>_GV31</code> Hardware-to-Host Trigger Word</h3>
+      <p>
+        Both Web API (<code>// @DUCKYDECK_WEBAPI</code>) and Desktop Application Launch (<code>// @DUCKYDECK_APPLAUNCH</code>) scripts in <code>pgv</code> trigger mode write a 32-bit magic word into Persistent Global Variable <strong><code>_GV31</code></strong> (<code>PGV_TRIGGER_INDEX = 31</code>):
+      </p>
+      <pre><code>// 32-bit _GV31 Trigger Word Layout:
+// Bits 16..31 : 0x5741 ("WA" magic header)
+// Bit  15     : is_release (0 = On Press, 1 = On Release)
+// Bits 8..14  : profile_num (1..64)
+// Bits 0..7   : slot_num (1..58)
+pub fn encode_pgv31_trigger(profile_num: u8, slot_num: u8, is_release: bool) -&gt; u32 {
+    let rel_bit = if is_release { 0x8000 } else { 0 };
+    0x5741_0000 | rel_bit | ((profile_num as u32 &amp; 0x7F) &lt;&lt; 8) | (slot_num as u32)
+}</code></pre>
+      <p>
+        When the background USB HID poller reads <code>_GV0.._GV31</code> via command <code>0x18</code> (<code>HID_CMD_DUMP_PGV</code>) and detects a non-zero <code>_GV31</code> matching <code>decode_pgv31_trigger</code>, it immediately writes <code>_GV31 = 0</code> via command <code>0x19</code> (<code>HID_CMD_WRITE_PGV</code>) to re-arm the trigger and dispatches the matching <code>WEB_API_PGV_REGISTRY</code> or <code>APP_LAUNCH_PGV_REGISTRY</code> action on the Linux host.
+      </p>
+    </section>
+
+    <!-- 5. Hardware Communication & Storage Layer -->
+    <section id="hardware">
+      <h2>🔌 5. USB HID Protocol, USB Mass Storage &amp; Flatpak Host Bridge</h2>
+      <h3>5.1 64-Byte USB HID Report Protocol (<code>src/hardware/storage.rs</code>)</h3>
+      <p>
+        The duckyPad Pro (<code>0x0483:0xd11d</code>) and duckyPad 2020 (<code>0x0483:0xd11c</code>) communicate over a 64-byte vendor-defined USB HID interface (<code>HID_REPORT_ID_OUT = 0x05</code>):
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Command Byte (<code>tx[2]</code>)</th>
+            <th>Constant Name</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>0x00</code></td>
+            <td><code>HID_CMD_QUERY_INFO</code></td>
+            <td>Returns firmware version, hardware model, serial number, active profile, and <code>'D','D','S'</code> custom firmware capability signature.</td>
+          </tr>
+          <tr>
+            <td><code>0x01</code></td>
+            <td><code>HID_CMD_GOTO_PROFILE_BY_NUM</code></td>
+            <td>Switches the active hardware profile by number (<code>1..=64</code>).</td>
+          </tr>
+          <tr>
+            <td><code>0x04</code></td>
+            <td><code>HID_CMD_SET_LED_SINGLE</code></td>
+            <td>Sets key RGB LED overrides in real time.</td>
+          </tr>
+          <tr>
+            <td><code>0x14</code></td>
+            <td><code>HID_CMD_SOFTWARE_RESET</code></td>
+            <td>Reboots the duckyPad firmware (<code>tx[3] = 0</code> normal HID mode, <code>tx[3] = 1</code> USB Mass Storage mode).</td>
+          </tr>
+          <tr>
+            <td><code>0x17</code></td>
+            <td><code>HID_CMD_GOTO_PROFILE_BY_NAME</code></td>
+            <td>Switches the active hardware profile by folder name.</td>
+          </tr>
+          <tr>
+            <td><code>0x18</code></td>
+            <td><code>HID_CMD_DUMP_PGV</code></td>
+            <td>Reads all 32 32-bit Persistent Global Variables (<code>_GV0.._GV31</code>, 128 bytes) across 3 burst packets (<code>start_idx = 0, 15, 30</code>).</td>
+          </tr>
+          <tr>
+            <td><code>0x19</code></td>
+            <td><code>HID_CMD_WRITE_PGV</code></td>
+            <td>Writes up to 12 <code>(pgv_index | 0x80, i32_le)</code> entries per packet into <code>_GV0.._GV31</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>5.2 USB Mass Storage (MSC) Mounting &amp; Flatpak Host Command Bridging (<code>src/hardware/msc.rs</code>)</h3>
+      <p>
+        When reading or writing profiles or staging firmware on a duckyPad Pro, DuckyDeck Studio sends HID command <code>0x14</code> (<code>tx[3] = 1</code>) to enumerate the microSD card as a TinyUSB Mass Storage block device (<code>/dev/disk/by-label/DP24_*</code> or <code>/dev/disk/by-id/*TinyUSB_Flash_Storage*</code>), mounts the FAT32 partition via <code>udisksctl mount --no-user-interaction -b /dev/sdX1</code>, performs SHA-256 read-back verification, flushes buffers via <code>sync</code>, unmounts cleanly via <code>udisksctl unmount</code>, and reboots back into HID mode (<code>0x14, tx[3] = 0</code>).
+      </p>
+      <div class="callout success">
+        <div class="callout-title">📦 Flatpak Host Storage Bridge (<code>run_storage_cmd</code>)</div>
+        Inside the Flatpak sandbox (<code>org.kde.Platform//6.8</code>), host utilities like <code>udisksctl</code> and <code>umount</code> are not installed inside the container's <code>/usr/bin</code>.
+        <code>src/hardware/msc.rs</code> automatically detects <code>/.flatpak-info</code> and routes <code>udisksctl</code>, <code>umount</code>, <code>sync</code>, and host <code>/proc/mounts</code> queries through
+        <code>flatpak-spawn --host</code> while accessing the mounted filesystem directly via <code>--filesystem=/run/media:rw</code> and <code>--filesystem=/media:rw</code>.
+      </div>
+    </section>
+
+    <!-- 6. DSVM v2 Bytecode Compiler -->
+    <section id="compiler">
+      <h2>⚙️ 6. DSVM v2 Bytecode Compiler (<code>src/vm/compiler.rs</code>)</h2>
+      <p>
+        The duckyPad Pro executes compiled <strong>DSVM v2 (<code>.dsb</code>)</strong> stack-machine bytecode binaries rather than interpreting raw text on-device.
+        <code>src/vm/compiler.rs</code> implements a complete two-pass compiler in pure Rust:
+      </p>
+      <div class="grid-2">
+        <div class="card">
+          <h4>1️⃣ Preprocessor &amp; Directive Preservation</h4>
+          <p>Strips comments while preserving structured visual-builder metadata directives (<code>// @DUCKYDECK_WEBAPI {...}</code> and <code>// @DUCKYDECK_APPLAUNCH {...}</code>), expands <code>DEFINE</code> macros safely (with recursion/expansion caps), and injects <code>$_ALLOW_ABORT</code> / <code>$_DONT_REPEAT</code> header flags.</p>
+        </div>
+        <div class="card">
+          <h4>2️⃣ Block &amp; Control-Flow Parser</h4>
+          <p>Resolves nested <code>IF / ELSE_IF / ELSE / END_IF</code>, <code>WHILE / END_WHILE</code>, <code>LOOP0..LOOP9</code> state machines, and <code>FUNCTION / RETURN</code> call frames into structured intermediate labels.</p>
+        </div>
+        <div class="card">
+          <h4>3️⃣ Shunting-Yard RPN Expression Engine</h4>
+          <p>Converts infix arithmetic, bitwise, comparison, and boolean expressions into stack-based RPN instructions (<code>OP_PUSH_CONST</code>, <code>OP_PUSH_VAR</code>, <code>OP_ADD</code>, <code>OP_EQ</code>, <code>OP_BITWISE_AND</code>) and maps user variables alongside hardware globals (<code>_GV0.._GV31</code>).</p>
+        </div>
+        <div class="card">
+          <h4>4️⃣ Two-Pass Linker &amp; Bytecode Emitter</h4>
+          <p>Resolves 16-bit jump target offsets and null-terminated UTF-8 string pool addresses across two passes, emitting little-endian <code>.dsb</code> binaries verified for parity against official DSVM v2 semantics.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. Wayland Auto-Switcher & Session D-Bus IPC -->
+    <section id="wayland">
+      <h2>🪟 7. Wayland Auto-Switcher, Session D-Bus IPC &amp; Rule Invariants</h2>
+      <p>
+        On KDE Plasma 6 Wayland, DuckyDeck Studio registers the session D-Bus service <strong><code>io.github.duckydeck.Studio</code></strong> at object path
+        <strong><code>/KWinBridge</code></strong> (interface <strong><code>io.github.duckydeck.KWinBridge</code></strong>) via <code>zbus</code>:
+      </p>
+      <ul>
+        <li><code>ReportActiveWindow(window_class: &amp;str, window_title: &amp;str)</code>: Invoked by the dynamically injected KWin 6 JavaScript hook (<code>duckydeck-kwin6-hook.js</code>) whenever the active Wayland window changes; evaluates <code>AutoSwitchRule</code> entries and switches the duckyPad profile over USB HID unless paused while the script editor is open.</li>
+        <li><code>ReportPickedWindow(window_class: &amp;str, window_title: &amp;str)</code>: Invoked when the user clicks a window using the interactive KWin crosshair picker.</li>
+        <li><code>DispatchIpcCommand(command: &amp;str) -&gt; u32</code>: Handles single-instance activation, system tray actions, and CLI remote control (<code>show</code>, <code>show-about</code>, <code>minimize</code>, <code>toggle</code>, <code>quit</code>, <code>toggle-oled-widget</code>, <code>switch-profile:&lt;n&gt;</code>, <code>trigger-fkey:&lt;F13..F24&gt;</code>).</li>
+      </ul>
+
+      <h3>Profile Fallback &amp; Auto-Switcher Synchronization Invariants</h3>
+      <ul>
+        <li><strong>Default Fallback Profile Guarantee:</strong> Whenever a new profile group is created or loaded, if no profiles exist, Profile <code>#1</code> (<code>"Default"</code>) is automatically created and marked as the <code>fallback_profile</code>.</li>
+        <li><strong>Non-Deletable Fallback Profile:</strong> <code>delete_profile</code> rejects deletion of the currently configured <code>fallback_profile</code> so unmatched windows and reassigned rules always have a valid target.</li>
+        <li><strong>Automatic Rule Remapping on Reorder &amp; Delete:</strong> Reordering profiles (<code>remap_rules_on_profile_reorder</code>) atomically updates <code>fallback_profile</code> and every rule's target profile number/name. Deleting a profile (<code>remap_rules_on_profile_delete</code>) shifts higher indices down by 1 and reassigns any rule referencing the deleted profile to the <code>fallback_profile</code>.</li>
+      </ul>
+    </section>
+
+    <!-- 8. Keycap UI & Automated Scene-Graph Verification -->
+    <section id="ui-verification">
+      <h2>🎨 8. Keycap Layout, OLED Desktop Widget &amp; Automated UI Verification</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h4>🎹 Option C Header-Footer Split Keycap Layout</h4>
+          <p>
+            Each mechanical keycap cell in <code>src/qml/HardwareCanvas.qml</code> uses a non-overlapping 3-zone vertical structure:
+            a <code>15px</code> top header strip (key number + pill-shaped RGB LED bar), a centered 2-line OLED preview area, and a <code>15px</code> bottom footer strip (<code>APP</code>/<code>API</code> host badges + <code>↻</code>/<code>⏹</code> execution flags).
+          </p>
+        </div>
+        <div class="card">
+          <h4>🖥️ 4-Way Rotated Desktop OLED Widget</h4>
+          <p>
+            <code>src/qml/OledDesktopWidget.qml</code> and the KDE Plasma 6 Applet (<code>plasmoid/io.github.duckydeck.oled</code>) support per-profile orientation (<code>0°</code>, <code>90°</code>, <code>180°</code>, <code>270°</code>, or Follow Hardware OLED), applying both 4×5 grid coordinate remapping and in-key text rotation.
+          </p>
+        </div>
+      </div>
+
+      <h3>Automated Scene-Graph UI Test Suite (Native &amp; Flatpak)</h3>
+      <p>
+        <code>src/qml/EventLogDialog.qml</code> and <code>src/main.rs</code> include a comprehensive automated UI verification harness (<code>--ui-test-suite</code>) that walks every window, drawer, and modal across both <strong>Dark Mode</strong> and <strong>Light Mode</strong> at <strong><code>100%</code></strong> and <strong><code>115%</code></strong> zoom levels, auditing:
+      </p>
+      <ul>
+        <li><strong>Zero Overflow &amp; Overlap Violations:</strong> Audits 160+ keycap instances and all text labels for truncation or sibling bounding-box collisions.</li>
+        <li><strong>WCAG Contrast &amp; High-Contrast Controls:</strong> Verifies text/background contrast ratios, <code>HighContrastCheckBox</code> border luminance, and 40+ <code>HighContrastScrollBar</code> instances.</li>
+        <li><strong>12 Behavioral Invariants:</strong> Verifies profile group creation, non-deletable fallback protection, profile reorder/delete rule remapping, Escape-key modal dismissal, zoom persistence, and bundled DuckyDeck Studio custom firmware catalog presence (<code>duckydeck_studio_firmware_available_in_catalog</code>).</li>
+      </ul>
+    </section>
+
+    <!-- 9. Persistence & Portability -->
+    <section id="persistence">
+      <h2>💾 9. Persistence, Credentials &amp; Hardware Portability</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Path (Host / XDG)</th>
+            <th>Flatpak Sandbox Equivalent</th>
+            <th>Contents</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>~/.config/duckydeck-studio/kwin_rules.json</code></td>
+            <td><code>~/.var/app/io.github.duckydeck.Studio/config/duckydeck-studio/kwin_rules.json</code></td>
+            <td>Auto-Switcher rules, fallback profile, UI text scale, tray settings, REST API config, Global Profile Webhook, and Saved Colors palette.</td>
+          </tr>
+          <tr>
+            <td><code>~/.config/duckydeck-studio/oled_widget_geometry.json</code></td>
+            <td><code>~/.var/app/io.github.duckydeck.Studio/config/duckydeck-studio/oled_widget_geometry.json</code></td>
+            <td>Desktop OLED Widget monitor, position, size, transparency, always-on-top, and frameless settings.</td>
+          </tr>
+          <tr>
+            <td><code>~/.local/share/duckydeck-studio/profile_cache/&lt;serial&gt;/</code></td>
+            <td><code>~/.var/app/io.github.duckydeck.Studio/data/duckydeck-studio/profile_cache/&lt;serial&gt;/</code></td>
+            <td>Offline mirror of all hardware profiles and <code>.sd_synced_snapshot.json</code> baseline for SHA-256 diffing.</td>
+          </tr>
+          <tr>
+            <td><code>~/.local/share/duckydeck-studio/firmware/DPP_FW_1.0.0_ad2acc81.bin</code></td>
+            <td><code>/app/share/duckydeck-studio/firmware/DPP_FW_1.0.0_ad2acc81.bin</code></td>
+            <td>Bundled DuckyDeck Studio custom firmware v1.0.0 (also embedded in the binary for automatic extraction).</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 9.7 Embedded HTTP REST API Server -->
+    <section id="rest-api">
+      <h2>🌐 9.7 Embedded HTTP REST API Server (<code>src/api_server.rs</code>)</h2>
+      <p>
+        DuckyDeck Studio embeds a bounded, stoppable/restartable HTTP/1.1 REST API server (<code>src/api_server.rs</code> and <code>src/bridge/rest_routes.rs</code>):
+      </p>
+      <ul>
+        <li><strong>Default Security Posture:</strong> Disabled by default (<code>rest_api_enabled = false</code>), bound to loopback <code>127.0.0.1:28491</code>, with constant-time Bearer Token authentication (<code>ddk_&lt;40 hex chars&gt;</code> stored in OS keyring).</li>
+        <li><strong>Resource Bounds:</strong> Capped at <code>MAX_CONCURRENT_CONNECTIONS = 8</code> (returning <code>503 Service Unavailable</code> when full) and <code>MAX_BODY_BYTES = 2 MB</code> (returning <code>413 Payload Too Large</code>).</li>
+        <li><strong>Async Worker Jobs (<code>202 Accepted</code>):</strong> Long-running hardware operations (<code>/api/v1/sd/sync</code>, <code>/api/v1/sd/mount</code>, <code>/api/v1/sd/unmount</code>, <code>/api/v1/device/reboot</code>) return <code>202 Accepted</code> with a job ID pollable via <code>GET /api/v1/jobs/{id}</code>.</li>
+        <li><strong>Interactive Documentation:</strong> Full OpenAPI 3.0.3 &amp; Swagger 2.0 specs are served at <code>/api/v1/openapi.yaml</code>, <code>/api/v1/openapi.json</code>, and <code>/api/v1/swagger.json</code> (and documented in <a href="REST_API.md" style="color:var(--accent);">REST_API.md</a>).</li>
+      </ul>
+    </section>
+
+    <!-- 10. Flatpak Sandbox & Packaging -->
+    <section id="flatpak">
+      <h2>📦 10. Flatpak Sandbox Architecture &amp; Packaging</h2>
+      <p>
+        DuckyDeck Studio is packaged as a self-contained Flatpak bundle (<code>io.github.duckydeck.Studio</code>) built against
+        <code>org.kde.Platform//6.8</code> and <code>org.kde.Sdk//6.8</code> (configured in <code>io.github.duckydeck.Studio.yml</code> and <code>scripts/build-flatpak.sh</code>).
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Sandbox Permission</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>--device=all</code>, <code>--filesystem=/run/udev:ro</code></td>
+            <td>Direct USB HID access to <code>/dev/hidraw*</code> and block device symlink discovery in <code>/dev/disk/by-label</code> and <code>/dev/disk/by-id</code>.</td>
+          </tr>
+          <tr>
+            <td><code>--filesystem=/run/media:rw</code>, <code>--filesystem=/media:rw</code>, <code>--filesystem=xdg-run/gvfs:ro</code></td>
+            <td>Read/write access to mounted duckyPad microSD volumes for profile sync and firmware staging.</td>
+          </tr>
+          <tr>
+            <td><code>--talk-name=org.freedesktop.Flatpak</code>, <code>--system-talk-name=org.freedesktop.UDisks2</code></td>
+            <td>Allows invoking <code>flatpak-spawn --host udisksctl</code> / <code>umount</code> / <code>pkexec</code> / <code>xdg-open</code> and launching host desktop applications.</td>
+          </tr>
+          <tr>
+            <td><code>--talk-name=org.kde.KWin</code>, <code>--filesystem=xdg-run/duckydeck-kwin6-hook.js:create</code></td>
+            <td>Allows loading the KWin 6 Wayland active-window tracking script and receiving focus callbacks over session D-Bus.</td>
+          </tr>
+          <tr>
+            <td><code>--talk-name=org.kde.StatusNotifierWatcher</code>, <code>--talk-name=org.freedesktop.secrets</code></td>
+            <td>System tray icon integration and OS keyring credential storage.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Download, Install &amp; Run the Flatpak</h3>
+      <pre><code># Download &amp; install the latest Flatpak bundle directly:
+curl -LO https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak
+flatpak install --user -y duckydeck-studio-v0.1.2-x86_64.flatpak
+
+# Launch GUI:
+flatpak run io.github.duckydeck.Studio
+
+# Run CLI commands inside Flatpak:
+flatpak run io.github.duckydeck.Studio --status</code></pre>
+    </section>
+
+    <!-- 11. Building, Testing & Extending -->
+    <section id="building">
+      <h2>🛠️ 11. Building, Testing &amp; Extending</h2>
+      <pre><code># 1. Run formatting, clippy (-D warnings), unit tests, and architecture path checks:
+bash scripts/check.sh
+
+# 2. Run the Native QML UI Overflow, Contrast &amp; Behavioral Test Suite:
+cargo test ui_test_suite::test_full_qml_ui_overflow_and_contrast_suite -- --ignored --nocapture
+
+# 3. Build &amp; install the Flatpak bundle from source:
+bash scripts/build-flatpak.sh
+flatpak install --user -y --reinstall target/release/duckydeck-studio-v0.1.2-x86_64.flatpak
+
+# 4. Run the Flatpak QML UI Test Suite inside the Flatpak sandbox:
+bash scripts/test-flatpak-ui.sh</code></pre>
+    </section>
+  </main>
+
+  <script>
+    function toggleTheme() {
+      const html = document.documentElement;
+      const current = html.getAttribute("data-theme") || "dark";
+      html.setAttribute("data-theme", current === "dark" ? "light" : "dark");
+    }
+
+    function filterSections(query) {
+      const q = (query || "").trim().toLowerCase();
+      const links = document.querySelectorAll("#navLinks .nav-link");
+      links.forEach(link => {
+        const text = link.textContent.toLowerCase();
+        link.style.display = (!q || text.includes(q)) ? "flex" : "none";
+      });
+    }
+  </script>
+</body>
+</html>

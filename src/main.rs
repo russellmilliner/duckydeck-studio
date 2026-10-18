@@ -1805,6 +1805,7 @@ mod ui_test_suite {
             "fallback_profile_cannot_be_deleted",
             "profile_reorder_and_add_updates_autoswitch_rules",
             "deleted_profile_rule_reassigned_to_fallback",
+            "duckydeck_studio_firmware_available_in_catalog",
         ];
         for req_name in required_behaviors {
             let behavior_passed = report
@@ -1828,6 +1829,245 @@ mod ui_test_suite {
         assert!(
             passed && exit_status.success(),
             "UI test suite did not pass cleanly (status: {:?}). Report summary: {}\nstderr: {}",
+            exit_status,
+            serde_json::to_string_pretty(&report["summary"]).unwrap_or_default(),
+            stderr_text
+        );
+    }
+
+    #[test]
+    #[ignore = "launches Flatpak GUI; run with cargo test test_flatpak_qml_ui_overflow_and_contrast_suite -- --ignored"]
+    fn test_flatpak_qml_ui_overflow_and_contrast_suite() {
+        use std::io::Read;
+        use std::process::Stdio;
+        use std::time::{Duration, Instant};
+
+        let timeout_secs: u64 = std::env::var("DUCKYDECK_UI_TEST_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .filter(|&s| s > 0)
+            .unwrap_or(120);
+        let timeout = Duration::from_secs(timeout_secs);
+
+        let home_dir = std::env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| std::env::temp_dir());
+        let flatpak_cache_dir = home_dir.join(".var/app/io.github.duckydeck.Studio/cache");
+        std::fs::create_dir_all(&flatpak_cache_dir)
+            .expect("Failed creating Flatpak cache dir for UI test report");
+
+        let report_path = flatpak_cache_dir.join(format!(
+            "duckydeck_flatpak_ui_test_report_{}.json",
+            std::process::id()
+        ));
+        if report_path.exists() {
+            let _ = std::fs::remove_file(&report_path);
+        }
+
+        let mut cmd = Command::new("flatpak");
+        cmd.arg("run");
+        if std::env::var_os("WAYLAND_DISPLAY").is_none() && std::env::var_os("DISPLAY").is_none() {
+            cmd.arg("--env=QT_QPA_PLATFORM=offscreen");
+        }
+        cmd.arg("io.github.duckydeck.Studio")
+            .arg("--ui-test-suite")
+            .arg(format!("--ui-test-report={}", report_path.display()))
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        let mut child = cmd
+            .spawn()
+            .expect("Failed to spawn flatpak run io.github.duckydeck.Studio");
+
+        let mut child_stdout = child.stdout.take();
+        let mut child_stderr = child.stderr.take();
+
+        let stdout_handle = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(ref mut out) = child_stdout {
+                let _ = out.read_to_end(&mut buf);
+            }
+            buf
+        });
+
+        let stderr_handle = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(ref mut err) = child_stderr {
+                let _ = err.read_to_end(&mut buf);
+            }
+            buf
+        });
+
+        let start = Instant::now();
+        let mut timed_out = false;
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(exit_status)) => break Some(exit_status),
+                Ok(None) => {
+                    if start.elapsed() >= timeout {
+                        timed_out = true;
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        break None;
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                Err(err) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    panic!("Error waiting for Flatpak UI test subprocess: {err}");
+                }
+            }
+        };
+
+        let stdout_bytes = stdout_handle.join().unwrap_or_default();
+        let stderr_bytes = stderr_handle.join().unwrap_or_default();
+        let stderr_text = String::from_utf8_lossy(&stderr_bytes);
+        let stdout_text = String::from_utf8_lossy(&stdout_bytes);
+
+        if timed_out {
+            let _ = std::fs::remove_file(&report_path);
+            panic!(
+                "Flatpak UI test suite timed out after {}s.\nstderr:\n{}\nstdout:\n{}",
+                timeout_secs, stderr_text, stdout_text
+            );
+        }
+
+        let exit_status = status.expect("Flatpak UI test subprocess must have an exit status");
+
+        assert!(
+            report_path.exists(),
+            "Flatpak UI test report JSON was not generated at {:?} (status: {:?}). stderr: {}",
+            report_path,
+            exit_status,
+            stderr_text
+        );
+
+        let report_raw = std::fs::read_to_string(&report_path)
+            .expect("Failed to read generated Flatpak UI test report JSON");
+        let _ = std::fs::remove_file(&report_path);
+
+        let report: serde_json::Value =
+            serde_json::from_str(&report_raw).expect("Flatpak UI test report must be valid JSON");
+
+        let passed = report
+            .get("passed")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let behavioral_failures = report
+            .get("summary")
+            .and_then(|s| s.get("behavioralFailuresCount"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(999);
+        let overflow_count = report
+            .get("summary")
+            .and_then(|s| s.get("overflowViolationsCount"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(999);
+        let contrast_count = report
+            .get("summary")
+            .and_then(|s| s.get("contrastViolationsCount"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(999);
+        let scrollbar_violations_count = report
+            .get("summary")
+            .and_then(|s| s.get("scrollBarStyleViolationsCount"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(999);
+        let min_font_pt_violations_count = report
+            .get("summary")
+            .and_then(|s| s.get("minFontPointSizeViolationsCount"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(999);
+        let total_scrollbars_inspected = report
+            .get("summary")
+            .and_then(|s| s.get("totalScrollBarsInspected"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let total_keycaps_audited = report
+            .get("summary")
+            .and_then(|s| s.get("totalKeycapsAudited"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        assert_eq!(
+            overflow_count,
+            0,
+            "Flatpak UI overflow violations detected: {}",
+            serde_json::to_string_pretty(&report["overflowViolations"]).unwrap_or_default()
+        );
+        assert_eq!(
+            behavioral_failures,
+            0,
+            "Flatpak UI behavioral checks failed: {}",
+            serde_json::to_string_pretty(&report["behavioralResults"]).unwrap_or_default()
+        );
+        assert_eq!(
+            contrast_count,
+            0,
+            "Flatpak UI contrast violations detected: {}",
+            serde_json::to_string_pretty(&report["contrastViolations"]).unwrap_or_default()
+        );
+        assert_eq!(
+            scrollbar_violations_count,
+            0,
+            "Flatpak UI scrollbar style violations detected: {}",
+            serde_json::to_string_pretty(&report["scrollBarStyleViolations"]).unwrap_or_default()
+        );
+        assert_eq!(
+            min_font_pt_violations_count,
+            0,
+            "Flatpak UI minimum 10pt font size violations detected: {}",
+            serde_json::to_string_pretty(&report["minFontPointSizeViolations"]).unwrap_or_default()
+        );
+        assert!(
+            total_scrollbars_inspected >= 40,
+            "Expected at least 40 scrollbar instances in Flatpak UI test, got {}",
+            total_scrollbars_inspected
+        );
+        assert!(
+            total_keycaps_audited >= 160,
+            "Expected at least 160 keycap instances in Flatpak UI test, got {}",
+            total_keycaps_audited
+        );
+
+        let required_behaviors = [
+            "resizable_windows_scrollbar_style_matches_profiles_box",
+            "script_editor_has_scrollbar",
+            "settings_removed_area_text_sizes_and_min_10pt_font",
+            "ctrl_plus_equal_minus_zoom_and_restart_persistence",
+            "all_popup_windows_closable_with_esc",
+            "option_c_keycap_layout_no_overlap",
+            "no_overflows_at_zoom_levels_up_to_115_percent",
+            "new_profile_group_has_default_fallback",
+            "fallback_profile_cannot_be_deleted",
+            "profile_reorder_and_add_updates_autoswitch_rules",
+            "deleted_profile_rule_reassigned_to_fallback",
+            "duckydeck_studio_firmware_available_in_catalog",
+        ];
+        for req_name in required_behaviors {
+            let behavior_passed = report
+                .get("behavioralResults")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter().any(|entry| {
+                        entry.get("name").and_then(|n| n.as_str()) == Some(req_name)
+                            && entry.get("passed").and_then(|p| p.as_bool()) == Some(true)
+                    })
+                })
+                .unwrap_or(false);
+            assert!(
+                behavior_passed,
+                "Flatpak behavioral check '{}' did not pass: {}",
+                req_name,
+                serde_json::to_string_pretty(&report["behavioralResults"]).unwrap_or_default()
+            );
+        }
+
+        assert!(
+            passed && exit_status.success(),
+            "Flatpak UI test suite did not pass cleanly (status: {:?}). Report summary: {}\nstderr: {}",
             exit_status,
             serde_json::to_string_pretty(&report["summary"]).unwrap_or_default(),
             stderr_text

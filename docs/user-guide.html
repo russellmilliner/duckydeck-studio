@@ -561,14 +561,20 @@
     </nav>
 
     <div class="sidebar-footer">
+      <a class="ext-btn" href="architecture.html" style="justify-content:center;">
+        🏗️ Architecture Reference
+      </a>
       <a class="ext-btn" href="https://duckydeckstudio.com" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
         🌐 duckydeckstudio.com
       </a>
       <a class="ext-btn" href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
         🐙 GitHub Repository
       </a>
+      <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
+        📦 Download Flatpak v0.1.2
+      </a>
       <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
-        ⬇ Download Release v0.1.2
+        ⬇ Download Tarball v0.1.2
       </a>
       <a class="kofi-btn" href="https://ko-fi.com/russellmilliner" target="_blank" rel="noopener noreferrer">
         ☕ Buy Me a Coffee on Ko-fi
@@ -615,10 +621,13 @@
           <a class="ext-btn" href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer">
             🐙 GitHub Repository
           </a>
-          <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz" target="_blank" rel="noopener noreferrer">
-            ⬇ Download Release v0.1.2
+          <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak" target="_blank" rel="noopener noreferrer">
+            📦 Download Flatpak v0.1.2
           </a>
-          <a class="ext-btn" href="ARCHITECTURE.md" target="_blank" rel="noopener noreferrer">
+          <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz" target="_blank" rel="noopener noreferrer">
+            ⬇ Download Tarball v0.1.2
+          </a>
+          <a class="ext-btn" href="architecture.html">
             🏗️ Architecture Reference
           </a>
           <a class="ext-btn" href="REST_API.md" target="_blank" rel="noopener noreferrer">
@@ -646,6 +655,7 @@
         <strong>Custom Firmware:</strong> <code>v1.0.0</code> &nbsp;•&nbsp;
         <strong>KDE Plasma 6 Applet:</strong> <code>v1.0.2</code><br/>
         <strong>Official Website &amp; Docs:</strong> <a href="https://duckydeckstudio.com" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">https://duckydeckstudio.com</a> &nbsp;•&nbsp;
+        <strong>Architecture Guide:</strong> <a href="architecture.html" style="color:var(--accent);">https://duckydeckstudio.com/architecture.html</a> &nbsp;•&nbsp;
         <strong>GitHub Repository:</strong> <a href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">https://github.com/russellmilliner/duckydeck-studio</a>
       </div>
       <div class="callout success" style="margin-top: 12px;">
@@ -657,6 +667,7 @@
       </div>
       <div class="badge-row">
         <span class="pill accent">Version v0.1.2</span>
+        <span class="pill accent">Flatpak Bundle Available</span>
         <span class="pill accent">duckyPad Pro (0x0483:0xd11d)</span>
         <span class="pill accent">duckyPad 2020 (0x0483:0xd11c)</span>
         <span class="pill">DuckyDeck Studio FW v1.0.0</span>
@@ -777,36 +788,55 @@
 
     <!-- 1. Installation & Permissions -->
     <section id="installation">
-      <h2>📦 1. Downloading from GitHub, Installation &amp; USB HID Permissions</h2>
+      <h2>📦 1. Downloading, Flatpak / Native Installation &amp; USB HID Permissions</h2>
       <p>
-        DuckyDeck Studio is open-source and hosted on GitHub at
-        <strong><a href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">github.com/russellmilliner/duckydeck-studio</a></strong>.
-        It communicates directly with your duckyPad over USB HID (<code>hidraw</code>) for real-time profile switching,
-        LED color previews, RTC clock sync, and Persistent Global Variables (<code>_GV0.._GV31</code>), and mounts or reads the
-        duckyPad microSD card for profile storage.
+        DuckyDeck Studio (<code>v0.1.2</code>) is open-source and available as a universal <strong>Linux x86_64 Flatpak bundle</strong>, a
+        <strong>prebuilt Linux x86_64 tarball</strong>, or built directly from source on
+        <strong><a href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">github.com/russellmilliner/duckydeck-studio</a></strong>
+        and <strong><a href="https://duckydeckstudio.com" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">duckydeckstudio.com</a></strong>.
       </p>
 
-      <h3>Step 1: Download or Clone from GitHub</h3>
+      <h3>Step 1: Choose Your Installation Method</h3>
       <div class="grid-2" style="margin-bottom: 16px;">
         <div class="card">
-          <h4>🐙 Option A: Clone with Git (Recommended)</h4>
-          <p>Clone the repository directly so you can easily pull updates with <code>git pull</code>:</p>
-          <pre><code>git clone https://github.com/russellmilliner/duckydeck-studio.git
-cd duckydeck-studio</code></pre>
+          <h4>📦 Option A: Install the Flatpak Bundle (Recommended — Any Linux Distro)</h4>
+          <p>
+            Download the self-contained Flatpak bundle (<code>io.github.duckydeck.Studio</code>) from
+            <strong><a href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">duckydeckstudio.com</a></strong>
+            or <strong><a href="https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.2" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">GitHub Releases</a></strong>:
+          </p>
+          <pre><code># 1. Ensure the KDE 6.8 Flatpak runtime is available from Flathub:
+flatpak remote-add --if-not-exists --user flathub \
+    https://flathub.org/repo/flathub.flatpakrepo
+
+# 2. Download &amp; install the DuckyDeck Studio Flatpak bundle:
+curl -LO https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak
+flatpak install --user -y duckydeck-studio-v0.1.2-x86_64.flatpak
+
+# 3. Launch DuckyDeck Studio (or open from your KDE Application Launcher):
+flatpak run io.github.duckydeck.Studio
+
+# 4. Run CLI status or automation commands via Flatpak:
+flatpak run io.github.duckydeck.Studio --status</code></pre>
         </div>
         <div class="card">
-          <h4>📥 Option B: Download ZIP or Release from GitHub</h4>
+          <h4>📥 Option B: Download Prebuilt Linux x86_64 Tarball or Clone Git Repo</h4>
           <p>
-            Visit <strong><a href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">github.com/russellmilliner/duckydeck-studio</a></strong>
-            and click <strong>Code → Download ZIP</strong> (or browse <strong><a href="https://github.com/russellmilliner/duckydeck-studio/releases" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">GitHub Releases</a></strong>), or download via terminal:
+            Download the prebuilt release tarball (<strong><a href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">duckydeck-studio-v0.1.2-linux-x86_64.tar.gz</a></strong>) or clone the repository to build from source:
           </p>
-          <pre><code>curl -L https://github.com/russellmilliner/duckydeck-studio/archive/refs/heads/master.zip -o duckydeck-studio.zip
-unzip duckydeck-studio.zip
-cd duckydeck-studio-master</code></pre>
+          <pre><code># Prebuilt Linux x86_64 Tarball:
+curl -LO https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz
+tar -xzf duckydeck-studio-v0.1.2-linux-x86_64.tar.gz
+cd duckydeck-studio-v0.1.2-linux-x86_64
+./duckydeck-studio
+
+# Or clone the Git repository:
+git clone https://github.com/russellmilliner/duckydeck-studio.git
+cd duckydeck-studio</code></pre>
         </div>
       </div>
 
-      <h3>Step 2: Install Build Prerequisites</h3>
+      <h3>Step 2: Install Build Prerequisites (If Building from Source)</h3>
       <ul>
         <li>
           <strong>Arch Linux / CachyOS / EndeavourOS / Manjaro:</strong>
@@ -827,8 +857,8 @@ cd duckydeck-studio-master</code></pre>
         </li>
       </ul>
 
-      <h3>Step 3: Build &amp; Install DuckyDeck Studio</h3>
-      <p>Compile the optimized release binary and install the executable, desktop launcher, icon, and <code>duckyScript 3</code> syntax highlighting definition:</p>
+      <h3>Step 3: Build &amp; Install Native Binary or Flatpak from Source</h3>
+      <p>Compile the optimized release binary (or build the Flatpak bundle via <code>bash scripts/build-flatpak.sh</code>):</p>
       <pre><code># 1. Compile optimized release binary
 cargo build --release
 
@@ -846,14 +876,17 @@ install -Dm644 data/icons/io.github.duckydeck.Studio.svg \
     ~/.local/share/icons/hicolor/scalable/apps/io.github.duckydeck.Studio.svg
 install -Dm644 docs/user-guide.html \
     ~/.local/share/duckydeck-studio/docs/user-guide.html
+install -Dm644 docs/architecture.html \
+    ~/.local/share/duckydeck-studio/docs/architecture.html
 
-# 5. Launch DuckyDeck Studio
-~/.local/bin/duckydeck-studio</code></pre>
+# 5. Or build &amp; install the Flatpak bundle from source:
+bash scripts/build-flatpak.sh
+flatpak install --user -y --reinstall target/release/duckydeck-studio-v0.1.2-x86_64.flatpak</code></pre>
 
       <div class="callout">
         <div class="callout-title">⚡ Step 4: One-Click Polkit udev Rule Setup</div>
         If Linux blocks non-root USB HID access (<code>PermissionDenied</code> on <code>/dev/hidraw*</code>), DuckyDeck Studio automatically displays an inline
-        yellow banner at the top of the window. Click <strong>Install Rules</strong> to authorize the <code>70-duckypad.rules</code> installation via Polkit, or run:
+        yellow banner at the top of the window (works in both Native and Flatpak builds). Click <strong>Install Rules</strong> to authorize the <code>70-duckypad.rules</code> installation via Polkit, or run:
         <pre><code>sudo ./data/udev/install-udev-rules.sh</code></pre>
       </div>
 

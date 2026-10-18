@@ -63,6 +63,8 @@ modules:
       - install -Dm755 ./data/udev/install-udev-rules.sh -t /app/bin/
       - install -Dm644 ./data/syntax/duckyscript3.xml -t /app/share/org.kde.syntax-highlighting/syntax/
       - install -Dm644 ./docs/user-guide.html -t /app/share/duckydeck-studio/docs/
+      - install -Dm644 ./docs/architecture.html -t /app/share/duckydeck-studio/docs/
+      - install -Dm644 ./firmware/releases/DPP_FW_1.0.0_ad2acc81.bin -t /app/share/duckydeck-studio/firmware/
       - install -Dm644 ./firmware/releases/DPP_FW_1.0.0_ad2acc81.bin -t /app/share/duckydeck-studio/firmware/releases/
     sources:
       - type: dir

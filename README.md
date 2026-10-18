@@ -1,8 +1,10 @@
 # <img src="data/icons/io.github.duckydeck.Studio.svg" width="36" height="36" align="top" alt="DuckyDeck Studio Icon" /> DuckyDeck Studio
 
 [![Version v0.1.2](https://img.shields.io/badge/Version-v0.1.2-38bdf8?style=for-the-badge)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz)
+[![Flatpak v0.1.2](https://img.shields.io/badge/Flatpak-v0.1.2-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak)
 [![Firmware v1.0.0](https://img.shields.io/badge/Custom%20Firmware-v1.0.0-10b981?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.0.0)
 [![Website & Documentation](https://img.shields.io/badge/Docs%20%26%20Website-duckydeckstudio.com-0ea5e9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://duckydeckstudio.com)
+[![Architecture Guide](https://img.shields.io/badge/Architecture-architecture.html-8b5cf6?style=for-the-badge)](https://duckydeckstudio.com/architecture.html)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-russellmilliner%2Fduckydeck--studio-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Buy%20Me%20a%20Coffee-ff5e5b?logo=ko-fi&logoColor=white&style=for-the-badge)](https://ko-fi.com/russellmilliner)
 [![duckyPad Official Site](https://img.shields.io/badge/duckyPad-Official%20Site-f59e0b?style=for-the-badge)](https://www.duckypad.com)
@@ -14,9 +16,9 @@
 
 > 🏷️ **Current Version:** **DuckyDeck Studio `v0.1.2`** · **Custom Firmware `v1.0.0`** · **KDE Plasma 6 Applet `v1.0.2`**
 >
-> 🌐 **Official Website & Online Documentation:** **[https://duckydeckstudio.com](https://duckydeckstudio.com)**
+> 🌐 **Official Website & Online Documentation:** **[https://duckydeckstudio.com](https://duckydeckstudio.com)** · **[Architecture Reference (`architecture.html`)](https://duckydeckstudio.com/architecture.html)**
 >
-> 💻 **GitHub Repository & Releases:** **[https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)** · **[Latest Linux x86_64 Release (`v0.1.2`)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz)**
+> 💻 **GitHub Repository & Releases:** **[https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)** · **[Flatpak Bundle (`v0.1.2`)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak)** · **[Linux x86_64 Tarball (`v0.1.2`)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz)**
 >
 > ☕ **Enjoying DuckyDeck Studio?** Support development by buying Russell Milliner a coffee on Ko-fi: **[https://ko-fi.com/russellmilliner](https://ko-fi.com/russellmilliner)**
 >
@@ -176,9 +178,9 @@ Full documentation and request/response schemas are available at **[https://duck
 ## 📚 Documentation & Links
 
 - **🌐 [Official Website & User Documentation (`https://duckydeckstudio.com`)](https://duckydeckstudio.com)** — Official online documentation, user manual, release downloads, and firmware downloads (accessible directly inside the app via **☰ → User Documentation** or **About → User Guide**; offline copy at [`docs/user-guide.html`](docs/user-guide.html)).
+- **🏗️ [Architecture & Design Developer Documentation (`https://duckydeckstudio.com/architecture.html`)](https://duckydeckstudio.com/architecture.html)** — Interactive HTML architecture reference ([`docs/architecture.html`](docs/architecture.html)) and Markdown documentation ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)) detailing the CXX-Qt bridge, USB HID/MSC protocol, DSVM v2 bytecode compiler, HTTP REST API server, Flatpak sandbox, and KWin Wayland Auto-Switcher.
 - **💻 [GitHub Repository & Issue Tracker (`https://github.com/russellmilliner/duckydeck-studio`)](https://github.com/russellmilliner/duckydeck-studio)** — Source code, issue tracker, and **[GitHub Releases](https://github.com/russellmilliner/duckydeck-studio/releases)**.
 - **🔌 [HTTP REST API Reference (`https://duckydeckstudio.com/REST_API.md` / `docs/REST_API.md`)](https://duckydeckstudio.com/REST_API.md)** — Complete endpoint documentation, authentication guide, and `curl` examples, accompanied by **[`docs/REST_API.md`](docs/REST_API.md)**, **[`docs/openapi.yaml`](docs/openapi.yaml)**, and **[`docs/swagger.json`](docs/swagger.json)**.
-- **🏗️ [Architecture & Design Developer Documentation (`https://duckydeckstudio.com/ARCHITECTURE.md` / `docs/ARCHITECTURE.md`)](https://duckydeckstudio.com/ARCHITECTURE.md)** — In-depth technical documentation with Mermaid diagrams detailing the CXX-Qt bridge, USB HID protocol, DSVM v2 bytecode compiler, HTTP REST API server, and KWin Wayland Auto-Switcher ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)).
 
 ---
 
@@ -189,12 +191,17 @@ duckydeck-studio/
 ├── Cargo.toml                             # Rust dependencies (cxx-qt, hidapi, zbus, tokio, reqwest, keyring)
 ├── build.rs                               # CXX-Qt QML module & QObject bridge compiler
 ├── io.github.duckydeck.Studio.yml         # Flatpak manifest (org.kde.Platform 6.8 + Rust SDK)
+├── scripts/
+│   ├── check.sh                           # Quality gate (rustfmt, clippy, unit tests, architecture checks)
+│   ├── build-flatpak.sh                   # Builds & bundles target/release/duckydeck-studio-v0.1.2-x86_64.flatpak
+│   └── test-flatpak-ui.sh                 # Runs the automated QML UI test suite inside the Flatpak sandbox
 ├── docs/
 │   ├── user-guide.html                    # Interactive Web User Documentation & Manual
+│   ├── architecture.html                  # Interactive Web Architecture & Developer Reference
 │   ├── REST_API.md                        # HTTP REST API Reference & curl examples
 │   ├── openapi.yaml                       # OpenAPI 3.0.3 YAML specification
 │   ├── swagger.json                       # OpenAPI 3.0.3 / Swagger JSON specification
-│   └── ARCHITECTURE.md                    # Developer Architecture & Design Documentation
+│   └── ARCHITECTURE.md                    # Developer Architecture & Design Documentation (Markdown)
 ├── data/
 │   ├── io.github.duckydeck.Studio.desktop      # XDG Desktop entry
 │   ├── io.github.duckydeck.Studio.metainfo.xml # AppStream metadata with USB modalias
@@ -220,25 +227,47 @@ duckydeck-studio/
 
 ## 🛠️ Build & Installation Instructions
 
-### 1. Download or Clone from GitHub
+### 1. Quick Install: Prebuilt Flatpak Bundle (Recommended for Any Linux Distribution)
 
-#### Option A: Clone with Git (Recommended)
+Download and install the self-contained `io.github.duckydeck.Studio` Flatpak bundle directly from **[duckydeckstudio.com](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak)** or **[GitHub Releases](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.2)**:
+
+```bash
+# 1. Ensure Flathub is configured (for org.kde.Platform//6.8 runtime):
+flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
+
+# 2. Download & install the DuckyDeck Studio v0.1.2 Flatpak bundle:
+curl -LO https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak
+flatpak install --user -y duckydeck-studio-v0.1.2-x86_64.flatpak
+
+# 3. Launch DuckyDeck Studio (or open from your KDE Application Launcher):
+flatpak run io.github.duckydeck.Studio
+
+# 4. Run CLI status or automation commands via Flatpak:
+flatpak run io.github.duckydeck.Studio --status
+```
+
+---
+
+### 2. Download Prebuilt Tarball or Clone from GitHub
+
+#### Option A: Clone with Git
 ```bash
 git clone https://github.com/russellmilliner/duckydeck-studio.git
 cd duckydeck-studio
 ```
 
-#### Option B: Download Source Archive (ZIP) or Release from GitHub
-Visit **[https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)** and click **Code → Download ZIP** (or browse **[GitHub Releases](https://github.com/russellmilliner/duckydeck-studio/releases)**), or download via terminal:
+#### Option B: Download Prebuilt Linux x86_64 Tarball or Source ZIP
+Visit **[https://github.com/russellmilliner/duckydeck-studio/releases](https://github.com/russellmilliner/duckydeck-studio/releases)** or **[https://duckydeckstudio.com](https://duckydeckstudio.com)**, or download via terminal:
 ```bash
-curl -L https://github.com/russellmilliner/duckydeck-studio/archive/refs/heads/master.zip -o duckydeck-studio.zip
-unzip duckydeck-studio.zip
-cd duckydeck-studio-master
+curl -LO https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz
+tar -xzf duckydeck-studio-v0.1.2-linux-x86_64.tar.gz
+cd duckydeck-studio-v0.1.2-linux-x86_64
+./duckydeck-studio
 ```
 
 ---
 
-### 2. Install Prerequisites
+### 3. Install Build Prerequisites (When Building from Source)
 
 #### Arch Linux / CachyOS / EndeavourOS / Manjaro
 ```bash
@@ -262,18 +291,18 @@ sudo apt install build-essential cargo rustc clang cmake ninja-build pkg-config 
 
 ---
 
-### 3. Configure USB HID Permissions (`udev` Rules)
+### 4. Configure USB HID Permissions (`udev` Rules)
 
 To allow non-root access to `/dev/hidraw*` for the duckyPad Pro (`0x0483:0xd11d`) and duckyPad 2020 (`0x0483:0xd11c`), install the included `udev` rules:
 
 ```bash
 sudo ./data/udev/install-udev-rules.sh
 ```
-*(Alternatively, you can click the **Install Rules** button inside the app's top Polkit banner on first launch.)*
+*(Alternatively, click the **Install Rules** button inside the app's top Polkit banner on first launch — works in both Native and Flatpak builds.)*
 
 ---
 
-### 4. Local Build & User Installation (`~/.local/bin`)
+### 5. Local Build & User Installation (`~/.local/bin`)
 
 Build the optimized release binary and install the executable, desktop launcher, icon, and `duckyScript 3` syntax highlighting definition for your user account:
 
@@ -295,6 +324,8 @@ install -Dm644 data/icons/io.github.duckydeck.Studio.svg \
     ~/.local/share/icons/hicolor/scalable/apps/io.github.duckydeck.Studio.svg
 install -Dm644 docs/user-guide.html \
     ~/.local/share/duckydeck-studio/docs/user-guide.html
+install -Dm644 docs/architecture.html \
+    ~/.local/share/duckydeck-studio/docs/architecture.html
 ```
 
 Run the application:
@@ -304,22 +335,7 @@ Run the application:
 
 ---
 
-### 5. System-Wide Installation (`/usr/local`)
-
-If you prefer to install DuckyDeck Studio system-wide for all users:
-
-```bash
-cargo build --release
-sudo install -Dm755 target/release/duckydeck-studio /usr/local/bin/duckydeck-studio
-sudo install -Dm644 data/io.github.duckydeck.Studio.desktop /usr/share/applications/io.github.duckydeck.Studio.desktop
-sudo install -Dm644 data/icons/io.github.duckydeck.Studio.svg /usr/share/icons/hicolor/scalable/apps/io.github.duckydeck.Studio.svg
-sudo install -Dm644 data/io.github.duckydeck.Studio.metainfo.xml /usr/share/metainfo/io.github.duckydeck.Studio.metainfo.xml
-sudo ./data/udev/install-udev-rules.sh
-```
-
----
-
-### 6. Building & Installing as a Flatpak
+### 6. Building & Testing the Flatpak from Source
 
 1. Install the KDE Plasma 6.8 Flatpak SDK and Rust/LLVM extensions:
    ```bash
@@ -327,15 +343,14 @@ sudo ./data/udev/install-udev-rules.sh
        org.freedesktop.Sdk.Extension.rust-stable//24.08 \
        org.freedesktop.Sdk.Extension.llvm18//24.08
    ```
-2. Build and install the Flatpak package (and optionally export a single-file `.flatpak` bundle):
+2. Build and export the single-file `.flatpak` bundle (`target/release/duckydeck-studio-v0.1.2-x86_64.flatpak`) and install it:
    ```bash
-   flatpak-builder --user --install --force-clean flatpak-build-dir io.github.duckydeck.Studio.yml
-   flatpak build-export flatpak-repo flatpak-build-dir
-   flatpak build-bundle flatpak-repo duckydeck-studio.flatpak io.github.duckydeck.Studio
+   bash scripts/build-flatpak.sh
+   flatpak install --user -y --reinstall target/release/duckydeck-studio-v0.1.2-x86_64.flatpak
    ```
-3. Run the Flatpak:
+3. Run the automated Flatpak QML UI Overflow, Contrast & Behavioral Test Suite:
    ```bash
-   flatpak run io.github.duckydeck.Studio
+   bash scripts/test-flatpak-ui.sh
    ```
 
 ---
