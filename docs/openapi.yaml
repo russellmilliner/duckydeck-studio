@@ -857,12 +857,12 @@ paths:
                   type: string
                   description: Optional explicit mount path; if omitted, uses detected microSD mount or USB HID SD mode
       responses:
-        "200":
-          description: Sync started or completed
+        "202":
+          description: Sync job accepted and running asynchronously
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SimpleOkResponse"
+                $ref: "#/components/schemas/JobAcceptedResponse"
   /api/v1/sd/reload:
     post:
       tags:
@@ -881,24 +881,24 @@ paths:
         - RGB LEDs & Device Control
       summary: Reboot duckyPad Pro into USB Mass Storage (microSD Card) mode
       responses:
-        "200":
-          description: Mount initiated
+        "202":
+          description: Mount job accepted and running asynchronously
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SimpleOkResponse"
+                $ref: "#/components/schemas/JobAcceptedResponse"
   /api/v1/sd/unmount:
     post:
       tags:
         - RGB LEDs & Device Control
       summary: Flush, unmount, and eject mounted duckyPad microSD card
       responses:
-        "200":
-          description: Unmount initiated
+        "202":
+          description: Unmount job accepted and running asynchronously
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SimpleOkResponse"
+                $ref: "#/components/schemas/JobAcceptedResponse"
   /api/v1/device/sleep:
     post:
       tags:
@@ -929,12 +929,12 @@ paths:
         - RGB LEDs & Device Control
       summary: Soft-reboot connected duckyPad into normal operating mode
       responses:
-        "200":
-          description: Device rebooting
+        "202":
+          description: Reboot job accepted and running asynchronously
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SimpleOkResponse"
+                $ref: "#/components/schemas/JobAcceptedResponse"
   /api/v1/device/sync-rtc:
     post:
       tags:
@@ -947,6 +947,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SimpleOkResponse"
+  /api/v1/jobs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Asynchronous job identifier returned by a 202 Accepted endpoint
+        schema:
+          type: string
+          example: job-1
+    get:
+      tags:
+        - System & Status
+      summary: Get status and result of an asynchronous background job
+      description: Polls the status (`running`, `completed`, or `failed`) and result payload of an asynchronous hardware or storage operation (`sd/sync`, `sd/mount`, `sd/unmount`, `device/reboot`).
+      responses:
+        "200":
+          description: Current job state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobStatusResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
   /api/v1/logs:
     get:
       tags:
@@ -1011,6 +1034,62 @@ components:
         error:
           type: string
           example: "Profile #99 not found"
+    JobAcceptedResponse:
+      type: object
+      required: [ok, accepted, jobId, operation, status, statusUrl, statusMessage]
+      properties:
+        ok:
+          type: boolean
+          example: true
+        accepted:
+          type: boolean
+          example: true
+        jobId:
+          type: string
+          example: job-1
+        operation:
+          type: string
+          example: sd/sync
+        status:
+          type: string
+          example: running
+        statusUrl:
+          type: string
+          example: /api/v1/jobs/job-1
+        statusMessage:
+          type: string
+          example: "Job job-1 (sd/sync) accepted"
+    JobStatusResponse:
+      type: object
+      required: [ok, jobId, operation, status, statusMessage]
+      properties:
+        ok:
+          type: boolean
+          example: true
+        jobId:
+          type: string
+          example: job-1
+        operation:
+          type: string
+          example: sd/sync
+        status:
+          type: string
+          enum: [running, completed, failed]
+          example: completed
+        jobOk:
+          type: boolean
+          nullable: true
+          example: true
+        statusMessage:
+          type: string
+          example: "✓ Synced 6 profile(s)"
+        result:
+          type: object
+          nullable: true
+        createdAtUnixMs:
+          type: integer
+        updatedAtUnixMs:
+          type: integer
     SimpleOkResponse:
       type: object
       required: [ok, statusMessage]

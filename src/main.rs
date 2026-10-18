@@ -12,6 +12,7 @@ pub mod ai {
     pub mod shortcut_scraper;
 }
 pub mod api_server;
+pub mod paths;
 pub mod vm;
 
 use std::collections::BTreeSet;
@@ -36,70 +37,11 @@ use crate::kwin::auto_switcher::{AutoSwitchRule, SwitcherState};
 use crate::vm::compiler::compile_duckyscript_to_dsb;
 
 fn sanitize_xdg_env() {
-    let home = env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let default_data_home = format!("{home}/.local/share");
-    let needs_fix = match env::var("XDG_DATA_HOME") {
-        Ok(val) => {
-            let trimmed = val.trim();
-            trimmed.is_empty()
-                || trimmed.contains(':')
-                || !trimmed.starts_with('/')
-                || trimmed.starts_with("/var/lib/")
-                || trimmed.starts_with("/usr/")
-        }
-        Err(_) => true,
-    };
-    if needs_fix {
-        env::set_var("XDG_DATA_HOME", &default_data_home);
-    }
-
-    let current_dirs = env::var("XDG_DATA_DIRS").unwrap_or_default();
-    if !current_dirs.split(':').any(|p| p == "/usr/share") {
-        let mut parts: Vec<String> = current_dirs
-            .split(':')
-            .filter(|s| !s.is_empty() && *s != ".")
-            .map(|s| s.to_string())
-            .collect();
-        for std_dir in [
-            format!("{home}/.local/share/flatpak/exports/share"),
-            "/var/lib/flatpak/exports/share".to_string(),
-            "/usr/local/share".to_string(),
-            "/usr/share".to_string(),
-        ] {
-            if !parts.contains(&std_dir) {
-                parts.push(std_dir);
-            }
-        }
-        env::set_var("XDG_DATA_DIRS", parts.join(":"));
-    }
-
-    let quiet_rules = "union.*=false;qt.core.qobject.connect=false";
-    match env::var("QT_LOGGING_RULES") {
-        Ok(existing) if !existing.trim().is_empty() => {
-            if !existing.contains("union.*=false") {
-                env::set_var("QT_LOGGING_RULES", format!("{existing};{quiet_rules}"));
-            }
-        }
-        _ => {
-            env::set_var("QT_LOGGING_RULES", quiet_rules);
-        }
-    }
+    crate::paths::sanitize_xdg_env();
 }
 
 fn runtime_dir_path() -> PathBuf {
-    if let Ok(runtime_dir) = env::var("XDG_RUNTIME_DIR") {
-        let trimmed = runtime_dir.trim();
-        if !trimmed.is_empty() && Path::new(trimmed).is_dir() {
-            return PathBuf::from(trimmed);
-        }
-    }
-    let fallback = env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("duckydeck-studio");
-    let _ = fs::create_dir_all(&fallback);
-    fallback
+    crate::paths::runtime_dir()
 }
 
 fn pid_file_path() -> PathBuf {
@@ -392,7 +334,13 @@ fn run_cli_switch_profile(target: &str) -> i32 {
                 return 1;
             }
             let mut rx = [0u8; 64];
-            let _ = device.read_timeout(&mut rx, 200);
+            if let Err(e) = device.read_timeout(&mut rx, 200) {
+                crate::bridge::device_controller::record_system_event(
+                    "WARN",
+                    "HID",
+                    format!("HID read_timeout after CLI profile switch failed: {e}"),
+                );
+            }
             println!("✓ Switched connected duckyPad to Profile #{num}");
             return 0;
         }
@@ -663,7 +611,13 @@ fn run_cli_export_group(dest_str: &str) -> i32 {
 
     if let Some(parent) = target_file.parent() {
         if !parent.as_os_str().is_empty() {
-            let _ = fs::create_dir_all(parent);
+            if let Err(e) = fs::create_dir_all(parent) {
+                crate::bridge::device_controller::record_system_event(
+                    "WARN",
+                    "STORAGE",
+                    format!("Failed creating export group parent dir {}: {e}", parent.display()),
+                );
+            }
         }
     }
 
@@ -733,7 +687,13 @@ fn run_cli_import_group(src_str: &str) -> i32 {
 
     sync_profiles_to_cache(&bundle.profiles);
     if let Some(sd_root) = find_mounted_duckypad_sd() {
-        let _ = write_profiles_to_sd_root(&sd_root, &bundle.profiles);
+        if let Err(e) = write_profiles_to_sd_root(&sd_root, &bundle.profiles) {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "STORAGE",
+                format!("Failed writing imported group to SD {}: {e}", sd_root.display()),
+            );
+        }
     }
 
     let mut sw = SwitcherState::default();
@@ -741,7 +701,13 @@ fn run_cli_import_group(src_str: &str) -> i32 {
     if let Some(fb) = bundle.default_fallback_profile {
         sw.default_profile = Some(fb.clamp(1, bundle.profiles.len() as u8));
     }
-    let _ = sw.save_to_disk();
+    if let Err(e) = sw.save_to_disk() {
+        crate::bridge::device_controller::record_system_event(
+            "WARN",
+            "CONFIG",
+            format!("Failed saving switcher rules after CLI group import: {e}"),
+        );
+    }
 
     println!(
         "✓ Imported Profile Group '{}' ({} profiles, {} rules)",
@@ -813,7 +779,13 @@ fn run_cli_export_profile(target: &str, output_override: Option<&str>) -> i32 {
 
     if let Some(parent) = out_path.parent() {
         if !parent.as_os_str().is_empty() {
-            let _ = fs::create_dir_all(parent);
+            if let Err(e) = fs::create_dir_all(parent) {
+                crate::bridge::device_controller::record_system_event(
+                    "WARN",
+                    "STORAGE",
+                    format!("Failed creating export profile parent dir {}: {e}", parent.display()),
+                );
+            }
         }
     }
 
@@ -886,7 +858,13 @@ fn run_cli_import_profile(src_str: &str) -> i32 {
 
     sync_profiles_to_cache(&profiles);
     if let Some(sd_root) = find_mounted_duckypad_sd() {
-        let _ = write_profiles_to_sd_root(&sd_root, &profiles);
+        if let Err(e) = write_profiles_to_sd_root(&sd_root, &profiles) {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "STORAGE",
+                format!("Failed writing imported profile to SD {}: {e}", sd_root.display()),
+            );
+        }
     }
 
     if !imported_rules.is_empty() {
@@ -895,7 +873,13 @@ fn run_cli_import_profile(src_str: &str) -> i32 {
             r.target_profile = next_num;
             sw.rules.push(r);
         }
-        let _ = sw.save_to_disk();
+        if let Err(e) = sw.save_to_disk() {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "CONFIG",
+                format!("Failed saving switcher rules after CLI profile import: {e}"),
+            );
+        }
     }
 
     println!("✓ Imported Profile #{next_num} '{prof_name}'");
@@ -981,7 +965,13 @@ fn run_cli_sync_rtc() -> i32 {
         return 1;
     }
     let mut rx = [0u8; 64];
-    let _ = device.read_timeout(&mut rx, 200);
+    if let Err(e) = device.read_timeout(&mut rx, 200) {
+        crate::bridge::device_controller::record_system_event(
+            "WARN",
+            "HID",
+            format!("HID read_timeout after CLI RTC sync failed: {e}"),
+        );
+    }
     println!("✓ Synchronized duckyPad RTC with host clock ({})", now.format("%Y-%m-%d %H:%M:%S %:z"));
     0
 }
@@ -1000,7 +990,13 @@ fn run_cli_sleep_wake(sleep: bool) -> i32 {
         return 1;
     }
     let mut rx = [0u8; 64];
-    let _ = device.read_timeout(&mut rx, 200);
+    if let Err(e) = device.read_timeout(&mut rx, 200) {
+        crate::bridge::device_controller::record_system_event(
+            "WARN",
+            "HID",
+            format!("HID read_timeout after CLI sleep/wake failed: {e}"),
+        );
+    }
     println!(
         "✓ Connected duckyPad {}",
         if sleep { "entered sleep mode" } else { "woke from sleep mode" }
@@ -1485,6 +1481,7 @@ mod ui_test_suite {
             "/api/v1/device/wake",
             "/api/v1/device/reboot",
             "/api/v1/device/sync-rtc",
+            "/api/v1/jobs/{id}",
             "/api/v1/logs",
         ];
 
@@ -1507,18 +1504,34 @@ mod ui_test_suite {
     }
 
     #[test]
+    #[ignore = "launches full GUI; run with cargo test -- --ignored"]
     fn test_full_qml_ui_overflow_and_contrast_suite() {
+        use std::io::Read;
+        use std::process::Stdio;
+        use std::time::{Duration, Instant};
+
         if std::env::var("DUCKYDECK_UI_TEST_SUBPROC").as_deref() == Ok("1") {
             sanitize_xdg_env();
             let code = crate::bridge::device_controller::run_application(false);
             std::process::exit(code);
         }
 
+        let timeout_secs: u64 = std::env::var("DUCKYDECK_UI_TEST_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .filter(|&s| s > 0)
+            .unwrap_or(120);
+        let timeout = Duration::from_secs(timeout_secs);
+
         let report_path = std::env::temp_dir().join(format!(
             "duckydeck_ui_test_report_{}.json",
             std::process::id()
         ));
-        let _ = std::fs::remove_file(&report_path);
+        if report_path.exists() {
+            if let Err(e) = std::fs::remove_file(&report_path) {
+                eprintln!("Warning removing stale UI test report {}: {e}", report_path.display());
+            }
+        }
 
         let current_test_bin = std::env::current_exe()
             .expect("Failed to resolve current test executable path");
@@ -1526,29 +1539,100 @@ mod ui_test_suite {
         let mut cmd = Command::new(current_test_bin);
         cmd.arg("--exact")
             .arg("ui_test_suite::test_full_qml_ui_overflow_and_contrast_suite")
+            .arg("--ignored")
             .arg("--nocapture")
             .env("DUCKYDECK_UI_TEST_SUBPROC", "1")
             .env("DUCKYDECK_UI_TEST_SUITE", "1")
-            .env("DUCKYDECK_UI_TEST_REPORT", &report_path);
+            .env("DUCKYDECK_UI_TEST_REPORT", &report_path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
         if std::env::var_os("WAYLAND_DISPLAY").is_none() && std::env::var_os("DISPLAY").is_none() {
             cmd.env("QT_QPA_PLATFORM", "offscreen");
         }
 
-        let output = cmd
-            .output()
-            .expect("Failed to execute UI test suite subprocess");
+        let mut child = cmd
+            .spawn()
+            .expect("Failed to spawn UI test suite subprocess");
+
+        let mut child_stdout = child.stdout.take();
+        let mut child_stderr = child.stderr.take();
+
+        let stdout_handle = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(ref mut out) = child_stdout {
+                if let Err(e) = out.read_to_end(&mut buf) {
+                    eprintln!("Warning reading UI test subprocess stdout: {e}");
+                }
+            }
+            buf
+        });
+
+        let stderr_handle = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(ref mut err) = child_stderr {
+                if let Err(e) = err.read_to_end(&mut buf) {
+                    eprintln!("Warning reading UI test subprocess stderr: {e}");
+                }
+            }
+            buf
+        });
+
+        let start = Instant::now();
+        let mut timed_out = false;
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(exit_status)) => break Some(exit_status),
+                Ok(None) => {
+                    if start.elapsed() >= timeout {
+                        timed_out = true;
+                        let _ = child.kill(); // ignore: best-effort kill on timed-out test child
+                        let _ = child.wait(); // ignore: best-effort reap on timed-out test child
+                        break None;
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                Err(err) => {
+                    let _ = child.kill(); // ignore: best-effort kill on errored test child
+                    let _ = child.wait(); // ignore: best-effort reap on errored test child
+                    panic!("Error waiting for UI test suite subprocess: {err}");
+                }
+            }
+        };
+
+        let stdout_bytes = stdout_handle.join().unwrap_or_default();
+        let stderr_bytes = stderr_handle.join().unwrap_or_default();
+        let stderr_text = String::from_utf8_lossy(&stderr_bytes);
+        let stdout_text = String::from_utf8_lossy(&stdout_bytes);
+
+        if timed_out {
+            if report_path.exists() {
+                if let Err(e) = std::fs::remove_file(&report_path) {
+                    eprintln!("Warning removing timed-out UI test report {}: {e}", report_path.display());
+                }
+            }
+            panic!(
+                "UI test suite subprocess timed out after {}s (DUCKYDECK_UI_TEST_TIMEOUT_SECS).\nstderr:\n{}\nstdout:\n{}",
+                timeout_secs, stderr_text, stdout_text
+            );
+        }
+
+        let exit_status = status.expect("UI test subprocess must have an exit status");
 
         assert!(
             report_path.exists(),
-            "UI test report JSON was not generated at {:?}. stderr: {}",
+            "UI test report JSON was not generated at {:?} (status: {:?}). stderr: {}",
             report_path,
-            String::from_utf8_lossy(&output.stderr)
+            exit_status,
+            stderr_text
         );
 
         let report_raw = std::fs::read_to_string(&report_path)
             .expect("Failed to read generated UI test report JSON");
-        let _ = std::fs::remove_file(&report_path);
+        if let Err(e) = std::fs::remove_file(&report_path) {
+            eprintln!("Warning removing UI test report {}: {e}", report_path.display());
+        }
 
         let report: serde_json::Value = serde_json::from_str(&report_raw)
             .expect("UI test report must be valid JSON");
@@ -1647,9 +1731,11 @@ mod ui_test_suite {
         }
 
         assert!(
-            passed && output.status.success(),
-            "UI test suite did not pass cleanly. Report summary: {}",
-            serde_json::to_string_pretty(&report["summary"]).unwrap_or_default()
+            passed && exit_status.success(),
+            "UI test suite did not pass cleanly (status: {:?}). Report summary: {}\nstderr: {}",
+            exit_status,
+            serde_json::to_string_pretty(&report["summary"]).unwrap_or_default(),
+            stderr_text
         );
     }
 }

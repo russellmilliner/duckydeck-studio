@@ -32,12 +32,15 @@ fn main() {
                 "src/qml/icons/tray-icon-dark.svg",
                 "src/qml/icons/tray-icon-light.svg",
                 "src/qml/icons/oled-widget-icon.svg",
+                "docs/user-guide.html",
             ],
             ..Default::default()
         })
         .build();
     println!("cargo:rerun-if-changed=src/cpp/app_helper.h");
+    println!("cargo:rerun-if-changed=src/paths.rs");
     println!("cargo:rerun-if-changed=src/bridge/device_controller.rs");
+    println!("cargo:rerun-if-changed=docs/user-guide.html");
     println!("cargo:rerun-if-changed=src/qml/Main.qml");
     println!("cargo:rerun-if-changed=src/qml/UdevBanner.qml");
     println!("cargo:rerun-if-changed=src/qml/HardwareCanvas.qml");

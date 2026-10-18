@@ -1,15 +1,10 @@
 use std::fs;
-use std::path::PathBuf;
 
 /// Scrapes `~/.config/kglobalshortcutsrc` for KDE Plasma 6 application shortcuts
 /// so AI profile generation uses the user's actual local keybindings.
 pub fn scrape_kde_shortcuts(app_filter: &str) -> Vec<(String, String)> {
     let mut results = Vec::new();
-    let Some(home) = std::env::var_os("HOME") else {
-        return results;
-    };
-
-    let config_path = PathBuf::from(home).join(".config/kglobalshortcutsrc");
+    let config_path = crate::paths::xdg_config_home().join("kglobalshortcutsrc");
     let Ok(content) = fs::read_to_string(config_path) else {
         return results;
     };

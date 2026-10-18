@@ -68,14 +68,15 @@ X-API-Token: <YOUR_API_TOKEN>
 | `GET` | `/api/v1/pgv` | Yes | Read all 16 Persistent Global Variables (`PGV 1..16`) |
 | `PUT` / `POST` | `/api/v1/pgv` | Yes | Update one or more Persistent Global Variables (`PGV 1..16`) |
 | `POST` | `/api/v1/leds` | Yes | Live-override per-key RGB LEDs over USB HID or restore profile LEDs |
-| `POST` | `/api/v1/sd/sync` | Yes | Sync all profiles and compiled `.dsb` bytecode to microSD card |
+| `POST` | `/api/v1/sd/sync` | Yes | Start async microSD profile & `.dsb` sync (`202 Accepted` + `jobId`) |
 | `POST` | `/api/v1/sd/reload` | Yes | Reload profiles from microSD card or local cache |
-| `POST` | `/api/v1/sd/mount` | Yes | Reboot duckyPad Pro into USB Mass Storage (microSD Card) mode |
-| `POST` | `/api/v1/sd/unmount` | Yes | Flush, unmount, and eject mounted duckyPad microSD card |
+| `POST` | `/api/v1/sd/mount` | Yes | Start async duckyPad Pro USB Mass Storage mount (`202 Accepted` + `jobId`) |
+| `POST` | `/api/v1/sd/unmount` | Yes | Start async microSD flush, unmount, and eject (`202 Accepted` + `jobId`) |
 | `POST` | `/api/v1/device/sleep` | Yes | Put connected duckyPad into sleep mode |
 | `POST` | `/api/v1/device/wake` | Yes | Wake connected duckyPad from sleep mode |
-| `POST` | `/api/v1/device/reboot` | Yes | Soft-reboot connected duckyPad into normal operating mode |
+| `POST` | `/api/v1/device/reboot` | Yes | Start async soft-reboot into normal operating mode (`202 Accepted` + `jobId`) |
 | `POST` | `/api/v1/device/sync-rtc` | Yes | Synchronize duckyPad Pro real-time clock (RTC) with host system time |
+| `GET` | `/api/v1/jobs/{id}` | Yes | Poll status (`running`, `completed`, `failed`) of an async job |
 | `GET` | `/api/v1/logs` | Yes | Retrieve recent system, HID, script, and automation event logs |
 
 ---

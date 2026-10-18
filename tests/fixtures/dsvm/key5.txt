@@ -1,0 +1,1 @@
+STRING .dingo-dory.ts.net

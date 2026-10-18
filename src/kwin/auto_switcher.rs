@@ -335,13 +335,7 @@ impl SwitcherState {
                 .join(format!("duckydeck-ui-test-suite-{}", std::process::id()))
                 .join("kwin_rules.json");
         }
-        let base = std::env::var("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| {
-                let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-                PathBuf::from(home).join(".config")
-            });
-        base.join("duckydeck-studio").join("kwin_rules.json")
+        crate::paths::config_dir().join("kwin_rules.json")
     }
 
     pub fn load_config_from_disk() -> Option<PersistedSwitcherConfig> {
@@ -765,8 +759,7 @@ fn clean_sqlite_extracted_title(raw: &str) -> String {
 }
 
 fn lookup_full_title_in_browser_storage(search_prefix: &str) -> Option<String> {
-    let home = std::env::var("HOME").ok()?;
-    let home_path = PathBuf::from(&home);
+    let home_path = crate::paths::home_dir()?;
     let roots = [
         home_path.join(".var/app/app.zen_browser.zen/.zen"),
         home_path.join(".zen"),
@@ -922,14 +915,14 @@ pub fn resolve_full_browser_caption(resource_class: &str, caption: &str) -> Stri
 }
 
 fn site_icon_cache_dir() -> PathBuf {
-    let base = std::env::var("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            PathBuf::from(home).join(".cache")
-        });
-    let dir = base.join("duckydeck-studio").join("site-icons");
-    let _ = fs::create_dir_all(&dir);
+    let dir = crate::paths::cache_dir().join("site-icons");
+    if let Err(e) = fs::create_dir_all(&dir) {
+        crate::bridge::device_controller::record_system_event(
+            "WARN",
+            "CONFIG",
+            format!("Failed creating site icon cache dir {}: {e}", dir.display()),
+        );
+    }
     dir
 }
 
@@ -941,7 +934,13 @@ fn write_cached_site_svg(slug: &str, svg_content: &str) -> String {
         Err(_) => true,
     };
     if needs_write {
-        let _ = fs::write(&path, svg_content);
+        if let Err(e) = fs::write(&path, svg_content) {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "CONFIG",
+                format!("Failed writing cached site SVG {}: {e}", path.display()),
+            );
+        }
     }
     format!("file://{}", path.to_string_lossy())
 }
@@ -1616,7 +1615,13 @@ fn resolve_favicon_for_url(raw_url: &str) -> Option<String> {
             if let Some(out_path) = fetched_path {
                 return Some(format!("file://{}", out_path.to_string_lossy()));
             }
-            let _ = fs::write(&failed_marker, b"1");
+            if let Err(e) = fs::write(&failed_marker, b"1") {
+                crate::bridge::device_controller::record_system_event(
+                    "WARN",
+                    "CONFIG",
+                    format!("Failed writing favicon failure marker {}: {e}", failed_marker.display()),
+                );
+            }
         }
     }
 
@@ -1708,19 +1713,16 @@ pub fn resolve_app_icon_for_class(resource_class: &str) -> String {
         .to_string();
 
     let mut search_dirs = Vec::new();
-    if let Ok(home) = std::env::var("HOME") {
-        search_dirs.push(PathBuf::from(&home).join(".local/share/applications"));
-        search_dirs
-            .push(PathBuf::from(&home).join(".local/share/flatpak/exports/share/applications"));
-    }
-    if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
-        for part in xdg_data.split(':') {
-            let p = part.trim();
-            if !p.is_empty() && p != "." {
-                let candidate = PathBuf::from(p).join("applications");
-                if !search_dirs.contains(&candidate) {
-                    search_dirs.push(candidate);
-                }
+    let data_home = crate::paths::xdg_data_home();
+    search_dirs.push(data_home.join("applications"));
+    search_dirs.push(data_home.join("flatpak/exports/share/applications"));
+    if let Some(home) = crate::paths::home_dir() {
+        for candidate in [
+            home.join(".local/share/applications"),
+            home.join(".local/share/flatpak/exports/share/applications"),
+        ] {
+            if !search_dirs.contains(&candidate) {
+                search_dirs.push(candidate);
             }
         }
     }
@@ -1852,13 +1854,8 @@ pub fn resolve_app_icon_for_class(resource_class: &str) -> String {
 }
 
 pub fn autostart_desktop_path() -> PathBuf {
-    let base = std::env::var("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            PathBuf::from(home).join(".config")
-        });
-    base.join("autostart")
+    crate::paths::xdg_config_home()
+        .join("autostart")
         .join("io.github.duckydeck.Studio.desktop")
 }
 
@@ -1879,24 +1876,7 @@ pub fn is_kde_autostart_enabled() -> bool {
 }
 
 pub fn sync_local_desktop_and_icon(use_light_on_dark_icon: bool) {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let fallback_data_home = PathBuf::from(&home).join(".local").join("share");
-    let data_home = match std::env::var("XDG_DATA_HOME") {
-        Ok(val) => {
-            let trimmed = val.trim();
-            if trimmed.is_empty()
-                || trimmed.contains(':')
-                || !trimmed.starts_with('/')
-                || trimmed.starts_with("/var/lib/")
-                || trimmed.starts_with("/usr/")
-            {
-                fallback_data_home
-            } else {
-                PathBuf::from(trimmed)
-            }
-        }
-        Err(_) => fallback_data_home,
-    };
+    let data_home = crate::paths::xdg_data_home();
 
     let icon_dir = data_home
         .join("icons")
@@ -1909,7 +1889,14 @@ pub fn sync_local_desktop_and_icon(use_light_on_dark_icon: bool) {
         } else {
             include_str!("../qml/icons/tray-icon-light.svg")
         };
-        let _ = fs::write(icon_dir.join("io.github.duckydeck.Studio.svg"), svg_content);
+        let icon_file = icon_dir.join("io.github.duckydeck.Studio.svg");
+        if let Err(e) = fs::write(&icon_file, svg_content) {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "CONFIG",
+                format!("Failed writing local icon {}: {e}", icon_file.display()),
+            );
+        }
     }
 
     // When running inside Flatpak, Flatpak itself exports io.github.duckydeck.Studio.desktop on the host
@@ -1921,16 +1908,15 @@ pub fn sync_local_desktop_and_icon(use_light_on_dark_icon: bool) {
     if fs::create_dir_all(&apps_dir).is_ok() {
         let exe_path = if let Ok(appimage) = std::env::var("APPIMAGE") {
             appimage
+        } else if let Some(local_bin) = crate::paths::home_dir()
+            .map(|h| h.join(".local/bin/duckydeck-studio"))
+            .filter(|p| p.exists())
+        {
+            local_bin.to_string_lossy().to_string()
         } else {
-            let home = std::env::var("HOME").unwrap_or_default();
-            let local_bin = PathBuf::from(&home).join(".local/bin/duckydeck-studio");
-            if !home.is_empty() && local_bin.exists() {
-                local_bin.to_string_lossy().to_string()
-            } else {
-                std::env::current_exe()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|_| "duckydeck-studio".to_string())
-            }
+            std::env::current_exe()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| "duckydeck-studio".to_string())
         };
         let desktop_content = format!(
             "[Desktop Entry]\n\
@@ -1943,10 +1929,14 @@ pub fn sync_local_desktop_and_icon(use_light_on_dark_icon: bool) {
              Categories=Utility;HardwareSettings;Qt;KDE;\n\
              StartupWMClass=io.github.duckydeck.Studio\n"
         );
-        let _ = fs::write(
-            apps_dir.join("io.github.duckydeck.Studio.desktop"),
-            desktop_content,
-        );
+        let desktop_file = apps_dir.join("io.github.duckydeck.Studio.desktop");
+        if let Err(e) = fs::write(&desktop_file, desktop_content) {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "CONFIG",
+                format!("Failed writing local desktop entry {}: {e}", desktop_file.display()),
+            );
+        }
     }
 }
 
@@ -1963,9 +1953,10 @@ pub fn set_kde_autostart_enabled(enabled: bool) -> Result<PathBuf, String> {
         } else if let Ok(appimage) = std::env::var("APPIMAGE") {
             format!("\"{appimage}\" --autostart --minimized --foreground")
         } else {
-            let home = std::env::var("HOME").unwrap_or_default();
-            let local_bin = PathBuf::from(&home).join(".local/bin/duckydeck-studio");
-            let exe_path = if !home.is_empty() && local_bin.exists() {
+            let exe_path = if let Some(local_bin) = crate::paths::home_dir()
+                .map(|h| h.join(".local/bin/duckydeck-studio"))
+                .filter(|p| p.exists())
+            {
                 local_bin.to_string_lossy().to_string()
             } else {
                 std::env::current_exe()
@@ -2044,7 +2035,13 @@ impl SwitcherState {
 
         if !aligned.is_empty() {
             self.rules = aligned;
-            let _ = self.save_to_disk();
+            if let Err(e) = self.save_to_disk() {
+                crate::bridge::device_controller::record_system_event(
+                    "WARN",
+                    "CONFIG",
+                    format!("Failed saving aligned auto-switch rules: {e}"),
+                );
+            }
         }
     }
 
@@ -2200,25 +2197,37 @@ impl KWinBridgeService {
                 }
             }
 
-            let _ = self.ui_event_tx.send(WindowChangeEvent {
+            if let Err(e) = self.ui_event_tx.send(WindowChangeEvent {
                 resource_class: effective_class,
                 resource_name,
                 caption: resolved_caption,
                 matched_profile,
                 picked: false,
-            });
+            }) {
+                crate::bridge::device_controller::record_system_event(
+                    "WARN",
+                    "KWIN",
+                    format!("Failed sending window change event to UI: {e}"),
+                );
+            }
             return;
         }
 
         if window_changed {
             let resolved_caption = resolve_full_browser_caption(&effective_class, &caption);
-            let _ = self.ui_event_tx.send(WindowChangeEvent {
+            if let Err(e) = self.ui_event_tx.send(WindowChangeEvent {
                 resource_class: effective_class,
                 resource_name,
                 caption: resolved_caption,
                 matched_profile: None,
                 picked: false,
-            });
+            }) {
+                crate::bridge::device_controller::record_system_event(
+                    "WARN",
+                    "KWIN",
+                    format!("Failed sending window change preview event to UI: {e}"),
+                );
+            }
         }
 
         self.settle_notify.notify_one();
@@ -2369,6 +2378,10 @@ pub async fn run_kwin_auto_switcher(
     state: Arc<Mutex<SwitcherState>>,
     ui_event_tx: mpsc::UnboundedSender<WindowChangeEvent>,
 ) -> ZbusResult<()> {
+    if std::env::var("DUCKYDECK_UI_TEST_SUITE").as_deref() == Ok("1") {
+        return Ok(());
+    }
+
     let pending = Arc::new(Mutex::new(PendingWindowSwitch::default()));
     let settle_notify = Arc::new(tokio::sync::Notify::new());
 
@@ -2455,13 +2468,19 @@ pub async fn run_kwin_auto_switcher(
                         }
                     }
 
-                    let _ = ui_tx_bg.send(WindowChangeEvent {
+                    if let Err(e) = ui_tx_bg.send(WindowChangeEvent {
                         resource_class: effective_class,
                         resource_name,
                         caption: resolved_caption,
                         matched_profile,
                         picked: false,
-                    });
+                    }) {
+                        crate::bridge::device_controller::record_system_event(
+                            "WARN",
+                            "KWIN",
+                            format!("Failed sending settled window change event to UI: {e}"),
+                        );
+                    }
                 }
             }
         });
@@ -2519,7 +2538,13 @@ pub async fn run_kwin_auto_switcher(
                 )
                 .await
                 {
-                    let _ = kwin_script.call_noreply("run", &()).await;
+                    if let Err(e) = kwin_script.call_noreply("run", &()).await {
+                        crate::bridge::device_controller::record_system_event(
+                            "WARN",
+                            "KWIN",
+                            format!("Failed running KWin auto-switcher script: {e}"),
+                        );
+                    }
                 }
             }
         }
@@ -2891,8 +2916,10 @@ if (workspace.windowActivated) {
 }
 "#;
 
-    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_string());
-    let file_path = format!("{runtime_dir}/duckydeck-kwin6-hook.js");
+    let file_path = crate::paths::runtime_dir()
+        .join("duckydeck-kwin6-hook.js")
+        .to_string_lossy()
+        .to_string();
 
     let mut file = std::fs::File::create(&file_path)?;
     file.write_all(js_code.as_bytes())?;
@@ -2900,15 +2927,7 @@ if (workspace.windowActivated) {
 }
 
 fn load_saved_oled_geometry_tuple() -> Option<(i32, i32, i32, i32)> {
-    let base = std::env::var("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            PathBuf::from(home).join(".config")
-        });
-    let path = base
-        .join("duckydeck-studio")
-        .join("oled_widget_geometry.json");
+    let path = crate::paths::config_dir().join("oled_widget_geometry.json");
     let raw = fs::read_to_string(path).ok()?;
     let val: serde_json::Value = serde_json::from_str(&raw).ok()?;
     if !val.get("has_position").and_then(|v| v.as_bool()).unwrap_or(false) {
@@ -2954,9 +2973,10 @@ pub fn apply_kwin_oled_keep_above(keep_above: bool, restore_geometry: bool) {
                 return;
             };
 
-            let runtime_dir =
-                std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_string());
-            let script_path = format!("{runtime_dir}/duckydeck-kwin6-oled-pin.js");
+            let script_path = crate::paths::runtime_dir()
+                .join("duckydeck-kwin6-oled-pin.js")
+                .to_string_lossy()
+                .to_string();
             let flag_str = if keep_above { "true" } else { "false" };
             let geom_js = if let Some((gx, gy, gw, gh)) = geom_opt {
                 format!(
@@ -3014,7 +3034,13 @@ if (list) {{
                         )
                         .await
                         {
-                            let _ = script_proxy.call_noreply("run", &()).await;
+                            if let Err(e) = script_proxy.call_noreply("run", &()).await {
+                                crate::bridge::device_controller::record_system_event(
+                                    "WARN",
+                                    "KWIN",
+                                    format!("Failed running KWin OLED keep-above script: {e}"),
+                                );
+                            }
                         }
                         tokio::time::sleep(std::time::Duration::from_millis(35)).await;
                         let _: std::result::Result<bool, _> =

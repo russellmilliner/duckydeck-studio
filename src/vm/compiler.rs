@@ -2403,7 +2403,7 @@ fn parse_statements(lines: &[DsLine], pos: &mut usize) -> Result<Vec<Stmt>, Comp
                 orig_lnum: lnum,
                 orig_line: raw.to_string(),
             });
-        } else if let Some(binfo) = builtin_func_lookup(first_word) {
+        } else if builtin_func_lookup(first_word).is_some() {
             // Check if called in command style `DELAY 100` vs expression style `DELAY(100)`
             let after_kw = raw[first_word.len()..].trim();
             let call_expr_str = if after_kw.starts_with('(') && after_kw.ends_with(')') {
@@ -2413,7 +2413,6 @@ fn parse_statements(lines: &[DsLine], pos: &mut usize) -> Result<Vec<Stmt>, Comp
                 let joined = args.join(", ");
                 replace_operators(&format!("{first_word}({joined})"))
             };
-            let _ = binfo;
             let expr = parse_expression_str(&call_expr_str)
                 .map_err(|e| CompileResult::err(lnum_usize, raw, e))?;
             stmts.push(Stmt::Assign {
@@ -3717,173 +3716,122 @@ mod tests {
 
     #[test]
     fn test_sd_card_dsb_parity() {
-        let mut candidate_roots: Vec<std::path::PathBuf> = Vec::new();
-        let legacy_mount = Path::new("/run/media/millinr/DP24_2874");
-        if legacy_mount.is_dir() {
-            candidate_roots.push(legacy_mount.to_path_buf());
-        }
-        if let Some(mounted) = crate::hardware::storage::find_mounted_duckypad_sd() {
-            if !candidate_roots.contains(&mounted) {
-                candidate_roots.push(mounted);
-            }
-        }
-        if let Some(home) = std::env::var_os("HOME") {
-            let dev_profiles = std::path::PathBuf::from(home)
-                .join(".local/share/duckydeck-studio/device_profiles");
-            if let Ok(entries) = fs::read_dir(&dev_profiles) {
-                for entry in entries.flatten() {
-                    let p = entry.path();
-                    if p.is_dir() {
-                        candidate_roots.push(p);
-                    }
-                }
-            }
-        }
-
-        let mut temp_fixture_root: Option<std::path::PathBuf> = None;
-        if candidate_roots.is_empty() {
-            let tmp_dir = std::env::temp_dir().join(format!(
-                "duckydeck_sd_parity_fixture_{}",
-                std::process::id()
-            ));
-            let prof_dir = tmp_dir.join("profile_Default");
-            let _ = fs::create_dir_all(&prof_dir);
-            let _ = fs::write(
-                prof_dir.join("config.txt"),
-                "z1 ESC\nz5 Tail\nx5 scale\nz6 Numpa\nz21 vol+\nBG_COLOR 255 255 255\n",
-            );
-            let fixtures: &[(&str, &str, &[u8])] = &[
-                (
-                    "key1",
-                    "ESC",
-                    &[255, 2, 0, 1, 41, 3, 65, 1, 41, 3, 66, 11],
-                ),
-                (
-                    "key5",
-                    "STRING .dingo-dory.ts.net\n",
-                    &[
-                        255, 2, 0, 1, 8, 0, 72, 11, 46, 100, 105, 110, 103, 111, 45, 100, 111, 114,
-                        121, 46, 116, 115, 46, 110, 101, 116, 0,
-                    ],
-                ),
-                (
-                    "key6",
-                    "GOTO_PROFILE Numpad\n",
-                    &[255, 2, 0, 1, 8, 0, 84, 11, 78, 117, 109, 112, 97, 100, 0],
-                ),
-                (
-                    "key21",
-                    "MK_VOLUP\n",
-                    &[255, 2, 0, 1, 64, 4, 65, 1, 64, 4, 66, 11],
-                ),
-                (
-                    "key38",
-                    "$_GV0=1\n\nIF $_GV0==$_GV1 && $_GV3==1 THEN\n  $_GV3=2\n  STRINGLN $_GV3\nELSE\n  IF $_GV3==2 || $_GV3==4 || $_GV3==6 || $_GV3==8 THEN\n    $_GV3=5\n  END_IF\n  STRINGLN PCCW_$_GV3\nEND_IF\n",
-                    &[
-                        255, 2, 0, 13, 4, 0, 252, 13, 2, 12, 252, 32, 2, 4, 252, 2, 0, 252, 32, 49,
-                        6, 35, 0, 19, 2, 4, 12, 252, 1, 78, 0, 73, 7, 76, 0, 0, 19, 8, 2, 12, 252,
-                        32, 19, 6, 2, 12, 252, 32, 19, 4, 2, 12, 252, 32, 19, 2, 2, 12, 252, 32,
-                        50, 50, 50, 6, 71, 0, 19, 5, 4, 12, 252, 0, 1, 83, 0, 73, 0, 11, 31, 12,
-                        252, 31, 0, 80, 67, 67, 87, 95, 31, 12, 252, 31, 0,
-                    ],
-                ),
-                (
-                    "key38-release",
-                    "$_GV0=0\n\nIF $_GV0==$_GV1 && $_GV3==3 THEN\n  $_GV3=4\n  STRINGLN $_GV3\nELSE\n  IF $_GV3==2 || $_GV3==4 || $_GV3==6 || $_GV3==8 THEN\n    $_GV3=7\n  END_IF\n  STRINGLN RCCW_$_GV3\nEND_IF\n",
-                    &[
-                        255, 2, 0, 12, 4, 0, 252, 19, 3, 2, 12, 252, 32, 2, 4, 252, 2, 0, 252, 32,
-                        49, 6, 36, 0, 19, 4, 4, 12, 252, 1, 79, 0, 73, 7, 77, 0, 0, 19, 8, 2, 12,
-                        252, 32, 19, 6, 2, 12, 252, 32, 19, 4, 2, 12, 252, 32, 19, 2, 2, 12, 252,
-                        32, 50, 50, 50, 6, 72, 0, 19, 7, 4, 12, 252, 0, 1, 84, 0, 73, 0, 11, 31,
-                        12, 252, 31, 0, 82, 67, 67, 87, 95, 31, 12, 252, 31, 0,
-                    ],
-                ),
-            ];
-            for (stem, txt, dsb) in fixtures {
-                let _ = fs::write(prof_dir.join(format!("{stem}.txt")), txt);
-                let _ = fs::write(prof_dir.join(format!("{stem}.dsb")), dsb);
-            }
-            candidate_roots.push(tmp_dir.clone());
-            temp_fixture_root = Some(tmp_dir);
-        }
-
         let mut total = 0usize;
         let mut matched = 0usize;
         let mut mismatches = Vec::new();
 
-        for sd_path in &candidate_roots {
-            for entry in fs::read_dir(sd_path).into_iter().flatten().flatten() {
-                let dir = entry.path();
-                if !dir.is_dir() {
-                    continue;
-                }
-                let Some(fname) = dir.file_name().and_then(|s| s.to_str()) else {
-                    continue;
-                };
-                if !fname.starts_with("profile_") {
-                    continue;
-                }
-
-                let mut ab_slots = HashSet::new();
-                let mut dr_slots = HashSet::new();
-                let cfg_path = dir.join("config.txt");
-                if let Ok(cfg) = fs::read_to_string(&cfg_path) {
-                    for line in cfg.lines() {
-                        let t = line.trim();
-                        if let Some(rest) = t.strip_prefix("ab ") {
-                            if let Ok(idx) = rest.trim().parse::<usize>() {
-                                ab_slots.insert(idx);
-                            }
-                        } else if let Some(rest) = t.strip_prefix("dr ") {
-                            if let Ok(idx) = rest.trim().parse::<usize>() {
-                                dr_slots.insert(idx);
-                            }
+        let check_dir = |dir: &Path,
+                         label: &str,
+                         total: &mut usize,
+                         matched: &mut usize,
+                         mismatches: &mut Vec<(String, bool, String, Vec<u8>, Vec<u8>)>| {
+            let mut ab_slots = HashSet::new();
+            let mut dr_slots = HashSet::new();
+            let cfg_path = dir.join("config.txt");
+            if let Ok(cfg) = fs::read_to_string(&cfg_path) {
+                for line in cfg.lines() {
+                    let t = line.trim();
+                    if let Some(rest) = t.strip_prefix("ab ") {
+                        if let Ok(idx) = rest.trim().parse::<usize>() {
+                            ab_slots.insert(idx);
                         }
-                    }
-                }
-
-                for slot in 1..=58 {
-                    for is_rel in [false, true] {
-                        let txt_name = if is_rel {
-                            format!("key{slot}-release.txt")
-                        } else {
-                            format!("key{slot}.txt")
-                        };
-                        let dsb_name = if is_rel {
-                            format!("key{slot}-release.dsb")
-                        } else {
-                            format!("key{slot}.dsb")
-                        };
-                        let txt_path = dir.join(&txt_name);
-                        let dsb_path = dir.join(&dsb_name);
-                        if txt_path.exists() && dsb_path.exists() {
-                            total += 1;
-                            let script = fs::read_to_string(&txt_path).unwrap();
-                            let expected = fs::read(&dsb_path).unwrap();
-                            let res = compile_duckyscript_to_dsb(
-                                &script,
-                                ab_slots.contains(&slot),
-                                dr_slots.contains(&slot),
-                            );
-                            if res.is_success && res.bin_array == expected {
-                                matched += 1;
-                            } else {
-                                mismatches.push((
-                                    format!("{}/{fname}/{txt_name}", sd_path.display()),
-                                    res.is_success,
-                                    res.error_comment,
-                                    res.bin_array,
-                                    expected,
-                                ));
-                            }
+                    } else if let Some(rest) = t.strip_prefix("dr ") {
+                        if let Ok(idx) = rest.trim().parse::<usize>() {
+                            dr_slots.insert(idx);
                         }
                     }
                 }
             }
-        }
 
-        if let Some(tmp) = temp_fixture_root {
-            let _ = fs::remove_dir_all(tmp);
+            for slot in 1..=58 {
+                for is_rel in [false, true] {
+                    let txt_name = if is_rel {
+                        format!("key{slot}-release.txt")
+                    } else {
+                        format!("key{slot}.txt")
+                    };
+                    let dsb_name = if is_rel {
+                        format!("key{slot}-release.dsb")
+                    } else {
+                        format!("key{slot}.dsb")
+                    };
+                    let txt_path = dir.join(&txt_name);
+                    let dsb_path = dir.join(&dsb_name);
+                    if txt_path.exists() && dsb_path.exists() {
+                        *total += 1;
+                        let script = fs::read_to_string(&txt_path).unwrap();
+                        let expected = fs::read(&dsb_path).unwrap();
+                        let res = compile_duckyscript_to_dsb(
+                            &script,
+                            ab_slots.contains(&slot),
+                            dr_slots.contains(&slot),
+                        );
+                        if res.is_success && res.bin_array == expected {
+                            *matched += 1;
+                        } else {
+                            mismatches.push((
+                                format!("{label}/{txt_name}"),
+                                res.is_success,
+                                res.error_comment,
+                                res.bin_array,
+                                expected,
+                            ));
+                        }
+                    }
+                }
+            }
+        };
+
+        let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("dsvm");
+        assert!(
+            fixture_dir.is_dir(),
+            "Fixture directory must exist at {:?}",
+            fixture_dir
+        );
+        check_dir(
+            &fixture_dir,
+            "tests/fixtures/dsvm",
+            &mut total,
+            &mut matched,
+            &mut mismatches,
+        );
+
+        if let Ok(parity_root) = std::env::var("DUCKYDECK_SD_PARITY_ROOT") {
+            let trimmed = parity_root.trim();
+            if !trimmed.is_empty() {
+                let sd_path = Path::new(trimmed);
+                if sd_path.is_dir() {
+                    check_dir(
+                        sd_path,
+                        &sd_path.display().to_string(),
+                        &mut total,
+                        &mut matched,
+                        &mut mismatches,
+                    );
+                    for entry in fs::read_dir(sd_path).into_iter().flatten().flatten() {
+                        let dir = entry.path();
+                        if !dir.is_dir() {
+                            continue;
+                        }
+                        let Some(fname) = dir.file_name().and_then(|s| s.to_str()) else {
+                            continue;
+                        };
+                        if !fname.starts_with("profile_") {
+                            continue;
+                        }
+                        check_dir(
+                            &dir,
+                            &format!("{}/{fname}", sd_path.display()),
+                            &mut total,
+                            &mut matched,
+                            &mut mismatches,
+                        );
+                    }
+                }
+            }
         }
 
         println!("SD Card .dsb parity: {matched}/{total} matched");

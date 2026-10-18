@@ -1,0 +1,11 @@
+$_GV0=1
+
+IF $_GV0==$_GV1 && $_GV3==1 THEN
+  $_GV3=2
+  STRINGLN $_GV3
+ELSE
+  IF $_GV3==2 || $_GV3==4 || $_GV3==6 || $_GV3==8 THEN
+    $_GV3=5
+  END_IF
+  STRINGLN PCCW_$_GV3
+END_IF

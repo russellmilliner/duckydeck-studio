@@ -36,6 +36,7 @@
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
 #include <QScreen>
+#include <QStandardPaths>
 #include <QString>
 #include <QStringList>
 #include <QSvgRenderer>
@@ -121,7 +122,7 @@ inline bool& oled_restore_settled_ref() {
 }
 
 inline QString oled_widget_geometry_file_path() {
-    QString base = qEnvironmentVariable("XDG_CONFIG_HOME").trimmed();
+    QString base = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation).trimmed();
     if (base.isEmpty()) {
         base = QDir::homePath() + QStringLiteral("/.config");
     }
@@ -1001,7 +1002,7 @@ inline void update_tray_window_actions() {
 }
 
 inline QString load_saved_app_theme_mode() {
-    QString base = qEnvironmentVariable("XDG_CONFIG_HOME").trimmed();
+    QString base = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation).trimmed();
     if (base.isEmpty()) {
         base = QDir::homePath() + QStringLiteral("/.config");
     }
@@ -1028,7 +1029,7 @@ inline int load_saved_ui_text_scale() {
             + QStringLiteral("/duckydeck-ui-test-suite-%1/kwin_rules.json")
                   .arg(static_cast<qlonglong>(::getpid()));
     } else {
-        QString base = qEnvironmentVariable("XDG_CONFIG_HOME").trimmed();
+        QString base = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation).trimmed();
         if (base.isEmpty()) {
             base = QDir::homePath() + QStringLiteral("/.config");
         }
@@ -1257,8 +1258,41 @@ inline void duckydeck_quit_app() {
     duckydeck::quit_duckydeck_application();
 }
 
+inline void duckydeck_exit_app(int32_t exit_code) {
+    if (QCoreApplication::instance()) {
+        QCoreApplication::exit(exit_code);
+        QCoreApplication::quit();
+    }
+    std::fflush(stdout);
+    std::fflush(stderr);
+    ::_exit(exit_code);
+}
+
 inline void duckydeck_restart_app() {
     duckydeck::restart_duckydeck_application();
+}
+
+inline bool duckydeck_extract_qrc_user_guide(const QString& dest_path) {
+    const QStringList candidates = {
+        QStringLiteral(":/qt/qml/io/github/duckydeck/docs/user-guide.html"),
+        QStringLiteral(":/docs/user-guide.html"),
+    };
+    for (const QString& res_path : candidates) {
+        QFile res_file(res_path);
+        if (res_file.exists() && res_file.open(QIODevice::ReadOnly)) {
+            const QByteArray bytes = res_file.readAll();
+            res_file.close();
+            if (!bytes.isEmpty()) {
+                QFile out_file(dest_path);
+                if (out_file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                    out_file.write(bytes);
+                    out_file.close();
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
 }
 
 inline void duckydeck_dispatch_ipc_command(const QString& command) {
@@ -1485,9 +1519,11 @@ inline int duckydeck_run_app(bool start_minimized) {
     );
     QGuiApplication::setWindowIcon(initialIcon);
 
+    const bool isUiTestSuite = qEnvironmentVariable("DUCKYDECK_UI_TEST_SUITE") == QStringLiteral("1");
+
     // Single-instance check: offer to close previous running instance and start new one
     const QString existingPidsRaw = qEnvironmentVariable("DUCKYDECK_EXISTING_PIDS").trimmed();
-    if (!existingPidsRaw.isEmpty()) {
+    if (!isUiTestSuite && !existingPidsRaw.isEmpty()) {
         QList<pid_t> alivePids;
         QStringList aliveStrs;
         const QStringList parts = existingPidsRaw.split(QLatin1Char(','), Qt::SkipEmptyParts);
@@ -1540,7 +1576,7 @@ inline int duckydeck_run_app(bool start_minimized) {
     }
 
     const QString pidFilePath = qEnvironmentVariable("DUCKYDECK_PID_FILE").trimmed();
-    if (!pidFilePath.isEmpty()) {
+    if (!isUiTestSuite && !pidFilePath.isEmpty()) {
         QFile pidFile(pidFilePath);
         if (pidFile.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
             pidFile.write(QByteArray::number(static_cast<qlonglong>(::getpid())) + "\n");
@@ -1587,9 +1623,10 @@ inline int duckydeck_run_app(bool start_minimized) {
             duckydeck::update_tray_window_actions();
         }
         const bool shouldRestoreOledWidget =
-            qEnvironmentVariable("DUCKYDECK_SHOW_OLED_WIDGET") == QStringLiteral("1")
-            || (qEnvironmentVariable("DUCKYDECK_DEMO_SHOWCASE") != QStringLiteral("1")
-                && duckydeck::load_oled_widget_geometry().visible);
+            !isUiTestSuite
+            && (qEnvironmentVariable("DUCKYDECK_SHOW_OLED_WIDGET") == QStringLiteral("1")
+                || (qEnvironmentVariable("DUCKYDECK_DEMO_SHOWCASE") != QStringLiteral("1")
+                    && duckydeck::load_oled_widget_geometry().visible));
         if (shouldRestoreOledWidget) {
             QTimer::singleShot(180, win, []() {
                 duckydeck::show_oled_widget_window();

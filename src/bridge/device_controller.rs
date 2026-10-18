@@ -19,7 +19,9 @@ pub mod qobject {
         fn duckydeck_show_main_window();
         fn duckydeck_hide_main_window();
         fn duckydeck_quit_app();
+        fn duckydeck_exit_app(exit_code: i32);
         fn duckydeck_restart_app();
+        fn duckydeck_extract_qrc_user_guide(dest_path: &QString) -> bool;
         fn duckydeck_dispatch_ipc_command(command: &QString);
         fn duckydeck_toggle_oled_widget();
         fn duckydeck_restore_oled_widget_geometry();
@@ -579,6 +581,14 @@ pub mod qobject {
         ) -> bool;
 
         #[qinvokable]
+        #[cxx_name = "demoCaptureDir"]
+        fn demo_capture_dir(self: &DeviceController) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "openUserGuide"]
+        fn open_user_guide(self: &DeviceController);
+
+        #[qinvokable]
         #[cxx_name = "discardUnsyncedChange"]
         fn discard_unsynced_change(
             self: Pin<&mut DeviceController>,
@@ -877,12 +887,8 @@ pub struct SystemLogEntry {
 static SYSTEM_EVENT_LOG: OnceLock<Mutex<Vec<SystemLogEntry>>> = OnceLock::new();
 
 pub fn get_system_log_file_path() -> PathBuf {
-    let base = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
-        .unwrap_or_else(|| PathBuf::from("/tmp"));
-    let dir = base.join("duckydeck-studio");
-    let _ = fs::create_dir_all(&dir);
+    let dir = crate::paths::data_dir();
+    let _ = fs::create_dir_all(&dir); // ignore: best-effort log directory creation inside logger
     dir.join("duckydeck.log")
 }
 
@@ -925,11 +931,11 @@ pub fn record_system_event(level: &str, category: &str, message: impl AsRef<str>
     if let Ok(meta) = fs::metadata(&log_path) {
         if meta.len() > 2 * 1024 * 1024 {
             let backup = log_path.with_extension("log.1");
-            let _ = fs::rename(&log_path, backup);
+            let _ = fs::rename(&log_path, backup); // ignore: best-effort log rotation inside logger
         }
     }
     if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&log_path) {
-        let _ = writeln!(f, "[{ts}] [{lvl:<5}] [{cat:<10}] {msg}");
+        let _ = writeln!(f, "[{ts}] [{lvl:<5}] [{cat:<10}] {msg}"); // ignore: best-effort log file write inside logger
     }
 }
 
@@ -1035,7 +1041,9 @@ pub fn run_application(start_minimized: bool) -> i32 {
             APP_VERSION, start_minimized
         ),
     );
-    sync_local_desktop_and_icon(true);
+    if !is_ui_test_suite_env() {
+        sync_local_desktop_and_icon(true);
+    }
     qobject::duckydeck_run_app(start_minimized)
 }
 
@@ -1285,7 +1293,9 @@ impl Default for DeviceControllerRust {
         let used_colors_json = Self::collect_used_colors_json(&profiles);
         let autostart = is_kde_autostart_enabled();
         if autostart {
-            let _ = set_kde_autostart_enabled(true);
+            if let Err(e) = set_kde_autostart_enabled(true) {
+                record_system_event("WARN", "SYSTEM", format!("Failed refreshing KDE autostart: {e}"));
+            }
         }
         let rules_json = Self::serialize_rules(&switcher.rules, &profiles);
         let profiles_json = Self::serialize_profiles_summary(&profiles, &switcher.rules);
@@ -2300,17 +2310,19 @@ impl qobject::DeviceController {
         let tooltip_qstr = QString::from(&tooltip);
         let mode_qstr = QString::from(&mode_str);
 
-        qobject::duckydeck_sync_tray(
-            self.as_mut(),
-            use_light_on_dark_icon,
-            &mode_qstr,
-            &status_header,
-            &profile_header,
-            &sd_space_header,
-            &tooltip_qstr,
-            auto_enabled,
-            autostart,
-        );
+        if !is_ui_test_suite_env() {
+            qobject::duckydeck_sync_tray(
+                self.as_mut(),
+                use_light_on_dark_icon,
+                &mode_qstr,
+                &status_header,
+                &profile_header,
+                &sd_space_header,
+                &tooltip_qstr,
+                auto_enabled,
+                autostart,
+            );
+        }
 
         let slots_raw = self.active_profile_slots_json().to_string();
         let bg_color_str = self.active_profile_bg_color().to_string();
@@ -2347,15 +2359,32 @@ impl qobject::DeviceController {
         if let Ok(test_state_path) = std::env::var("DUCKYDECK_UI_TEST_OLED_STATE_PATH") {
             if !test_state_path.trim().is_empty() {
                 if let Ok(serialized) = serde_json::to_string(&oled_snapshot) {
-                    let _ = fs::write(test_state_path.trim(), serialized);
+                    if let Err(e) = fs::write(test_state_path.trim(), serialized) {
+                        record_system_event(
+                            "WARN",
+                            "STORAGE",
+                            format!("Failed writing test OLED state {}: {e}", test_state_path.trim()),
+                        );
+                    }
                 }
             }
         } else if !is_demo_showcase_env() {
-            if let Some(home) = std::env::var_os("HOME") {
-                let state_dir = PathBuf::from(home).join(".local/share/duckydeck-studio");
-                let _ = fs::create_dir_all(&state_dir);
-                if let Ok(serialized) = serde_json::to_string(&oled_snapshot) {
-                    let _ = fs::write(state_dir.join("oled_state.json"), serialized);
+            let state_dir = crate::paths::data_dir();
+            if let Err(e) = fs::create_dir_all(&state_dir) {
+                record_system_event(
+                    "WARN",
+                    "STORAGE",
+                    format!("Failed creating state dir {}: {e}", state_dir.display()),
+                );
+            }
+            if let Ok(serialized) = serde_json::to_string(&oled_snapshot) {
+                let state_file = state_dir.join("oled_state.json");
+                if let Err(e) = fs::write(&state_file, serialized) {
+                    record_system_event(
+                        "WARN",
+                        "STORAGE",
+                        format!("Failed writing {}: {e}", state_file.display()),
+                    );
                 }
             }
         }
@@ -2902,7 +2931,7 @@ impl qobject::DeviceController {
             self.as_mut()
                 .set_status_message(QString::from("USB udev permissions required"));
             self.as_mut().sync_tray_state();
-            if !self.rust().kwin_listener_started {
+            if !is_ui_test_suite_env() && !self.rust().kwin_listener_started {
                 self.as_mut().start_kwin_listener();
             }
             return;
@@ -2919,8 +2948,7 @@ impl qobject::DeviceController {
         // If a duckyPad SD card is mounted, load directly from it
         if self.rust().sd_root_path.is_none() {
             if let Some(sd_root) = find_mounted_duckypad_sd() {
-                let _ = self
-                    .as_mut()
+                self.as_mut()
                     .load_sd_directory(QString::from(sd_root.to_string_lossy().as_ref()));
             }
         }
@@ -2994,7 +3022,7 @@ impl qobject::DeviceController {
                     info.fw_version
                 )));
                 self.as_mut().sync_tray_state();
-                if self.latest_firmware_version().to_string() == "-" {
+                if !is_ui_test_suite_env() && self.latest_firmware_version().to_string() == "-" {
                     self.as_mut().check_firmware_update(false);
                 }
             }
@@ -3014,10 +3042,12 @@ impl qobject::DeviceController {
         }
 
         // Start the KWin Wayland Auto-Switcher D-Bus listener if not started yet
-        if !self.rust().kwin_listener_started {
-            self.as_mut().start_kwin_listener();
-        } else {
-            self.as_mut().apply_auto_switch_for_current_window();
+        if !is_ui_test_suite_env() {
+            if !self.rust().kwin_listener_started {
+                self.as_mut().start_kwin_listener();
+            } else {
+                self.as_mut().apply_auto_switch_for_current_window();
+            }
         }
     }
 
@@ -3043,9 +3073,15 @@ impl qobject::DeviceController {
         }
         self.as_mut().sync_active_profile_state();
 
-        if !is_demo_showcase_env() {
-            // Also switch on hardware if connected over USB HID
-            let _ = crate::kwin::auto_switcher::send_hid_switch_profile(clamped as u8);
+        if !is_demo_showcase_env()
+            && *self.connected()
+            && !crate::kwin::auto_switcher::send_hid_switch_profile(clamped as u8)
+        {
+            record_system_event(
+                "WARN",
+                "HID",
+                format!("Failed switching hardware to profile #{clamped}"),
+            );
         }
 
         {
@@ -3159,7 +3195,13 @@ impl qobject::DeviceController {
                                 existing.push('\n');
                             }
                             existing.push_str(&format!("{next_num} {clean_name}\n"));
-                            let _ = fs::write(&info_path, existing);
+                            if let Err(e) = fs::write(&info_path, existing) {
+                                record_system_event(
+                                    "WARN",
+                                    "STORAGE",
+                                    format!("Failed updating {}: {e}", info_path.display()),
+                                );
+                            }
                         }
                     }
                 }
@@ -3241,7 +3283,17 @@ impl qobject::DeviceController {
                 for old_f in [&old_folder, &old_legacy_folder] {
                     let old_dir = sd_root.join(old_f);
                     if old_dir.is_dir() && old_dir != new_dir {
-                        let _ = fs::rename(&old_dir, &new_dir);
+                        if let Err(e) = fs::rename(&old_dir, &new_dir) {
+                            record_system_event(
+                                "WARN",
+                                "STORAGE",
+                                format!(
+                                    "Failed renaming {} to {}: {e}",
+                                    old_dir.display(),
+                                    new_dir.display()
+                                ),
+                            );
+                        }
                     }
                 }
                 if save_profile_order_to_sd(sd_root, &rust.profiles).is_ok() {
@@ -3305,7 +3357,17 @@ impl qobject::DeviceController {
                                 let new_dir =
                                     sd_root.join(format!("profile{new_num}_{}", prof.name));
                                 if old_dir.is_dir() && !new_dir.exists() {
-                                    let _ = fs::rename(&old_dir, &new_dir);
+                                    if let Err(e) = fs::rename(&old_dir, &new_dir) {
+                                        record_system_event(
+                                            "WARN",
+                                            "STORAGE",
+                                            format!(
+                                                "Failed renumbering profile dir {} to {}: {e}",
+                                                old_dir.display(),
+                                                new_dir.display()
+                                            ),
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -3346,7 +3408,13 @@ impl qobject::DeviceController {
                         }
                     }
                     if rules_changed || sw.loaded_from_disk {
-                        let _ = sw.save_to_disk();
+                        if let Err(e) = sw.save_to_disk() {
+                            record_system_event(
+                                "WARN",
+                                "CONFIG",
+                                format!("Failed saving switcher state after delete: {e}"),
+                            );
+                        }
                     }
                 }
 
@@ -3355,7 +3423,13 @@ impl qobject::DeviceController {
                     for folder in [&deleted_folder, &deleted_legacy_folder] {
                         let dir_path = sd_root.join(folder);
                         if dir_path.is_dir() {
-                            let _ = fs::remove_dir_all(&dir_path);
+                            if let Err(e) = fs::remove_dir_all(&dir_path) {
+                                record_system_event(
+                                    "WARN",
+                                    "STORAGE",
+                                    format!("Failed removing deleted profile dir {}: {e}", dir_path.display()),
+                                );
+                            }
                         }
                     }
                     if save_profile_order_to_sd(sd_root, &rust.profiles).is_ok() {
@@ -3385,8 +3459,14 @@ impl qobject::DeviceController {
             self.as_mut().set_default_fallback_profile(fb);
         }
         self.as_mut().set_active_profile(new_active_num);
-        if *self.connected() {
-            let _ = crate::kwin::auto_switcher::send_hid_switch_profile(new_active_num as u8);
+        if *self.connected()
+            && !crate::kwin::auto_switcher::send_hid_switch_profile(new_active_num as u8)
+        {
+            record_system_event(
+                "WARN",
+                "HID",
+                format!("Failed switching hardware to profile #{new_active_num} after delete"),
+            );
         }
         self.as_mut().sync_active_profile_state();
 
@@ -3458,7 +3538,13 @@ impl qobject::DeviceController {
                     }
                 }
                 if rules_changed || sw.loaded_from_disk {
-                    let _ = sw.save_to_disk();
+                    if let Err(e) = sw.save_to_disk() {
+                        record_system_event(
+                            "WARN",
+                            "CONFIG",
+                            format!("Failed saving switcher state after reorder: {e}"),
+                        );
+                    }
                 }
             }
 
@@ -3549,7 +3635,9 @@ impl qobject::DeviceController {
             hid_ok = device.write(&tx).is_ok();
             if hid_ok {
                 let mut rx = [0u8; 64];
-                let _ = device.read_timeout(&mut rx, 200);
+                if let Err(e) = device.read_timeout(&mut rx, 200) {
+                    record_system_event("WARN", "HID", format!("HID ACK read timeout in set_key_rgb: {e}"));
+                }
             }
         }
 
@@ -3700,7 +3788,13 @@ impl qobject::DeviceController {
                     tx[6] = rgb[2];
                     if device.write(&tx).is_ok() {
                         let mut rx = [0u8; 64];
-                        let _ = device.read_timeout(&mut rx, 60);
+                        if let Err(e) = device.read_timeout(&mut rx, 60) {
+                            record_system_event(
+                                "WARN",
+                                "HID",
+                                format!("HID ACK read timeout in set_profile_bg_color(slot {slot_idx}): {e}"),
+                            );
+                        }
                     }
                 }
             }
@@ -3740,7 +3834,13 @@ impl qobject::DeviceController {
                 sw.editor_text_scale = clamped;
                 sw.status_bar_text_scale = clamped;
                 sw.event_log_text_scale = clamped;
-                let _ = sw.save_to_disk();
+                if let Err(e) = sw.save_to_disk() {
+                    record_system_event(
+                        "WARN",
+                        "CONFIG",
+                        format!("Failed saving UI text scale to disk: {e}"),
+                    );
+                }
             }
         }
 
@@ -3843,7 +3943,9 @@ impl qobject::DeviceController {
         let ok = device.write(&tx).is_ok();
         if ok {
             let mut rx = [0u8; 64];
-            let _ = device.read_timeout(&mut rx, 200);
+            if let Err(e) = device.read_timeout(&mut rx, 200) {
+                record_system_event("WARN", "HID", format!("HID ACK read timeout in sync_rtc_clock: {e}"));
+            }
             self.as_mut()
                 .set_status_message(QString::from("RTC synchronized with Linux host clock"));
         }
@@ -3862,7 +3964,9 @@ impl qobject::DeviceController {
         let ok = device.write(&tx).is_ok();
         if ok {
             let mut rx = [0u8; 64];
-            let _ = device.read_timeout(&mut rx, 200);
+            if let Err(e) = device.read_timeout(&mut rx, 200) {
+                record_system_event("WARN", "HID", format!("HID ACK read timeout in set_sleep_state: {e}"));
+            }
         }
         ok
     }
@@ -4390,7 +4494,7 @@ impl qobject::DeviceController {
     }
 
     pub fn start_kwin_listener(mut self: Pin<&mut Self>) {
-        if self.rust().kwin_listener_started {
+        if is_ui_test_suite_env() || self.rust().kwin_listener_started {
             return;
         }
         self.as_mut().rust_mut().get_mut().kwin_listener_started = true;
@@ -4741,7 +4845,9 @@ impl qobject::DeviceController {
             if let Ok(mut sw) = rust.switcher_state.lock() {
                 sw.enabled = enabled;
                 sw.default_profile = fallback;
-                let _ = sw.save_to_disk();
+                if let Err(e) = sw.save_to_disk() {
+                    record_system_event("WARN", "CONFIG", format!("Failed saving auto-switch config: {e}"));
+                }
             }
         }
 
@@ -4765,7 +4871,9 @@ impl qobject::DeviceController {
             if let Ok(mut sw) = rust.switcher_state.lock() {
                 sw.mouse_settle_ms = clamped_settle;
                 sw.window_dwell_ms = clamped_dwell;
-                let _ = sw.save_to_disk();
+                if let Err(e) = sw.save_to_disk() {
+                    record_system_event("WARN", "CONFIG", format!("Failed saving auto-switch timings: {e}"));
+                }
             }
         }
 
@@ -4919,7 +5027,9 @@ impl qobject::DeviceController {
                     sw.rules.push(new_rule);
                 }
                 sw.loaded_from_disk = true;
-                let _ = sw.save_to_disk();
+                if let Err(e) = sw.save_to_disk() {
+                    record_system_event("WARN", "CONFIG", format!("Failed saving auto-switch rule: {e}"));
+                }
             }
         }
 
@@ -4940,7 +5050,9 @@ impl qobject::DeviceController {
                 if rule_index >= 0 && idx < sw.rules.len() {
                     sw.rules.remove(idx);
                     sw.loaded_from_disk = true;
-                    let _ = sw.save_to_disk();
+                    if let Err(e) = sw.save_to_disk() {
+                        record_system_event("WARN", "CONFIG", format!("Failed saving after removing rule: {e}"));
+                    }
                     removed = true;
                 }
             }
@@ -4968,7 +5080,9 @@ impl qobject::DeviceController {
                 if rule_index >= 0 && idx < sw.rules.len() {
                     sw.rules[idx].enabled = enabled;
                     sw.loaded_from_disk = true;
-                    let _ = sw.save_to_disk();
+                    if let Err(e) = sw.save_to_disk() {
+                        record_system_event("WARN", "CONFIG", format!("Failed saving after toggling rule: {e}"));
+                    }
                     updated = true;
                 }
             }
@@ -5002,7 +5116,9 @@ impl qobject::DeviceController {
                     moved_class = rule.resource_class.clone();
                     sw.rules.insert(to_idx, rule);
                     sw.loaded_from_disk = true;
-                    let _ = sw.save_to_disk();
+                    if let Err(e) = sw.save_to_disk() {
+                        record_system_event("WARN", "CONFIG", format!("Failed saving after reordering rule: {e}"));
+                    }
                     reordered = true;
                 }
             }
@@ -5049,7 +5165,7 @@ impl qobject::DeviceController {
 
     pub fn toggle_autostart_from_tray(mut self: Pin<&mut Self>) {
         let next = !*self.autostart_enabled();
-        let _ = self.as_mut().apply_autostart_enabled(next);
+        self.as_mut().apply_autostart_enabled(next);
     }
 
     pub fn toggle_auto_switch_from_tray(mut self: Pin<&mut Self>) {
@@ -5074,7 +5190,9 @@ impl qobject::DeviceController {
             let rust = self.as_mut().rust_mut().get_mut();
             if let Ok(mut sw) = rust.switcher_state.lock() {
                 sw.tray_icon_mode = normalized.clone();
-                let _ = sw.save_to_disk();
+                if let Err(e) = sw.save_to_disk() {
+                    record_system_event("WARN", "CONFIG", format!("Failed saving tray icon mode: {e}"));
+                }
             }
         }
         self.as_mut()
@@ -5106,7 +5224,9 @@ impl qobject::DeviceController {
             let rust = self.as_mut().rust_mut().get_mut();
             if let Ok(mut sw) = rust.switcher_state.lock() {
                 sw.app_theme_mode = normalized.clone();
-                let _ = sw.save_to_disk();
+                if let Err(e) = sw.save_to_disk() {
+                    record_system_event("WARN", "CONFIG", format!("Failed saving app theme mode: {e}"));
+                }
             }
         }
         let qmode = QString::from(&normalized);
@@ -5239,7 +5359,13 @@ impl qobject::DeviceController {
                 PathBuf::from(format!("{}.duckyprofile.json", dest.display()))
             };
             if let Some(parent) = target_file.parent() {
-                let _ = fs::create_dir_all(parent);
+                if let Err(e) = fs::create_dir_all(parent) {
+                    record_system_event(
+                        "WARN",
+                        "STORAGE",
+                        format!("Failed creating export parent dir {}: {e}", parent.display()),
+                    );
+                }
             }
             match fs::write(&target_file, &json_str) {
                 Ok(()) => {
@@ -5416,7 +5542,13 @@ impl qobject::DeviceController {
                 p.number = (idx + 1) as u8;
             }
             if let Some(ref sd_root) = rust.sd_root_path {
-                let _ = save_profile_order_to_sd(sd_root, &rust.profiles);
+                if let Err(e) = save_profile_order_to_sd(sd_root, &rust.profiles) {
+                    record_system_event(
+                        "WARN",
+                        "STORAGE",
+                        format!("Failed saving profile_info.txt after import: {e}"),
+                    );
+                }
             }
             let sn = rust.serial_number.to_string();
             sync_profiles_to_device_cache(&sn, &rust.profiles);
@@ -5437,7 +5569,9 @@ impl qobject::DeviceController {
                         sw.rules.push(r);
                     }
                 }
-                let _ = sw.save_to_disk();
+                if let Err(e) = sw.save_to_disk() {
+                    record_system_event("WARN", "CONFIG", format!("Failed saving imported rules: {e}"));
+                }
                 sw.rules.clone()
             } else {
                 Vec::new()
@@ -5452,7 +5586,7 @@ impl qobject::DeviceController {
             .set_profiles_json(QString::from(&profiles_json));
         self.as_mut()
             .set_auto_switch_rules_json(QString::from(&rules_json));
-        let _ = self.as_mut().select_profile(new_num as i32);
+        self.as_mut().select_profile(new_num as i32);
         self.as_mut().sync_active_profile_state();
         self.as_mut().set_status_message(QString::from(&format!(
             "Imported Profile #{new_num} '{final_name}'{sd_msg}"
@@ -5543,7 +5677,13 @@ impl qobject::DeviceController {
         };
 
         if let Some(parent) = target_file.parent() {
-            let _ = fs::create_dir_all(parent);
+            if let Err(e) = fs::create_dir_all(parent) {
+                record_system_event(
+                    "WARN",
+                    "STORAGE",
+                    format!("Failed creating profile group parent dir {}: {e}", parent.display()),
+                );
+            }
         }
 
         match fs::write(&target_file, &json_str) {
@@ -5670,7 +5810,13 @@ impl qobject::DeviceController {
                     sw.default_profile = Some(fb.clamp(1, prof_count as u8));
                 }
                 sw.loaded_from_disk = true;
-                let _ = sw.save_to_disk();
+                if let Err(e) = sw.save_to_disk() {
+                    record_system_event(
+                        "WARN",
+                        "CONFIG",
+                        format!("Failed saving switcher state after group load: {e}"),
+                    );
+                }
                 sw.rules.clone()
             } else {
                 Vec::new()
@@ -5686,7 +5832,7 @@ impl qobject::DeviceController {
             .set_profiles_json(QString::from(&profiles_json));
         self.as_mut()
             .set_auto_switch_rules_json(QString::from(&rules_json));
-        let _ = self.as_mut().select_profile(target_active);
+        self.as_mut().select_profile(target_active);
         self.as_mut().sync_active_profile_state();
         self.as_mut().set_status_message(QString::from(&format!(
             "✓ Loaded Profile Group '{group_title}' ({prof_count} profiles) — Review & Sync to duckyPad when ready"
@@ -5738,7 +5884,13 @@ impl qobject::DeviceController {
                 sw.rules.clear();
                 sw.default_profile = Some(1);
                 sw.loaded_from_disk = true;
-                let _ = sw.save_to_disk();
+                if let Err(e) = sw.save_to_disk() {
+                    record_system_event(
+                        "WARN",
+                        "CONFIG",
+                        format!("Failed saving switcher state after creating group: {e}"),
+                    );
+                }
                 sw.rules.clone()
             } else {
                 Vec::new()
@@ -5754,7 +5906,7 @@ impl qobject::DeviceController {
             .set_profiles_json(QString::from(&profiles_json));
         self.as_mut()
             .set_auto_switch_rules_json(QString::from(&rules_json));
-        let _ = self.as_mut().select_profile(1);
+        self.as_mut().select_profile(1);
         self.as_mut().sync_active_profile_state();
         self.as_mut().set_status_message(QString::from(&format!(
             "✓ Created new Profile Group '{group_label}' starting with Profile #1 ('{first_prof_name}')"
@@ -5790,7 +5942,7 @@ impl qobject::DeviceController {
         let slot_idx = slot_number.clamp(1, MAX_INPUT_SLOTS as i32) as usize;
         let active_num = *self.active_profile() as u8;
 
-        let (copied, summary_label) = {
+        let summary_label = {
             let rust = self.as_mut().rust_mut().get_mut();
             let prof_opt = rust
                 .profiles
@@ -5820,11 +5972,10 @@ impl qobject::DeviceController {
             } else {
                 format!("Key #{slot_idx} ('{combined_label}')")
             };
-            rust.copied_key_slot = Some(slot_data.clone());
-            (slot_data, summary)
+            rust.copied_key_slot = Some(slot_data);
+            summary
         };
 
-        let _ = copied;
         self.as_mut().set_has_copied_slot(true);
         self.as_mut()
             .set_copied_slot_summary(QString::from(&summary_label));
@@ -6037,7 +6188,13 @@ impl qobject::DeviceController {
             let rust = self.as_mut().rust_mut().get_mut();
             if let Ok(mut sw) = rust.switcher_state.lock() {
                 sw.close_to_tray = enabled;
-                let _ = sw.save_to_disk();
+                if let Err(e) = sw.save_to_disk() {
+                    record_system_event(
+                        "WARN",
+                        "CONFIG",
+                        format!("Failed saving close_to_tray setting: {e}"),
+                    );
+                }
             }
         }
         self.as_mut().set_close_to_tray(enabled);
@@ -6115,7 +6272,7 @@ impl qobject::DeviceController {
     }
 
     pub fn check_firmware_update(mut self: Pin<&mut Self>, manual: bool) {
-        if *self.firmware_check_busy() {
+        if is_ui_test_suite_env() || *self.firmware_check_busy() {
             return;
         }
         let model_str = self.model_name().to_string();
@@ -6200,7 +6357,13 @@ impl qobject::DeviceController {
     pub fn open_firmware_update_page(self: Pin<&mut Self>) {
         let url = self.firmware_update_url().to_string();
         if !url.is_empty() {
-            let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+            if let Err(e) = std::process::Command::new("xdg-open").arg(&url).spawn() {
+                record_system_event(
+                    "WARN",
+                    "SYSTEM",
+                    format!("Failed opening firmware update page {url}: {e}"),
+                );
+            }
         }
     }
 
@@ -6209,7 +6372,13 @@ impl qobject::DeviceController {
         let fallback = self.firmware_update_url().to_string();
         let target = if !dl.is_empty() { dl } else { fallback };
         if !target.is_empty() {
-            let _ = std::process::Command::new("xdg-open").arg(&target).spawn();
+            if let Err(e) = std::process::Command::new("xdg-open").arg(&target).spawn() {
+                record_system_event(
+                    "WARN",
+                    "SYSTEM",
+                    format!("Failed opening firmware download URL {target}: {e}"),
+                );
+            }
         }
     }
 
@@ -6906,7 +7075,13 @@ impl qobject::DeviceController {
             guard.clear();
         }
         let log_path = get_system_log_file_path();
-        let _ = fs::write(&log_path, "");
+        if let Err(e) = fs::write(&log_path, "") {
+            record_system_event(
+                "WARN",
+                "SYSTEM",
+                format!("Failed truncating log file {}: {e}", log_path.display()),
+            );
+        }
         record_system_event("INFO", "SYSTEM", "Event log cleared by user");
         self.as_mut().sync_event_log_properties();
     }
@@ -7033,7 +7208,13 @@ impl qobject::DeviceController {
                     .any(|c| c.eq_ignore_ascii_case(&normalized))
                 {
                     sw.saved_colors.push(normalized);
-                    let _ = sw.save_to_disk();
+                    if let Err(e) = sw.save_to_disk() {
+                        record_system_event(
+                            "WARN",
+                            "CONFIG",
+                            format!("Failed saving color palette to disk: {e}"),
+                        );
+                    }
                 }
             }
         }
@@ -7053,7 +7234,13 @@ impl qobject::DeviceController {
                 sw.saved_colors
                     .retain(|c| !c.eq_ignore_ascii_case(&target));
                 if sw.saved_colors.len() != before {
-                    let _ = sw.save_to_disk();
+                    if let Err(e) = sw.save_to_disk() {
+                        record_system_event(
+                            "WARN",
+                            "CONFIG",
+                            format!("Failed saving color palette after removal: {e}"),
+                        );
+                    }
                 }
             }
         }
@@ -7073,12 +7260,19 @@ impl qobject::DeviceController {
         if let Ok(path) = std::env::var("DUCKYDECK_UI_TEST_REPORT") {
             let trimmed = path.trim();
             if !trimmed.is_empty() {
-                let _ = fs::write(trimmed, &raw);
+                if let Err(e) = fs::write(trimmed, &raw) {
+                    record_system_event(
+                        "WARN",
+                        "SYSTEM",
+                        format!("Failed writing UI test report to {trimmed}: {e}"),
+                    );
+                }
             }
         }
         println!("{raw}");
         let _ = std::io::stdout().flush();
         let _ = std::io::stderr().flush();
+        qobject::duckydeck_exit_app(exit_code);
         extern "C" {
             fn _exit(status: i32) -> !;
         }
@@ -7127,9 +7321,9 @@ impl qobject::DeviceController {
             }
             _ => {
                 if let Some(path) = cmd.strip_prefix("import-group:") {
-                    let _ = self.as_mut().load_profile_group(QString::from(path));
+                    self.as_mut().load_profile_group(QString::from(path));
                 } else if let Some(path) = cmd.strip_prefix("import-profile:") {
-                    let _ = self.as_mut().import_profile_from_path(QString::from(path));
+                    self.as_mut().import_profile_from_path(QString::from(path));
                 }
             }
         }
@@ -7141,7 +7335,89 @@ impl qobject::DeviceController {
         banner_title: QString,
         banner_subtitle: QString,
     ) -> bool {
+        let out_str = output_path.to_string();
+        if let Some(parent) = Path::new(&out_str).parent() {
+            if let Err(e) = fs::create_dir_all(parent) {
+                record_system_event(
+                    "WARN",
+                    "SYSTEM",
+                    format!("Failed creating capture parent dir {}: {e}", parent.display()),
+                );
+            }
+        }
         qobject::duckydeck_capture_composite_frame(&output_path, &banner_title, &banner_subtitle)
+    }
+
+    pub fn demo_capture_dir(&self) -> QString {
+        let dir = std::env::var("DUCKYDECK_CAPTURE_DIR")
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| crate::paths::cache_dir().join("captures"));
+        if let Err(e) = fs::create_dir_all(dir.join("screenshots")) {
+            record_system_event(
+                "WARN",
+                "SYSTEM",
+                format!("Failed creating screenshots capture dir: {e}"),
+            );
+        }
+        if let Err(e) = fs::create_dir_all(dir.join("video_frames")) {
+            record_system_event(
+                "WARN",
+                "SYSTEM",
+                format!("Failed creating video_frames capture dir: {e}"),
+            );
+        }
+        QString::from(dir.to_string_lossy().as_ref())
+    }
+
+    pub fn open_user_guide(&self) {
+        let system_candidates = [
+            Path::new("/usr/share/doc/duckydeck-studio/user-guide.html"),
+            Path::new("/app/share/doc/duckydeck-studio/user-guide.html"),
+        ];
+        let target_path = if let Some(found) = system_candidates.iter().find(|p| p.is_file()) {
+            found.to_path_buf()
+        } else {
+            let cache = crate::paths::cache_dir();
+            if let Err(e) = fs::create_dir_all(&cache) {
+                record_system_event(
+                    "WARN",
+                    "SYSTEM",
+                    format!("Failed creating cache dir {}: {e}", cache.display()),
+                );
+            }
+            let extracted = cache.join("user-guide.html");
+            let dest_qstr = QString::from(extracted.to_string_lossy().as_ref());
+            if !qobject::duckydeck_extract_qrc_user_guide(&dest_qstr) {
+                const EMBEDDED_USER_GUIDE: &str = include_str!("../../docs/user-guide.html");
+                if let Err(e) = fs::write(&extracted, EMBEDDED_USER_GUIDE) {
+                    record_system_event(
+                        "WARN",
+                        "SYSTEM",
+                        format!("Failed writing embedded user guide to {}: {e}", extracted.display()),
+                    );
+                }
+            }
+            extracted
+        };
+
+        if !is_ui_test_suite_env() {
+            if let Err(e) = std::process::Command::new("xdg-open")
+                .arg(&target_path)
+                .stdin( std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+            {
+                record_system_event(
+                    "WARN",
+                    "SYSTEM",
+                    format!("Failed launching xdg-open for {}: {e}", target_path.display()),
+                );
+            }
+        }
     }
 
     pub fn discard_unsynced_change(
@@ -7255,7 +7531,13 @@ impl qobject::DeviceController {
             return false;
         }
         std::thread::spawn(move || {
-            let _ = set_batch_key_leds_hid(&updates);
+            if !set_batch_key_leds_hid(&updates) {
+                record_system_event(
+                    "WARN",
+                    "HID",
+                    "Failed pushing batch key LED frame over USB HID",
+                );
+            }
         });
         true
     }
@@ -7483,11 +7765,23 @@ impl qobject::DeviceController {
 
             let prof_snapshot = prof.clone();
             if let Some(ref sd_root) = rust.sd_root_path {
-                let _ = prof_snapshot.save_to_sd_root(sd_root);
+                if let Err(e) = prof_snapshot.save_to_sd_root(sd_root) {
+                    record_system_event(
+                        "WARN",
+                        "STORAGE",
+                        format!("Failed saving profile #{} properties to SD: {e}", prof_snapshot.number),
+                    );
+                }
             }
             if let Ok(mut sw) = rust.switcher_state.lock() {
                 sw.align_rules_with_profiles(&rust.profiles);
-                let _ = sw.save_to_disk();
+                if let Err(e) = sw.save_to_disk() {
+                    record_system_event(
+                        "WARN",
+                        "CONFIG",
+                        format!("Failed saving switcher state after updating profile properties: {e}"),
+                    );
+                }
             }
             let sn = rust.serial_number.to_string();
             if sn != "-" && !sn.is_empty() {
@@ -7673,7 +7967,7 @@ impl qobject::DeviceController {
     pub fn mount_sd_card(mut self: Pin<&mut Self>) -> bool {
         if self.as_mut().refresh_sd_mount_status() {
             let mounted_path = self.sd_mount_path().to_string();
-            let _ = self.as_mut().load_sd_directory(QString::from(&mounted_path));
+            self.as_mut().load_sd_directory(QString::from(&mounted_path));
             return true;
         }
         let dev_serial = self.serial_number().to_string();
@@ -7709,7 +8003,7 @@ impl qobject::DeviceController {
             Ok(msg) => {
                 self.as_mut().rust_mut().get_mut().sd_root_path = None;
                 self.as_mut().set_sd_mount_path(QString::from(""));
-                let _ = self.as_mut().refresh_sd_mount_status();
+                self.as_mut().refresh_sd_mount_status();
                 self.as_mut().sync_active_profile_state();
                 let full_msg = format!("✓ {msg}");
                 record_system_event("INFO", "STORAGE", &full_msg);
@@ -7764,7 +8058,13 @@ impl qobject::DeviceController {
                     prof.slots.remove(&slot_idx);
                 }
                 if let Some(root) = sd_root {
-                    let _ = prof.save_to_sd_root(&root);
+                    if let Err(e) = prof.save_to_sd_root(&root) {
+                        record_system_event(
+                            "WARN",
+                            "STORAGE",
+                            format!("Failed saving slot widget labels to SD: {e}"),
+                        );
+                    }
                 }
                 let sn = rust.serial_number.to_string();
                 if sn != "-" && !sn.is_empty() {
@@ -7803,7 +8103,13 @@ impl qobject::DeviceController {
             if let Some(prof) = rust.profiles.iter_mut().find(|p| p.number == active_num) {
                 prof.set_oled_rotation_degrees(normalized);
                 if let Some(root) = sd_root {
-                    let _ = prof.save_to_sd_root(&root);
+                    if let Err(e) = prof.save_to_sd_root(&root) {
+                        record_system_event(
+                            "WARN",
+                            "STORAGE",
+                            format!("Failed saving OLED rotation to SD: {e}"),
+                        );
+                    }
                 }
                 let name = prof.name.clone();
                 let sn = rust.serial_number.to_string();
@@ -7851,7 +8157,13 @@ impl qobject::DeviceController {
             if let Some(prof) = rust.profiles.iter_mut().find(|p| p.number == active_num) {
                 prof.set_widget_rotation_degrees(normalized);
                 if let Some(root) = sd_root {
-                    let _ = prof.save_to_sd_root(&root);
+                    if let Err(e) = prof.save_to_sd_root(&root) {
+                        record_system_event(
+                            "WARN",
+                            "STORAGE",
+                            format!("Failed saving widget rotation to SD: {e}"),
+                        );
+                    }
                 }
                 let name = prof.name.clone();
                 let sn = rust.serial_number.to_string();
@@ -8032,12 +8344,24 @@ impl qobject::DeviceController {
             if let Some(ref sd_root) = rust.sd_root_path {
                 if new_prof.save_to_sd_root(sd_root).is_ok() {
                     saved = true;
-                    let _ = save_profile_order_to_sd(sd_root, &rust.profiles);
+                    if let Err(e) = save_profile_order_to_sd(sd_root, &rust.profiles) {
+                        record_system_event(
+                            "WARN",
+                            "STORAGE",
+                            format!("Failed saving profile order to SD: {e}"),
+                        );
+                    }
                 }
             }
             rust.profiles.push(new_prof);
             if let Some(ref sd_root) = rust.sd_root_path {
-                let _ = save_profile_order_to_sd(sd_root, &rust.profiles);
+                if let Err(e) = save_profile_order_to_sd(sd_root, &rust.profiles) {
+                    record_system_event(
+                        "WARN",
+                        "STORAGE",
+                        format!("Failed saving profile order to SD: {e}"),
+                    );
+                }
             }
             let sn = rust.serial_number.to_string();
             sync_profiles_to_device_cache(&sn, &rust.profiles);
@@ -8086,7 +8410,13 @@ impl qobject::DeviceController {
             *prof = inst;
             prof.folder_name_override = cur_folder;
             if let Some(root) = sd_root {
-                let _ = prof.save_to_sd_root(&root);
+                if let Err(e) = prof.save_to_sd_root(&root) {
+                    record_system_event(
+                        "WARN",
+                        "STORAGE",
+                        format!("Failed saving template-applied profile to SD: {e}"),
+                    );
+                }
             }
             let sn = rust.serial_number.to_string();
             if sn != "-" && !sn.is_empty() {
@@ -8113,6 +8443,11 @@ impl qobject::DeviceController {
     }
 
     fn sync_rest_api_server_from_state(mut self: Pin<&mut Self>) {
+        if is_ui_test_suite_env() {
+            self.as_mut()
+                .set_rest_api_status(QString::from("Disabled (UI test mode)"));
+            return;
+        }
         let cfg = RestApiServerConfig {
             enabled: *self.rest_api_enabled(),
             bind_ip: self.rest_api_bind_ip().to_string(),
@@ -8166,7 +8501,13 @@ impl qobject::DeviceController {
                 sw.rest_api_port = clean_port;
                 sw.rest_api_require_auth = require_auth;
                 sw.rest_api_token = clean_token.clone();
-                let _ = sw.save_to_disk();
+                if let Err(e) = sw.save_to_disk() {
+                    record_system_event(
+                        "WARN",
+                        "CONFIG",
+                        format!("Failed saving REST API config to disk: {e}"),
+                    );
+                }
             }
         }
 
@@ -8177,6 +8518,12 @@ impl qobject::DeviceController {
         self.as_mut().set_rest_api_require_auth(require_auth);
         self.as_mut()
             .set_rest_api_token(QString::from(&clean_token));
+
+        if is_ui_test_suite_env() {
+            self.as_mut()
+                .set_rest_api_status(QString::from("Disabled (UI test mode)"));
+            return true;
+        }
 
         let cfg = RestApiServerConfig {
             enabled,
@@ -8214,7 +8561,13 @@ impl qobject::DeviceController {
             let rust = self.as_mut().rust_mut().get_mut();
             if let Ok(mut sw) = rust.switcher_state.lock() {
                 sw.rest_api_token = new_tok.clone();
-                let _ = sw.save_to_disk();
+                if let Err(e) = sw.save_to_disk() {
+                    record_system_event(
+                        "WARN",
+                        "CONFIG",
+                        format!("Failed saving regenerated REST API token: {e}"),
+                    );
+                }
             }
         }
         self.as_mut().set_rest_api_token(QString::from(&new_tok));
@@ -8235,7 +8588,7 @@ impl qobject::DeviceController {
         } else {
             cur_tok
         };
-        let _ = self.as_mut().apply_rest_api_config(
+        self.as_mut().apply_rest_api_config(
             false,
             QString::from("127.0.0.1"),
             28491,
@@ -8288,7 +8641,13 @@ impl qobject::DeviceController {
                 sw.profile_webhook_url = cfg.url.trim().to_string();
                 sw.profile_webhook_headers = cfg.headers;
                 sw.profile_webhook_body = cfg.body;
-                let _ = sw.save_to_disk();
+                if let Err(e) = sw.save_to_disk() {
+                    record_system_event(
+                        "WARN",
+                        "CONFIG",
+                        format!("Failed saving global profile webhook config: {e}"),
+                    );
+                }
             }
         }
         let msg = if cfg.enabled {
@@ -8521,7 +8880,13 @@ impl qobject::DeviceController {
         let dom_str = domain_filter.to_string();
 
         if !url_str.is_empty() && !tok_str.is_empty() {
-            let _ = save_home_assistant_config(&url_str, &tok_str);
+            if let Err(e) = save_home_assistant_config(&url_str, &tok_str) {
+                record_system_event(
+                    "WARN",
+                    "HOME_ASSISTANT",
+                    format!("Failed saving Home Assistant config: {e}"),
+                );
+            }
         }
 
         let res = std::thread::spawn(move || {
@@ -8980,7 +9345,7 @@ impl qobject::DeviceController {
                         );
                     } else if parts.len() >= 3 && parts[1] == "slots" {
                         if let Ok(slot_num) = parts[2].parse::<i32>() {
-                            let _ = self.as_mut().select_profile(prof_num);
+                            self.as_mut().select_profile(prof_num);
                             if parts.len() == 3 && m == "GET" {
                                 let meta_str = self.get_slot_meta_json(slot_num).to_string();
                                 let mut detail_val: serde_json::Value =
@@ -9107,7 +9472,7 @@ impl qobject::DeviceController {
                                     allow_abort,
                                     disable_autorepeat,
                                 );
-                                let _ = self.as_mut().save_slot_widget_labels(
+                                self.as_mut().save_slot_widget_labels(
                                     slot_num,
                                     QString::from(&wl1),
                                     QString::from(&wl2),
@@ -9132,9 +9497,9 @@ impl qobject::DeviceController {
                                             .and_then(|v| v.as_i64())
                                             .unwrap_or(255)
                                             as i32;
-                                        let _ = self.as_mut().set_key_rgb(slot_num, r, g, b);
+                                        self.as_mut().set_key_rgb(slot_num, r, g, b);
                                     } else {
-                                        let _ = self.as_mut().clear_key_custom_rgb(slot_num);
+                                        self.as_mut().clear_key_custom_rgb(slot_num);
                                     }
                                 } else if val.get("r").is_some()
                                     || val.get("g").is_some()
@@ -9152,7 +9517,7 @@ impl qobject::DeviceController {
                                         .and_then(|v| v.as_i64())
                                         .unwrap_or(255)
                                         as i32;
-                                    let _ = self.as_mut().set_key_rgb(slot_num, r, g, b);
+                                    self.as_mut().set_key_rgb(slot_num, r, g, b);
                                 }
 
                                 return (
@@ -9321,15 +9686,251 @@ impl qobject::DeviceController {
 
         // 11. Storage & Sync endpoints
         if m == "POST" && clean_path == "/api/v1/sd/sync" {
-            let ok = self.as_mut().sync_profiles_to_device_sd();
-            return (
-                if ok { 202 } else { 400 },
-                serde_json::json!({
-                    "ok": ok,
-                    "statusMessage": self.status_message().to_string(),
+            let active_num = (*self.active_profile()).clamp(1, 64) as u8;
+            let serial_str = self.serial_number().to_string();
+            let profiles_snapshot = self.rust().profiles.clone();
+            let requested_sd_root = serde_json::from_str::<serde_json::Value>(body)
+                .ok()
+                .and_then(|v| {
+                    v.get("sdRootPath")
+                        .and_then(|s| s.as_str())
+                        .map(|s| s.trim().to_string())
                 })
-                .to_string(),
-            );
+                .filter(|s| !s.is_empty())
+                .map(PathBuf::from);
+            let mounted_sd = requested_sd_root.or_else(|| {
+                self.rust()
+                    .sd_root_path
+                    .clone()
+                    .filter(|p| p.exists())
+                    .or_else(find_mounted_duckypad_sd)
+            });
+
+            self.as_mut().set_sd_sync_busy(true);
+            self.as_mut().set_sd_sync_progress(5);
+            self.as_mut()
+                .set_sd_sync_result_state(QString::from("running"));
+            self.as_mut().set_sd_sync_result_summary(QString::from(""));
+            self.as_mut()
+                .set_sd_sync_step(QString::from("Starting SD card sync..."));
+
+            let job = crate::api_server::create_api_job("sd/sync");
+            let job_id = job.id.clone();
+            let qt_thread = self.qt_thread();
+
+            std::thread::spawn(move || {
+                if let Some(sd_root) = mounted_sd {
+                    match write_profiles_to_sd_root(&sd_root, &profiles_snapshot) {
+                        Ok(summary) => {
+                            sync_profiles_to_device_cache(&serial_str, &profiles_snapshot);
+                            mark_profiles_sd_synced(&serial_str, &profiles_snapshot);
+                            let sd_display = sd_root.display().to_string();
+                            let short_fp = &summary.validated_fingerprint
+                                [..8.min(summary.validated_fingerprint.len())];
+                            let msg = format!(
+                                "Validated & Saved! {} profile(s) verified on {sd_display} ({} file(s) updated, read-back hash #{short_fp} confirmed).",
+                                summary.profiles_count, summary.files_written
+                            );
+                            let sd_clone = sd_display.clone();
+                            let msg_clone = msg.clone();
+                            let _ = qt_thread.queue(move |mut qobject| {
+                                qobject.as_mut().set_sd_sync_busy(false);
+                                qobject.as_mut().set_sd_sync_progress(100);
+                                qobject
+                                    .as_mut()
+                                    .set_sd_sync_result_state(QString::from("success"));
+                                qobject
+                                    .as_mut()
+                                    .set_sd_sync_step(QString::from(&msg_clone));
+                                qobject
+                                    .as_mut()
+                                    .set_sd_sync_result_summary(QString::from(&msg_clone));
+                                qobject.as_mut().load_sd_directory(QString::from(&sd_clone));
+                                qobject
+                                    .as_mut()
+                                    .set_status_message(QString::from(&msg_clone));
+                            });
+                            crate::api_server::update_api_job(
+                                &job_id,
+                                "completed",
+                                Some(true),
+                                &msg,
+                                Some(serde_json::json!({
+                                    "syncedProfiles": summary.profiles_count,
+                                    "filesWritten": summary.files_written,
+                                    "sdRootPath": sd_display,
+                                })),
+                            );
+                        }
+                        Err(err) => {
+                            let msg = format!("SD Sync Error: {err}");
+                            let msg_clone = msg.clone();
+                            let _ = qt_thread.queue(move |mut qobject| {
+                                qobject.as_mut().set_sd_sync_busy(false);
+                                qobject.as_mut().set_sd_sync_progress(0);
+                                qobject
+                                    .as_mut()
+                                    .set_sd_sync_result_state(QString::from("error"));
+                                qobject
+                                    .as_mut()
+                                    .set_sd_sync_step(QString::from(&msg_clone));
+                                qobject
+                                    .as_mut()
+                                    .set_sd_sync_result_summary(QString::from(&msg_clone));
+                                qobject
+                                    .as_mut()
+                                    .set_status_message(QString::from(&msg_clone));
+                            });
+                            crate::api_server::update_api_job(
+                                &job_id,
+                                "failed",
+                                Some(false),
+                                &msg,
+                                None,
+                            );
+                        }
+                    }
+                    return;
+                }
+
+                let Ok(info) = query_connected_duckypad_info() else {
+                    let msg = "Cannot sync: duckyPad not connected and no mounted SD card found."
+                        .to_string();
+                    let msg_clone = msg.clone();
+                    let _ = qt_thread.queue(move |mut qobject| {
+                        qobject.as_mut().set_sd_sync_busy(false);
+                        qobject.as_mut().set_sd_sync_progress(0);
+                        qobject
+                            .as_mut()
+                            .set_sd_sync_result_state(QString::from("error"));
+                        qobject.as_mut().set_sd_sync_step(QString::from(""));
+                        qobject
+                            .as_mut()
+                            .set_status_message(QString::from(&msg_clone));
+                    });
+                    crate::api_server::update_api_job(&job_id, "failed", Some(false), &msg, None);
+                    return;
+                };
+
+                if info.pid == PID_DUCKYPAD_2020 {
+                    let msg = "duckyPad (2020): Insert microSD into computer to sync profiles."
+                        .to_string();
+                    let msg_clone = msg.clone();
+                    let _ = qt_thread.queue(move |mut qobject| {
+                        qobject.as_mut().set_sd_sync_busy(false);
+                        qobject.as_mut().set_sd_sync_progress(0);
+                        qobject
+                            .as_mut()
+                            .set_sd_sync_result_state(QString::from("error"));
+                        qobject.as_mut().set_sd_sync_step(QString::from(""));
+                        qobject
+                            .as_mut()
+                            .set_status_message(QString::from(&msg_clone));
+                    });
+                    crate::api_server::update_api_job(&job_id, "failed", Some(false), &msg, None);
+                    return;
+                }
+
+                let disk_label = info.disk_label.clone();
+                let dev_serial = if !info.serial.is_empty() && info.serial != "-" {
+                    info.serial.clone()
+                } else {
+                    serial_str
+                };
+                let label_display = if disk_label.is_empty() {
+                    "duckyPad Pro".to_string()
+                } else {
+                    disk_label.clone()
+                };
+                let qt_progress = qt_thread.clone();
+
+                let res = write_duckypad_pro_profiles_via_msc_with_progress(
+                    &disk_label,
+                    &dev_serial,
+                    &profiles_snapshot,
+                    active_num,
+                    move |pct, step, _log_line| {
+                        let step_str = step.to_string();
+                        let _ = qt_progress.queue(move |mut qobject| {
+                            qobject.as_mut().set_sd_sync_progress(pct);
+                            qobject.as_mut().set_sd_sync_step(QString::from(&step_str));
+                            qobject
+                                .as_mut()
+                                .set_status_message(QString::from(&step_str));
+                        });
+                    },
+                );
+
+                match res {
+                    Ok(summary) => {
+                        let short_fp = &summary.validated_fingerprint
+                            [..8.min(summary.validated_fingerprint.len())];
+                        let msg = format!(
+                            "Validated & Saved! {} profile(s) verified on duckyPad Pro ({label_display}) — {} file(s) updated, read-back hash #{short_fp} confirmed.",
+                            summary.profiles_count, summary.files_written
+                        );
+                        let msg_clone = msg.clone();
+                        let _ = qt_thread.queue(move |mut qobject| {
+                            qobject.as_mut().set_sd_sync_busy(false);
+                            qobject.as_mut().set_sd_sync_progress(100);
+                            qobject
+                                .as_mut()
+                                .set_sd_sync_result_state(QString::from("success"));
+                            qobject
+                                .as_mut()
+                                .set_sd_sync_step(QString::from(&msg_clone));
+                            qobject
+                                .as_mut()
+                                .set_sd_sync_result_summary(QString::from(&msg_clone));
+                            qobject.as_mut().refresh_device();
+                            qobject
+                                .as_mut()
+                                .set_status_message(QString::from(&msg_clone));
+                        });
+                        crate::api_server::update_api_job(
+                            &job_id,
+                            "completed",
+                            Some(true),
+                            &msg,
+                            Some(serde_json::json!({
+                                "syncedProfiles": summary.profiles_count,
+                                "filesWritten": summary.files_written,
+                                "summary": msg,
+                            })),
+                        );
+                    }
+                    Err(err) => {
+                        let err_msg = format!("SD Sync Error: {err}");
+                        let err_clone = err_msg.clone();
+                        let _ = qt_thread.queue(move |mut qobject| {
+                            qobject.as_mut().set_sd_sync_busy(false);
+                            qobject.as_mut().set_sd_sync_progress(0);
+                            qobject
+                                .as_mut()
+                                .set_sd_sync_result_state(QString::from("error"));
+                            qobject
+                                .as_mut()
+                                .set_sd_sync_step(QString::from(&err_clone));
+                            qobject
+                                .as_mut()
+                                .set_sd_sync_result_summary(QString::from(&err_clone));
+                            qobject.as_mut().refresh_device();
+                            qobject
+                                .as_mut()
+                                .set_status_message(QString::from(&err_clone));
+                        });
+                        crate::api_server::update_api_job(
+                            &job_id,
+                            "failed",
+                            Some(false),
+                            &err_msg,
+                            None,
+                        );
+                    }
+                }
+            });
+
+            return crate::api_server::format_job_accepted_response(&job);
         }
         if m == "POST" && clean_path == "/api/v1/sd/reload" {
             let ok = self.as_mut().reload_profiles_from_device_sd();
@@ -9343,27 +9944,118 @@ impl qobject::DeviceController {
             );
         }
         if m == "POST" && clean_path == "/api/v1/sd/mount" {
-            let ok = self.as_mut().mount_sd_card();
-            return (
-                if ok { 200 } else { 400 },
-                serde_json::json!({
-                    "ok": ok,
-                    "sdMountPath": self.sd_mount_path().to_string(),
-                    "statusMessage": self.status_message().to_string(),
-                })
-                .to_string(),
-            );
+            let dev_serial = self.serial_number().to_string();
+            let job = crate::api_server::create_api_job("sd/mount");
+            let job_id = job.id.clone();
+            let qt_thread = self.qt_thread();
+
+            std::thread::spawn(move || {
+                let serial = query_connected_duckypad_info()
+                    .ok()
+                    .map(|info| info.serial)
+                    .filter(|s| !s.is_empty() && s != "-")
+                    .unwrap_or(dev_serial);
+                let disk_label = if serial.len() >= 4 && serial != "-" {
+                    format!("DP24_{}", serial[serial.len() - 4..].to_ascii_uppercase())
+                } else {
+                    String::new()
+                };
+
+                let mount_res = find_mounted_duckypad_sd()
+                    .map(Ok)
+                    .unwrap_or_else(|| mount_duckypad_sd_only(&disk_label));
+
+                match mount_res {
+                    Ok(mount_path) => {
+                        let mount_str = mount_path.to_string_lossy().to_string();
+                        let msg = format!("✓ Mounted duckyPad microSD card at {mount_str}");
+                        let mp_clone = mount_str.clone();
+                        let msg_clone = msg.clone();
+                        let _ = qt_thread.queue(move |mut qobject| {
+                            qobject.as_mut().set_sd_card_detected(true);
+                            qobject.as_mut().load_sd_directory(QString::from(&mp_clone));
+                            qobject.as_mut().refresh_device();
+                            qobject
+                                .as_mut()
+                                .set_status_message(QString::from(&msg_clone));
+                        });
+                        crate::api_server::update_api_job(
+                            &job_id,
+                            "completed",
+                            Some(true),
+                            &msg,
+                            Some(serde_json::json!({ "sdMountPath": mount_str })),
+                        );
+                    }
+                    Err(err) => {
+                        let msg = format!("Mount SD Error: {err}");
+                        let msg_clone = msg.clone();
+                        let _ = qt_thread.queue(move |mut qobject| {
+                            qobject
+                                .as_mut()
+                                .set_status_message(QString::from(&msg_clone));
+                        });
+                        crate::api_server::update_api_job(
+                            &job_id,
+                            "failed",
+                            Some(false),
+                            &msg,
+                            None,
+                        );
+                    }
+                }
+            });
+
+            return crate::api_server::format_job_accepted_response(&job);
         }
         if m == "POST" && clean_path == "/api/v1/sd/unmount" {
-            let ok = self.as_mut().unmount_sd_card();
-            return (
-                if ok { 200 } else { 400 },
-                serde_json::json!({
-                    "ok": ok,
-                    "statusMessage": self.status_message().to_string(),
-                })
-                .to_string(),
-            );
+            let current_mount = self.rust().sd_root_path.clone();
+            let job = crate::api_server::create_api_job("sd/unmount");
+            let job_id = job.id.clone();
+            let qt_thread = self.qt_thread();
+
+            std::thread::spawn(move || {
+                match unmount_mounted_duckypad_sd(current_mount.as_deref()) {
+                    Ok(msg) => {
+                        let full_msg = format!("✓ {msg}");
+                        let msg_clone = full_msg.clone();
+                        let _ = qt_thread.queue(move |mut qobject| {
+                            qobject.as_mut().rust_mut().get_mut().sd_root_path = None;
+                            qobject.as_mut().set_sd_mount_path(QString::from(""));
+                            qobject.as_mut().refresh_sd_mount_status();
+                            qobject.as_mut().sync_active_profile_state();
+                            qobject
+                                .as_mut()
+                                .set_status_message(QString::from(&msg_clone));
+                        });
+                        crate::api_server::update_api_job(
+                            &job_id,
+                            "completed",
+                            Some(true),
+                            &full_msg,
+                            None,
+                        );
+                    }
+                    Err(err) => {
+                        let msg = format!("Unmount SD Error: {err}");
+                        let msg_clone = msg.clone();
+                        let _ = qt_thread.queue(move |mut qobject| {
+                            qobject
+                                .as_mut()
+                                .set_status_message(QString::from(&msg_clone));
+                        });
+                        crate::api_server::update_api_job(
+                            &job_id,
+                            "failed",
+                            Some(false),
+                            &msg,
+                            None,
+                        );
+                    }
+                }
+            });
+
+            return crate::api_server::format_job_accepted_response(&job);
         }
 
         // 12. Device power/system control endpoints
@@ -9382,11 +10074,52 @@ impl qobject::DeviceController {
             );
         }
         if m == "POST" && clean_path == "/api/v1/device/reboot" {
-            let ok = self.as_mut().reboot_device();
-            return (
-                if ok { 200 } else { 400 },
-                serde_json::json!({ "ok": ok }).to_string(),
-            );
+            let job = crate::api_server::create_api_job("device/reboot");
+            let job_id = job.id.clone();
+            let qt_thread = self.qt_thread();
+
+            std::thread::spawn(move || {
+                match reboot_duckypad() {
+                    Ok(()) => {
+                        let msg = "Rebooting duckyPad into normal operating mode...".to_string();
+                        let msg_clone = msg.clone();
+                        let _ = qt_thread.queue(move |mut qobject| {
+                            qobject
+                                .as_mut()
+                                .set_status_message(QString::from(&msg_clone));
+                        });
+                        crate::api_server::update_api_job(
+                            &job_id,
+                            "completed",
+                            Some(true),
+                            &msg,
+                            None,
+                        );
+                        std::thread::sleep(std::time::Duration::from_millis(1600));
+                        let _ = qt_thread.queue(|mut qobject| {
+                            qobject.as_mut().refresh_device();
+                        });
+                    }
+                    Err(err) => {
+                        let msg = format!("Reboot Error: {err}");
+                        let msg_clone = msg.clone();
+                        let _ = qt_thread.queue(move |mut qobject| {
+                            qobject
+                                .as_mut()
+                                .set_status_message(QString::from(&msg_clone));
+                        });
+                        crate::api_server::update_api_job(
+                            &job_id,
+                            "failed",
+                            Some(false),
+                            &msg,
+                            None,
+                        );
+                    }
+                }
+            });
+
+            return crate::api_server::format_job_accepted_response(&job);
         }
         if m == "POST" && clean_path == "/api/v1/device/sync-rtc" {
             let ok = self.as_mut().sync_rtc_clock();
@@ -9396,7 +10129,14 @@ impl qobject::DeviceController {
             );
         }
 
-        // 13. GET /api/v1/logs
+        // 13. GET /api/v1/jobs/{id}
+        if m == "GET" {
+            if let Some(job_id) = clean_path.strip_prefix("/api/v1/jobs/") {
+                return crate::api_server::handle_get_job_status(job_id.trim());
+            }
+        }
+
+        // 14. GET /api/v1/logs
         if m == "GET" && clean_path == "/api/v1/logs" {
             let log_str = self.event_log_json().to_string();
             let log_val: serde_json::Value =

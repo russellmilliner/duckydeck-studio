@@ -288,7 +288,13 @@ pub fn goto_profile_by_name(device: &HidDevice, profile_name: &str) -> Result<()
         .write(&tx)
         .map_err(|e| format!("Failed to switch to profile '{profile_name}': {e}"))?;
     let mut rx = [0u8; 64];
-    let _ = device.read_timeout(&mut rx, 200);
+    if let Err(e) = device.read_timeout(&mut rx, 200) {
+        crate::bridge::device_controller::record_system_event(
+            "WARN",
+            "HID",
+            format!("HID ACK read timeout in goto_profile_by_name('{profile_name}'): {e}"),
+        );
+    }
     Ok(())
 }
 
@@ -855,7 +861,13 @@ impl DuckyProfile {
                         disable_autorepeat,
                     );
                     if compiled.is_success {
-                        let _ = fs::write(&press_dsb_path, &compiled.bin_array);
+                        if let Err(e) = fs::write(&press_dsb_path, &compiled.bin_array) {
+                            crate::bridge::device_controller::record_system_event(
+                                "WARN",
+                                "STORAGE",
+                                format!("Failed writing {}: {e}", press_dsb_path.display()),
+                            );
+                        }
                     }
                 }
             }
@@ -873,7 +885,13 @@ impl DuckyProfile {
                         disable_autorepeat,
                     );
                     if compiled.is_success {
-                        let _ = fs::write(&release_dsb_path, &compiled.bin_array);
+                        if let Err(e) = fs::write(&release_dsb_path, &compiled.bin_array) {
+                            crate::bridge::device_controller::record_system_event(
+                                "WARN",
+                                "STORAGE",
+                                format!("Failed writing {}: {e}", release_dsb_path.display()),
+                            );
+                        }
                     }
                 }
             }
@@ -1024,11 +1042,23 @@ impl DuckyProfile {
                     )?);
                 } else {
                     if press_path.exists() {
-                        let _ = fs::remove_file(&press_path);
+                        if let Err(e) = fs::remove_file(&press_path) {
+                            crate::bridge::device_controller::record_system_event(
+                                "WARN",
+                                "STORAGE",
+                                format!("Failed removing {}: {e}", press_path.display()),
+                            );
+                        }
                         record_write(true);
                     }
                     if press_dsb_path.exists() {
-                        let _ = fs::remove_file(&press_dsb_path);
+                        if let Err(e) = fs::remove_file(&press_dsb_path) {
+                            crate::bridge::device_controller::record_system_event(
+                                "WARN",
+                                "STORAGE",
+                                format!("Failed removing {}: {e}", press_dsb_path.display()),
+                            );
+                        }
                         record_write(true);
                     }
                 }
@@ -1058,29 +1088,65 @@ impl DuckyProfile {
                     )?);
                 } else {
                     if release_path.exists() {
-                        let _ = fs::remove_file(&release_path);
+                        if let Err(e) = fs::remove_file(&release_path) {
+                            crate::bridge::device_controller::record_system_event(
+                                "WARN",
+                                "STORAGE",
+                                format!("Failed removing {}: {e}", release_path.display()),
+                            );
+                        }
                         record_write(true);
                     }
                     if release_dsb_path.exists() {
-                        let _ = fs::remove_file(&release_dsb_path);
+                        if let Err(e) = fs::remove_file(&release_dsb_path) {
+                            crate::bridge::device_controller::record_system_event(
+                                "WARN",
+                                "STORAGE",
+                                format!("Failed removing {}: {e}", release_dsb_path.display()),
+                            );
+                        }
                         record_write(true);
                     }
                 }
             } else {
                 if press_path.exists() {
-                    let _ = fs::remove_file(&press_path);
+                    if let Err(e) = fs::remove_file(&press_path) {
+                        crate::bridge::device_controller::record_system_event(
+                            "WARN",
+                            "STORAGE",
+                            format!("Failed removing {}: {e}", press_path.display()),
+                        );
+                    }
                     record_write(true);
                 }
                 if press_dsb_path.exists() {
-                    let _ = fs::remove_file(&press_dsb_path);
+                    if let Err(e) = fs::remove_file(&press_dsb_path) {
+                        crate::bridge::device_controller::record_system_event(
+                            "WARN",
+                            "STORAGE",
+                            format!("Failed removing {}: {e}", press_dsb_path.display()),
+                        );
+                    }
                     record_write(true);
                 }
                 if release_path.exists() {
-                    let _ = fs::remove_file(&release_path);
+                    if let Err(e) = fs::remove_file(&release_path) {
+                        crate::bridge::device_controller::record_system_event(
+                            "WARN",
+                            "STORAGE",
+                            format!("Failed removing {}: {e}", release_path.display()),
+                        );
+                    }
                     record_write(true);
                 }
                 if release_dsb_path.exists() {
-                    let _ = fs::remove_file(&release_dsb_path);
+                    if let Err(e) = fs::remove_file(&release_dsb_path) {
+                        crate::bridge::device_controller::record_system_event(
+                            "WARN",
+                            "STORAGE",
+                            format!("Failed removing {}: {e}", release_dsb_path.display()),
+                        );
+                    }
                     record_write(true);
                 }
             }
@@ -1088,7 +1154,13 @@ impl DuckyProfile {
 
         if files_written > 0 {
             if let Ok(dir_handle) = fs::File::open(&profile_dir) {
-                let _ = dir_handle.sync_all();
+                if let Err(e) = dir_handle.sync_all() {
+                    crate::bridge::device_controller::record_system_event(
+                        "WARN",
+                        "STORAGE",
+                        format!("Failed syncing directory {}: {e}", profile_dir.display()),
+                    );
+                }
             }
         }
 
@@ -1282,33 +1354,12 @@ pub fn save_profile_order_to_sd(sd_root: &Path, profiles: &[DuckyProfile]) -> io
     for prof in profiles {
         content.push_str(&format!("{} {}\n", prof.number, prof.name));
     }
-    let _ = write_file_if_changed_and_sync(&profile_info_path, content.as_bytes())?;
+    write_file_if_changed_and_sync(&profile_info_path, content.as_bytes())?;
     Ok(())
 }
 
-fn data_home_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let fallback = PathBuf::from(&home).join(".local").join("share");
-    match std::env::var("XDG_DATA_HOME") {
-        Ok(val) => {
-            let trimmed = val.trim();
-            if trimmed.is_empty()
-                || trimmed.contains(':')
-                || !trimmed.starts_with('/')
-                || trimmed.starts_with("/var/lib/")
-                || trimmed.starts_with("/usr/")
-            {
-                fallback
-            } else {
-                PathBuf::from(trimmed)
-            }
-        }
-        Err(_) => fallback,
-    }
-}
-
 pub fn profile_cache_dir() -> PathBuf {
-    data_home_dir().join("duckydeck-studio").join("profile_cache")
+    crate::paths::data_dir().join("profile_cache")
 }
 
 pub fn profile_cache_dir_for_serial(serial: &str) -> PathBuf {
@@ -1319,8 +1370,7 @@ pub fn profile_cache_dir_for_serial(serial: &str) -> PathBuf {
     if clean.is_empty() || clean == "-" {
         profile_cache_dir()
     } else {
-        data_home_dir()
-            .join("duckydeck-studio")
+        crate::paths::data_dir()
             .join("device_profiles")
             .join(clean)
     }
@@ -1339,15 +1389,33 @@ fn write_profiles_to_cache_dir(cache_dir: &Path, profiles: &[DuckyProfile]) {
                 if let Some(fname) = p.file_name().and_then(|s| s.to_str()) {
                     if parse_profile_folder_name(fname).is_some() && !valid_folders.contains(fname)
                     {
-                        let _ = fs::remove_dir_all(&p);
+                        if let Err(e) = fs::remove_dir_all(&p) {
+                            crate::bridge::device_controller::record_system_event(
+                                "WARN",
+                                "STORAGE",
+                                format!("Failed removing stale cache dir {}: {e}", p.display()),
+                            );
+                        }
                     }
                 }
             }
         }
     }
-    let _ = save_profile_order_to_sd(cache_dir, profiles);
+    if let Err(e) = save_profile_order_to_sd(cache_dir, profiles) {
+        crate::bridge::device_controller::record_system_event(
+            "WARN",
+            "STORAGE",
+            format!("Failed saving profile_info.txt in {}: {e}", cache_dir.display()),
+        );
+    }
     for prof in profiles {
-        let _ = prof.save_to_sd_root(cache_dir);
+        if let Err(e) = prof.save_to_sd_root(cache_dir) {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "STORAGE",
+                format!("Failed caching profile '{}' in {}: {e}", prof.name, cache_dir.display()),
+            );
+        }
     }
 }
 
@@ -1411,18 +1479,54 @@ pub fn mark_profiles_sd_synced(serial: &str, profiles: &[DuckyProfile]) {
     let fp = compute_profiles_fingerprint(profiles);
     let snapshot_json = serde_json::to_string(profiles).ok();
     let global_dir = profile_cache_dir();
-    let _ = fs::create_dir_all(&global_dir);
-    let _ = fs::write(global_dir.join(".sd_synced_hash"), &fp);
+    if let Err(e) = fs::create_dir_all(&global_dir) {
+        crate::bridge::device_controller::record_system_event(
+            "WARN",
+            "STORAGE",
+            format!("Failed creating cache dir {}: {e}", global_dir.display()),
+        );
+    }
+    if let Err(e) = fs::write(global_dir.join(".sd_synced_hash"), &fp) {
+        crate::bridge::device_controller::record_system_event(
+            "WARN",
+            "STORAGE",
+            format!("Failed writing .sd_synced_hash in {}: {e}", global_dir.display()),
+        );
+    }
     if let Some(ref snap) = snapshot_json {
-        let _ = fs::write(global_dir.join(".sd_synced_snapshot.json"), snap);
+        if let Err(e) = fs::write(global_dir.join(".sd_synced_snapshot.json"), snap) {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "STORAGE",
+                format!("Failed writing .sd_synced_snapshot.json in {}: {e}", global_dir.display()),
+            );
+        }
     }
 
     let dev_dir = profile_cache_dir_for_serial(serial);
     if dev_dir != global_dir {
-        let _ = fs::create_dir_all(&dev_dir);
-        let _ = fs::write(dev_dir.join(".sd_synced_hash"), &fp);
+        if let Err(e) = fs::create_dir_all(&dev_dir) {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "STORAGE",
+                format!("Failed creating device cache dir {}: {e}", dev_dir.display()),
+            );
+        }
+        if let Err(e) = fs::write(dev_dir.join(".sd_synced_hash"), &fp) {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "STORAGE",
+                format!("Failed writing .sd_synced_hash in {}: {e}", dev_dir.display()),
+            );
+        }
         if let Some(ref snap) = snapshot_json {
-            let _ = fs::write(dev_dir.join(".sd_synced_snapshot.json"), snap);
+            if let Err(e) = fs::write(dev_dir.join(".sd_synced_snapshot.json"), snap) {
+                crate::bridge::device_controller::record_system_event(
+                    "WARN",
+                    "STORAGE",
+                    format!("Failed writing .sd_synced_snapshot.json in {}: {e}", dev_dir.display()),
+                );
+            }
         }
     }
 }
@@ -1544,11 +1648,35 @@ pub fn record_mounted_sd_space(serial: &str, mount_root: &Path) {
         return;
     };
     let global_dir = profile_cache_dir();
-    let _ = fs::create_dir_all(&global_dir);
-    let _ = fs::write(global_dir.join(".sd_space_info.json"), &json);
+    if let Err(e) = fs::create_dir_all(&global_dir) {
+        crate::bridge::device_controller::record_system_event(
+            "WARN",
+            "STORAGE",
+            format!("Failed creating cache dir {}: {e}", global_dir.display()),
+        );
+    }
+    if let Err(e) = fs::write(global_dir.join(".sd_space_info.json"), &json) {
+        crate::bridge::device_controller::record_system_event(
+            "WARN",
+            "STORAGE",
+            format!("Failed writing .sd_space_info.json in {}: {e}", global_dir.display()),
+        );
+    }
     if dev_dir != global_dir {
-        let _ = fs::create_dir_all(&dev_dir);
-        let _ = fs::write(dev_dir.join(".sd_space_info.json"), &json);
+        if let Err(e) = fs::create_dir_all(&dev_dir) {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "STORAGE",
+                format!("Failed creating device cache dir {}: {e}", dev_dir.display()),
+            );
+        }
+        if let Err(e) = fs::write(dev_dir.join(".sd_space_info.json"), &json) {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "STORAGE",
+                format!("Failed writing .sd_space_info.json in {}: {e}", dev_dir.display()),
+            );
+        }
     }
 }
 
@@ -1728,9 +1856,21 @@ pub fn write_profiles_to_sd_root(
     }
 
     if let Ok(root_dir_handle) = fs::File::open(sd_root) {
-        let _ = root_dir_handle.sync_all();
+        if let Err(e) = root_dir_handle.sync_all() {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "STORAGE",
+                format!("Failed syncing SD root {}: {e}", sd_root.display()),
+            );
+        }
     }
-    let _ = std::process::Command::new("sync").output();
+    if let Err(e) = std::process::Command::new("sync").output() {
+        crate::bridge::device_controller::record_system_event(
+            "WARN",
+            "STORAGE",
+            format!("Failed running sync command: {e}"),
+        );
+    }
     // Allow USB 1.1 Full-Speed MSC and microSD controller to commit FAT clusters before read-back
     std::thread::sleep(std::time::Duration::from_millis(600));
 
@@ -1917,12 +2057,24 @@ fn unmount_duckypad_sd_cleanly(mount_root: &Path, known_dev: Option<&Path>) -> R
         .or_else(|| find_mount_block_device(mount_root));
 
     // Flush Linux filesystem buffers and allow USB 1.1 MSC pipeline to drain before unmounting
-    let _ = std::process::Command::new("sync").output();
+    if let Err(e) = std::process::Command::new("sync").output() {
+        crate::bridge::device_controller::record_system_event(
+            "WARN",
+            "STORAGE",
+            format!("Failed running sync before unmount: {e}"),
+        );
+    }
     std::thread::sleep(std::time::Duration::from_millis(600));
 
     for attempt in 0..24 {
         if !is_mount_point_mounted(mount_root, block_dev.as_deref()) {
-            let _ = std::process::Command::new("sync").output();
+            if let Err(e) = std::process::Command::new("sync").output() {
+                crate::bridge::device_controller::record_system_event(
+                    "WARN",
+                    "STORAGE",
+                    format!("Failed running sync after unmount: {e}"),
+                );
+            }
             // Give the STM32 TinyUSB MSC driver and SD card flash controller 1 full second
             // to finish internal FAT table / wear-leveling commits before software reset
             std::thread::sleep(std::time::Duration::from_millis(1000));
@@ -1930,28 +2082,54 @@ fn unmount_duckypad_sd_cleanly(mount_root: &Path, known_dev: Option<&Path>) -> R
         }
 
         if let Some(ref dev_path) = block_dev {
-            let _ = std::process::Command::new("udisksctl")
+            if let Err(e) = std::process::Command::new("udisksctl")
                 .args([
                     "unmount",
                     "--no-user-interaction",
                     "-b",
                     &dev_path.to_string_lossy(),
                 ])
-                .output();
+                .output()
+            {
+                crate::bridge::device_controller::record_system_event(
+                    "WARN",
+                    "STORAGE",
+                    format!("Failed running udisksctl unmount on {}: {e}", dev_path.display()),
+                );
+            }
         }
 
         if attempt >= 3 && is_mount_point_mounted(mount_root, block_dev.as_deref()) {
-            let _ = std::process::Command::new("umount")
+            if let Err(e) = std::process::Command::new("umount")
                 .arg(mount_root.as_os_str())
-                .output();
+                .output()
+            {
+                crate::bridge::device_controller::record_system_event(
+                    "WARN",
+                    "STORAGE",
+                    format!("Failed running umount on {}: {e}", mount_root.display()),
+                );
+            }
         }
 
-        let _ = std::process::Command::new("sync").output();
+        if let Err(e) = std::process::Command::new("sync").output() {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "STORAGE",
+                format!("Failed running sync during unmount retry: {e}"),
+            );
+        }
         std::thread::sleep(std::time::Duration::from_millis(300));
     }
 
     if !is_mount_point_mounted(mount_root, block_dev.as_deref()) {
-        let _ = std::process::Command::new("sync").output();
+        if let Err(e) = std::process::Command::new("sync").output() {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "STORAGE",
+                format!("Failed running final sync after unmount: {e}"),
+            );
+        }
         std::thread::sleep(std::time::Duration::from_millis(1000));
         Ok(())
     } else {
@@ -1981,7 +2159,13 @@ pub fn unmount_mounted_duckypad_sd(current_mount: Option<&Path>) -> Result<Strin
             tx[1] = 0x15;
             tx[2] = HID_CMD_SOFTWARE_RESET;
             tx[3] = 0;
-            let _ = dev.write(&tx);
+            if let Err(e) = dev.write(&tx) {
+                crate::bridge::device_controller::record_system_event(
+                    "WARN",
+                    "HID",
+                    format!("Failed sending software reset after unmount: {e}"),
+                );
+            }
         }
     }
 
@@ -2749,7 +2933,9 @@ pub fn load_profiles_for_connected_device(pid: u16, serial: &str) -> Option<Vec<
     }
 
     // Check if there is a backup from duckyPad-Configurator for this device model
-    let backups_root = data_home_dir().join("duckypad_config").join("profile_backups");
+    let backups_root = crate::paths::xdg_data_home()
+        .join("duckypad_config")
+        .join("profile_backups");
     let model_prefix = if pid == PID_DUCKYPAD_PRO {
         "duckyPad_Pro_backup_"
     } else {
@@ -2808,7 +2994,9 @@ pub fn load_cached_or_backup_profiles() -> Option<Vec<DuckyProfile>> {
         }
     }
 
-    let backups_root = data_home_dir().join("duckypad_config").join("profile_backups");
+    let backups_root = crate::paths::xdg_data_home()
+        .join("duckypad_config")
+        .join("profile_backups");
     if backups_root.is_dir() {
         if let Ok(entries) = fs::read_dir(&backups_root) {
             let mut dirs: Vec<PathBuf> = entries
@@ -2962,7 +3150,13 @@ where
             };
 
             // 3. Cleanly unmount and verify in /proc/mounts before resetting
-            let _ = unmount_duckypad_sd_cleanly(&mount_root, real_dev.as_deref());
+            if let Err(e) = unmount_duckypad_sd_cleanly(&mount_root, real_dev.as_deref()) {
+                crate::bridge::device_controller::record_system_event(
+                    "WARN",
+                    "STORAGE",
+                    format!("Unmount warning after MSC read: {e}"),
+                );
+            }
             res
         }
         Err(e) => Err(e),
@@ -3002,8 +3196,14 @@ where
         std::thread::sleep(std::time::Duration::from_millis(150));
     }
     drop(_msc_guard);
-    if restore_profile > 0 {
-        let _ = crate::kwin::auto_switcher::send_hid_switch_profile(restore_profile);
+    if restore_profile > 0
+        && !crate::kwin::auto_switcher::send_hid_switch_profile(restore_profile)
+    {
+        crate::bridge::device_controller::record_system_event(
+            "WARN",
+            "HID",
+            format!("Failed restoring active profile #{restore_profile} after MSC read"),
+        );
     }
 
     if let Ok(ref profs) = loaded_profiles {
@@ -3185,8 +3385,14 @@ where
         std::thread::sleep(std::time::Duration::from_millis(150));
     }
     drop(_msc_guard);
-    if restore_profile > 0 {
-        let _ = crate::kwin::auto_switcher::send_hid_switch_profile(restore_profile);
+    if restore_profile > 0
+        && !crate::kwin::auto_switcher::send_hid_switch_profile(restore_profile)
+    {
+        crate::bridge::device_controller::record_system_event(
+            "WARN",
+            "HID",
+            format!("Failed restoring active profile #{restore_profile} after MSC write"),
+        );
     }
 
     if let Ok(ref summary) = write_res {
@@ -3438,9 +3644,7 @@ pub struct CachedRemoteFirmwareItem {
 }
 
 pub fn official_firmware_cache_dir() -> PathBuf {
-    data_home_dir()
-        .join("duckydeck-studio")
-        .join("firmware_official")
+    crate::paths::data_dir().join("firmware_official")
 }
 
 pub fn official_firmware_manifest_path() -> PathBuf {
@@ -3459,7 +3663,14 @@ pub fn save_cached_remote_firmwares(items: &[CachedRemoteFirmwareItem]) {
     let dir = official_firmware_cache_dir();
     if fs::create_dir_all(&dir).is_ok() {
         if let Ok(json) = serde_json::to_string_pretty(items) {
-            let _ = fs::write(official_firmware_manifest_path(), json);
+            let path = official_firmware_manifest_path();
+            if let Err(e) = fs::write(&path, json) {
+                crate::bridge::device_controller::record_system_event(
+                    "WARN",
+                    "FIRMWARE",
+                    format!("Failed writing {}: {e}", path.display()),
+                );
+            }
         }
     }
 }
@@ -3553,12 +3764,7 @@ pub fn list_available_duckypad_pro_firmwares(current_version: &str) -> Vec<Firmw
     candidate_dirs.push((manifest_dir.join("firmware/releases"), true));
     candidate_dirs.push((manifest_dir.join("firmware/duckyPad-Pro/firmware"), true));
     candidate_dirs.push((official_firmware_cache_dir(), false));
-    if let Some(home) = std::env::var_os("HOME") {
-        candidate_dirs.push((
-            PathBuf::from(&home).join(".local/share/duckydeck-studio/firmware"),
-            false,
-        ));
-    }
+    candidate_dirs.push((crate::paths::data_dir().join("firmware"), false));
 
     let mut by_key: std::collections::BTreeMap<(u8, u32, u32, u32, String), FirmwareVersionEntry> =
         std::collections::BTreeMap::new();
@@ -3992,9 +4198,7 @@ pub struct ProfileTemplate {
 }
 
 fn user_profile_templates_path() -> PathBuf {
-    data_home_dir()
-        .join("duckydeck-studio")
-        .join("profile_templates.json")
+    crate::paths::data_dir().join("profile_templates.json")
 }
 
 pub fn builtin_profile_templates() -> Vec<ProfileTemplate> {
@@ -4258,7 +4462,13 @@ fn write_and_verify_firmware_on_sd(
             let p = entry.path();
             if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
                 if name.starts_with("DPP_FW_") && name.ends_with(".bin") {
-                    let _ = fs::remove_file(&p);
+                    if let Err(e) = fs::remove_file(&p) {
+                        crate::bridge::device_controller::record_system_event(
+                            "WARN",
+                            "FIRMWARE",
+                            format!("Failed removing old firmware {}: {e}", p.display()),
+                        );
+                    }
                 }
             }
         }
@@ -4386,7 +4596,13 @@ where
         );
         let staged_path =
             write_and_verify_firmware_on_sd(&already_mounted, &target_filename, &fw_bytes, crc)?;
-        let _ = std::process::Command::new("sync").status();
+        if let Err(e) = std::process::Command::new("sync").status() {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "FIRMWARE",
+                format!("Failed running sync after staging firmware: {e}"),
+            );
+        }
         let rebooted = reboot_duckypad().is_ok();
         let msg = if rebooted {
             format!(
@@ -4553,13 +4769,7 @@ pub struct WebApiDestination {
 }
 
 pub fn web_api_destinations_path() -> PathBuf {
-    let base = std::env::var("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-            PathBuf::from(home).join(".config")
-        });
-    base.join("duckydeck-studio").join("web_api_destinations.json")
+    crate::paths::config_dir().join("web_api_destinations.json")
 }
 
 pub fn load_web_api_destinations() -> Vec<WebApiDestination> {
@@ -4703,7 +4913,13 @@ pub fn seed_web_api_destinations_from_profiles(profiles: &[DuckyProfile]) -> Vec
         }
     }
     if !seeded.is_empty() {
-        let _ = save_web_api_destinations(&seeded);
+        if let Err(e) = save_web_api_destinations(&seeded) {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "WEB_API",
+                format!("Failed saving seeded Web API destinations: {e}"),
+            );
+        }
     }
     seeded
 }
@@ -5273,7 +5489,13 @@ pub fn poll_and_clear_pgv31_trigger() -> Option<(u8, usize, bool)> {
     // rx[0]=ReportID(4), rx[1]=Seq, rx[2]=Status(0), rx[3..7]=_GV30, rx[7..11]=_GV31
     let raw_gv31 = i32::from_le_bytes([rx[7], rx[8], rx[9], rx[10]]);
     if let Some(decoded) = decode_pgv31_trigger(raw_gv31) {
-        let _ = write_single_pgv(&device, 31, 0);
+        if let Err(e) = write_single_pgv(&device, 31, 0) {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "HID",
+                format!("Failed clearing _GV31 trigger register: {e}"),
+            );
+        }
         return Some(decoded);
     }
     None
@@ -5303,7 +5525,13 @@ pub fn set_single_key_led_hid(slot_num: usize, rgb: [u8; 3]) -> bool {
     let ok = device.write(&tx).is_ok();
     if ok {
         let mut rx = [0u8; 64];
-        let _ = device.read_timeout(&mut rx, 120);
+        if let Err(e) = device.read_timeout(&mut rx, 120) {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "HID",
+                format!("HID ACK read timeout in set_single_key_led_hid(slot {slot_num}): {e}"),
+            );
+        }
     }
     ok
 }
@@ -5337,7 +5565,13 @@ pub fn set_batch_key_leds_hid(updates: &[(usize, [u8; 3])]) -> bool {
         if device.write(&tx).is_ok() {
             any_ok = true;
             let mut rx = [0u8; 64];
-            let _ = device.read_timeout(&mut rx, 20);
+            if let Err(e) = device.read_timeout(&mut rx, 20) {
+                crate::bridge::device_controller::record_system_event(
+                    "WARN",
+                    "HID",
+                    format!("HID ACK read timeout in set_batch_key_leds_hid(slot {slot_num}): {e}"),
+                );
+            }
         }
     }
     any_ok
@@ -5695,12 +5929,13 @@ pub fn split_shell_words(input: &str) -> Vec<String> {
 fn expand_tilde_str(input: &str) -> String {
     let trimmed = input.trim();
     if trimmed == "~" {
-        if let Ok(home) = std::env::var("HOME") {
-            return home;
+        if let Some(home) = crate::paths::home_dir() {
+            return home.to_string_lossy().to_string();
         }
     } else if let Some(rest) = trimmed.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            return format!("{}/{rest}", home.trim_end_matches('/'));
+        if let Some(home) = crate::paths::home_dir() {
+            let h = home.to_string_lossy();
+            return format!("{}/{rest}", h.trim_end_matches('/'));
         }
     }
     trimmed.to_string()
@@ -5744,18 +5979,16 @@ fn clean_desktop_exec(raw_exec: &str, desktop_id: &str) -> (String, String) {
 
 pub fn scan_installed_desktop_apps() -> Vec<InstalledDesktopApp> {
     let mut search_dirs: Vec<PathBuf> = Vec::new();
-    if let Ok(home) = std::env::var("HOME") {
-        search_dirs.push(PathBuf::from(&home).join(".local/share/applications"));
-        search_dirs.push(PathBuf::from(&home).join(".local/share/flatpak/exports/share/applications"));
-    }
-    if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
-        for part in xdg_data.split(':') {
-            let p = part.trim();
-            if !p.is_empty() && p != "." {
-                let cand = PathBuf::from(p).join("applications");
-                if !search_dirs.contains(&cand) {
-                    search_dirs.push(cand);
-                }
+    let data_home = crate::paths::xdg_data_home();
+    search_dirs.push(data_home.join("applications"));
+    search_dirs.push(data_home.join("flatpak/exports/share/applications"));
+    if let Some(home) = crate::paths::home_dir() {
+        for cand in [
+            home.join(".local/share/applications"),
+            home.join(".local/share/flatpak/exports/share/applications"),
+        ] {
+            if !search_dirs.contains(&cand) {
+                search_dirs.push(cand);
             }
         }
     }
@@ -6044,8 +6277,7 @@ pub fn execute_app_launch(cfg: &AppLaunchConfig) -> AppLaunchExecutionResult {
                 command_line: full_cmd_display,
             };
         }
-    } else if let Ok(home) = std::env::var("HOME") {
-        let hp = Path::new(&home);
+    } else if let Some(hp) = crate::paths::home_dir() {
         if hp.is_dir() {
             cmd.current_dir(hp);
         }
@@ -6061,7 +6293,7 @@ pub fn execute_app_launch(cfg: &AppLaunchConfig) -> AppLaunchExecutionResult {
         Ok(mut child) => {
             let pid = child.id();
             std::thread::spawn(move || {
-                let _ = child.wait();
+                let _ = child.wait(); // ignore: reaping detached launcher child process
             });
             AppLaunchExecutionResult {
                 ok: true,
@@ -6385,13 +6617,7 @@ pub struct HomeAssistantEntity {
 }
 
 pub fn home_assistant_config_path() -> PathBuf {
-    let base = std::env::var("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-            PathBuf::from(home).join(".config")
-        });
-    base.join("duckydeck-studio").join("home_assistant.json")
+    crate::paths::config_dir().join("home_assistant.json")
 }
 
 pub fn load_home_assistant_config() -> HomeAssistantConfig {
@@ -6808,7 +7034,7 @@ mod tests {
             "duckydeck_rotation_test_{}",
             std::process::id()
         ));
-        let _ = fs::remove_dir_all(&temp_sd);
+        let _ = fs::remove_dir_all(&temp_sd); // ignore: best-effort test temp dir cleanup
         fs::create_dir_all(&temp_sd).expect("create temp sd dir");
         base_profiles[0]
             .save_to_sd_root(&temp_sd)
@@ -6898,7 +7124,7 @@ mod tests {
         assert_eq!(inst.name, "My Stream");
         assert!(inst.slots.contains_key(&1));
 
-        let _ = fs::remove_dir_all(&temp_sd);
+        let _ = fs::remove_dir_all(&temp_sd); // ignore: best-effort test temp dir cleanup
     }
 }
 

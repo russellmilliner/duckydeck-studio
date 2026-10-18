@@ -5394,10 +5394,9 @@ Kirigami.ApplicationWindow {
 
         QQC2.MenuItem {
             id: menuUserDocumentationItem
-            property string docUrl: "https://duckydeckstudio.com"
             icon.name: "help-contents"
             text: qsTr("User Documentation (Web Guide)...")
-            onTriggered: Qt.openUrlExternally(docUrl)
+            onTriggered: deviceController.openUserGuide()
         }
 
         QQC2.MenuItem {
@@ -6309,10 +6308,9 @@ Kirigami.ApplicationWindow {
 
                 QQC2.Button {
                     id: aboutUserGuideBtn
-                    property string docUrl: "https://duckydeckstudio.com"
                     icon.name: "help-contents"
                     text: qsTr("User Guide")
-                    onClicked: Qt.openUrlExternally(docUrl)
+                    onClicked: deviceController.openUserGuide()
                 }
 
                 Item { Layout.fillWidth: true }
@@ -13907,8 +13905,9 @@ Kirigami.ApplicationWindow {
         repeat: true
         running: deviceController.isDemoShowcaseMode()
         onTriggered: {
-            const screenshotsDir = "/home/millinr/Builds/Ducky/duckydeck-studio/docs/screenshots/"
-            const framesDir = "/home/millinr/Builds/Ducky/duckydeck-studio/docs/video_frames/"
+            const baseCaptureDir = deviceController.demoCaptureDir()
+            const screenshotsDir = baseCaptureDir + "/screenshots/"
+            const framesDir = baseCaptureDir + "/video_frames/"
             const step = root.showcaseStep
             root.showcaseStep = step + 1
 
@@ -17401,92 +17400,116 @@ Kirigami.ApplicationWindow {
             repeat: true
             running: deviceController.isUiTestSuiteMode()
             onTriggered: {
-                var totalStepsPerTheme = uiTestSuiteRunner.windowSteps.length
-                if (uiTestSuiteRunner.phase === 0) {
-                    uiTestSuiteRunner.phase = 1
-                    uiTestSuiteRunner.stepIndex = 0
-                    uiTestSuiteRunner.currentTheme = "dark"
-                    try {
-                        uiTestSuiteRunner.runBehavioralSuite()
-                    } catch (errBehavior) {
-                        uiTestSuiteRunner.recordBehavior("behavioral_suite_exception", false, String(errBehavior))
-                    }
-                    deviceController.applyAppThemeMode("dark")
-                    return
-                }
-
-                if (uiTestSuiteRunner.stepIndex >= totalStepsPerTheme) {
-                    if (uiTestSuiteRunner.currentTheme === "dark") {
-                        // Switch to Light theme and audit all windows again
-                        uiTestSuiteRunner.currentTheme = "light"
-                        deviceController.applyAppThemeMode("light")
-                        uiTestSuiteRunner.stepIndex = 0
+                try {
+                    var totalStepsPerTheme = uiTestSuiteRunner.windowSteps.length
+                    if (uiTestSuiteRunner.phase === 0) {
                         uiTestSuiteRunner.phase = 1
+                        uiTestSuiteRunner.stepIndex = 0
+                        uiTestSuiteRunner.currentTheme = "dark"
+                        try {
+                            uiTestSuiteRunner.runBehavioralSuite()
+                        } catch (errBehavior) {
+                            uiTestSuiteRunner.recordBehavior("behavioral_suite_exception", false, String(errBehavior))
+                        }
+                        deviceController.applyAppThemeMode("dark")
                         return
-                    } else {
-                        // Finished both Dark and Light theme audits!
-                        uiTestStepTimer.stop()
-                        var failedBehaviors = []
-                        for (var b = 0; b < uiTestSuiteRunner.behavioralResults.length; b++) {
-                            if (!uiTestSuiteRunner.behavioralResults[b].passed) {
-                                failedBehaviors.push(uiTestSuiteRunner.behavioralResults[b])
+                    }
+
+                    if (uiTestSuiteRunner.stepIndex >= totalStepsPerTheme) {
+                        if (uiTestSuiteRunner.currentTheme === "dark") {
+                            // Switch to Light theme and audit all windows again
+                            uiTestSuiteRunner.currentTheme = "light"
+                            deviceController.applyAppThemeMode("light")
+                            uiTestSuiteRunner.stepIndex = 0
+                            uiTestSuiteRunner.phase = 1
+                            return
+                        } else {
+                            // Finished both Dark and Light theme audits!
+                            uiTestStepTimer.stop()
+                            var failedBehaviors = []
+                            for (var b = 0; b < uiTestSuiteRunner.behavioralResults.length; b++) {
+                                if (!uiTestSuiteRunner.behavioralResults[b].passed) {
+                                    failedBehaviors.push(uiTestSuiteRunner.behavioralResults[b])
+                                }
                             }
+                            var totalFailures = failedBehaviors.length
+                                + uiTestSuiteRunner.overflowViolations.length
+                                + uiTestSuiteRunner.contrastViolations.length
+                                + uiTestSuiteRunner.scrollBarStyleViolations.length
+                                + uiTestSuiteRunner.minFontPointSizeViolations.length
+
+                            var report = {
+                                passed: totalFailures === 0,
+                                summary: {
+                                    themesTested: ["dark", "light"],
+                                    windowsAuditedCount: uiTestSuiteRunner.auditedWindows.length,
+                                    totalElementsInspected: uiTestSuiteRunner.totalElementsInspected,
+                                    totalControlsInspected: uiTestSuiteRunner.totalControlsInspected,
+                                    totalTextNodesInspected: uiTestSuiteRunner.totalTextNodesInspected,
+                                    totalScrollBarsInspected: uiTestSuiteRunner.totalScrollBarsInspected,
+                                    behavioralChecksCount: uiTestSuiteRunner.behavioralResults.length,
+                                    behavioralFailuresCount: failedBehaviors.length,
+                                    overflowViolationsCount: uiTestSuiteRunner.overflowViolations.length,
+                                    contrastViolationsCount: uiTestSuiteRunner.contrastViolations.length,
+                                    scrollBarStyleViolationsCount: uiTestSuiteRunner.scrollBarStyleViolations.length,
+                                    minFontPointSizeViolationsCount: uiTestSuiteRunner.minFontPointSizeViolations.length
+                                },
+                                behavioralResults: uiTestSuiteRunner.behavioralResults,
+                                overflowViolations: uiTestSuiteRunner.overflowViolations,
+                                contrastViolations: uiTestSuiteRunner.contrastViolations,
+                                scrollBarStyleViolations: uiTestSuiteRunner.scrollBarStyleViolations,
+                                minFontPointSizeViolations: uiTestSuiteRunner.minFontPointSizeViolations,
+                                auditedWindows: uiTestSuiteRunner.auditedWindows
+                            }
+
+                            deviceController.writeUiTestReport(JSON.stringify(report, null, 2), totalFailures === 0 ? 0 : 1)
+                            Qt.quit()
+                            return
                         }
-                        var totalFailures = failedBehaviors.length
-                            + uiTestSuiteRunner.overflowViolations.length
-                            + uiTestSuiteRunner.contrastViolations.length
-                            + uiTestSuiteRunner.scrollBarStyleViolations.length
-                            + uiTestSuiteRunner.minFontPointSizeViolations.length
+                    }
 
-                        var report = {
-                            passed: totalFailures === 0,
-                            summary: {
-                                themesTested: ["dark", "light"],
-                                windowsAuditedCount: uiTestSuiteRunner.auditedWindows.length,
-                                totalElementsInspected: uiTestSuiteRunner.totalElementsInspected,
-                                totalControlsInspected: uiTestSuiteRunner.totalControlsInspected,
-                                totalTextNodesInspected: uiTestSuiteRunner.totalTextNodesInspected,
-                                totalScrollBarsInspected: uiTestSuiteRunner.totalScrollBarsInspected,
-                                behavioralChecksCount: uiTestSuiteRunner.behavioralResults.length,
-                                behavioralFailuresCount: failedBehaviors.length,
-                                overflowViolationsCount: uiTestSuiteRunner.overflowViolations.length,
-                                contrastViolationsCount: uiTestSuiteRunner.contrastViolations.length,
-                                scrollBarStyleViolationsCount: uiTestSuiteRunner.scrollBarStyleViolations.length,
-                                minFontPointSizeViolationsCount: uiTestSuiteRunner.minFontPointSizeViolations.length
-                            },
-                            behavioralResults: uiTestSuiteRunner.behavioralResults,
-                            overflowViolations: uiTestSuiteRunner.overflowViolations,
-                            contrastViolations: uiTestSuiteRunner.contrastViolations,
-                            scrollBarStyleViolations: uiTestSuiteRunner.scrollBarStyleViolations,
-                            minFontPointSizeViolations: uiTestSuiteRunner.minFontPointSizeViolations,
-                            auditedWindows: uiTestSuiteRunner.auditedWindows
+                    var currentStep = uiTestSuiteRunner.windowSteps[uiTestSuiteRunner.stepIndex]
+                    if (uiTestSuiteRunner.phase === 1) {
+                        try {
+                            currentStep.open()
+                        } catch (e) {
+                            uiTestSuiteRunner.recordBehavior("open_" + currentStep.name + "_" + uiTestSuiteRunner.currentTheme, false, String(e))
                         }
-
-                        deviceController.writeUiTestReport(JSON.stringify(report, null, 2), totalFailures === 0 ? 0 : 1)
-                        Qt.quit()
-                        return
+                        uiTestSuiteRunner.phase = 2
+                    } else if (uiTestSuiteRunner.phase === 2) {
+                        try {
+                            currentStep.audit()
+                        } catch (e2) {
+                            uiTestSuiteRunner.recordBehavior("audit_" + currentStep.name + "_" + uiTestSuiteRunner.currentTheme, false, String(e2))
+                        }
+                        try {
+                            currentStep.close()
+                        } catch (e3) {}
+                        uiTestSuiteRunner.stepIndex++
+                        uiTestSuiteRunner.phase = 1
                     }
-                }
-
-                var currentStep = uiTestSuiteRunner.windowSteps[uiTestSuiteRunner.stepIndex]
-                if (uiTestSuiteRunner.phase === 1) {
-                    try {
-                        currentStep.open()
-                    } catch (e) {
-                        uiTestSuiteRunner.recordBehavior("open_" + currentStep.name + "_" + uiTestSuiteRunner.currentTheme, false, String(e))
+                } catch (fatalErr) {
+                    uiTestStepTimer.stop()
+                    var fatalReport = {
+                        passed: false,
+                        summary: {
+                            fatalError: String(fatalErr),
+                            behavioralFailuresCount: 1,
+                            overflowViolationsCount: uiTestSuiteRunner.overflowViolations.length,
+                            contrastViolationsCount: uiTestSuiteRunner.contrastViolations.length,
+                            scrollBarStyleViolationsCount: uiTestSuiteRunner.scrollBarStyleViolations.length,
+                            minFontPointSizeViolationsCount: uiTestSuiteRunner.minFontPointSizeViolations.length,
+                            totalScrollBarsInspected: uiTestSuiteRunner.totalScrollBarsInspected
+                        },
+                        behavioralResults: uiTestSuiteRunner.behavioralResults,
+                        overflowViolations: uiTestSuiteRunner.overflowViolations,
+                        contrastViolations: uiTestSuiteRunner.contrastViolations,
+                        scrollBarStyleViolations: uiTestSuiteRunner.scrollBarStyleViolations,
+                        minFontPointSizeViolations: uiTestSuiteRunner.minFontPointSizeViolations,
+                        auditedWindows: uiTestSuiteRunner.auditedWindows
                     }
-                    uiTestSuiteRunner.phase = 2
-                } else if (uiTestSuiteRunner.phase === 2) {
-                    try {
-                        currentStep.audit()
-                    } catch (e2) {
-                        uiTestSuiteRunner.recordBehavior("audit_" + currentStep.name + "_" + uiTestSuiteRunner.currentTheme, false, String(e2))
-                    }
-                    try {
-                        currentStep.close()
-                    } catch (e3) {}
-                    uiTestSuiteRunner.stepIndex++
-                    uiTestSuiteRunner.phase = 1
+                    deviceController.writeUiTestReport(JSON.stringify(fatalReport, null, 2), 1)
+                    Qt.quit()
                 }
             }
         }
