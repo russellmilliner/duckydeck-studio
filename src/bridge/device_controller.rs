@@ -4887,7 +4887,14 @@ impl qobject::DeviceController {
     pub fn open_firmware_update_page(self: Pin<&mut Self>) {
         let url = self.firmware_update_url().to_string();
         if !url.is_empty() {
-            if let Err(e) = std::process::Command::new("xdg-open").arg(&url).spawn() {
+            let res = if Path::new("/.flatpak-info").exists() {
+                std::process::Command::new("flatpak-spawn")
+                    .args(["--host", "xdg-open", &url])
+                    .spawn()
+            } else {
+                std::process::Command::new("xdg-open").arg(&url).spawn()
+            };
+            if let Err(e) = res {
                 record_system_event(
                     "WARN",
                     "SYSTEM",
@@ -4902,7 +4909,14 @@ impl qobject::DeviceController {
         let fallback = self.firmware_update_url().to_string();
         let target = if !dl.is_empty() { dl } else { fallback };
         if !target.is_empty() {
-            if let Err(e) = std::process::Command::new("xdg-open").arg(&target).spawn() {
+            let res = if Path::new("/.flatpak-info").exists() {
+                std::process::Command::new("flatpak-spawn")
+                    .args(["--host", "xdg-open", &target])
+                    .spawn()
+            } else {
+                std::process::Command::new("xdg-open").arg(&target).spawn()
+            };
+            if let Err(e) = res {
                 record_system_event(
                     "WARN",
                     "SYSTEM",
@@ -5742,13 +5756,17 @@ impl qobject::DeviceController {
     }
 
     pub fn open_user_guide(&self) {
-        let system_candidates = [
-            Path::new("/usr/share/doc/duckydeck-studio/user-guide.html"),
-            Path::new("/app/share/doc/duckydeck-studio/user-guide.html"),
-        ];
-        let target_path = if let Some(found) = system_candidates.iter().find(|p| p.is_file()) {
-            found.to_path_buf()
+        let in_flatpak = Path::new("/.flatpak-info").exists();
+        let system_candidates = [Path::new("/usr/share/doc/duckydeck-studio/user-guide.html")];
+        let target_path = if !in_flatpak {
+            system_candidates
+                .iter()
+                .find(|p| p.is_file())
+                .map(|found| found.to_path_buf())
         } else {
+            None
+        }
+        .unwrap_or_else(|| {
             let cache = crate::paths::cache_dir();
             if let Err(e) = fs::create_dir_all(&cache) {
                 record_system_event(
@@ -5773,16 +5791,27 @@ impl qobject::DeviceController {
                 }
             }
             extracted
-        };
+        });
 
         if !is_ui_test_suite_env() {
-            if let Err(e) = std::process::Command::new("xdg-open")
-                .arg(&target_path)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-            {
+            let res = if in_flatpak {
+                std::process::Command::new("flatpak-spawn")
+                    .arg("--host")
+                    .arg("xdg-open")
+                    .arg(&target_path)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+            } else {
+                std::process::Command::new("xdg-open")
+                    .arg(&target_path)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+            };
+            if let Err(e) = res {
                 record_system_event(
                     "WARN",
                     "SYSTEM",

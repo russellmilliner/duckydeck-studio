@@ -60,6 +60,7 @@ flatpak build-finish "$WORK_DIR/build-dir" \
   --filesystem=xdg-run/gvfs:ro \
   --filesystem=/run/media:rw \
   --filesystem=/media:rw \
+  --filesystem=/run/udev:ro \
   --filesystem=xdg-config/kglobalshortcutsrc:ro \
   --filesystem=xdg-data/kxmlgui5:ro \
   --filesystem=xdg-run/duckydeck-kwin6-hook.js:create \
@@ -67,7 +68,8 @@ flatpak build-finish "$WORK_DIR/build-dir" \
   --talk-name=org.kde.StatusNotifierWatcher \
   --talk-name=org.freedesktop.Notifications \
   --talk-name=org.freedesktop.secrets \
-  --talk-name=org.freedesktop.Flatpak
+  --talk-name=org.freedesktop.Flatpak \
+  --system-talk-name=org.freedesktop.UDisks2
 
 flatpak build-export "$WORK_DIR/repo" "$WORK_DIR/build-dir" stable
 flatpak build-bundle "$WORK_DIR/repo" "$OUT_DIR/$BUNDLE_NAME" io.github.duckydeck.Studio stable --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo

@@ -10,8 +10,64 @@ use crate::hardware::storage::{
     open_duckypad_hid, HID_CMD_SOFTWARE_RESET, HID_IO_LOCK, HID_REPORT_ID_OUT, MSC_SYNC_IN_PROGRESS,
 };
 
+pub(crate) fn run_storage_cmd(
+    program: &str,
+    args: &[&str],
+) -> std::io::Result<std::process::Output> {
+    if Path::new("/.flatpak-info").exists() {
+        let mut cmd = std::process::Command::new("flatpak-spawn");
+        cmd.arg("--host").arg(program);
+        for arg in args {
+            cmd.arg(arg);
+        }
+        cmd.output()
+    } else {
+        std::process::Command::new(program).args(args).output()
+    }
+}
+
+fn read_mounts_table() -> Option<String> {
+    let mut table = fs::read_to_string("/proc/mounts").unwrap_or_default();
+    if Path::new("/.flatpak-info").exists() {
+        if let Ok(out) = run_storage_cmd("cat", &["/proc/mounts"]) {
+            if out.status.success() {
+                let host_mounts = String::from_utf8_lossy(&out.stdout);
+                if !table.ends_with('\n') && !table.is_empty() {
+                    table.push('\n');
+                }
+                table.push_str(&host_mounts);
+            }
+        }
+    }
+    if table.is_empty() {
+        None
+    } else {
+        Some(table)
+    }
+}
+
+fn parse_udisks_mount_path(stdout: &str) -> Option<PathBuf> {
+    for line in stdout.lines() {
+        if let Some((_, after_at)) = line.split_once(" at ") {
+            let trimmed = after_at.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let direct = PathBuf::from(trimmed);
+            if direct.is_dir() {
+                return Some(direct);
+            }
+            let without_dot = PathBuf::from(trimmed.trim_end_matches('.'));
+            if without_dot.is_dir() {
+                return Some(without_dot);
+            }
+        }
+    }
+    None
+}
+
 fn find_mount_block_device(mount_point: &Path) -> Option<PathBuf> {
-    let mounts = fs::read_to_string("/proc/mounts").ok()?;
+    let mounts = read_mounts_table()?;
     let target_canon = fs::canonicalize(mount_point).unwrap_or_else(|_| mount_point.to_path_buf());
     for line in mounts.lines() {
         let mut parts = line.split_whitespace();
@@ -31,7 +87,7 @@ fn find_mount_block_device(mount_point: &Path) -> Option<PathBuf> {
 }
 
 fn is_mount_point_mounted(mount_point: &Path, dev_path: Option<&Path>) -> bool {
-    let Ok(mounts) = fs::read_to_string("/proc/mounts") else {
+    let Some(mounts) = read_mounts_table() else {
         return false;
     };
     let dev_canon =
@@ -136,18 +192,26 @@ pub(crate) fn wait_and_mount_duckypad_msc(
                 }
             }
 
-            if let Ok(out) = std::process::Command::new("udisksctl")
-                .args([
-                    "mount",
-                    "--no-user-interaction",
-                    "-b",
-                    &dev_path.to_string_lossy(),
-                ])
-                .output()
-            {
-                let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
-                if !stderr.is_empty() && !stderr.contains("AlreadyMounted") {
-                    last_udisks_err = format!("{} ({})", stderr, dev_path.display());
+            let dev_str = dev_path.to_string_lossy().to_string();
+            match run_storage_cmd(
+                "udisksctl",
+                &["mount", "--no-user-interaction", "-b", &dev_str],
+            ) {
+                Ok(out) => {
+                    let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                    if !stderr.is_empty() && !stderr.contains("AlreadyMounted") {
+                        last_udisks_err = format!("{} ({})", stderr, dev_path.display());
+                    }
+                    if let Some(parsed_mnt) = parse_udisks_mount_path(&stdout) {
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                        let dev = find_mount_block_device(&parsed_mnt).or(Some(dev_path));
+                        return Ok((parsed_mnt, dev));
+                    }
+                }
+                Err(e) => {
+                    last_udisks_err =
+                        format!("Failed invoking udisksctl on {}: {e}", dev_path.display());
                 }
             }
 
@@ -180,7 +244,7 @@ pub(crate) fn unmount_duckypad_sd_cleanly(
         .or_else(|| find_mount_block_device(mount_root));
 
     // Flush Linux filesystem buffers and allow USB 1.1 MSC pipeline to drain before unmounting
-    if let Err(e) = std::process::Command::new("sync").output() {
+    if let Err(e) = run_storage_cmd("sync", &[]) {
         crate::bridge::device_controller::record_system_event(
             "WARN",
             "STORAGE",
@@ -191,7 +255,7 @@ pub(crate) fn unmount_duckypad_sd_cleanly(
 
     for attempt in 0..24 {
         if !is_mount_point_mounted(mount_root, block_dev.as_deref()) {
-            if let Err(e) = std::process::Command::new("sync").output() {
+            if let Err(e) = run_storage_cmd("sync", &[]) {
                 crate::bridge::device_controller::record_system_event(
                     "WARN",
                     "STORAGE",
@@ -205,15 +269,11 @@ pub(crate) fn unmount_duckypad_sd_cleanly(
         }
 
         if let Some(ref dev_path) = block_dev {
-            if let Err(e) = std::process::Command::new("udisksctl")
-                .args([
-                    "unmount",
-                    "--no-user-interaction",
-                    "-b",
-                    &dev_path.to_string_lossy(),
-                ])
-                .output()
-            {
+            let dev_str = dev_path.to_string_lossy().to_string();
+            if let Err(e) = run_storage_cmd(
+                "udisksctl",
+                &["unmount", "--no-user-interaction", "-b", &dev_str],
+            ) {
                 crate::bridge::device_controller::record_system_event(
                     "WARN",
                     "STORAGE",
@@ -226,10 +286,8 @@ pub(crate) fn unmount_duckypad_sd_cleanly(
         }
 
         if attempt >= 3 && is_mount_point_mounted(mount_root, block_dev.as_deref()) {
-            if let Err(e) = std::process::Command::new("umount")
-                .arg(mount_root.as_os_str())
-                .output()
-            {
+            let mnt_str = mount_root.to_string_lossy().to_string();
+            if let Err(e) = run_storage_cmd("umount", &[&mnt_str]) {
                 crate::bridge::device_controller::record_system_event(
                     "WARN",
                     "STORAGE",
@@ -238,7 +296,7 @@ pub(crate) fn unmount_duckypad_sd_cleanly(
             }
         }
 
-        if let Err(e) = std::process::Command::new("sync").output() {
+        if let Err(e) = run_storage_cmd("sync", &[]) {
             crate::bridge::device_controller::record_system_event(
                 "WARN",
                 "STORAGE",
@@ -249,7 +307,7 @@ pub(crate) fn unmount_duckypad_sd_cleanly(
     }
 
     if !is_mount_point_mounted(mount_root, block_dev.as_deref()) {
-        if let Err(e) = std::process::Command::new("sync").output() {
+        if let Err(e) = run_storage_cmd("sync", &[]) {
             crate::bridge::device_controller::record_system_event(
                 "WARN",
                 "STORAGE",
@@ -331,15 +389,17 @@ pub fn mount_duckypad_sd_only(disk_label: &str) -> Result<PathBuf, String> {
         return Ok(mounted);
     }
     if let Some(dev_path) = detect_unmounted_duckypad_sd(disk_label) {
-        let out = std::process::Command::new("udisksctl")
-            .args([
-                "mount",
-                "--no-user-interaction",
-                "-b",
-                &dev_path.to_string_lossy(),
-            ])
-            .output()
-            .map_err(|e| format!("Failed invoking udisksctl mount: {e}"))?;
+        let dev_str = dev_path.to_string_lossy().to_string();
+        let out = run_storage_cmd(
+            "udisksctl",
+            &["mount", "--no-user-interaction", "-b", &dev_str],
+        )
+        .map_err(|e| format!("Failed invoking udisksctl mount: {e}"))?;
+        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if let Some(parsed_mnt) = parse_udisks_mount_path(&stdout) {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            return Ok(parsed_mnt);
+        }
         std::thread::sleep(std::time::Duration::from_millis(350));
         if let Some(mounted) = find_mounted_duckypad_sd() {
             return Ok(mounted);

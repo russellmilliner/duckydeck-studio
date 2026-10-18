@@ -24,6 +24,7 @@ finish-args:
   - --filesystem=xdg-run/gvfs:ro
   - --filesystem=/run/media:rw
   - --filesystem=/media:rw
+  - --filesystem=/run/udev:ro
 
   # 5. Read-Only Access to KDE Shortcut Configs for AI Context Scraping
   - --filesystem=xdg-config/kglobalshortcutsrc:ro
@@ -32,12 +33,13 @@ finish-args:
   # 6. KWin hook script in XDG_RUNTIME_DIR
   - --filesystem=xdg-run/duckydeck-kwin6-hook.js:create
 
-  # 7. D-Bus Permissions (KWin Auto-Switch, Tray Icon, Keyring, Host Spawn)
+  # 7. D-Bus Permissions (KWin Auto-Switch, Tray Icon, Keyring, UDisks2, Host Spawn)
   - --talk-name=org.kde.KWin
   - --talk-name=org.kde.StatusNotifierWatcher
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.freedesktop.secrets
   - --talk-name=org.freedesktop.Flatpak
+  - --system-talk-name=org.freedesktop.UDisks2
 
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm18/bin

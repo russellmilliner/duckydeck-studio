@@ -924,6 +924,8 @@ pub fn find_mounted_duckypad_sd() -> Option<PathBuf> {
             if mnt.starts_with("/run/media/")
                 || mnt.starts_with("/media/")
                 || mnt.starts_with("/mnt/")
+                || mnt.starts_with("/run/host/run/media/")
+                || mnt.starts_with("/run/host/media/")
             {
                 let path = PathBuf::from(&mnt);
                 if path.is_dir() && is_duckypad_sd_root(&path) {
@@ -937,8 +939,15 @@ pub fn find_mounted_duckypad_sd() -> Option<PathBuf> {
     if let Ok(user) = std::env::var("USER") {
         candidate_roots.push(PathBuf::from(format!("/run/media/{user}")));
         candidate_roots.push(PathBuf::from(format!("/media/{user}")));
+        candidate_roots.push(PathBuf::from(format!("/run/host/run/media/{user}")));
+        candidate_roots.push(PathBuf::from(format!("/run/host/media/{user}")));
     }
-    for base in ["/run/media", "/media"] {
+    for base in [
+        "/run/media",
+        "/media",
+        "/run/host/run/media",
+        "/run/host/media",
+    ] {
         candidate_roots.push(PathBuf::from(base));
         if let Ok(entries) = fs::read_dir(base) {
             for entry in entries.flatten() {
@@ -1616,7 +1625,7 @@ pub fn write_profiles_to_sd_root(
             );
         }
     }
-    if let Err(e) = std::process::Command::new("sync").output() {
+    if let Err(e) = crate::hardware::msc::run_storage_cmd("sync", &[]) {
         crate::bridge::device_controller::record_system_event(
             "WARN",
             "STORAGE",

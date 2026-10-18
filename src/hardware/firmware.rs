@@ -878,7 +878,7 @@ where
         );
         let staged_path =
             write_and_verify_firmware_on_sd(&already_mounted, &target_filename, &fw_bytes, crc)?;
-        if let Err(e) = std::process::Command::new("sync").status() {
+        if let Err(e) = crate::hardware::msc::run_storage_cmd("sync", &[]) {
             crate::bridge::device_controller::record_system_event(
                 "WARN",
                 "FIRMWARE",
