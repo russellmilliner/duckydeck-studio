@@ -48,32 +48,6 @@ build-options:
     QT_VERSION_MAJOR: '6'
 
 modules:
-  - name: libusb
-    config-opts:
-      - --disable-static
-    cleanup:
-      - /include
-      - /lib/*.la
-      - /lib/pkgconfig
-    sources:
-      - type: archive
-        url: https://github.com/libusb/libusb/releases/download/v1.0.27/libusb-1.0.27.tar.bz2
-        sha256: ffaa41d741a8a3bee244ac8e54a72ea05bf2879663c098c82fc5757853441575
-
-  - name: hidapi
-    buildsystem: cmake-ninja
-    config-opts:
-      - -DCMAKE_BUILD_TYPE=Release
-      - -DBUILD_SHARED_LIBS=ON
-    cleanup:
-      - /include
-      - /lib/cmake
-      - /lib/pkgconfig
-    sources:
-      - type: archive
-        url: https://github.com/libusb/hidapi/archive/refs/tags/hidapi-0.14.0.tar.gz
-        sha256: a5714234abe6e1f53647dd8cba7d69f65f71c558b7ef96ed218864ff9405b2fb
-
   - name: duckydeck-studio
     buildsystem: simple
     build-commands:
@@ -86,6 +60,8 @@ modules:
       - install -Dm644 ./data/udev/70-duckypad.rules -t /app/share/udev/rules.d/
       - install -Dm755 ./data/udev/install-udev-rules.sh -t /app/bin/
       - install -Dm644 ./data/syntax/duckyscript3.xml -t /app/share/org.kde.syntax-highlighting/syntax/
+      - install -Dm644 ./docs/user-guide.html -t /app/share/duckydeck-studio/docs/
+      - install -Dm644 ./firmware/releases/DPP_FW_1.0.0_ad2acc81.bin -t /app/share/duckydeck-studio/firmware/releases/
     sources:
       - type: dir
         path: .
