@@ -1,8 +1,20 @@
+pub mod actions {
+    pub mod app_launch;
+    pub mod desktop_apps;
+    pub mod web_api;
+}
 pub mod bridge {
     pub mod device_controller;
+    pub mod event_log;
+    pub mod rest_routes;
+    pub mod serialize;
+    pub mod showcase;
 }
 pub mod hardware {
+    pub mod firmware;
+    pub mod msc;
     pub mod permissions;
+    pub mod profile;
     pub mod storage;
 }
 pub mod kwin {

@@ -8,6 +8,10 @@ homepage = "https://duckydeckstudio.com"
 documentation = "https://duckydeckstudio.com"
 repository = "https://github.com/russellmilliner/duckydeck-studio"
 
+[features]
+default = []
+demo = []
+
 [dependencies]
 # Qt 6 / QML Bridge (KDAB CXX-Qt)
 cxx = "1.0.130"
