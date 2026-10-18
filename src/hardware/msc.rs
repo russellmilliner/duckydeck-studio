@@ -2,9 +2,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::hardware::profile::{
-    compute_profiles_fingerprint, find_mounted_duckypad_sd,
-    load_all_sd_profiles, mark_profiles_sd_synced, record_mounted_sd_space,
-    sync_profiles_to_device_cache, write_profiles_to_sd_root, DuckyProfile, SdWriteSummary,
+    compute_profiles_fingerprint, find_mounted_duckypad_sd, load_all_sd_profiles,
+    mark_profiles_sd_synced, record_mounted_sd_space, sync_profiles_to_device_cache,
+    write_profiles_to_sd_root, DuckyProfile, SdWriteSummary,
 };
 use crate::hardware::storage::{
     open_duckypad_hid, HID_CMD_SOFTWARE_RESET, HID_IO_LOCK, HID_REPORT_ID_OUT, MSC_SYNC_IN_PROGRESS,
@@ -34,7 +34,8 @@ fn is_mount_point_mounted(mount_point: &Path, dev_path: Option<&Path>) -> bool {
     let Ok(mounts) = fs::read_to_string("/proc/mounts") else {
         return false;
     };
-    let dev_canon = dev_path.and_then(|d| fs::canonicalize(d).ok().or_else(|| Some(d.to_path_buf())));
+    let dev_canon =
+        dev_path.and_then(|d| fs::canonicalize(d).ok().or_else(|| Some(d.to_path_buf())));
     for line in mounts.lines() {
         let mut parts = line.split_whitespace();
         let Some(dev) = parts.next() else {
@@ -108,7 +109,9 @@ pub fn find_duckypad_msc_block_device(disk_label: &str, allow_whole_disk: bool) 
     None
 }
 
-pub(crate) fn wait_and_mount_duckypad_msc(disk_label: &str) -> Result<(PathBuf, Option<PathBuf>), String> {
+pub(crate) fn wait_and_mount_duckypad_msc(
+    disk_label: &str,
+) -> Result<(PathBuf, Option<PathBuf>), String> {
     let mut last_udisks_err = String::new();
     let mut settled_dev_once = false;
 
@@ -168,7 +171,10 @@ pub(crate) fn wait_and_mount_duckypad_msc(disk_label: &str) -> Result<(PathBuf, 
     }
 }
 
-pub(crate) fn unmount_duckypad_sd_cleanly(mount_root: &Path, known_dev: Option<&Path>) -> Result<(), String> {
+pub(crate) fn unmount_duckypad_sd_cleanly(
+    mount_root: &Path,
+    known_dev: Option<&Path>,
+) -> Result<(), String> {
     let block_dev = known_dev
         .map(|p| p.to_path_buf())
         .or_else(|| find_mount_block_device(mount_root));
@@ -211,7 +217,10 @@ pub(crate) fn unmount_duckypad_sd_cleanly(mount_root: &Path, known_dev: Option<&
                 crate::bridge::device_controller::record_system_event(
                     "WARN",
                     "STORAGE",
-                    format!("Failed running udisksctl unmount on {}: {e}", dev_path.display()),
+                    format!(
+                        "Failed running udisksctl unmount on {}: {e}",
+                        dev_path.display()
+                    ),
                 );
             }
         }
@@ -286,7 +295,10 @@ pub fn unmount_mounted_duckypad_sd(current_mount: Option<&Path>) -> Result<Strin
         }
     }
 
-    Ok(format!("Unmounted microSD card at {}", mount_root.display()))
+    Ok(format!(
+        "Unmounted microSD card at {}",
+        mount_root.display()
+    ))
 }
 
 pub fn detect_unmounted_duckypad_sd(disk_label: &str) -> Option<PathBuf> {
@@ -334,7 +346,10 @@ pub fn mount_duckypad_sd_only(disk_label: &str) -> Result<PathBuf, String> {
         }
         let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
         if !stderr.is_empty() {
-            return Err(format!("udisksctl mount failed for {}: {stderr}", dev_path.display()));
+            return Err(format!(
+                "udisksctl mount failed for {}: {stderr}",
+                dev_path.display()
+            ));
         }
     }
 
@@ -359,9 +374,11 @@ pub fn mount_duckypad_sd_only(disk_label: &str) -> Result<PathBuf, String> {
         return Ok(mounted);
     }
 
-    Err("No unmounted duckyPad microSD card or connected duckyPad Pro detected to mount".to_string())
+    Err(
+        "No unmounted duckyPad microSD card or connected duckyPad Pro detected to mount"
+            .to_string(),
+    )
 }
-
 
 pub fn read_duckypad_pro_profiles_via_msc(
     disk_label: &str,
@@ -540,8 +557,7 @@ where
         std::thread::sleep(std::time::Duration::from_millis(150));
     }
     drop(_msc_guard);
-    if restore_profile > 0
-        && !crate::kwin::auto_switcher::send_hid_switch_profile(restore_profile)
+    if restore_profile > 0 && !crate::kwin::auto_switcher::send_hid_switch_profile(restore_profile)
     {
         crate::bridge::device_controller::record_system_event(
             "WARN",
@@ -679,7 +695,8 @@ where
             }
 
             // 3. Cleanly unmount and verify in /proc/mounts BEFORE resetting back to HID mode
-            if let Err(unmount_err) = unmount_duckypad_sd_cleanly(&mount_root, real_dev.as_deref()) {
+            if let Err(unmount_err) = unmount_duckypad_sd_cleanly(&mount_root, real_dev.as_deref())
+            {
                 if res.is_ok() {
                     res = Err(unmount_err);
                 }
@@ -729,8 +746,7 @@ where
         std::thread::sleep(std::time::Duration::from_millis(150));
     }
     drop(_msc_guard);
-    if restore_profile > 0
-        && !crate::kwin::auto_switcher::send_hid_switch_profile(restore_profile)
+    if restore_profile > 0 && !crate::kwin::auto_switcher::send_hid_switch_profile(restore_profile)
     {
         crate::bridge::device_controller::record_system_event(
             "WARN",
@@ -768,4 +784,3 @@ pub fn reboot_duckypad() -> Result<(), String> {
         .map_err(|e| format!("Failed sending software reset to duckyPad: {e}"))?;
     Ok(())
 }
-

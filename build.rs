@@ -41,7 +41,6 @@ fn main() {
                 "src/qml/icons/oled-widget-icon.svg",
                 "docs/user-guide.html",
             ],
-            ..Default::default()
         })
         .build();
     println!("cargo:rerun-if-changed=src/cpp/app_helper.h");

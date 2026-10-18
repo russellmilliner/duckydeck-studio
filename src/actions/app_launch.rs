@@ -60,7 +60,6 @@ impl Default for AppLaunchConfig {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppLaunchExecutionResult {
@@ -184,7 +183,18 @@ pub fn apply_app_launch_config_to_script(
         let up = normalized.fkey.trim().to_ascii_uppercase();
         if matches!(
             up.as_str(),
-            "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24"
+            "F13"
+                | "F14"
+                | "F15"
+                | "F16"
+                | "F17"
+                | "F18"
+                | "F19"
+                | "F20"
+                | "F21"
+                | "F22"
+                | "F23"
+                | "F24"
         ) {
             up
         } else {
@@ -240,7 +250,6 @@ pub fn apply_app_launch_config_to_script(
     }
     out
 }
-
 
 pub struct DuckypadEvdevListener {
     files: Vec<(PathBuf, fs::File)>,
@@ -341,7 +350,6 @@ impl DuckypadEvdevListener {
     }
 }
 
-
 pub fn execute_app_launch(cfg: &AppLaunchConfig) -> AppLaunchExecutionResult {
     use std::process::{Command, Stdio};
 
@@ -389,11 +397,7 @@ pub fn execute_app_launch(cfg: &AppLaunchConfig) -> AppLaunchExecutionResult {
         || full_cmd_display.contains('$');
 
     let mut tokens: Vec<String> = if needs_shell {
-        vec![
-            "sh".to_string(),
-            "-c".to_string(),
-            full_cmd_display.clone(),
-        ]
+        vec!["sh".to_string(), "-c".to_string(), full_cmd_display.clone()]
     } else {
         let mut t = split_shell_words(raw_cmd);
         if !raw_args.is_empty() {
@@ -766,4 +770,3 @@ impl GlobalMacroEvdevRecorder {
         out
     }
 }
-

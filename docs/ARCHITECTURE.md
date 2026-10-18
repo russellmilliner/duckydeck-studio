@@ -16,7 +16,7 @@
 1. **Zero-Runtime-Wrapper Native Stack:** Built directly in **Rust (2021 edition)** bridged to **Qt 6 / KDE Frameworks 6 (Kirigami + KSyntaxHighlighting)** via **CXX-Qt 0.7**, avoiding Electron/Python packaging overhead while delivering native KDE Breeze theming and Wayland integration.
 2. **Offline-First & Deterministic SD Sync:** All profile edits, key scripts, RGB LED overrides, and rule bindings are immediately persisted to a per-device local cache (`~/.local/share/duckydeck-studio/profiles_cache/<serial>/`) and compared against the hardware microSD state using deterministic content diffing before writing and validating `.dsb` bytecode on the microSD card.
 3. **Full DSVM v2 Compiler in Pure Rust:** Compiles `duckyScript 3` (`keyN.txt` / `keyN-release.txt`) directly into duckyPad virtual machine bytecode (`.dsb`) with live syntax diagnostics, RPN expression evaluation, control flow (`IF`/`ELSE`/`WHILE`), functions, OLED primitives, and PGV (`_GV0.._GV31`) access.
-4. **Bidirectional Hardware-Host Automation:** Combines KWin Wayland window focus events (`zbus` D-Bus listener) for automatic profile switching (`Host → duckyPad`) with USB HID PGV polling (`_GV18` / `_GV19`) and `evdev` F13–F24 listeners for Web API webhooks and Desktop Application Launching (`duckyPad → Host`).
+4. **Bidirectional Hardware-Host Automation:** Combines KWin Wayland window focus events (`zbus` D-Bus listener) for automatic profile switching (`Host → duckyPad`) with USB HID PGV polling (`_GV31` encoded via `encode_pgv31_trigger`) and global `F13–F24` shortcut triggers for Web API webhooks and Desktop Application Launching (`duckyPad → Host`).
 
 ---
 
@@ -24,36 +24,41 @@
 
 ```mermaid
 flowchart TB
-    subgraph UI["Qt 6 / KDE Kirigami QML Frontend (src/qml/)"]
-        MainQML["Main.qml\n(3-Column Shell, Color Picker,\nWeb API & App Launch Builders,\nEvent Log, SD Sync & Settings)"]
-        CanvasQML["HardwareCanvas.qml\n(4x5 RGB Matrix, Dual Encoders,\n128x128 OLED Simulator, 32ch Exp)"]
-        AutoSwitchQML["AutoSwitchDrawer.qml\n(KWin Rules & Window Picker UI)"]
-        PgvQML["PgvInspectorDrawer.qml\n(_GV0.._GV31 Live Inspector)"]
-        AiQML["AiArchitectModal.qml\n(AI Macro Architect)"]
-        UdevQML["UdevBanner.qml\n(Polkit udev Installer Banner)"]
+    subgraph UI["Qt 6 / KDE Kirigami QML Frontend"]
+        MainQML["src/qml/Main.qml\n(ApplicationWindow Shell, Sidebar & Script Editor)"]
+        CanvasQML["src/qml/HardwareCanvas.qml\n(4x5 RGB Matrix, Dual Encoders,\n128x128 OLED Simulator, 32ch Exp)"]
+        BuildersQML["src/qml/WebApiBuilder.qml &\nsrc/qml/AppLaunchBuilder.qml"]
+        DialogsQML["src/qml/ColorPickerWindow.qml,\nsrc/qml/SettingsPage.qml,\nsrc/qml/SdSyncDialog.qml,\nsrc/qml/EventLogDialog.qml"]
+        AutoSwitchQML["src/qml/AutoSwitchDrawer.qml\n(KWin Rules & Window Picker UI)"]
+        PgvQML["src/qml/PgvInspectorDrawer.qml\n(_GV0.._GV31 Live Inspector)"]
+        AiQML["src/qml/AiArchitectModal.qml\n(Macro Template Generator)"]
+        UdevQML["src/qml/UdevBanner.qml\n(Polkit udev Installer Banner)"]
     end
 
-    subgraph Bridge["CXX-Qt 0.7 QObject Bridge (src/bridge/)"]
+    subgraph Bridge["CXX-Qt 0.7 QObject Bridge & Native Helpers"]
         DC["DeviceController\n(src/bridge/device_controller.rs)\nQProperties + QInvokables + Qt Thread Queue"]
-        Tray["StatusNotifierItem System Tray\n(src/tray.rs)\nDynamic ARGB32 Pixmap + DBus Menu"]
+        Tray["QSystemTrayIcon & KF6 Helper\n(src/cpp/app_helper.h)\nDynamic Tray Badge + Palette Bridge"]
     end
 
     subgraph Core["Rust Core Subsystems"]
-        HW["Hardware & Storage Engine\n(src/hardware/storage.rs)\nUSB HID 0x0483:0xd11d / 0xd11c\nmicroSD config.txt & keyN.txt I/O"]
-        DSVM["DSVM v2 Bytecode Compiler\n(src/hardware/dsvm.rs)\nduckyScript 3 -> .dsb Binary"]
+        HW["Hardware & Storage Engine\n(src/hardware/storage.rs,\nsrc/hardware/profile.rs,\nsrc/hardware/msc.rs,\nsrc/hardware/firmware.rs)"]
+        Actions["Host Action Subsystems\n(src/actions/web_api.rs,\nsrc/actions/app_launch.rs,\nsrc/actions/desktop_apps.rs)"]
+        DSVM["DSVM v2 Bytecode Compiler\n(src/vm/compiler.rs)\nduckyScript 3 -> .dsb Binary"]
         Perms["Permissions & Polkit\n(src/hardware/permissions.rs)\n/sys/class/hidraw + pkexec"]
-        KWin["KWin Wayland Auto-Switcher\n(src/kwin/auto_switcher.rs)\nzbus DBus Service + Window Picker"]
+        KWin["KWin Wayland Auto-Switcher\n(src/kwin/auto_switcher.rs)\nzbus D-Bus Service + Window Picker"]
         AI["KDE Shortcut Scraper\n(src/ai/shortcut_scraper.rs)\n~/.config/kglobalshortcutsrc"]
+        API["Embedded REST API Server\n(src/api_server.rs)\n/api/v1/* + Async Job Worker"]
     end
 
     subgraph Daemons["Background Worker Threads"]
-        Hotplug["USB Hotplug & PGV Poller Thread\n(_GV18 Web API / _GV19 App Launch)"]
-        Evdev["evdev Global Hotkey Listener\n(F13..F24 Triggers)"]
-        KWinTask["Tokio zbus KWin Listener\n(org.kde.DuckyDeck.KWinListener)"]
+        Hotplug["USB Hotplug & _GV31 Trigger Poller\n(encode_pgv31_trigger / decode_pgv31_trigger)"]
+        KWinTask["Tokio zbus D-Bus Service\n(io.github.duckydeck.Studio /KWinBridge)"]
     end
 
     MainQML <--> DC
     CanvasQML <--> DC
+    BuildersQML <--> DC
+    DialogsQML <--> DC
     AutoSwitchQML <--> DC
     PgvQML <--> DC
     AiQML <--> DC
@@ -61,13 +66,14 @@ flowchart TB
 
     DC <--> Tray
     DC <--> HW
+    DC <--> Actions
     DC <--> DSVM
     DC <--> Perms
     DC <--> KWin
     DC <--> AI
+    API <--> DC
 
     Hotplug --> DC
-    Evdev --> DC
     KWinTask --> DC
 ```
 
@@ -77,52 +83,80 @@ flowchart TB
 
 | Path | Responsibility |
 | :--- | :--- |
-| [`Cargo.toml`](file:///home/millinr/Builds/Ducky/duckydeck-studio/Cargo.toml) | Crate manifest (`cxx-qt 0.7`, `hidapi`, `zbus`, `tokio`, `ksni`, `evdev`, `serde`, `ureq`). |
-| [`build.rs`](file:///home/millinr/Builds/Ducky/duckydeck-studio/build.rs) | `CxxQtBuilder` configuration registering QML module `io.github.duckydeck` and compiling [`device_controller.rs`](file:///home/millinr/Builds/Ducky/duckydeck-studio/src/bridge/device_controller.rs). |
-| [`src/main.rs`](file:///home/millinr/Builds/Ducky/duckydeck-studio/src/main.rs) | Application entrypoint: configures `QGuiApplication`, registers `KSyntaxHighlighting` QML types and custom `duckyscript3.xml` syntax definition, and loads `Main.qml`. |
-| [`src/bridge/device_controller.rs`](file:///home/millinr/Builds/Ducky/duckydeck-studio/src/bridge/device_controller.rs) | Central `#[cxx_qt::bridge]` `DeviceController` QObject, background thread orchestration, Web API & App Launch execution, event logging, and QML JSON serialization. |
-| [`src/hardware/storage.rs`](file:///home/millinr/Builds/Ducky/duckydeck-studio/src/hardware/storage.rs) | USB HID transport (`hidapi`), device discovery, RTC sync, PGV burst read/write (`0x18`/`0x19`), Mass Storage (`0x1B`) mounting via `udisksctl`, and `DuckyProfile` / `DuckySlotConfig` SD parser/writer. |
-| [`src/hardware/dsvm.rs`](file:///home/millinr/Builds/Ducky/duckydeck-studio/src/hardware/dsvm.rs) | Pure-Rust duckyScript 3 → DSVM v2 (`.dsb`) bytecode compiler and syntax verifier. |
-| [`src/hardware/permissions.rs`](file:///home/millinr/Builds/Ducky/duckydeck-studio/src/hardware/permissions.rs) | Inspects `/sys/class/hidraw` device nodes for `PermissionDenied` and invokes `pkexec` to install `70-duckypad.rules`. |
-| [`src/kwin/auto_switcher.rs`](file:///home/millinr/Builds/Ducky/duckydeck-studio/src/kwin/auto_switcher.rs) | KWin Wayland script injector, `zbus` D-Bus service (`org.kde.DuckyDeck.KWinListener`), interactive KWin `queryWindowInfo` window picker, and persisted configuration (`kwin_rules.json`). |
-| [`src/tray.rs`](file:///home/millinr/Builds/Ducky/duckydeck-studio/src/tray.rs) | FreeDesktop `StatusNotifierItem` (`ksni`) system tray service with dynamic 64×64 ARGB32 profile badge rendering. |
-| [`src/ai/shortcut_scraper.rs`](file:///home/millinr/Builds/Ducky/duckydeck-studio/src/ai/shortcut_scraper.rs) | Parses `~/.config/kglobalshortcutsrc` to ground AI macro generation with real user shortcuts. |
-| [`src/qml/Main.qml`](file:///home/millinr/Builds/Ducky/duckydeck-studio/src/qml/Main.qml) | Primary application window, sidebar profile manager, script editor, color picker window (`duckyColorPickerWindow`), Web API & App Launch builders, SD sync dialog, Event Log window, and Settings. |
-| [`src/qml/HardwareCanvas.qml`](file:///home/millinr/Builds/Ducky/duckydeck-studio/src/qml/HardwareCanvas.qml) | Interactive 4×5 RGB key matrix, dual rotary encoders, 128×128 OLED simulator (`Canvas`), and 32-channel expansion module view. |
+| [`Cargo.toml`](../Cargo.toml) | Crate manifest (`cxx-qt 0.7`, `hidapi`, `zbus`, `tokio`, `reqwest`, `keyring`, `serde`, `serde_json`, `sha2`). |
+| [`build.rs`](../build.rs) | `CxxQtBuilder` configuration registering QML module `io.github.duckydeck` and compiling [`src/bridge/device_controller.rs`](../src/bridge/device_controller.rs). |
+| [`src/main.rs`](../src/main.rs) | Application entrypoint: CLI & D-Bus single-instance IPC client, `QApplication` initialization, `KSyntaxHighlighting` registration, and QML engine startup. |
+| [`src/paths.rs`](../src/paths.rs) | XDG directory helpers (`XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_RUNTIME_DIR`) and environment sanitization. |
+| [`src/api_server.rs`](../src/api_server.rs) | Embedded HTTP/1.1 REST API Server (`/api/v1/*`) with Bearer auth, connection cap, payload size guard, and async job worker. |
+| [`src/bridge/device_controller.rs`](../src/bridge/device_controller.rs) | Central `#[cxx_qt::bridge]` `DeviceController` QObject, background thread orchestration, and QInvokable wrappers. |
+| [`src/bridge/event_log.rs`](../src/bridge/event_log.rs) | Thread-safe ring buffer (`SYSTEM_EVENT_LOG`), log file appender, and JSON serializer for system diagnostics. |
+| [`src/bridge/rest_routes.rs`](../src/bridge/rest_routes.rs) | REST API route table and request handlers executed via the `DeviceController` bridge. |
+| [`src/bridge/serialize.rs`](../src/bridge/serialize.rs) | JSON serializers for profiles, slots, unsynced diffs, and templates exposed to QML and the REST API. |
+| [`src/bridge/showcase.rs`](../src/bridge/showcase.rs) | Built-in profile templates, SVG icon helpers (`known_site_svg`), and optional `--features demo` showcase generator. |
+| [`src/hardware/storage.rs`](../src/hardware/storage.rs) | USB HID transport (`hidapi`), device discovery, RTC sync, PGV burst read/write (`0x18`/`0x19`), and submodule re-exports. |
+| [`src/hardware/profile.rs`](../src/hardware/profile.rs) | `DuckyProfile` and `DuckySlotConfig` parser/writer (`config.txt`, `profile_info.txt`), diffing, and local cache management. |
+| [`src/hardware/msc.rs`](../src/hardware/msc.rs) | USB Mass Storage (`0x1B`) mounting/unmounting via `udisksctl` and microSD card capacity inspection. |
+| [`src/hardware/firmware.rs`](../src/hardware/firmware.rs) | Firmware release catalog, GitHub release downloader, and IEEE CRC32 integrity verification. |
+| [`src/hardware/permissions.rs`](../src/hardware/permissions.rs) | Inspects `/sys/class/hidraw` device nodes for `PermissionDenied` and invokes `pkexec` to install `70-duckypad.rules`. |
+| [`src/actions/web_api.rs`](../src/actions/web_api.rs) | Web API / Webhook & Home Assistant client, OS keyring secret storage, and `_GV31` trigger encoding (`encode_pgv31_trigger`). |
+| [`src/actions/app_launch.rs`](../src/actions/app_launch.rs) | Desktop Application Launcher metadata parser/generator (`// @DUCKYDECK_APPLAUNCH`), process spawner, and `_GV31` / `F13–F24` registries. |
+| [`src/actions/desktop_apps.rs`](../src/actions/desktop_apps.rs) | XDG `.desktop` entry scanner across system, user, and Flatpak directories. |
+| [`src/vm/compiler.rs`](../src/vm/compiler.rs) | Pure-Rust duckyScript 3 → DSVM v2 (`.dsb`) two-pass bytecode compiler and syntax verifier. |
+| [`src/kwin/auto_switcher.rs`](../src/kwin/auto_switcher.rs) | KWin Wayland script injector, `zbus` D-Bus service (`io.github.duckydeck.Studio` at `/KWinBridge`), window picker, and persisted rules (`kwin_rules.json`). |
+| [`src/ai/shortcut_scraper.rs`](../src/ai/shortcut_scraper.rs) | Parses `~/.config/kglobalshortcutsrc` and converts KDE shortcuts into duckyScript 3 syntax (`kde_shortcut_to_duckyscript`). |
+| [`src/cpp/app_helper.h`](../src/cpp/app_helper.h) | C++ helper bridging `QSystemTrayIcon`, `KColorScheme`, `KIconLoader`, and `KSyntaxHighlighting` into the QML engine. |
+| [`src/qml/Main.qml`](../src/qml/Main.qml) | Primary `Kirigami.ApplicationWindow` shell, profile sidebar, and duckyScript 3 code editor. |
+| [`src/qml/HardwareCanvas.qml`](../src/qml/HardwareCanvas.qml) | Interactive 4×5 RGB key matrix, dual rotary encoders, 128×128 OLED simulator (`Canvas`), and 32-channel expansion module view. |
+| [`src/qml/ColorPickerWindow.qml`](../src/qml/ColorPickerWindow.qml) | Custom HSV/RGB color picker window, saved/used color palettes, and RGB lighting animation builder. |
+| [`src/qml/WebApiBuilder.qml`](../src/qml/WebApiBuilder.qml) | Visual Web API / Webhook key builder and saved destinations manager. |
+| [`src/qml/AppLaunchBuilder.qml`](../src/qml/AppLaunchBuilder.qml) | Visual Desktop Application Launcher builder, installed app picker, macro recorder, and OLED icon picker. |
+| [`src/qml/SettingsPage.qml`](../src/qml/SettingsPage.qml) | Application Settings window, Profile Properties, Key Properties, Profile Templates, and About dialog. |
+| [`src/qml/RestApiSettings.qml`](../src/qml/RestApiSettings.qml) | HTTP REST API Server and Global Profile Change Webhook configuration section inside Settings. |
+| [`src/qml/SdSyncDialog.qml`](../src/qml/SdSyncDialog.qml) | microSD sync progress dialog, unsynced changes diff viewer, and Firmware Manager dialog. |
+| [`src/qml/EventLogDialog.qml`](../src/qml/EventLogDialog.qml) | System Event Log viewer, filter/export controls, and automated UI test suite runner. |
+| [`src/qml/AutoSwitchDrawer.qml`](../src/qml/AutoSwitchDrawer.qml) | KWin Wayland Auto-Switcher rules & interactive window picker dialog. |
+| [`src/qml/PgvInspectorDrawer.qml`](../src/qml/PgvInspectorDrawer.qml) | Live Signed/Unsigned/Hex editor for `_GV0.._GV31`. |
+| [`src/qml/AiArchitectModal.qml`](../src/qml/AiArchitectModal.qml) | Macro Template Generator (experimental) modal dialog with KDE shortcut selector. |
+| [`src/qml/OledDesktopWidget.qml`](../src/qml/OledDesktopWidget.qml) | Floating desktop OLED companion widget window. |
+| [`src/qml/UdevBanner.qml`](../src/qml/UdevBanner.qml) | Inline Polkit 1-click udev setup warning banner. |
 
 ---
 
-## 4. CXX-Qt Bridge & Concurrency Model
+## 4. CXX-Qt Bridge, Concurrency Model & `_GV31` Trigger Encoding
 
-Because Qt GUI objects (`QObject`) have strict single-thread affinity (the Qt main event loop thread), [`DeviceController`](file:///home/millinr/Builds/Ducky/duckydeck-studio/src/bridge/device_controller.rs) separates state into:
+Because Qt GUI objects (`QObject`) have strict single-thread affinity (the Qt main event loop thread), [`src/bridge/device_controller.rs`](../src/bridge/device_controller.rs) separates state into:
 1. **Qt-Thread Owned State (`DeviceControllerRust`):**
    - `profiles: Vec<DuckyProfile>` — In-memory representation of up to 64 profiles.
    - `sd_root_path: Option<PathBuf>` — Mounted microSD path when available.
    - `copied_slot: Option<DuckySlotConfig>` — Clipboard buffer for copy/paste across keys and profiles.
 2. **Thread-Safe Shared State (`Arc<Mutex<...>>` / Static Atomics):**
-   - `switcher_state: Arc<Mutex<SwitcherState>>` — Shared between the Qt thread and the Tokio KWin D-Bus listener task.
-   - `WEB_API_REGISTRY: OnceLock<Mutex<HashMap<String, WebApiTriggerEntry>>>` and `WEB_API_PGV_REGISTRY: OnceLock<Mutex<HashMap<i32, WebApiTriggerEntry>>>` — Shared registries for F13–F24 and `_GV18` Web API triggers.
-   - `APP_LAUNCH_FKEY_REGISTRY` and `APP_LAUNCH_PGV_REGISTRY` — Shared registries for F13–F24 and `_GV19` Application Launch triggers.
-   - `SYSTEM_EVENT_LOG: OnceLock<Mutex<Vec<SystemEventEntry>>>` — Ring buffer (up to 1,000 entries) mirrored to `~/.local/share/duckydeck-studio/logs/system_events.log`.
-3. **Cross-Thread UI Updates (`CxxQtThread`):**
-   - Background threads (KWin D-Bus listener, USB hotplug & PGV poller, async SD sync worker, HTTP webhook worker, firmware checker) never mutate `QProperty` values directly. Instead, they capture `let qt_thread = self.qt_thread();` and dispatch closures via `qt_thread.queue(move |mut qobject| { ... })`.
+   - `switcher_state: Arc<Mutex<SwitcherState>>` — Shared between the Qt thread and the Tokio D-Bus listener task.
+   - `WEB_API_REGISTRY` and `WEB_API_PGV_REGISTRY` — Shared registries for `F13–F24` and `_GV31` Web API triggers.
+   - `APP_LAUNCH_FKEY_REGISTRY` and `APP_LAUNCH_PGV_REGISTRY` — Shared registries for `F13–F24` and `_GV31` Application Launch triggers.
+   - `SYSTEM_EVENT_LOG` — Ring buffer (up to 1,000 entries) mirrored to `~/.local/share/duckydeck-studio/logs/system_events.log`.
+3. **Unified `_GV31` Trigger Encoding (`encode_pgv31_trigger` / `decode_pgv31_trigger`):**
+   - Both Web API (`// @DUCKYDECK_WEBAPI`) and Desktop Application Launch (`// @DUCKYDECK_APPLAUNCH`) scripts in `pgv` trigger mode write a 32-bit magic word into Persistent Global Variable **`_GV31`** (`PGV_TRIGGER_INDEX = 31`).
+   - [`encode_pgv31_trigger(profile_num, slot_num, is_release)`](../src/actions/web_api.rs) packs the magic prefix `WEB_API_PGV_MAGIC = 0x5741_0000` (`"WA\0\0"`) in the upper 16 bits, bit 15 (`0x8000`) for `is_release`, bits `8..14` (`0x7F00`) for `profile_num`, and bits `0..7` (`0x00FF`) for `slot_num` (`1..=58`).
+   - When the background USB HID poller reads `_GV0.._GV31` via command `0x18` (`HID_CMD_DUMP_PGV`) and detects a non-zero `_GV31` matching `decode_pgv31_trigger`, it immediately clears `_GV31 = 0` via command `0x19` (`HID_CMD_WRITE_PGV`) to re-arm the trigger and dispatches the matching `WEB_API_PGV_REGISTRY` or `APP_LAUNCH_PGV_REGISTRY` action on the host.
+4. **Cross-Thread UI Updates (`CxxQtThread`):**
+   - Background threads never mutate `QProperty` values directly; they capture `let qt_thread = self.qt_thread();` and dispatch closures via `qt_thread.queue(move |mut qobject| { ... })`.
 
 ```mermaid
 sequenceDiagram
     participant DuckyPad as duckyPad Pro (USB HID)
     participant Poller as Background PGV Poller Thread
-    participant Registry as APP_LAUNCH_PGV_REGISTRY
-    participant Desktop as Linux Process Spawner
+    participant Registry as WEB_API_PGV_REGISTRY / APP_LAUNCH_PGV_REGISTRY
+    participant Host as Host Executor (reqwest / Command)
     participant QtThread as Qt Main Thread (DeviceController)
-    participant QML as Main.qml / EventLogDialog
+    participant QML as Main.qml / EventLogDialog.qml
 
-    DuckyPad->>Poller: Key pressed -> DSVM sets _GV19 = 1003 (Profile 1, Key 3)
-    Poller->>DuckyPad: HID Command 0x18 (Read PGV Block)
-    DuckyPad-->>Poller: Returns _GV0.._GV31 (_GV19 == 1003)
-    Poller->>DuckyPad: HID Command 0x19 (Reset _GV19 = 0 to re-arm)
-    Poller->>Registry: Lookup token 1003 (or fallback slot 3 in active profile)
-    Registry-->>Poller: AppLaunchTriggerEntry (command, args, working_dir, terminal)
-    Poller->>Desktop: std::process::Command::spawn()
+    DuckyPad->>Poller: Key pressed -> DSVM sets _GV31 = encode_pgv31_trigger(prof, slot, rel)
+    Poller->>DuckyPad: HID Command 0x18 (HID_CMD_DUMP_PGV)
+    DuckyPad-->>Poller: Returns _GV0.._GV31 (_GV31 == 0x57410103)
+    Poller->>DuckyPad: HID Command 0x19 (Write _GV31 = 0 to re-arm)
+    Poller->>Registry: decode_pgv31_trigger(_GV31) -> Lookup (profile 1, slot 3, press)
+    Registry-->>Poller: WebApiTriggerEntry or AppLaunchTriggerEntry
+    Poller->>Host: Execute HTTP Webhook or std::process::Command::spawn()
     Poller->>QtThread: qt_thread.queue(|qobject| sync_event_log_properties + statusMessage)
     QtThread-->>QML: Emits statusMessageChanged & eventLogJsonChanged
 ```
@@ -136,32 +170,31 @@ The duckyPad Pro (`0x0483:0xd11d`) and duckyPad 2020 (`0x0483:0xd11c`) communica
 
 | Command Byte (`tx[2]`) | Name | Description |
 | :--- | :--- | :--- |
-| `0x01` | `HID_CMD_GET_INFO` | Returns firmware version, hardware model, serial number, active profile, and MSC disk label. |
-| `0x02` | `HID_CMD_GOTO_PROFILE` | Switches the active hardware profile (`1..=64`). |
-| `0x14` | `HID_CMD_SWCOLOR` | Sets a single key's RGB LED override (`key_index 0..19`, `R`, `G`, `B`) in real time. |
-| `0x15` / `0x16` | `SLEEP` / `WAKE` | Puts the duckyPad into sleep mode or wakes it up. |
-| `0x18` | `HID_CMD_READ_PGV` | Reads all 32 32-bit Persistent Global Variables (`_GV0.._GV31`, 128 bytes) across 3 burst packets (`chunk_index 0..2`). |
-| `0x19` | `HID_CMD_WRITE_PGV` | Writes a 32-bit little-endian integer to `_GV[idx]` (`0..31`) in non-volatile memory. |
-| `0x1A` | `HID_CMD_SYNC_RTC` | Synchronizes the hardware Real-Time Clock with the Linux host's Unix timestamp and UTC offset. |
-| `0x1B` | `HID_CMD_MOUNT_USB_MSC` | Reboots the duckyPad Pro into USB Mass Storage mode so the host can mount the microSD card via `udisksctl`. |
+| `0x00` | `HID_CMD_QUERY_INFO` | Returns firmware version, hardware model, serial number, active profile, and capability signature. |
+| `0x01` | `HID_CMD_GOTO_PROFILE_BY_NUM` | Switches the active hardware profile by number (`1..=64`). |
+| `0x04` | `HID_CMD_SET_LED_SINGLE` | Sets a single key's RGB LED override in real time. |
+| `0x14` | `HID_CMD_SOFTWARE_RESET` | Reboots the duckyPad firmware (optionally into USB MSC mode). |
+| `0x17` | `HID_CMD_GOTO_PROFILE_BY_NAME` | Switches the active hardware profile by folder name. |
+| `0x18` | `HID_CMD_DUMP_PGV` | Reads all 32 32-bit Persistent Global Variables (`_GV0.._GV31`, 128 bytes) across 3 burst packets (`start_idx = 0, 15, 30`). |
+| `0x19` | `HID_CMD_WRITE_PGV` | Writes up to 12 `(pgv_index | 0x80, i32_le)` entries per packet into `_GV0.._GV31`. |
 
-### 5.2 microSD File Layout & `config.txt` Format
-Each profile resides in a folder named `profile_<Name>` (or `profile<N>_<Name>`) on the FAT32 microSD card, indexed by `profile_info.txt`:
+### 5.2 microSD File Layout & `config.txt` Format (`src/hardware/profile.rs`)
+Each profile resides in a folder named `profile<N>_<Name>` on the FAT32 microSD card:
 - `config.txt`:
-  - `z<N> <line1>` — First OLED label line for slot `N` (`1..58`, max 7 chars).
-  - `x<N> <line2>` — Second OLED label line for slot `N` (`1..58`, max 7 chars).
+  - `z<N> <line1>` / `x<N> <line2>` — First and second OLED label lines for slot `N` (`1..58`).
+  - `ui_z<N> <line1>` / `ui_x<N> <line2>` — UTF-8 icon-capable label lines for DuckyDeck Studio Firmware `v1.0.0`.
+  - `wz<N> <line1>` / `wx<N> <line2>` — Extended 24-character desktop OLED widget labels.
   - `BG_COLOR <R> <G> <B>` — Default background RGB LED color for the profile.
   - `SWCOLOR_<N> <R> <G> <B>` — Custom per-key RGB LED override for key `N` (`1..20`).
-  - `ab <N>` — Allow any key press to abort script execution on slot `N`.
-  - `dr <N>` — Disable auto-repeat while key `N` is held down.
+  - `ab <N>` / `dr <N>` — Allow abort (`$_ALLOW_ABORT`) or disable auto-repeat (`$_DONT_REPEAT`) on slot `N`.
 - `key<N>.txt` & `key<N>.dsb`: On-press duckyScript 3 source and compiled DSVM v2 bytecode binary.
 - `key<N>-release.txt` & `key<N>-release.dsb`: On-release duckyScript 3 source and compiled DSVM v2 bytecode binary.
 
 ---
 
-## 6. DSVM v2 Bytecode Compiler (`src/hardware/dsvm.rs`)
+## 6. DSVM v2 Bytecode Compiler (`src/vm/compiler.rs`)
 
-The duckyPad Pro executes compiled **DSVM v2 (`.dsb`)** stack-machine bytecode files rather than interpreting raw text on-device. [`src/hardware/dsvm.rs`](file:///home/millinr/Builds/Ducky/duckydeck-studio/src/hardware/dsvm.rs) implements a complete two-pass compiler:
+The duckyPad Pro executes compiled **DSVM v2 (`.dsb`)** stack-machine bytecode files rather than interpreting raw text on-device. [`src/vm/compiler.rs`](../src/vm/compiler.rs) implements a complete two-pass compiler:
 
 ```mermaid
 flowchart LR
@@ -174,57 +207,58 @@ flowchart LR
 ### Key Compiler Capabilities
 - **Preprocessor & Metadata Directives:** Preserves structured comment directives (`// @DUCKYDECK_WEBAPI {...}` and `// @DUCKYDECK_APPLAUNCH {...}`) so visual builder configurations round-trip losslessly inside standard `keyN.txt` files.
 - **Expression Engine:** Converts infix arithmetic, bitwise, and boolean expressions into stack-based RPN instructions (`OP_PUSH_CONST`, `OP_PUSH_VAR`, `OP_ADD`, `OP_EQ`, `OP_BITWISE_AND`, etc.).
-- **Built-In Hardware Commands:** Compiles keyboard/mouse HID injection (`STRING`, `STRINGLN`, `KEYDOWN`, `KEYUP`, `MMOVE`, `LCLICK`), LED commands (`SWCC`, `SWCF`, `SWCR`), OLED graphics (`OLED_CLEAR`, `OLED_CURSOR`, `OLED_PRINT`, `OLED_LINE`, `OLED_RECT`, `OLED_CIRCLE`, `OLED_UPDATE`), and profile control (`GOTO_PROFILE`, `NEXT_PROFILE`, `PREV_PROFILE`, `DP_SLEEP`).
+- **Built-In Hardware Commands:** Compiles keyboard/mouse HID injection (`STRING`, `STRINGLN`, `KEYDOWN`, `KEYUP`, `MMOVE`, `LCLICK`), LED commands (`SWC_SET`, `SWC_FILL`, `SWC_RESET`), OLED graphics (`OLED_CLEAR`, `OLED_CURSOR`, `OLED_PRINT`, `OLED_LINE`, `OLED_RECT`, `OLED_CIRCLE`, `OLED_UPDATE`), and profile control (`GOTO_PROFILE`, `NEXT_PROFILE`, `PREV_PROFILE`, `DP_SLEEP`).
 
 ---
 
-## 7. Wayland Auto-Switcher Architecture (`src/kwin/auto_switcher.rs`)
+## 7. Wayland Auto-Switcher & Session D-Bus IPC (`src/kwin/auto_switcher.rs` & `src/main.rs`)
 
-Wayland compositors isolate window focus metadata for security. On KDE Plasma 6, DuckyDeck Studio bridges KWin window focus changes to the duckyPad using a lightweight runtime KWin Script paired with a `zbus` D-Bus service:
+Wayland compositors isolate window focus metadata for security. On KDE Plasma 6, DuckyDeck Studio registers the session D-Bus service **`io.github.duckydeck.Studio`** at object path **`/KWinBridge`** (interface **`io.github.duckydeck.KWinBridge`**) via `zbus`, serving both KWin Wayland callbacks and single-instance CLI IPC:
 
 ```mermaid
 sequenceDiagram
     participant KWin as KDE Plasma 6 KWin Compositor
-    participant DBus as Session D-Bus (org.kde.DuckyDeck.KWinListener)
+    participant CLI as duckydeck-studio CLI Second Instance
+    participant DBus as Session D-Bus (io.github.duckydeck.Studio /KWinBridge)
     participant Matcher as SwitcherState::match_profile_for_window
-    participant HID as duckyPad USB HID (0x02 GOTO_PROFILE)
-    participant UI as Main.qml & System Tray
+    participant HID as duckyPad USB HID (0x01 / 0x17 GOTO_PROFILE)
+    participant UI as Main.qml & QSystemTrayIcon
 
-    KWin->>DBus: workspace.windowActivated -> NotifyActiveWindow(resourceClass, caption)
+    KWin->>DBus: workspace.windowActivated -> ReportActiveWindow(resourceClass, caption)
     DBus->>Matcher: Evaluate enabled AutoSwitchRules (class + optional titleContains)
     alt Rule Matched (and Inspector Editor not open)
-        Matcher->>HID: send_hid_switch_profile(target_profile)
+        Matcher->>HID: Switch hardware profile
         DBus->>UI: Update activeProfile, tray badge & AUTOSWITCH event log
-    else No Rule Matched & Fallback Configured
-        Matcher->>HID: send_hid_switch_profile(default_profile)
     end
+    CLI->>DBus: DispatchIpcCommand("show" | "minimize" | "toggle" | "switch-profile:N" | "trigger-fkey:F13")
+    DBus->>UI: Execute command on running instance and return PID
 ```
 
-### Editor Pause Safeguard
-When a user selects a key in the UI to edit its script (`root.hasSelectedSlot == true`), `deviceController.setScriptEditorOpen(true)` sets `sw.paused_for_editing = true`. While paused:
-- Incoming KWin window activation events still update `activeWindowClass` / `activeWindowTitle` diagnostics.
-- Automatic profile switching is suppressed so the user can freely focus a browser or terminal to copy URLs, headers, or CLI commands without losing their active editing context.
+### D-Bus Interface Methods (`io.github.duckydeck.KWinBridge`)
+1. `ReportActiveWindow(window_class: &str, window_title: &str)`: Invoked by the injected KWin script whenever the active Wayland window changes; evaluates `AutoSwitchRule` entries and switches the duckyPad profile unless paused because the script editor is open (`paused_for_editing`).
+2. `ReportPickedWindow(window_class: &str, window_title: &str)`: Invoked when the user picks a window with the interactive KWin crosshair picker.
+3. `DispatchIpcCommand(command: &str) -> u32`: Used by [`src/main.rs`](../src/main.rs) (`send_ipc_command_to_running_instance`) for single-instance activation and CLI remote commands (`show`, `minimize`, `toggle`, `quit`, `toggle-oled-widget`, `switch-profile:<n>`, `trigger-fkey:<F13..F24>`).
 
 ---
 
-## 8. Color Picker & Palette Persistence
+## 8. Color Picker & Palette Persistence (`src/qml/ColorPickerWindow.qml`)
 
-The custom Color Picker window (`duckyColorPickerWindow` in [`src/qml/Main.qml`](file:///home/millinr/Builds/Ducky/duckydeck-studio/src/qml/Main.qml)) provides two synchronized palettes:
+The custom Color Picker window (`duckyColorPickerWindow` in [`src/qml/ColorPickerWindow.qml`](../src/qml/ColorPickerWindow.qml)) provides two synchronized palettes:
 1. **Saved Colors (`saved_colors_json`):**
    - Stored in `SwitcherState::saved_colors` (`Vec<String>` of normalized `#rrggbb` strings) and persisted in `~/.config/duckydeck-studio/kwin_rules.json`.
    - Exposed to QML via `deviceController.savedColorsJson`, `savePaletteColor(hex)`, and `removePaletteColor(hex)`.
 2. **Used Colors (`used_colors_json`):**
-   - Computed dynamically by [`DeviceControllerRust::collect_used_colors_json`](file:///home/millinr/Builds/Ducky/duckydeck-studio/src/bridge/device_controller.rs#L1002-L1022) across all loaded profiles (`prof.bg_color` and every slot's `custom_rgb`).
+   - Computed dynamically by [`collect_used_colors_json`](../src/bridge/serialize.rs) across all loaded profiles (`prof.bg_color` and every slot's `custom_rgb`).
    - Automatically refreshes whenever a profile or key color is modified.
 
 ---
 
-## 9. Persistence & File Locations
+## 9. Persistence, Credentials & File Locations
 
 | Path | Format | Contents |
 | :--- | :--- | :--- |
-| [`~/.config/duckydeck-studio/kwin_rules.json`](file:///home/millinr/.config/duckydeck-studio/kwin_rules.json) | JSON | Auto-Switcher rules, fallback profile, UI area text scales, tray preferences, **HTTP REST API Server config (`rest_api_*`)**, **Global Profile Change Webhook (`profile_webhook_*`)**, and **Saved Colors** palette. |
-| `~/.config/duckydeck-studio/home_assistant.json` | JSON | Home Assistant Web API connection (`base_url` and Long-Lived Access Token `access_token`) used for device/entity search. |
+| `~/.config/duckydeck-studio/kwin_rules.json` | JSON | Auto-Switcher rules, fallback profile, UI text scale, tray preferences, **HTTP REST API Server config (`rest_api_*`)**, **Global Profile Change Webhook (`profile_webhook_*`)**, and **Saved Colors** palette. Sensitive tokens are stored in the OS keyring (`keyring` crate) with `"__keyring__"` sentinel markers on disk. |
+| `~/.config/duckydeck-studio/home_assistant.json` | JSON | Home Assistant Web API connection (`base_url`; Long-Lived Access Token stored in OS keyring). |
 | `~/.config/duckydeck-studio/oled_widget_geometry.json` | JSON | Multi-monitor screen name (`screen_name`), position (`x`, `y`), size (`width`, `height`), `transparency_percent`, `always_on_top`, `frameless_mode`, and `show_rgb_dots` for the Desktop OLED Widget. |
 | `~/.config/duckydeck-studio/profile_templates.json` | JSON | User-created reusable profile templates saved from existing profiles (merged with built-in templates). |
 | `~/.local/share/duckydeck-studio/firmware_cache/official/` | Directory | Downloaded official dekuNukem `.bin` firmware binaries and `official_catalog.json` metadata cache verified by IEEE CRC32. |
@@ -242,38 +276,38 @@ DuckyDeck Studio distinguishes between **Standalone Hardware-Portable Capabiliti
    - Compiled `.dsb` bytecode (`STRING`, `KEYDOWN`, `DELAY`, `MOUSE_MOVE`, `SWC_SET`, `OLED_PRINT`, `GOTO_PROFILE`, etc.).
    - `config.txt` hardware directives: `BG_COLOR`, `KEYDOWN_COLOR`, `SWCOLOR_<N>`, `DIM_UNUSED_KEYS`, `IS_UPPER_HS`, `IS_LANDSCAPE`, `OLED_ROTATION` (`0°/90°/180°/270°`), and 5-character `z<N>`/`x<N>` OLED labels.
 2. **Host-Dependent (`💻 Requires DuckyDeck Studio Running`):**
-   - **Application Launcher (`// @DUCKYDECK_APPLAUNCH`)** and **Web API / Home Assistant Webhooks (`// @DUCKYDECK_WEBAPI`)**: The key script writes a trigger token to `_GV19` / `_GV18` (or emits `F13..F24`), which is polled over USB HID by `duckydeck-studio` and executed on the host PC.
+   - **Application Launcher (`// @DUCKYDECK_APPLAUNCH`)** and **Web API / Home Assistant Webhooks (`// @DUCKYDECK_WEBAPI`)**: The key script writes an encoded trigger word to `_GV31` via `encode_pgv31_trigger` (or emits `CONTROL ALT SHIFT F13..F24`), which is polled over USB HID by `duckydeck-studio` and executed on the host PC.
    - **Profile Change Webhooks (`PROFILE_WEBHOOK` per-profile & Global Webhook)**: Fired asynchronously by `duckydeck-studio` whenever the active profile changes via UI, hardware buttons, Auto-Switcher, or REST API. Excluded from microSD sync diffs.
    - **KWin Wayland Active-Window Auto-Switcher**: Driven by the KWin D-Bus script and `zbus` listener inside `duckydeck-studio`.
-   - **Desktop OLED Companion Widget (`OledDesktopWidget.qml`), 24-Char Extended Labels (`wz<N>`/`wx<N>`), and Independent Widget Rotation (`DW_ROTATION`)**: Rendered on the host desktop by `duckydeck-studio`. Changing `DW_ROTATION` updates the local profile cache and live widget immediately without marking the microSD card out of sync (`compute_profiles_fingerprint` and `compute_unsynced_changes_json` exclude `DW_ROTATION` and `PROFILE_WEBHOOK`, and `merge_host_only_profile_settings` preserves them across SD reloads).
-   - **Live USB HID RGB Streaming**: Pushes real-time LED frames via HID command `0x14` from `duckydeck-studio`.
+   - **Desktop OLED Companion Widget (`src/qml/OledDesktopWidget.qml`), 24-Char Extended Labels (`wz<N>`/`wx<N>`), and Independent Widget Rotation (`DW_ROTATION`)**: Rendered on the host desktop by `duckydeck-studio`.
 
 ---
 
-## 9.6 Firmware Versioning (`v1.0.0`) & Official Firmware Catalog Downloader
+## 9.6 Firmware Versioning (`v1.0.0`) & Official Firmware Catalog Downloader (`src/hardware/firmware.rs`)
 
-- **DuckyDeck Studio Firmware (`v1.0.0`)**: Built from `firmware/duckyPad-Pro/firmware/` (`DPP_FW_1.0.0_<crc32>.bin`) and identified over USB HID `GET_INFO` (`0x00`) via the `'D', 'D', 'S'` signature at bytes `20..22`. Adds `0°/90°/180°/270°` hardware OLED orientation and `0x80..0x9F` 1-bit monochrome key icons.
-- **Official dekuNukem Firmware Catalog Downloader**: `fetch_official_firmwares_from_site()` queries the official `dekuNukem/duckyPad-Pro` GitHub repository (`firmware/` directory and Releases API) to list available `DPP_FW_<ver>_<crc32>.bin` releases inside the Firmware Manager window. Clicking **Download .bin** or **Download & Install** invokes `download_official_firmware_binary()`, which downloads the `.bin` into `~/.local/share/duckydeck-studio/firmware_cache/official/` and verifies its IEEE CRC32 checksum against the filename before staging or flashing.
+- **DuckyDeck Studio Firmware (`v1.0.0`)**: Built from `firmware/duckyPad-Pro/firmware/` (`DPP_FW_1.0.0_ad2acc81.bin`, downloadable from the [GitHub Releases page](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.0.0)) and identified over USB HID `GET_INFO` (`0x00`) via the `'D', 'D', 'S'` signature at bytes `20..22`. Adds `0°/90°/180°/270°` hardware OLED orientation and `0x80..0x9F` 1-bit monochrome key icons.
+- **Official dekuNukem Firmware Catalog Downloader**: `fetch_official_firmwares_from_site()` in [`src/hardware/firmware.rs`](../src/hardware/firmware.rs) queries the official `dekuNukem/duckyPad-Pro` GitHub repository to list available `DPP_FW_<ver>_<crc32>.bin` releases inside the Firmware Manager window and verifies IEEE CRC32 checksums before staging.
 
 ---
 
 ## 9.7 Embedded HTTP REST API Server (`src/api_server.rs`) & Security Model
 
-DuckyDeck Studio embeds a stoppable/restartable HTTP/1.1 REST API server (`src/api_server.rs`) that dispatches `/api/v1/*` requests onto the Qt main thread via `CxxQtThread<qobject::DeviceController>::queue(...)` and awaits the JSON response over a bounded channel.
+DuckyDeck Studio embeds a bounded, stoppable/restartable HTTP/1.1 REST API server ([`src/api_server.rs`](../src/api_server.rs) and [`src/bridge/rest_routes.rs`](../src/bridge/rest_routes.rs)):
 
-- **Default Configuration**: Disabled by default (`rest_api_enabled = false`), bound to loopback `127.0.0.1:28491`, with Bearer Token authentication enabled (`rest_api_require_auth = true`) and a 160-bit CSPRNG/hash-derived token (`ddk_<40 hex chars>`).
-- **Constant-Time Token Verification**: All endpoints (except `/api/v1/health` and `OPTIONS` preflight) verify `Authorization: Bearer <token>` or `X-API-Token: <token>` in constant time (`constant_time_eq`) when `require_auth` is enabled.
-- **Security Implications**:
-  - Because the REST API can program arbitrary DuckyScript keystroke/mouse macros, sync to the microSD card, switch profiles, and invoke host actions (`APP_LAUNCH`, `WEB_API`, `SYS_ACTION`), binding to `0.0.0.0` exposes full device and host control over plain HTTP to the local network.
-  - Both the Settings UI and user documentation prominently warn users to keep `127.0.0.1` unless LAN access is explicitly needed, keep Bearer Token authentication enabled, and use an HTTPS reverse proxy or SSH/WireGuard tunnel for remote access.
+- **Default Configuration**: Disabled by default (`rest_api_enabled = false`), bound to loopback `127.0.0.1:28491`, with Bearer Token authentication enabled (`rest_api_require_auth = true`) and a 160-bit CSPRNG token (`ddk_<40 hex chars>`) persisted in the OS keyring.
+- **Resource & Concurrency Bounds**:
+  - **Connection Cap (`MAX_CONCURRENT_CONNECTIONS = 8`)**: Guarded by an `AtomicUsize` `ConnectionSlotGuard`; excess connections immediately receive `503 Service Unavailable` and close.
+  - **Request Size Limits**: Header block capped at `64 KB`; request body capped at `2 MB` (`MAX_BODY_BYTES`), returning `413 Payload Too Large` when `Content-Length` or body bytes exceed `2 MB`.
+  - **Qt Thread Timeout & Async Worker Jobs (`202 Accepted`)**: Synchronous routes wait at most `10 s` (`CONTROLLER_WAIT_TIMEOUT`) on the Qt main thread. Long-running operations (`POST /api/v1/sd/sync`, `POST /api/v1/sd/mount`, `POST /api/v1/sd/unmount`, `POST /api/v1/device/reboot`) immediately return `202 Accepted` with a job ID (`job_1`, `job_2`, ...) and execute on a background worker thread pollable via `GET /api/v1/jobs/{id}`.
+- **Constant-Time Token Verification**: All endpoints (except `/api/v1/health`, `/api/v1/openapi.json`, `/api/v1/swagger.json`, `/api/v1/openapi.yaml`, and `OPTIONS` preflight) verify `Authorization: Bearer <token>` or `X-API-Token: <token>` in constant time (`constant_time_eq`) when `require_auth` is enabled.
 
 ---
 
 ## 10. Building, Testing & Extending
 
-### Running Unit & Compiler Tests
+### Running Unit, Compiler & Lint Checks
 ```bash
-cargo test
+bash scripts/check.sh
 ```
 
 ### Building the Release Binary
@@ -283,8 +317,7 @@ install -Dm755 target/release/duckydeck-studio ~/.local/bin/duckydeck-studio
 ```
 
 ### Adding a New QObject Property or Invokable
-1. Declare the `#[qproperty(...)]` or `#[qinvokable]` signature inside `mod ffi` in [`src/bridge/device_controller.rs`](file:///home/millinr/Builds/Ducky/duckydeck-studio/src/bridge/device_controller.rs).
+1. Declare the `#[qproperty(...)]` or `#[qinvokable]` signature inside `mod ffi` in [`src/bridge/device_controller.rs`](../src/bridge/device_controller.rs).
 2. Add the backing field to `pub struct DeviceControllerRust` (with an initial value in `Default::default()`).
-3. Implement any `#[qinvokable]` method on `impl qobject::DeviceController`.
+3. Implement any `#[qinvokable]` method on `impl qobject::DeviceController` (delegating non-Qt logic to [`src/bridge/serialize.rs`](../src/bridge/serialize.rs), [`src/bridge/rest_routes.rs`](../src/bridge/rest_routes.rs), [`src/bridge/event_log.rs`](../src/bridge/event_log.rs), or [`src/bridge/showcase.rs`](../src/bridge/showcase.rs)).
 4. Note that CXX-Qt automatically converts `snake_case` Rust identifiers to `camelCase` in QML (e.g. `save_palette_color` becomes `deviceController.savePaletteColor(...)`).
-

@@ -83,8 +83,7 @@ pub fn save_web_api_destinations(destinations: &[WebApiDestination]) -> Result<(
     }
     let json = serde_json::to_string_pretty(destinations)
         .map_err(|e| format!("Failed serializing Web API destinations: {e}"))?;
-    fs::write(&path, json)
-        .map_err(|e| format!("Failed writing {}: {e}", path.display()))
+    fs::write(&path, json).map_err(|e| format!("Failed writing {}: {e}", path.display()))
 }
 
 pub fn upsert_web_api_destination(
@@ -140,7 +139,9 @@ pub fn delete_web_api_destination_by_name(name: &str) -> Result<Vec<WebApiDestin
     Ok(list)
 }
 
-pub fn seed_web_api_destinations_from_profiles(profiles: &[DuckyProfile]) -> Vec<WebApiDestination> {
+pub fn seed_web_api_destinations_from_profiles(
+    profiles: &[DuckyProfile],
+) -> Vec<WebApiDestination> {
     let path = web_api_destinations_path();
     let existing = load_web_api_destinations();
     if path.exists() || !existing.is_empty() {
@@ -403,7 +404,18 @@ pub fn apply_web_api_config_to_script(
         let up = normalized.fkey.trim().to_ascii_uppercase();
         if matches!(
             up.as_str(),
-            "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24"
+            "F13"
+                | "F14"
+                | "F15"
+                | "F16"
+                | "F17"
+                | "F18"
+                | "F19"
+                | "F20"
+                | "F21"
+                | "F22"
+                | "F23"
+                | "F24"
         ) {
             up
         } else {
@@ -438,7 +450,6 @@ pub fn apply_web_api_config_to_script(
     }
     out
 }
-
 
 pub fn sync_profile_web_api_triggers(profiles: &mut [DuckyProfile]) -> bool {
     let mut changed = false;
@@ -620,7 +631,6 @@ pub fn set_batch_key_leds_hid(updates: &[(usize, [u8; 3])]) -> bool {
     any_ok
 }
 
-
 pub async fn flash_slot_led_feedback(slot_num: usize, success: bool, restore_rgb: [u8; 3]) {
     if !(1..=ONBOARD_KEY_COUNT).contains(&slot_num) {
         return;
@@ -767,9 +777,7 @@ pub async fn execute_web_api_request(input_cfg: &WebApiConfig) -> WebApiExecutio
     let body_trimmed = cfg.body.trim();
     if !body_trimmed.is_empty() && method != reqwest::Method::GET && method != reqwest::Method::HEAD
     {
-        if !has_content_type
-            && (body_trimmed.starts_with('{') || body_trimmed.starts_with('['))
-        {
+        if !has_content_type && (body_trimmed.starts_with('{') || body_trimmed.starts_with('[')) {
             req = req.header("Content-Type", "application/json");
         }
         req = req.body(cfg.body.clone());
@@ -796,7 +804,9 @@ pub async fn execute_web_api_request(input_cfg: &WebApiConfig) -> WebApiExecutio
             };
             let reason = status.canonical_reason().unwrap_or("");
             let summary = if preview.is_empty() {
-                format!("HTTP {code} {reason} ({elapsed_ms} ms)").trim().to_string()
+                format!("HTTP {code} {reason} ({elapsed_ms} ms)")
+                    .trim()
+                    .to_string()
             } else {
                 format!("HTTP {code} {reason} ({elapsed_ms} ms) — {preview}")
             };
@@ -817,8 +827,7 @@ pub async fn execute_web_api_request(input_cfg: &WebApiConfig) -> WebApiExecutio
                 format!("Connection error: {e}")
             } else {
                 format!("Request error: {e}")
-            }
-            ;
+            };
             WebApiExecutionResult {
                 ok: false,
                 status_code: 0,
@@ -830,7 +839,6 @@ pub async fn execute_web_api_request(input_cfg: &WebApiConfig) -> WebApiExecutio
         }
     }
 }
-
 
 // ============================================================================
 // Home Assistant Web API Connection & Entity Discovery + Profile Change Webhook
@@ -886,7 +894,10 @@ pub fn load_home_assistant_config() -> HomeAssistantConfig {
                 if let Some((k, v)) = t.split_once(':') {
                     if k.trim().eq_ignore_ascii_case("authorization") {
                         let val = v.trim();
-                        if let Some(rest) = val.strip_prefix("Bearer ").or_else(|| val.strip_prefix("bearer ")) {
+                        if let Some(rest) = val
+                            .strip_prefix("Bearer ")
+                            .or_else(|| val.strip_prefix("bearer "))
+                        {
                             token = rest.trim().to_string();
                         }
                     }
@@ -907,7 +918,10 @@ pub fn load_home_assistant_config() -> HomeAssistantConfig {
     }
 }
 
-pub fn save_home_assistant_config(base_url: &str, access_token: &str) -> Result<HomeAssistantConfig, String> {
+pub fn save_home_assistant_config(
+    base_url: &str,
+    access_token: &str,
+) -> Result<HomeAssistantConfig, String> {
     let mut clean_url = base_url.trim().trim_end_matches('/').to_string();
     if let Some(idx) = clean_url.find("/api/") {
         clean_url = clean_url[..idx].trim_end_matches('/').to_string();
@@ -937,7 +951,9 @@ pub fn save_home_assistant_config(base_url: &str, access_token: &str) -> Result<
 
 pub fn suggested_ha_service_for_domain(domain: &str) -> &'static str {
     match domain {
-        "light" | "switch" | "input_boolean" | "fan" | "cover" | "climate" | "humidifier" => "toggle",
+        "light" | "switch" | "input_boolean" | "fan" | "cover" | "climate" | "humidifier" => {
+            "toggle"
+        }
         "media_player" => "media_play_pause",
         "scene" | "script" => "turn_on",
         "automation" => "trigger",
@@ -956,7 +972,10 @@ pub async fn fetch_and_search_home_assistant_entities(
 ) -> Result<Vec<HomeAssistantEntity>, String> {
     let saved = save_home_assistant_config(base_url, access_token)?;
     if saved.base_url.is_empty() {
-        return Err("Home Assistant Base URL is required (e.g. http://homeassistant.local:8123)".to_string());
+        return Err(
+            "Home Assistant Base URL is required (e.g. http://homeassistant.local:8123)"
+                .to_string(),
+        );
     }
     if saved.access_token.is_empty() {
         return Err("Home Assistant Long-Lived Access Token is required".to_string());
@@ -1027,7 +1046,11 @@ pub async fn fetch_and_search_home_assistant_entities(
         let Some(entity_id) = item.get("entity_id").and_then(|v| v.as_str()) else {
             continue;
         };
-        let domain = entity_id.split('.').next().unwrap_or("").to_ascii_lowercase();
+        let domain = entity_id
+            .split('.')
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase();
         if !dom_lower.is_empty() && dom_lower != "all" {
             if domain != dom_lower {
                 continue;
@@ -1084,7 +1107,11 @@ pub async fn fetch_and_search_home_assistant_entities(
     results.sort_by(|a, b| {
         a.domain
             .cmp(&b.domain)
-            .then_with(|| a.friendly_name.to_ascii_lowercase().cmp(&b.friendly_name.to_ascii_lowercase()))
+            .then_with(|| {
+                a.friendly_name
+                    .to_ascii_lowercase()
+                    .cmp(&b.friendly_name.to_ascii_lowercase())
+            })
             .then_with(|| a.entity_id.cmp(&b.entity_id))
     });
 
@@ -1122,14 +1149,18 @@ pub fn expand_profile_webhook_template(
         })
         .to_string();
     }
-    let escape_json = |s: &str| -> String {
-        s.replace('\\', "\\\\").replace('"', "\\\"")
-    };
+    let escape_json = |s: &str| -> String { s.replace('\\', "\\\\").replace('"', "\\\"") };
     template
         .replace("{{profile_number}}", &profile_number.to_string())
         .replace("{{profile_name}}", &escape_json(profile_name))
-        .replace("{{previous_profile_number}}", &previous_profile_number.to_string())
-        .replace("{{previous_profile_name}}", &escape_json(previous_profile_name))
+        .replace(
+            "{{previous_profile_number}}",
+            &previous_profile_number.to_string(),
+        )
+        .replace(
+            "{{previous_profile_name}}",
+            &escape_json(previous_profile_name),
+        )
         .replace("{{source}}", &escape_json(source))
         .replace("{{device_serial}}", &escape_json(serial))
         .replace("{{timestamp}}", &ts.to_string())
@@ -1180,4 +1211,3 @@ pub async fn execute_profile_webhook_request(
     };
     execute_web_api_request(&web_cfg).await
 }
-

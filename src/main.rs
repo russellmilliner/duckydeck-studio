@@ -301,7 +301,10 @@ fn run_cli_list_profiles() -> i32 {
                 profiles.len(),
                 source_dir.display()
             );
-            println!("{:<6} {:<24} {:<10} {:<10}", "SLOT", "NAME", "KEYS", "BG_COLOR");
+            println!(
+                "{:<6} {:<24} {:<10} {:<10}",
+                "SLOT", "NAME", "KEYS", "BG_COLOR"
+            );
             println!("{}", "-".repeat(54));
             for p in &profiles {
                 println!(
@@ -384,9 +387,7 @@ fn run_cli_compile(input_path: &str, output_override: Option<&str>) -> i32 {
     if !result.is_success {
         eprintln!(
             "✗ Compile Error on line {}: {}\n  > {}",
-            result.error_line_number_starting_from_1,
-            result.error_comment,
-            result.error_line_str
+            result.error_line_number_starting_from_1, result.error_comment, result.error_line_str
         );
         return 1;
     }
@@ -627,7 +628,10 @@ fn run_cli_export_group(dest_str: &str) -> i32 {
                 crate::bridge::device_controller::record_system_event(
                     "WARN",
                     "STORAGE",
-                    format!("Failed creating export group parent dir {}: {e}", parent.display()),
+                    format!(
+                        "Failed creating export group parent dir {}: {e}",
+                        parent.display()
+                    ),
                 );
             }
         }
@@ -658,14 +662,16 @@ fn run_cli_import_group(src_str: &str) -> i32 {
     }
     let abs_src = fs::canonicalize(&src).unwrap_or(src.clone());
 
-    if let Ok(pids) = send_ipc_command_to_running_instance(&format!(
-        "import-group:{}",
-        abs_src.display()
-    )) {
+    if let Ok(pids) =
+        send_ipc_command_to_running_instance(&format!("import-group:{}", abs_src.display()))
+    {
         println!(
             "✓ Imported Profile Group '{}' into running DuckyDeck Studio instance (PID {})",
             abs_src.display(),
-            pids.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", ")
+            pids.iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
         );
         return 0;
     }
@@ -681,7 +687,10 @@ fn run_cli_import_group(src_str: &str) -> i32 {
     let mut bundle: ProfileGroupBundle = match serde_json::from_str(&raw) {
         Ok(b) => b,
         Err(e) => {
-            eprintln!("Error parsing .duckygroup.json '{}': {e}", abs_src.display());
+            eprintln!(
+                "Error parsing .duckygroup.json '{}': {e}",
+                abs_src.display()
+            );
             return 1;
         }
     };
@@ -703,13 +712,18 @@ fn run_cli_import_group(src_str: &str) -> i32 {
             crate::bridge::device_controller::record_system_event(
                 "WARN",
                 "STORAGE",
-                format!("Failed writing imported group to SD {}: {e}", sd_root.display()),
+                format!(
+                    "Failed writing imported group to SD {}: {e}",
+                    sd_root.display()
+                ),
             );
         }
     }
 
-    let mut sw = SwitcherState::default();
-    sw.rules = bundle.auto_switch_rules;
+    let mut sw = SwitcherState {
+        rules: bundle.auto_switch_rules,
+        ..Default::default()
+    };
     if let Some(fb) = bundle.default_fallback_profile {
         sw.default_profile = Some(fb.clamp(1, bundle.profiles.len() as u8));
     }
@@ -795,7 +809,10 @@ fn run_cli_export_profile(target: &str, output_override: Option<&str>) -> i32 {
                 crate::bridge::device_controller::record_system_event(
                     "WARN",
                     "STORAGE",
-                    format!("Failed creating export profile parent dir {}: {e}", parent.display()),
+                    format!(
+                        "Failed creating export profile parent dir {}: {e}",
+                        parent.display()
+                    ),
                 );
             }
         }
@@ -826,14 +843,16 @@ fn run_cli_import_profile(src_str: &str) -> i32 {
     }
     let abs_src = fs::canonicalize(&src).unwrap_or(src.clone());
 
-    if let Ok(pids) = send_ipc_command_to_running_instance(&format!(
-        "import-profile:{}",
-        abs_src.display()
-    )) {
+    if let Ok(pids) =
+        send_ipc_command_to_running_instance(&format!("import-profile:{}", abs_src.display()))
+    {
         println!(
             "✓ Imported Profile '{}' into running DuckyDeck Studio instance (PID {})",
             abs_src.display(),
-            pids.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", ")
+            pids.iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
         );
         return 0;
     }
@@ -852,11 +871,15 @@ fn run_cli_import_profile(src_str: &str) -> i32 {
         } else if let Ok(prof) = serde_json::from_str::<DuckyProfile>(&raw) {
             (prof, Vec::new())
         } else {
-            eprintln!("Error: Invalid .duckyprofile.json format in '{}'", abs_src.display());
+            eprintln!(
+                "Error: Invalid .duckyprofile.json format in '{}'",
+                abs_src.display()
+            );
             return 1;
         };
 
-    let (mut profiles, _) = load_current_profiles().unwrap_or_else(|_| (Vec::new(), profile_cache_dir()));
+    let (mut profiles, _) =
+        load_current_profiles().unwrap_or_else(|_| (Vec::new(), profile_cache_dir()));
     if profiles.len() >= 64 {
         eprintln!("Error: Maximum of 64 profiles reached.");
         return 1;
@@ -874,7 +897,10 @@ fn run_cli_import_profile(src_str: &str) -> i32 {
             crate::bridge::device_controller::record_system_event(
                 "WARN",
                 "STORAGE",
-                format!("Failed writing imported profile to SD {}: {e}", sd_root.display()),
+                format!(
+                    "Failed writing imported profile to SD {}: {e}",
+                    sd_root.display()
+                ),
             );
         }
     }
@@ -914,7 +940,10 @@ fn run_cli_auto_switch(mode_str: &str) -> i32 {
         println!(
             "✓ Sent '{}' to running DuckyDeck Studio instance (PID {})",
             ipc_cmd,
-            pids.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", ")
+            pids.iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
         );
         return 0;
     }
@@ -942,7 +971,10 @@ fn run_cli_window_ipc(cmd: &str) -> i32 {
             println!(
                 "✓ Sent '{}' to running DuckyDeck Studio instance (PID {})",
                 cmd,
-                pids.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", ")
+                pids.iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             );
             0
         }
@@ -984,7 +1016,10 @@ fn run_cli_sync_rtc() -> i32 {
             format!("HID read_timeout after CLI RTC sync failed: {e}"),
         );
     }
-    println!("✓ Synchronized duckyPad RTC with host clock ({})", now.format("%Y-%m-%d %H:%M:%S %:z"));
+    println!(
+        "✓ Synchronized duckyPad RTC with host clock ({})",
+        now.format("%Y-%m-%d %H:%M:%S %:z")
+    );
     0
 }
 
@@ -998,7 +1033,10 @@ fn run_cli_sleep_wake(sleep: bool) -> i32 {
     tx[1] = 0x05;
     tx[2] = if sleep { 0x15 } else { 0x16 };
     if let Err(e) = device.write(&tx) {
-        eprintln!("Error sending {} command: {e}", if sleep { "sleep" } else { "wake" });
+        eprintln!(
+            "Error sending {} command: {e}",
+            if sleep { "sleep" } else { "wake" }
+        );
         return 1;
     }
     let mut rx = [0u8; 64];
@@ -1011,7 +1049,11 @@ fn run_cli_sleep_wake(sleep: bool) -> i32 {
     }
     println!(
         "✓ Connected duckyPad {}",
-        if sleep { "entered sleep mode" } else { "woke from sleep mode" }
+        if sleep {
+            "entered sleep mode"
+        } else {
+            "woke from sleep mode"
+        }
     );
     0
 }
@@ -1121,7 +1163,9 @@ fn main() {
                 if i + 1 < args.len() {
                     std::process::exit(run_cli_export_group(&args[i + 1]));
                 } else {
-                    eprintln!("Error: --export-group requires a destination .duckygroup.json path.");
+                    eprintln!(
+                        "Error: --export-group requires a destination .duckygroup.json path."
+                    );
                     std::process::exit(1);
                 }
             }
@@ -1173,7 +1217,9 @@ fn main() {
                 if i + 2 < args.len() {
                     std::process::exit(run_cli_set_led(&args[i + 1], &args[i + 2]));
                 } else {
-                    eprintln!("Error: --set-led requires <KEY 1..20|all> and <COLOR #RRGGBB|R,G,B>.");
+                    eprintln!(
+                        "Error: --set-led requires <KEY 1..20|all> and <COLOR #RRGGBB|R,G,B>."
+                    );
                     std::process::exit(1);
                 }
             }
@@ -1231,18 +1277,16 @@ fn main() {
                     std::process::exit(1);
                 }
             }
-            "--reboot" => {
-                match reboot_duckypad() {
-                    Ok(()) => {
-                        println!("✓ Sent USB HID reboot command to duckyPad.");
-                        std::process::exit(0);
-                    }
-                    Err(e) => {
-                        eprintln!("Error rebooting duckyPad: {e}");
-                        std::process::exit(1);
-                    }
+            "--reboot" => match reboot_duckypad() {
+                Ok(()) => {
+                    println!("✓ Sent USB HID reboot command to duckyPad.");
+                    std::process::exit(0);
                 }
-            }
+                Err(e) => {
+                    eprintln!("Error rebooting duckyPad: {e}");
+                    std::process::exit(1);
+                }
+            },
             other => {
                 if let Some(val) = other.strip_prefix("--profile=") {
                     startup_profile = Some(val.to_string());
@@ -1270,7 +1314,9 @@ fn main() {
                     start_minimized = true;
                     foreground_mode = true;
                 } else if !other.starts_with("-psn_") {
-                    eprintln!("Unknown option: '{other}'. Run 'duckydeck-studio --help' for usage.");
+                    eprintln!(
+                        "Unknown option: '{other}'. Run 'duckydeck-studio --help' for usage."
+                    );
                     std::process::exit(2);
                 }
             }
@@ -1343,9 +1389,7 @@ fn main() {
                 let has_gui_display = env::var("WAYLAND_DISPLAY")
                     .map(|v| !v.is_empty())
                     .unwrap_or(false)
-                    || env::var("DISPLAY")
-                        .map(|v| !v.is_empty())
-                        .unwrap_or(false);
+                    || env::var("DISPLAY").map(|v| !v.is_empty()).unwrap_or(false);
                 if !has_gui_display {
                     print!(
                         "DuckyDeck Studio is already running (PID {}). Close previous instance and start new one? [Y/n]: ",
@@ -1387,7 +1431,11 @@ fn main() {
     {
         if let Ok(exe) = env::current_exe() {
             let mut child_args = args.clone();
-            if start_minimized && !child_args.iter().any(|a| matches!(a.as_str(), "-m" | "--minimize" | "--minimized" | "--tray")) {
+            if start_minimized
+                && !child_args
+                    .iter()
+                    .any(|a| matches!(a.as_str(), "-m" | "--minimize" | "--minimized" | "--tray"))
+            {
                 child_args.push("--minimize".to_string());
             }
             let mut cmd = Command::new(exe);
@@ -1452,10 +1500,10 @@ mod ui_test_suite {
         assert!(openapi_yaml_path.exists(), "docs/openapi.yaml must exist");
         assert!(rest_api_md_path.exists(), "docs/REST_API.md must exist");
 
-        let openapi_raw = std::fs::read_to_string(&openapi_json_path)
-            .expect("Failed to read docs/openapi.json");
-        let openapi_val: serde_json::Value = serde_json::from_str(&openapi_raw)
-            .expect("docs/openapi.json must be valid JSON");
+        let openapi_raw =
+            std::fs::read_to_string(&openapi_json_path).expect("Failed to read docs/openapi.json");
+        let openapi_val: serde_json::Value =
+            serde_json::from_str(&openapi_raw).expect("docs/openapi.json must be valid JSON");
 
         assert_eq!(
             openapi_val.get("openapi").and_then(|v| v.as_str()),
@@ -1505,12 +1553,15 @@ mod ui_test_suite {
             );
         }
 
-        let swagger_raw = std::fs::read_to_string(&swagger_json_path)
-            .expect("Failed to read docs/swagger.json");
-        let swagger_val: serde_json::Value = serde_json::from_str(&swagger_raw)
-            .expect("docs/swagger.json must be valid JSON");
+        let swagger_raw =
+            std::fs::read_to_string(&swagger_json_path).expect("Failed to read docs/swagger.json");
+        let swagger_val: serde_json::Value =
+            serde_json::from_str(&swagger_raw).expect("docs/swagger.json must be valid JSON");
         assert!(
-            swagger_val.get("paths").and_then(|v| v.as_object()).is_some(),
+            swagger_val
+                .get("paths")
+                .and_then(|v| v.as_object())
+                .is_some(),
             "docs/swagger.json must contain paths"
         );
     }
@@ -1541,12 +1592,15 @@ mod ui_test_suite {
         ));
         if report_path.exists() {
             if let Err(e) = std::fs::remove_file(&report_path) {
-                eprintln!("Warning removing stale UI test report {}: {e}", report_path.display());
+                eprintln!(
+                    "Warning removing stale UI test report {}: {e}",
+                    report_path.display()
+                );
             }
         }
 
-        let current_test_bin = std::env::current_exe()
-            .expect("Failed to resolve current test executable path");
+        let current_test_bin =
+            std::env::current_exe().expect("Failed to resolve current test executable path");
 
         let mut cmd = Command::new(current_test_bin);
         cmd.arg("--exact")
@@ -1621,7 +1675,10 @@ mod ui_test_suite {
         if timed_out {
             if report_path.exists() {
                 if let Err(e) = std::fs::remove_file(&report_path) {
-                    eprintln!("Warning removing timed-out UI test report {}: {e}", report_path.display());
+                    eprintln!(
+                        "Warning removing timed-out UI test report {}: {e}",
+                        report_path.display()
+                    );
                 }
             }
             panic!(
@@ -1643,11 +1700,14 @@ mod ui_test_suite {
         let report_raw = std::fs::read_to_string(&report_path)
             .expect("Failed to read generated UI test report JSON");
         if let Err(e) = std::fs::remove_file(&report_path) {
-            eprintln!("Warning removing UI test report {}: {e}", report_path.display());
+            eprintln!(
+                "Warning removing UI test report {}: {e}",
+                report_path.display()
+            );
         }
 
-        let report: serde_json::Value = serde_json::from_str(&report_raw)
-            .expect("UI test report must be valid JSON");
+        let report: serde_json::Value =
+            serde_json::from_str(&report_raw).expect("UI test report must be valid JSON");
 
         let passed = report
             .get("passed")
@@ -1686,17 +1746,20 @@ mod ui_test_suite {
             .unwrap_or(0);
 
         assert_eq!(
-            behavioral_failures, 0,
+            behavioral_failures,
+            0,
             "UI behavioral checks failed: {}",
             serde_json::to_string_pretty(&report["behavioralResults"]).unwrap_or_default()
         );
         assert_eq!(
-            overflow_count, 0,
+            overflow_count,
+            0,
             "UI overflow violations detected: {}",
             serde_json::to_string_pretty(&report["overflowViolations"]).unwrap_or_default()
         );
         assert_eq!(
-            contrast_count, 0,
+            contrast_count,
+            0,
             "UI contrast violations detected: {}",
             serde_json::to_string_pretty(&report["contrastViolations"]).unwrap_or_default()
         );
@@ -1706,7 +1769,8 @@ mod ui_test_suite {
             serde_json::to_string_pretty(&report["scrollBarStyleViolations"]).unwrap_or_default()
         );
         assert_eq!(
-            min_font_pt_violations_count, 0,
+            min_font_pt_violations_count,
+            0,
             "UI minimum 10pt font size violations detected: {}",
             serde_json::to_string_pretty(&report["minFontPointSizeViolations"]).unwrap_or_default()
         );
@@ -1751,4 +1815,3 @@ mod ui_test_suite {
         );
     }
 }
-

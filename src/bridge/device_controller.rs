@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -7,14 +9,12 @@ pub mod qobject {
 
         fn duckydeck_sync_tray(
             controller: Pin<&mut DeviceController>,
-            use_light_on_dark_icon: bool,
             icon_mode: &QString,
             status_header: &QString,
             profile_header: &QString,
             sd_space_header: &QString,
             tooltip_text: &QString,
-            auto_switch_enabled: bool,
-            autostart_enabled: bool,
+            flags: u8,
         );
         fn duckydeck_show_main_window();
         fn duckydeck_hide_main_window();
@@ -265,11 +265,7 @@ pub mod qobject {
         );
 
         #[qinvokable]
-        fn set_auto_switch_timings(
-            self: Pin<&mut DeviceController>,
-            settle_ms: i32,
-            dwell_ms: i32,
-        );
+        fn set_auto_switch_timings(self: Pin<&mut DeviceController>, settle_ms: i32, dwell_ms: i32);
 
         #[qinvokable]
         fn set_script_editor_open(self: Pin<&mut DeviceController>, open: bool);
@@ -350,10 +346,8 @@ pub mod qobject {
         ) -> bool;
 
         #[qinvokable]
-        fn import_profile_from_path(
-            self: Pin<&mut DeviceController>,
-            source_path: QString,
-        ) -> bool;
+        fn import_profile_from_path(self: Pin<&mut DeviceController>, source_path: QString)
+            -> bool;
 
         #[qinvokable]
         fn save_profile_group(
@@ -363,10 +357,7 @@ pub mod qobject {
         ) -> bool;
 
         #[qinvokable]
-        fn load_profile_group(
-            self: Pin<&mut DeviceController>,
-            source_path: QString,
-        ) -> bool;
+        fn load_profile_group(self: Pin<&mut DeviceController>, source_path: QString) -> bool;
 
         #[qinvokable]
         fn create_new_profile_group(
@@ -426,11 +417,7 @@ pub mod qobject {
         fn scrape_app_shortcuts_json(self: &DeviceController, app_name: QString) -> QString;
 
         #[qinvokable]
-        fn generate_ai_macro(
-            self: Pin<&mut DeviceController>,
-            app_name: QString,
-            prompt: QString,
-        );
+        fn generate_ai_macro(self: Pin<&mut DeviceController>, app_name: QString, prompt: QString);
 
         #[qinvokable]
         fn check_firmware_update(self: Pin<&mut DeviceController>, manual: bool);
@@ -480,10 +467,7 @@ pub mod qobject {
 
         #[qinvokable]
         #[cxx_name = "deleteWebApiDestination"]
-        fn delete_web_api_destination(
-            self: Pin<&mut DeviceController>,
-            name: QString,
-        ) -> QString;
+        fn delete_web_api_destination(self: Pin<&mut DeviceController>, name: QString) -> QString;
 
         #[qinvokable]
         fn refresh_installed_apps(self: Pin<&mut DeviceController>) -> QString;
@@ -557,11 +541,7 @@ pub mod qobject {
 
         #[qinvokable]
         #[cxx_name = "writeUiTestReport"]
-        fn write_ui_test_report(
-            self: &DeviceController,
-            report_json: QString,
-            exit_code: i32,
-        );
+        fn write_ui_test_report(self: &DeviceController, report_json: QString, exit_code: i32);
 
         #[qinvokable]
         fn is_start_minimized_mode(self: &DeviceController) -> bool;
@@ -666,10 +646,8 @@ pub mod qobject {
 
         #[qinvokable]
         #[cxx_name = "setActiveProfileOledRotation"]
-        fn set_active_profile_oled_rotation(
-            self: Pin<&mut DeviceController>,
-            degrees: i32,
-        ) -> bool;
+        fn set_active_profile_oled_rotation(self: Pin<&mut DeviceController>, degrees: i32)
+            -> bool;
 
         #[qinvokable]
         #[cxx_name = "setActiveProfileWidgetRotation"]
@@ -693,10 +671,7 @@ pub mod qobject {
 
         #[qinvokable]
         #[cxx_name = "deleteProfileTemplate"]
-        fn delete_profile_template(
-            self: Pin<&mut DeviceController>,
-            template_id: QString,
-        ) -> bool;
+        fn delete_profile_template(self: Pin<&mut DeviceController>, template_id: QString) -> bool;
 
         #[qinvokable]
         #[cxx_name = "createProfileFromTemplate"]
@@ -839,8 +814,7 @@ use crate::hardware::storage::{
     execute_app_launch, execute_profile_webhook_request, execute_web_api_request,
     extract_app_launch_config, extract_web_api_config, fetch_and_search_home_assistant_entities,
     fetch_official_firmwares_from_site, find_duckypad_msc_block_device, find_mounted_duckypad_sd,
-    flash_slot_led_feedback, get_sd_card_space_info, 
-    instantiate_profile_from_template, 
+    flash_slot_led_feedback, get_sd_card_space_info, instantiate_profile_from_template,
     list_available_duckypad_pro_firmwares, load_all_sd_profiles, load_home_assistant_config,
     load_profiles_for_connected_device, load_web_api_destinations, mark_profiles_sd_synced,
     merge_host_only_profile_settings, mount_duckypad_sd_only, oled_label_to_hardware_ascii,
@@ -858,9 +832,8 @@ use crate::hardware::storage::{
     PID_DUCKYPAD_PRO,
 };
 use crate::kwin::auto_switcher::{
-    is_kde_autostart_enabled, is_web_browser_class,
-    set_kde_autostart_enabled, strip_browser_title_suffix, sync_local_desktop_and_icon,
-    AutoSwitchRule, SwitcherState,
+    is_kde_autostart_enabled, is_web_browser_class, set_kde_autostart_enabled,
+    strip_browser_title_suffix, sync_local_desktop_and_icon, AutoSwitchRule, SwitcherState,
 };
 
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -894,6 +867,16 @@ pub fn run_application(start_minimized: bool) -> i32 {
         sync_local_desktop_and_icon(true);
     }
     qobject::duckydeck_run_app(start_minimized)
+}
+
+pub struct SlotConfigSaveParams {
+    pub slot_number: i32,
+    pub label1: String,
+    pub label2: String,
+    pub on_press_script: String,
+    pub on_release_script: String,
+    pub allow_abort: bool,
+    pub disable_autorepeat: bool,
 }
 
 pub struct DeviceControllerRust {
@@ -1038,8 +1021,8 @@ impl Default for DeviceControllerRust {
         }
 
         let initial_destinations = seed_web_api_destinations_from_profiles(&profiles);
-        let destinations_json = serde_json::to_string(&initial_destinations)
-            .unwrap_or_else(|_| "[]".to_string());
+        let destinations_json =
+            serde_json::to_string(&initial_destinations).unwrap_or_else(|_| "[]".to_string());
 
         if sync_profile_web_api_triggers(&mut profiles) {
             if let Some(ref info) = connected_info {
@@ -1143,7 +1126,11 @@ impl Default for DeviceControllerRust {
         let autostart = is_kde_autostart_enabled();
         if autostart {
             if let Err(e) = set_kde_autostart_enabled(true) {
-                record_system_event("WARN", "SYSTEM", format!("Failed refreshing KDE autostart: {e}"));
+                record_system_event(
+                    "WARN",
+                    "SYSTEM",
+                    format!("Failed refreshing KDE autostart: {e}"),
+                );
             }
         }
         let rules_json = Self::serialize_rules(&switcher.rules, &profiles);
@@ -1156,7 +1143,12 @@ impl Default for DeviceControllerRust {
             .map(|p| p.name.clone())
             .unwrap_or_else(|| "Default".to_string());
         let active_bg_hex = active_prof_obj
-            .map(|p| format!("#{:02x}{:02x}{:02x}", p.bg_color[0], p.bg_color[1], p.bg_color[2]))
+            .map(|p| {
+                format!(
+                    "#{:02x}{:02x}{:02x}",
+                    p.bg_color[0], p.bg_color[1], p.bg_color[2]
+                )
+            })
             .unwrap_or_else(|| "#00aaff".to_string());
         let slots_json = active_prof_obj
             .map(Self::serialize_profile_slots)
@@ -1280,7 +1272,6 @@ impl Default for DeviceControllerRust {
     }
 }
 
-
 impl DeviceControllerRust {
     pub fn collect_used_colors_json(profiles: &[DuckyProfile]) -> String {
         crate::bridge::serialize::collect_used_colors_json(profiles)
@@ -1392,16 +1383,17 @@ impl qobject::DeviceController {
         let mode_qstr = QString::from(&mode_str);
 
         if !is_ui_test_suite_env() {
+            let flags = (u8::from(use_light_on_dark_icon))
+                | (u8::from(auto_enabled) << 1)
+                | (u8::from(autostart) << 2);
             qobject::duckydeck_sync_tray(
                 self.as_mut(),
-                use_light_on_dark_icon,
                 &mode_qstr,
                 &status_header,
                 &profile_header,
                 &sd_space_header,
                 &tooltip_qstr,
-                auto_enabled,
-                autostart,
+                flags,
             );
         }
 
@@ -1444,7 +1436,10 @@ impl qobject::DeviceController {
                         record_system_event(
                             "WARN",
                             "STORAGE",
-                            format!("Failed writing test OLED state {}: {e}", test_state_path.trim()),
+                            format!(
+                                "Failed writing test OLED state {}: {e}",
+                                test_state_path.trim()
+                            ),
                         );
                     }
                 }
@@ -1798,8 +1793,7 @@ impl qobject::DeviceController {
             .set_sd_sync_result_state(QString::from("error"));
         self.as_mut()
             .set_sd_sync_step(QString::from("No duckyPad storage available"));
-        self.as_mut()
-            .set_sd_sync_result_summary(QString::from(msg));
+        self.as_mut().set_sd_sync_result_summary(QString::from(msg));
         self.as_mut().set_status_message(QString::from(msg));
         false
     }
@@ -1845,9 +1839,8 @@ impl qobject::DeviceController {
                 self.as_mut().set_sd_sync_progress(100);
                 self.as_mut()
                     .set_sd_sync_result_state(QString::from("success"));
-                self.as_mut().set_sd_sync_step(QString::from(
-                    "Validated: Profiles reloaded from microSD!",
-                ));
+                self.as_mut()
+                    .set_sd_sync_step(QString::from("Validated: Profiles reloaded from microSD!"));
                 self.as_mut()
                     .set_sd_sync_result_summary(QString::from(&summary));
             } else {
@@ -1894,9 +1887,8 @@ impl qobject::DeviceController {
             self.as_mut().set_sd_sync_log(QString::from(&format!(
                 "• Target storage: {label_display} (SN {dev_serial})\n• Mounting microSD and scanning profiles..."
             )));
-            self.as_mut().set_status_message(QString::from(
-                "Mounting and scanning duckyPad microSD...",
-            ));
+            self.as_mut()
+                .set_status_message(QString::from("Mounting and scanning duckyPad microSD..."));
 
             let qt_thread = self.qt_thread();
             let qt_thread_done = self.qt_thread();
@@ -1994,8 +1986,7 @@ impl qobject::DeviceController {
             .set_sd_sync_result_state(QString::from("error"));
         self.as_mut()
             .set_sd_sync_step(QString::from("No duckyPad storage available"));
-        self.as_mut()
-            .set_sd_sync_result_summary(QString::from(msg));
+        self.as_mut().set_sd_sync_result_summary(QString::from(msg));
         self.as_mut().set_status_message(QString::from(msg));
         false
     }
@@ -2048,7 +2039,9 @@ impl qobject::DeviceController {
                 let prev_serial = self.serial_number().to_string();
                 let need_profile_load = self.rust().sd_root_path.is_none()
                     && (self.rust().profiles.len() <= 1
-                        || (info.serial != "-" && prev_serial != "-" && prev_serial != info.serial));
+                        || (info.serial != "-"
+                            && prev_serial != "-"
+                            && prev_serial != info.serial));
 
                 if need_profile_load {
                     let loaded_opt = load_profiles_for_connected_device(info.pid, &info.serial)
@@ -2113,7 +2106,8 @@ impl qobject::DeviceController {
                     self.as_mut().set_model_name(QString::from("Disconnected"));
                     self.as_mut().set_firmware_version(QString::from("-"));
                     self.as_mut().set_serial_number(QString::from("-"));
-                    self.as_mut().set_latest_firmware_version(QString::from("-"));
+                    self.as_mut()
+                        .set_latest_firmware_version(QString::from("-"));
                     self.as_mut().set_firmware_update_available(false);
                     self.as_mut().set_status_message(QString::from(&msg));
                 }
@@ -2211,9 +2205,8 @@ impl qobject::DeviceController {
 
         match open_duckypad_hid().and_then(|dev| goto_profile_by_name(&dev, &name)) {
             Ok(()) => {
-                self.as_mut().set_status_message(QString::from(&format!(
-                    "Switched to profile '{name}'"
-                )));
+                self.as_mut()
+                    .set_status_message(QString::from(&format!("Switched to profile '{name}'")));
                 true
             }
             Err(e) => {
@@ -2424,8 +2417,7 @@ impl qobject::DeviceController {
                 let deleted_legacy_folder =
                     format!("profile{}_{}", deleted_prof.number, deleted_prof.name);
 
-                let mut old_to_new: HashMap<u8, u8> =
-                    HashMap::with_capacity(rust.profiles.len());
+                let mut old_to_new: HashMap<u8, u8> = HashMap::with_capacity(rust.profiles.len());
                 for (idx, prof) in rust.profiles.iter_mut().enumerate() {
                     let old_num = prof.number;
                     let new_num = (idx + 1) as u8;
@@ -2508,7 +2500,10 @@ impl qobject::DeviceController {
                                 record_system_event(
                                     "WARN",
                                     "STORAGE",
-                                    format!("Failed removing deleted profile dir {}: {e}", dir_path.display()),
+                                    format!(
+                                        "Failed removing deleted profile dir {}: {e}",
+                                        dir_path.display()
+                                    ),
                                 );
                             }
                         }
@@ -2530,9 +2525,8 @@ impl qobject::DeviceController {
         };
 
         let Some((deleted_name, saved_to_sd)) = delete_result else {
-            self.as_mut().set_status_message(QString::from(
-                "Cannot delete the last remaining profile",
-            ));
+            self.as_mut()
+                .set_status_message(QString::from("Cannot delete the last remaining profile"));
             return false;
         };
 
@@ -2562,11 +2556,7 @@ impl qobject::DeviceController {
         true
     }
 
-    pub fn reorder_profile(
-        mut self: Pin<&mut Self>,
-        from_index: i32,
-        to_index: i32,
-    ) -> bool {
+    pub fn reorder_profile(mut self: Pin<&mut Self>, from_index: i32, to_index: i32) -> bool {
         if from_index < 0 || to_index < 0 || from_index == to_index {
             return false;
         }
@@ -2660,13 +2650,7 @@ impl qobject::DeviceController {
         true
     }
 
-    pub fn set_key_rgb(
-        mut self: Pin<&mut Self>,
-        key_index: i32,
-        r: i32,
-        g: i32,
-        b: i32,
-    ) -> bool {
+    pub fn set_key_rgb(mut self: Pin<&mut Self>, key_index: i32, r: i32, g: i32, b: i32) -> bool {
         let slot_idx = (key_index.clamp(0, 19) + 1) as usize;
         let rgb = [
             r.clamp(0, 255) as u8,
@@ -2717,7 +2701,11 @@ impl qobject::DeviceController {
             if hid_ok {
                 let mut rx = [0u8; 64];
                 if let Err(e) = device.read_timeout(&mut rx, 200) {
-                    record_system_event("WARN", "HID", format!("HID ACK read timeout in set_key_rgb: {e}"));
+                    record_system_event(
+                        "WARN",
+                        "HID",
+                        format!("HID ACK read timeout in set_key_rgb: {e}"),
+                    );
                 }
             }
         }
@@ -2807,11 +2795,7 @@ impl qobject::DeviceController {
         let (found, prof_name, saved_to_sd) = {
             let rust = self.as_mut().rust_mut().get_mut();
             let sd_root = rust.sd_root_path.clone();
-            if let Some(prof) = rust
-                .profiles
-                .iter_mut()
-                .find(|p| p.number == target_num)
-            {
+            if let Some(prof) = rust.profiles.iter_mut().find(|p| p.number == target_num) {
                 let old_bg = prof.bg_color;
                 prof.bg_color = rgb;
                 for slot_idx in 1..=MAX_INPUT_SLOTS {
@@ -2898,11 +2882,7 @@ impl qobject::DeviceController {
             .apply_area_text_scale(QString::from("all"), scale_percent);
     }
 
-    pub fn apply_area_text_scale(
-        mut self: Pin<&mut Self>,
-        _area: QString,
-        scale_percent: i32,
-    ) {
+    pub fn apply_area_text_scale(mut self: Pin<&mut Self>, _area: QString, scale_percent: i32) {
         let clamped = scale_percent.clamp(75, 160);
 
         {
@@ -2942,9 +2922,8 @@ impl qobject::DeviceController {
     pub fn reset_all_text_scales(mut self: Pin<&mut Self>) {
         self.as_mut()
             .apply_area_text_scale(QString::from("all"), 100);
-        self.as_mut().set_status_message(QString::from(
-            "Application zoom reset to 100% (saved)",
-        ));
+        self.as_mut()
+            .set_status_message(QString::from("Application zoom reset to 100% (saved)"));
     }
 
     pub fn zoom_in_ui_text_scale(mut self: Pin<&mut Self>) -> i32 {
@@ -2988,12 +2967,7 @@ impl qobject::DeviceController {
         restored
     }
 
-    pub fn send_key_to_active_window(
-        &self,
-        qt_key: i32,
-        qt_modifiers: i32,
-        text: QString,
-    ) -> bool {
+    pub fn send_key_to_active_window(&self, qt_key: i32, qt_modifiers: i32, text: QString) -> bool {
         qobject::duckydeck_send_key_to_active_window(qt_key, qt_modifiers, &text)
     }
 
@@ -3025,7 +2999,11 @@ impl qobject::DeviceController {
         if ok {
             let mut rx = [0u8; 64];
             if let Err(e) = device.read_timeout(&mut rx, 200) {
-                record_system_event("WARN", "HID", format!("HID ACK read timeout in sync_rtc_clock: {e}"));
+                record_system_event(
+                    "WARN",
+                    "HID",
+                    format!("HID ACK read timeout in sync_rtc_clock: {e}"),
+                );
             }
             self.as_mut()
                 .set_status_message(QString::from("RTC synchronized with Linux host clock"));
@@ -3046,7 +3024,11 @@ impl qobject::DeviceController {
         if ok {
             let mut rx = [0u8; 64];
             if let Err(e) = device.read_timeout(&mut rx, 200) {
-                record_system_event("WARN", "HID", format!("HID ACK read timeout in set_sleep_state: {e}"));
+                record_system_event(
+                    "WARN",
+                    "HID",
+                    format!("HID ACK read timeout in set_sleep_state: {e}"),
+                );
             }
         }
         ok
@@ -3158,10 +3140,7 @@ impl qobject::DeviceController {
 
     pub fn load_sd_directory(mut self: Pin<&mut Self>, path: QString) -> bool {
         let raw_path = path.to_string();
-        let cleaned = raw_path
-            .strip_prefix("file://")
-            .unwrap_or(&raw_path)
-            .trim();
+        let cleaned = raw_path.strip_prefix("file://").unwrap_or(&raw_path).trim();
         if cleaned.is_empty() {
             return false;
         }
@@ -3189,7 +3168,10 @@ impl qobject::DeviceController {
                             let rust = self.as_mut().rust_mut().get_mut();
                             rust.sd_root_path = Some(parent.clone());
                             rust.profiles = vec![single_prof];
-                            mark_profiles_sd_synced(&rust.serial_number.to_string(), &rust.profiles);
+                            mark_profiles_sd_synced(
+                                &rust.serial_number.to_string(),
+                                &rust.profiles,
+                            );
                         }
                         self.as_mut()
                             .set_sd_mount_path(QString::from(parent.to_string_lossy().as_ref()));
@@ -3202,10 +3184,7 @@ impl qobject::DeviceController {
                         return true;
                     }
 
-                    let msg = format!(
-                        "No duckyPad profile folders found in {}",
-                        sd_root.display()
-                    );
+                    let msg = format!("No duckyPad profile folders found in {}", sd_root.display());
                     self.as_mut().set_status_message(QString::from(&msg));
                     return false;
                 }
@@ -3263,10 +3242,7 @@ impl qobject::DeviceController {
                 self.as_mut().set_active_profile(chosen_num);
                 self.as_mut().sync_active_profile_state();
 
-                let msg = format!(
-                    "Loaded {count} profile(s) from {}",
-                    sd_root.display()
-                );
+                let msg = format!("Loaded {count} profile(s) from {}", sd_root.display());
                 self.as_mut().set_status_message(QString::from(&msg));
                 true
             }
@@ -3311,16 +3287,12 @@ impl qobject::DeviceController {
         allow_abort: bool,
         disable_autorepeat: bool,
     ) -> QString {
-        crate::bridge::serialize::check_script_syntax_impl(
-            script,
-            allow_abort,
-            disable_autorepeat,
-        )
+        crate::bridge::serialize::check_script_syntax_impl(script, allow_abort, disable_autorepeat)
     }
 
     #[allow(clippy::too_many_arguments)]
     pub fn save_slot_config(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         slot_number: i32,
         label1: QString,
         label2: QString,
@@ -3329,6 +3301,30 @@ impl qobject::DeviceController {
         allow_abort: bool,
         disable_autorepeat: bool,
     ) -> bool {
+        self.save_slot_config_with_params(SlotConfigSaveParams {
+            slot_number,
+            label1: label1.to_string(),
+            label2: label2.to_string(),
+            on_press_script: on_press_script.to_string(),
+            on_release_script: on_release_script.to_string(),
+            allow_abort,
+            disable_autorepeat,
+        })
+    }
+
+    pub fn save_slot_config_with_params(
+        mut self: Pin<&mut Self>,
+        params: SlotConfigSaveParams,
+    ) -> bool {
+        let SlotConfigSaveParams {
+            slot_number,
+            label1,
+            label2,
+            on_press_script: press,
+            on_release_script: release,
+            allow_abort,
+            disable_autorepeat,
+        } = params;
         let slot_idx = slot_number.clamp(1, MAX_INPUT_SLOTS as i32) as usize;
         let active_num = *self.active_profile() as u8;
 
@@ -3350,10 +3346,8 @@ impl qobject::DeviceController {
             }
             out
         };
-        let l1: String = take_5_visible(&label1.to_string());
-        let l2: String = take_5_visible(&label2.to_string());
-        let press = on_press_script.to_string();
-        let release = on_release_script.to_string();
+        let l1: String = take_5_visible(&label1);
+        let l2: String = take_5_visible(&label2);
 
         // Pre-validate with DSVM v2 compiler so errors are caught before modifying state
         let mut press_dsb_bytes = 0usize;
@@ -3497,9 +3491,8 @@ impl qobject::DeviceController {
                 true
             }
             Err(e) => {
-                self.as_mut().set_status_message(QString::from(&format!(
-                    "Error saving profile: {e}"
-                )));
+                self.as_mut()
+                    .set_status_message(QString::from(&format!("Error saving profile: {e}")));
                 false
             }
         }
@@ -3556,7 +3549,7 @@ impl qobject::DeviceController {
                         // 2. Poll silent PGV _GV31 hardware trigger (0x444Bxxxx)
                         if !crate::hardware::storage::is_duckypad_hid_present() {
                             idle_ticks = idle_ticks.saturating_add(1);
-                            if idle_ticks % 10 != 0 {
+                            if !idle_ticks.is_multiple_of(10) {
                                 continue;
                             }
                         } else {
@@ -3841,11 +3834,7 @@ impl qobject::DeviceController {
         }
     }
 
-    pub fn set_auto_switch_config(
-        mut self: Pin<&mut Self>,
-        enabled: bool,
-        default_profile: i32,
-    ) {
+    pub fn set_auto_switch_config(mut self: Pin<&mut Self>, enabled: bool, default_profile: i32) {
         let fallback = if (1..=64).contains(&default_profile) {
             Some(default_profile as u8)
         } else {
@@ -3858,7 +3847,11 @@ impl qobject::DeviceController {
                 sw.enabled = enabled;
                 sw.default_profile = fallback;
                 if let Err(e) = sw.save_to_disk() {
-                    record_system_event("WARN", "CONFIG", format!("Failed saving auto-switch config: {e}"));
+                    record_system_event(
+                        "WARN",
+                        "CONFIG",
+                        format!("Failed saving auto-switch config: {e}"),
+                    );
                 }
             }
         }
@@ -3870,11 +3863,7 @@ impl qobject::DeviceController {
         self.as_mut().sync_active_profile_state();
     }
 
-    pub fn set_auto_switch_timings(
-        mut self: Pin<&mut Self>,
-        settle_ms: i32,
-        dwell_ms: i32,
-    ) {
+    pub fn set_auto_switch_timings(mut self: Pin<&mut Self>, settle_ms: i32, dwell_ms: i32) {
         let clamped_settle = settle_ms.clamp(0, 5000);
         let clamped_dwell = dwell_ms.clamp(0, 5000);
 
@@ -3884,7 +3873,11 @@ impl qobject::DeviceController {
                 sw.mouse_settle_ms = clamped_settle;
                 sw.window_dwell_ms = clamped_dwell;
                 if let Err(e) = sw.save_to_disk() {
-                    record_system_event("WARN", "CONFIG", format!("Failed saving auto-switch timings: {e}"));
+                    record_system_event(
+                        "WARN",
+                        "CONFIG",
+                        format!("Failed saving auto-switch timings: {e}"),
+                    );
                 }
             }
         }
@@ -3906,8 +3899,10 @@ impl qobject::DeviceController {
             }
             rust.switcher_state.clone()
         };
-        self.as_mut().set_last_picked_window_class(QString::from(""));
-        self.as_mut().set_last_picked_window_title(QString::from(""));
+        self.as_mut()
+            .set_last_picked_window_class(QString::from(""));
+        self.as_mut()
+            .set_last_picked_window_title(QString::from(""));
         self.as_mut().set_window_picker_armed(true);
         self.as_mut().set_status_message(QString::from(
             "🎯 Window Picker Armed — Click any open window with the crosshair cursor",
@@ -3963,9 +3958,7 @@ impl qobject::DeviceController {
                         }
                     }
                     Err(err) => {
-                        qobject
-                            .as_mut()
-                            .set_status_message(QString::from(&err));
+                        qobject.as_mut().set_status_message(QString::from(&err));
                     }
                 }
             });
@@ -4040,7 +4033,11 @@ impl qobject::DeviceController {
                 }
                 sw.loaded_from_disk = true;
                 if let Err(e) = sw.save_to_disk() {
-                    record_system_event("WARN", "CONFIG", format!("Failed saving auto-switch rule: {e}"));
+                    record_system_event(
+                        "WARN",
+                        "CONFIG",
+                        format!("Failed saving auto-switch rule: {e}"),
+                    );
                 }
             }
         }
@@ -4063,7 +4060,11 @@ impl qobject::DeviceController {
                     sw.rules.remove(idx);
                     sw.loaded_from_disk = true;
                     if let Err(e) = sw.save_to_disk() {
-                        record_system_event("WARN", "CONFIG", format!("Failed saving after removing rule: {e}"));
+                        record_system_event(
+                            "WARN",
+                            "CONFIG",
+                            format!("Failed saving after removing rule: {e}"),
+                        );
                     }
                     removed = true;
                 }
@@ -4093,7 +4094,11 @@ impl qobject::DeviceController {
                     sw.rules[idx].enabled = enabled;
                     sw.loaded_from_disk = true;
                     if let Err(e) = sw.save_to_disk() {
-                        record_system_event("WARN", "CONFIG", format!("Failed saving after toggling rule: {e}"));
+                        record_system_event(
+                            "WARN",
+                            "CONFIG",
+                            format!("Failed saving after toggling rule: {e}"),
+                        );
                     }
                     updated = true;
                 }
@@ -4129,7 +4134,11 @@ impl qobject::DeviceController {
                     sw.rules.insert(to_idx, rule);
                     sw.loaded_from_disk = true;
                     if let Err(e) = sw.save_to_disk() {
-                        record_system_event("WARN", "CONFIG", format!("Failed saving after reordering rule: {e}"));
+                        record_system_event(
+                            "WARN",
+                            "CONFIG",
+                            format!("Failed saving after reordering rule: {e}"),
+                        );
                     }
                     reordered = true;
                 }
@@ -4161,7 +4170,10 @@ impl qobject::DeviceController {
                 self.as_mut().set_autostart_enabled(enabled);
                 self.as_mut().sync_tray_state();
                 let msg = if enabled {
-                    format!("Added DuckyDeck Studio to KDE System Autostart ({})", path.display())
+                    format!(
+                        "Added DuckyDeck Studio to KDE System Autostart ({})",
+                        path.display()
+                    )
                 } else {
                     "Removed DuckyDeck Studio from KDE System Autostart".to_string()
                 };
@@ -4203,12 +4215,15 @@ impl qobject::DeviceController {
             if let Ok(mut sw) = rust.switcher_state.lock() {
                 sw.tray_icon_mode = normalized.clone();
                 if let Err(e) = sw.save_to_disk() {
-                    record_system_event("WARN", "CONFIG", format!("Failed saving tray icon mode: {e}"));
+                    record_system_event(
+                        "WARN",
+                        "CONFIG",
+                        format!("Failed saving tray icon mode: {e}"),
+                    );
                 }
             }
         }
-        self.as_mut()
-            .set_tray_icon_mode(QString::from(&normalized));
+        self.as_mut().set_tray_icon_mode(QString::from(&normalized));
         let use_light_on_dark_icon = match normalized.as_str() {
             "dark" => true,
             "light" => false,
@@ -4237,7 +4252,11 @@ impl qobject::DeviceController {
             if let Ok(mut sw) = rust.switcher_state.lock() {
                 sw.app_theme_mode = normalized.clone();
                 if let Err(e) = sw.save_to_disk() {
-                    record_system_event("WARN", "CONFIG", format!("Failed saving app theme mode: {e}"));
+                    record_system_event(
+                        "WARN",
+                        "CONFIG",
+                        format!("Failed saving app theme mode: {e}"),
+                    );
                 }
             }
         }
@@ -4310,9 +4329,8 @@ impl qobject::DeviceController {
                 true
             }
             Err(e) => {
-                self.as_mut().set_status_message(QString::from(&format!(
-                    "Failed to reboot duckyPad: {e}"
-                )));
+                self.as_mut()
+                    .set_status_message(QString::from(&format!("Failed to reboot duckyPad: {e}")));
                 false
             }
         }
@@ -4420,9 +4438,8 @@ impl qobject::DeviceController {
         match paste_res {
             Ok((desc, saved_sd)) => {
                 let suffix = if saved_sd { " (saved to SD)" } else { "" };
-                self.as_mut().set_status_message(QString::from(&format!(
-                    "📥 Pasted {desc}{suffix}"
-                )));
+                self.as_mut()
+                    .set_status_message(QString::from(&format!("📥 Pasted {desc}{suffix}")));
                 true
             }
             Err(e) => {
@@ -4463,9 +4480,8 @@ impl qobject::DeviceController {
 
         self.as_mut().sync_active_profile_state();
         let suffix = if saved_sd { " (saved to SD)" } else { "" };
-        self.as_mut().set_status_message(QString::from(&format!(
-            "Cleared Key #{slot_idx}{suffix}"
-        )));
+        self.as_mut()
+            .set_status_message(QString::from(&format!("Cleared Key #{slot_idx}{suffix}")));
         true
     }
 
@@ -4557,9 +4573,8 @@ impl qobject::DeviceController {
         } else {
             format!("Swapped Key #{from_idx} ⇄ Key #{to_idx}")
         };
-        self.as_mut().set_status_message(QString::from(&format!(
-            "✓ {action_word}{suffix}"
-        )));
+        self.as_mut()
+            .set_status_message(QString::from(&format!("✓ {action_word}{suffix}")));
         true
     }
 
@@ -4651,19 +4666,19 @@ impl qobject::DeviceController {
 
         // Support optional "[SHORTCUT:action|shortcut]" prefix from the UI picker while keeping
         // plain prompts working seamlessly.
-        let (picked_action_key, user_goal) = if let Some(rest) = raw_prompt.strip_prefix("[SHORTCUT:")
-        {
-            if let Some((meta, goal)) = rest.split_once("]\n") {
-                let picked = meta
-                    .split_once('|')
-                    .map(|(a, k)| (a.trim().to_string(), k.trim().to_string()));
-                (picked, goal.trim().to_string())
+        let (picked_action_key, user_goal) =
+            if let Some(rest) = raw_prompt.strip_prefix("[SHORTCUT:") {
+                if let Some((meta, goal)) = rest.split_once("]\n") {
+                    let picked = meta
+                        .split_once('|')
+                        .map(|(a, k)| (a.trim().to_string(), k.trim().to_string()));
+                    (picked, goal.trim().to_string())
+                } else {
+                    (None, raw_prompt)
+                }
             } else {
                 (None, raw_prompt)
-            }
-        } else {
-            (None, raw_prompt)
-        };
+            };
 
         let local_shortcuts = crate::ai::shortcut_scraper::scrape_kde_shortcuts(&app);
         let goal_lower = user_goal.to_lowercase();
@@ -4699,7 +4714,10 @@ impl qobject::DeviceController {
             ));
             (action, combo)
         } else {
-            ("Running Macro...".to_string(), "CONTROL SHIFT m".to_string())
+            (
+                "Running Macro...".to_string(),
+                "CONTROL SHIFT m".to_string(),
+            )
         };
 
         let oled_line: String = selected_label.chars().take(18).collect();
@@ -4842,8 +4860,7 @@ impl qobject::DeviceController {
     ) -> QString {
         let slot_idx = slot_number.clamp(1, MAX_INPUT_SLOTS as i32) as usize;
         let active_prof = (*self.active_profile()).clamp(1, 64) as u8;
-        let cfg: WebApiConfig =
-            serde_json::from_str(&config_json.to_string()).unwrap_or_default();
+        let cfg: WebApiConfig = serde_json::from_str(&config_json.to_string()).unwrap_or_default();
         let updated = apply_web_api_config_to_script(
             &existing_script.to_string(),
             &cfg,
@@ -4854,11 +4871,7 @@ impl qobject::DeviceController {
         QString::from(&updated)
     }
 
-    pub fn test_web_api_call(
-        mut self: Pin<&mut Self>,
-        config_json: QString,
-        slot_number: i32,
-    ) {
+    pub fn test_web_api_call(mut self: Pin<&mut Self>, config_json: QString, slot_number: i32) {
         if *self.web_api_test_busy() {
             return;
         }
@@ -4879,12 +4892,8 @@ impl qobject::DeviceController {
         let active_prof = (*self.active_profile()).clamp(1, 64) as u8;
         let restore_rgb = self.lookup_slot_rgb(active_prof, slot_idx);
         let source_label = format!("Test Web API (Profile #{active_prof}, Key {slot_idx})");
-        self.as_mut().dispatch_web_api_execution(
-            cfg,
-            slot_idx,
-            restore_rgb,
-            &source_label,
-        );
+        self.as_mut()
+            .dispatch_web_api_execution(cfg, slot_idx, restore_rgb, &source_label);
     }
 
     pub fn reload_web_api_destinations(mut self: Pin<&mut Self>) -> QString {
@@ -4950,10 +4959,7 @@ impl qobject::DeviceController {
         }
     }
 
-    pub fn delete_web_api_destination(
-        mut self: Pin<&mut Self>,
-        name: QString,
-    ) -> QString {
+    pub fn delete_web_api_destination(mut self: Pin<&mut Self>, name: QString) -> QString {
         let name_str = name.to_string();
         match delete_web_api_destination_by_name(&name_str) {
             Ok(list) => {
@@ -5012,11 +5018,7 @@ impl qobject::DeviceController {
         QString::from(&updated)
     }
 
-    pub fn test_app_launch(
-        mut self: Pin<&mut Self>,
-        config_json: QString,
-        slot_number: i32,
-    ) {
+    pub fn test_app_launch(mut self: Pin<&mut Self>, config_json: QString, slot_number: i32) {
         let slot_idx = slot_number.clamp(1, MAX_INPUT_SLOTS as i32) as usize;
         let cfg: AppLaunchConfig = match serde_json::from_str(&config_json.to_string()) {
             Ok(c) => c,
@@ -5025,7 +5027,8 @@ impl qobject::DeviceController {
                 record_system_event("ERROR", "APP_LAUNCH", &err);
                 self.as_mut().sync_event_log_properties();
                 self.as_mut().set_app_launch_last_ok(false);
-                self.as_mut().set_app_launch_last_result(QString::from(&err));
+                self.as_mut()
+                    .set_app_launch_last_result(QString::from(&err));
                 self.as_mut().set_status_message(QString::from(&err));
                 return;
             }
@@ -5034,12 +5037,8 @@ impl qobject::DeviceController {
         let active_prof = (*self.active_profile()).clamp(1, 64) as u8;
         let restore_rgb = self.lookup_slot_rgb(active_prof, slot_idx);
         let source_label = format!("Test Launch (Profile #{active_prof}, Key {slot_idx})");
-        self.as_mut().dispatch_app_launch_execution(
-            cfg,
-            slot_idx,
-            restore_rgb,
-            &source_label,
-        );
+        self.as_mut()
+            .dispatch_app_launch_execution(cfg, slot_idx, restore_rgb, &source_label);
     }
 
     pub(crate) fn lookup_slot_rgb(&self, profile_num: u8, slot_idx: usize) -> [u8; 3] {
@@ -5094,14 +5093,10 @@ impl qobject::DeviceController {
                             .trim()
                             .to_string();
                         let web_cfg = extract_web_api_config(script, slot_num);
-                        if found_web.is_none() && web_cfg.enabled && !web_cfg.url.trim().is_empty() {
-                            found_web = Some((
-                                prof.number,
-                                prof.name.clone(),
-                                label.clone(),
-                                web_cfg,
-                                rgb,
-                            ));
+                        if found_web.is_none() && web_cfg.enabled && !web_cfg.url.trim().is_empty()
+                        {
+                            found_web =
+                                Some((prof.number, prof.name.clone(), label.clone(), web_cfg, rgb));
                         }
                         let app_cfg = extract_app_launch_config(script, slot_num);
                         if found_app.is_none()
@@ -5370,9 +5365,7 @@ impl qobject::DeviceController {
         record_system_event(
             "INFO",
             "WEB_API",
-            format!(
-                "Dispatching {method} {url} [source: {source_label}, body: {body_len} B]"
-            ),
+            format!("Dispatching {method} {url} [source: {source_label}, body: {body_len} B]"),
         );
         self.as_mut().sync_event_log_properties();
         self.as_mut().set_web_api_test_busy(true);
@@ -5449,8 +5442,8 @@ impl qobject::DeviceController {
         };
         for entry in entries.flatten() {
             if let Ok(uevent) = fs::read_to_string(entry.path().join("device/uevent")) {
-                let is_duckypad = uevent.contains("00000483:0000D11D")
-                    || uevent.contains("00000483:0000D11C");
+                let is_duckypad =
+                    uevent.contains("00000483:0000D11D") || uevent.contains("00000483:0000D11C");
                 if is_duckypad {
                     let dev_node = Path::new("/dev").join(entry.file_name());
                     if let Err(e) = OpenOptions::new().read(true).write(true).open(&dev_node) {
@@ -5468,12 +5461,7 @@ impl qobject::DeviceController {
         crate::bridge::event_log::sync_event_log_properties_impl(self);
     }
 
-    pub fn log_event(
-        self: Pin<&mut Self>,
-        level: QString,
-        category: QString,
-        message: QString,
-    ) {
+    pub fn log_event(self: Pin<&mut Self>, level: QString, category: QString, message: QString) {
         crate::bridge::event_log::log_event_impl(self, level, category, message);
     }
 
@@ -5536,9 +5524,7 @@ impl qobject::DeviceController {
         } else {
             format!("#{trimmed}")
         };
-        if normalized.len() != 7
-            || !normalized[1..].chars().all(|c| c.is_ascii_hexdigit())
-        {
+        if normalized.len() != 7 || !normalized[1..].chars().all(|c| c.is_ascii_hexdigit()) {
             return;
         }
         {
@@ -5573,8 +5559,7 @@ impl qobject::DeviceController {
             let rust = self.as_mut().rust_mut().get_mut();
             if let Ok(mut sw) = rust.switcher_state.lock() {
                 let before = sw.saved_colors.len();
-                sw.saved_colors
-                    .retain(|c| !c.eq_ignore_ascii_case(&target));
+                sw.saved_colors.retain(|c| !c.eq_ignore_ascii_case(&target));
                 if sw.saved_colors.len() != before {
                     if let Err(e) = sw.save_to_disk() {
                         record_system_event(
@@ -5712,7 +5697,10 @@ impl qobject::DeviceController {
                     record_system_event(
                         "WARN",
                         "SYSTEM",
-                        format!("Failed writing embedded user guide to {}: {e}", extracted.display()),
+                        format!(
+                            "Failed writing embedded user guide to {}: {e}",
+                            extracted.display()
+                        ),
                     );
                 }
             }
@@ -5722,7 +5710,7 @@ impl qobject::DeviceController {
         if !is_ui_test_suite_env() {
             if let Err(e) = std::process::Command::new("xdg-open")
                 .arg(&target_path)
-                .stdin( std::process::Stdio::null())
+                .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
                 .spawn()
@@ -5730,7 +5718,10 @@ impl qobject::DeviceController {
                 record_system_event(
                     "WARN",
                     "SYSTEM",
-                    format!("Failed launching xdg-open for {}: {e}", target_path.display()),
+                    format!(
+                        "Failed launching xdg-open for {}: {e}",
+                        target_path.display()
+                    ),
                 );
             }
         }
@@ -5855,10 +5846,7 @@ impl qobject::DeviceController {
         QString::from(&json_str)
     }
 
-    pub fn install_firmware_to_device(
-        mut self: Pin<&mut Self>,
-        firmware_path: QString,
-    ) -> bool {
+    pub fn install_firmware_to_device(mut self: Pin<&mut Self>, firmware_path: QString) -> bool {
         if *self.sd_sync_busy() {
             return false;
         }
@@ -5961,9 +5949,7 @@ impl qobject::DeviceController {
                         qobject
                             .as_mut()
                             .set_sd_sync_result_summary(QString::from(&err_msg));
-                        qobject
-                            .as_mut()
-                            .set_status_message(QString::from(&err_msg));
+                        qobject.as_mut().set_status_message(QString::from(&err_msg));
                     }
                 }
             });
@@ -6003,7 +5989,8 @@ impl qobject::DeviceController {
     pub fn mount_sd_card(mut self: Pin<&mut Self>) -> bool {
         if self.as_mut().refresh_sd_mount_status() {
             let mounted_path = self.sd_mount_path().to_string();
-            self.as_mut().load_sd_directory(QString::from(&mounted_path));
+            self.as_mut()
+                .load_sd_directory(QString::from(&mounted_path));
             return true;
         }
         let dev_serial = self.serial_number().to_string();
@@ -6065,18 +6052,8 @@ impl qobject::DeviceController {
     ) -> bool {
         let slot_idx = slot_number.clamp(1, MAX_INPUT_SLOTS as i32) as usize;
         let active_num = *self.active_profile() as u8;
-        let wl1: String = widget_label1
-            .to_string()
-            .trim()
-            .chars()
-            .take(24)
-            .collect();
-        let wl2: String = widget_label2
-            .to_string()
-            .trim()
-            .chars()
-            .take(24)
-            .collect();
+        let wl1: String = widget_label1.to_string().trim().chars().take(24).collect();
+        let wl2: String = widget_label2.to_string().trim().chars().take(24).collect();
 
         let updated = {
             let rust = self.as_mut().rust_mut().get_mut();
@@ -6122,10 +6099,7 @@ impl qobject::DeviceController {
         }
     }
 
-    pub fn set_active_profile_oled_rotation(
-        mut self: Pin<&mut Self>,
-        degrees: i32,
-    ) -> bool {
+    pub fn set_active_profile_oled_rotation(mut self: Pin<&mut Self>, degrees: i32) -> bool {
         let active_num = (*self.active_profile()).max(1) as u8;
         let normalized = match degrees {
             90 => 90,
@@ -6175,10 +6149,7 @@ impl qobject::DeviceController {
         }
     }
 
-    pub fn set_active_profile_widget_rotation(
-        mut self: Pin<&mut Self>,
-        degrees: i32,
-    ) -> bool {
+    pub fn set_active_profile_widget_rotation(mut self: Pin<&mut Self>, degrees: i32) -> bool {
         let active_num = (*self.active_profile()).max(1) as u8;
         let normalized = match degrees {
             0 => 0,
@@ -6283,10 +6254,7 @@ impl qobject::DeviceController {
         }
     }
 
-    pub fn delete_profile_template(
-        mut self: Pin<&mut Self>,
-        template_id: QString,
-    ) -> bool {
+    pub fn delete_profile_template(mut self: Pin<&mut Self>, template_id: QString) -> bool {
         let id = template_id.to_string();
         match delete_user_profile_template(&id) {
             Ok(()) => {
@@ -6380,9 +6348,7 @@ impl qobject::DeviceController {
             self.as_mut().set_active_profile(next_num);
             self.as_mut().sync_active_profile_state();
             let suffix = if saved_to_sd { " (saved to SD)" } else { "" };
-            let msg = format!(
-                "✓ Created Profile #{next_num}: {clean_name} from template{suffix}"
-            );
+            let msg = format!("✓ Created Profile #{next_num}: {clean_name} from template{suffix}");
             record_system_event("INFO", "PROFILE", &msg);
             self.as_mut().sync_event_log_properties();
             self.as_mut().set_status_message(QString::from(&msg));
@@ -6434,10 +6400,7 @@ impl qobject::DeviceController {
 
         if let Some(name) = updated_name {
             self.as_mut().sync_active_profile_state();
-            let msg = format!(
-                "✓ Applied template to Profile #{} ({})",
-                target_num, name
-            );
+            let msg = format!("✓ Applied template to Profile #{} ({})", target_num, name);
             record_system_event("INFO", "PROFILE", &msg);
             self.as_mut().sync_event_log_properties();
             self.as_mut().set_status_message(QString::from(&msg));
@@ -6523,10 +6486,7 @@ impl qobject::DeviceController {
             }
         }
         let msg = if cfg.enabled {
-            format!(
-                "✓ Saved Global Profile Change Webhook ({})",
-                cfg.url.trim()
-            )
+            format!("✓ Saved Global Profile Change Webhook ({})", cfg.url.trim())
         } else {
             "✓ Updated Global Profile Change Webhook settings (disabled)".to_string()
         };
@@ -6945,6 +6905,3 @@ static GLOBAL_MACRO_RECORDER: OnceLock<Mutex<Option<GlobalMacroEvdevRecorder>>> 
 fn global_macro_recorder_store() -> &'static Mutex<Option<GlobalMacroEvdevRecorder>> {
     GLOBAL_MACRO_RECORDER.get_or_init(|| Mutex::new(None))
 }
-
-
-

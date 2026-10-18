@@ -95,7 +95,9 @@ pub fn generate_rest_api_token() -> String {
         let pid = std::process::id() as u128;
         let mut seed = nanos ^ (pid << 32) ^ 0x517cc1b727220a95;
         for b in &mut buf {
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             *b = (seed >> 56) as u8;
         }
     }
@@ -622,12 +624,9 @@ pub fn extract_browser_title_suffix(caption: &str) -> Option<&'static str> {
         " — qutebrowser",
         " - qutebrowser",
     ];
-    for suf in suffixes {
-        if trimmed.len() > suf.len() && lower.ends_with(&suf.to_lowercase()) {
-            return Some(suf);
-        }
-    }
-    None
+    suffixes
+        .into_iter()
+        .find(|&suf| trimmed.len() > suf.len() && lower.ends_with(&suf.to_lowercase()))
 }
 
 pub fn strip_browser_title_suffix(caption: &str) -> String {
@@ -791,7 +790,7 @@ fn lookup_full_title_in_browser_storage(search_prefix: &str) -> Option<String> {
             profile_dirs.push((mtime, p));
         }
     }
-    profile_dirs.sort_by(|a, b| b.0.cmp(&a.0));
+    profile_dirs.sort_by_key(|a| std::cmp::Reverse(a.0));
 
     // 1. Check recovery.jsonlz4 first (live sessionstore with exact tab title & URL)
     for (_, prof_dir) in &profile_dirs {
@@ -1021,11 +1020,13 @@ fn resolve_favicon_for_url(raw_url: &str) -> Option<String> {
         format!("https://{trimmed}")
     };
 
-    let (scheme, rest) = with_scheme
-        .split_once("://")
-        .unwrap_or(("https", trimmed));
+    let (scheme, rest) = with_scheme.split_once("://").unwrap_or(("https", trimmed));
     let host_port = rest.split('/').next().unwrap_or(rest).trim();
-    let host_only = host_port.split(':').next().unwrap_or(host_port).to_ascii_lowercase();
+    let host_only = host_port
+        .split(':')
+        .next()
+        .unwrap_or(host_port)
+        .to_ascii_lowercase();
 
     let mut candidates = Vec::new();
     let lower_url = with_scheme.to_ascii_lowercase();
@@ -1101,7 +1102,8 @@ fn resolve_favicon_for_url(raw_url: &str) -> Option<String> {
                         "svg"
                     } else if bytes.starts_with(b"\x89PNG") || ctype.contains("png") {
                         "png"
-                    } else if bytes.starts_with(&[0x00, 0x00, 0x01, 0x00]) || ctype.contains("icon") {
+                    } else if bytes.starts_with(&[0x00, 0x00, 0x01, 0x00]) || ctype.contains("icon")
+                    {
                         "ico"
                     } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) || ctype.contains("jpeg") {
                         "jpg"
@@ -1122,7 +1124,10 @@ fn resolve_favicon_for_url(raw_url: &str) -> Option<String> {
                 crate::bridge::device_controller::record_system_event(
                     "WARN",
                     "CONFIG",
-                    format!("Failed writing favicon failure marker {}: {e}", failed_marker.display()),
+                    format!(
+                        "Failed writing favicon failure marker {}: {e}",
+                        failed_marker.display()
+                    ),
                 );
             }
         }
@@ -1437,7 +1442,10 @@ pub fn sync_local_desktop_and_icon(use_light_on_dark_icon: bool) {
             crate::bridge::device_controller::record_system_event(
                 "WARN",
                 "CONFIG",
-                format!("Failed writing local desktop entry {}: {e}", desktop_file.display()),
+                format!(
+                    "Failed writing local desktop entry {}: {e}",
+                    desktop_file.display()
+                ),
             );
         }
     }
@@ -1452,7 +1460,8 @@ pub fn set_kde_autostart_enabled(enabled: bool) -> Result<PathBuf, String> {
                 .map_err(|e| format!("Failed creating autostart directory: {e}"))?;
         }
         let exec_line = if Path::new("/.flatpak-info").exists() {
-            "flatpak run io.github.duckydeck.Studio --autostart --minimized --foreground".to_string()
+            "flatpak run io.github.duckydeck.Studio --autostart --minimized --foreground"
+                .to_string()
         } else if let Ok(appimage) = std::env::var("APPIMAGE") {
             format!("\"{appimage}\" --autostart --minimized --foreground")
         } else {
@@ -1496,7 +1505,6 @@ pub fn set_kde_autostart_enabled(enabled: bool) -> Result<PathBuf, String> {
 }
 
 impl SwitcherState {
-
     /// When SD profiles are loaded for the first time and the user hasn't saved custom rules yet,
     /// automatically align default KWin rules with matching profile names on their duckyPad.
     pub fn align_rules_with_profiles(&mut self, profiles: &[DuckyProfile]) {
@@ -1660,8 +1668,7 @@ impl KWinBridgeService {
         let mut already_settled = false;
 
         if let Ok(mut pending) = self.pending.lock() {
-            window_changed =
-                pending.raw_class != effective_class || pending.raw_caption != caption;
+            window_changed = pending.raw_class != effective_class || pending.raw_caption != caption;
             if window_changed {
                 pending.raw_class = effective_class.clone();
                 pending.raw_name = resource_name.clone();
@@ -2020,8 +2027,7 @@ pub async fn run_kwin_auto_switcher(
                 .unwrap_or(-1);
 
             if script_id < 0 {
-                let fallback_name =
-                    format!("duckydeck_kwin6_autoswitcher_{}", std::process::id());
+                let fallback_name = format!("duckydeck_kwin6_autoswitcher_{}", std::process::id());
                 let _: std::result::Result<bool, _> = kwin_scripting
                     .call("unloadScript", &(fallback_name.as_str(),))
                     .await;
@@ -2433,7 +2439,11 @@ fn load_saved_oled_geometry_tuple() -> Option<(i32, i32, i32, i32)> {
     let path = crate::paths::config_dir().join("oled_widget_geometry.json");
     let raw = fs::read_to_string(path).ok()?;
     let val: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    if !val.get("has_position").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if !val
+        .get("has_position")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         return None;
     }
     let x = val.get("x").and_then(|v| v.as_i64())? as i32;
@@ -2482,9 +2492,7 @@ pub fn apply_kwin_oled_keep_above(keep_above: bool, restore_geometry: bool) {
                 .to_string();
             let flag_str = if keep_above { "true" } else { "false" };
             let geom_js = if let Some((gx, gy, gw, gh)) = geom_opt {
-                format!(
-                    "w.frameGeometry = {{ x: {gx}, y: {gy}, width: {gw}, height: {gh} }};"
-                )
+                format!("w.frameGeometry = {{ x: {gx}, y: {gy}, width: {gw}, height: {gh} }};")
             } else {
                 String::new()
             };

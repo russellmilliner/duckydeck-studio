@@ -902,7 +902,6 @@ fn replace_word_boundary(haystack: &str, needle: &str, replacement: &str) -> (St
     }
     let h_bytes = haystack.as_bytes();
     let n_bytes = needle.as_bytes();
-    let start_is_word = is_word_char(n_bytes[0]);
     let end_is_word = is_word_char(n_bytes[n_bytes.len() - 1]);
 
     let mut out = String::with_capacity(haystack.len());
@@ -911,11 +910,7 @@ fn replace_word_boundary(haystack: &str, needle: &str, replacement: &str) -> (St
 
     while i <= haystack.len() - needle.len() {
         if haystack[i..].starts_with(needle) {
-            let left_ok = if start_is_word {
-                i == 0 || !is_word_char(h_bytes[i - 1])
-            } else {
-                i == 0 || !is_word_char(h_bytes[i - 1])
-            };
+            let left_ok = i == 0 || !is_word_char(h_bytes[i - 1]);
             let right_idx = i + needle.len();
             let right_ok = if end_is_word {
                 right_idx == haystack.len() || !is_word_char(h_bytes[right_idx])
@@ -1056,18 +1051,17 @@ fn single_pass(
             trimmed_start.to_string()
         };
 
-        let mut indent_lvl =
-            (if_stack.len() + func_stack.len() + while_stack.len()) as isize;
+        let mut indent_lvl = (if_stack.len() + func_stack.len() + while_stack.len()) as isize;
 
         let in_rem = rem_blocks
             .iter()
             .any(|&(s, e)| e.map_or(lnum >= s, |end| lnum >= s && lnum <= end));
         let in_strlen = strlen_blocks
             .iter()
-            .any(|&(s, e)| e.map_or(true, |end| lnum > s && lnum < end));
+            .any(|&(s, e)| e.is_none_or(|end| lnum > s && lnum < end));
         let in_str = str_blocks
             .iter()
-            .any(|&(s, e)| e.map_or(true, |end| lnum > s && lnum < end));
+            .any(|&(s, e)| e.is_none_or(|end| lnum > s && lnum < end));
 
         if first_word != "DEFINE" && !in_rem && !in_strlen && !in_str {
             match replace_define(&this_line, define_dict) {
@@ -1232,11 +1226,7 @@ fn single_pass(
                 return Err(CompileResult::err(lnum_usize, &this_line, "orphan ELSE"));
             };
             if top.1 {
-                return Err(CompileResult::err(
-                    lnum_usize,
-                    &this_line,
-                    "unmatched ELSE",
-                ));
+                return Err(CompileResult::err(lnum_usize, &this_line, "unmatched ELSE"));
             }
             top.1 = true;
         } else if first_word == "END_IF" {
@@ -2613,9 +2603,7 @@ fn collect_calls_in_stmts(stmts: &[Stmt], out: &mut Vec<String>) {
                 collect_calls_in_expr(test, out);
                 collect_calls_in_stmts(body, out);
             }
-            Stmt::Return {
-                value: Some(v), ..
-            } => collect_calls_in_expr(v, out),
+            Stmt::Return { value: Some(v), .. } => collect_calls_in_expr(v, out),
             _ => {}
         }
     }
@@ -2700,11 +2688,11 @@ impl CodegenCtx {
             let is_param = self
                 .func_args_dict
                 .get(cur_fn)
-                .map_or(false, |args| args.iter().any(|a| a == name));
+                .is_some_and(|args| args.iter().any(|a| a == name));
             let is_local = self
                 .user_declared_vars
                 .get(&Some(cur_fn.clone()))
-                .map_or(false, |set| set.contains(name));
+                .is_some_and(|set| set.contains(name));
             if is_param && is_local {
                 return Err(format!("Variable \"{name}\" cannot be both arg and local"));
             }
@@ -2718,7 +2706,7 @@ impl CodegenCtx {
         let is_global = self
             .user_declared_vars
             .get(&None)
-            .map_or(false, |set| set.contains(name));
+            .is_some_and(|set| set.contains(name));
         if is_global {
             return Ok(SymType::GlobalVar);
         }
@@ -3108,7 +3096,7 @@ impl CodegenCtx {
                 let ends_with_ret = self
                     .active_list()
                     .last()
-                    .map_or(false, |i| i.opcode == Op::Ret);
+                    .is_some_and(|i| i.opcode == Op::Ret);
                 if !ends_with_ret {
                     self.active_list().push(Instruction {
                         opcode: Op::Push0,
@@ -3494,7 +3482,7 @@ pub fn compile_duckyscript_to_dsb(
             }
         }
     }
-    for (_, (_, locals)) in func_vars.iter_mut() {
+    for (_, locals) in func_vars.values_mut() {
         locals.sort();
     }
 
@@ -3708,11 +3696,13 @@ mod tests {
         assert!(res.bin_array.starts_with(&[0xFF, 0x02, 0x00]));
         assert!(
             res.bin_array
-                .windows("café au lait".as_bytes().len())
+                .windows("café au lait".len())
                 .any(|w| w == "café au lait".as_bytes()),
             "Expected UTF-8 bytes of 'café au lait' in compiled .dsb"
         );
     }
+
+    type DsbMismatch = (String, bool, String, Vec<u8>, Vec<u8>);
 
     #[test]
     fn test_sd_card_dsb_parity() {
@@ -3724,7 +3714,7 @@ mod tests {
                          label: &str,
                          total: &mut usize,
                          matched: &mut usize,
-                         mismatches: &mut Vec<(String, bool, String, Vec<u8>, Vec<u8>)>| {
+                         mismatches: &mut Vec<DsbMismatch>| {
             let mut ab_slots = HashSet::new();
             let mut dr_slots = HashSet::new();
             let cfg_path = dir.join("config.txt");
@@ -3855,4 +3845,3 @@ mod tests {
         );
     }
 }
-

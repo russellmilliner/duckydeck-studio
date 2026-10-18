@@ -4,9 +4,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-use crate::actions::web_api::{
-    default_web_api_method, extract_web_api_config, has_web_api_config,
-};
+use crate::actions::web_api::{default_web_api_method, extract_web_api_config, has_web_api_config};
 use crate::hardware::storage::{MAX_INPUT_SLOTS, ONBOARD_KEY_COUNT, PID_DUCKYPAD_PRO};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,10 +83,8 @@ impl DuckyProfile {
                 rot = 270;
             } else if t == "IS_ROTATED_180 1" || t == "IS_LANDSCAPE 2" {
                 rot = 180;
-            } else if t == "IS_LANDSCAPE 1" {
-                if rot != 180 && rot != 270 {
-                    rot = 90;
-                }
+            } else if t == "IS_LANDSCAPE 1" && rot != 180 && rot != 270 {
+                rot = 90;
             }
         }
         rot
@@ -112,15 +108,20 @@ impl DuckyProfile {
         });
         match normalized {
             90 => {
-                self.preserved_config_lines.push("IS_LANDSCAPE 1".to_string());
+                self.preserved_config_lines
+                    .push("IS_LANDSCAPE 1".to_string());
             }
             180 => {
-                self.preserved_config_lines.push("IS_LANDSCAPE 2".to_string());
-                self.preserved_config_lines.push("OLED_ROTATION 180".to_string());
+                self.preserved_config_lines
+                    .push("IS_LANDSCAPE 2".to_string());
+                self.preserved_config_lines
+                    .push("OLED_ROTATION 180".to_string());
             }
             270 => {
-                self.preserved_config_lines.push("IS_LANDSCAPE 3".to_string());
-                self.preserved_config_lines.push("OLED_ROTATION 270".to_string());
+                self.preserved_config_lines
+                    .push("IS_LANDSCAPE 3".to_string());
+                self.preserved_config_lines
+                    .push("OLED_ROTATION 270".to_string());
             }
             _ => {}
         }
@@ -612,7 +613,8 @@ impl DuckyProfile {
     }
 
     pub fn save_to_sd_root(&self, sd_root: &Path) -> io::Result<PathBuf> {
-        self.save_to_sd_root_with_stats(sd_root).map(|(dir, _, _)| dir)
+        self.save_to_sd_root_with_stats(sd_root)
+            .map(|(dir, _, _)| dir)
     }
 
     pub fn save_to_sd_root_with_stats(
@@ -653,10 +655,18 @@ impl DuckyProfile {
                 }
             }
             if !slot.widget_label_line1.trim().is_empty() {
-                cfg.push_str(&format!("dw_z{} {}\n", slot_idx, slot.widget_label_line1.trim()));
+                cfg.push_str(&format!(
+                    "dw_z{} {}\n",
+                    slot_idx,
+                    slot.widget_label_line1.trim()
+                ));
             }
             if !slot.widget_label_line2.trim().is_empty() {
-                cfg.push_str(&format!("dw_x{} {}\n", slot_idx, slot.widget_label_line2.trim()));
+                cfg.push_str(&format!(
+                    "dw_x{} {}\n",
+                    slot_idx,
+                    slot.widget_label_line2.trim()
+                ));
             }
         }
 
@@ -911,7 +921,10 @@ pub fn find_mounted_duckypad_sd() -> Option<PathBuf> {
                 continue;
             };
             let mnt = mnt_raw.replace("\\040", " ");
-            if mnt.starts_with("/run/media/") || mnt.starts_with("/media/") || mnt.starts_with("/mnt/") {
+            if mnt.starts_with("/run/media/")
+                || mnt.starts_with("/media/")
+                || mnt.starts_with("/mnt/")
+            {
                 let path = PathBuf::from(&mnt);
                 if path.is_dir() && is_duckypad_sd_root(&path) {
                     return Some(path);
@@ -1081,9 +1094,7 @@ pub fn profile_cache_dir_for_serial(serial: &str) -> PathBuf {
     if clean.is_empty() || clean == "-" {
         profile_cache_dir()
     } else {
-        crate::paths::data_dir()
-            .join("device_profiles")
-            .join(clean)
+        crate::paths::data_dir().join("device_profiles").join(clean)
     }
 }
 
@@ -1116,7 +1127,10 @@ fn write_profiles_to_cache_dir(cache_dir: &Path, profiles: &[DuckyProfile]) {
         crate::bridge::device_controller::record_system_event(
             "WARN",
             "STORAGE",
-            format!("Failed saving profile_info.txt in {}: {e}", cache_dir.display()),
+            format!(
+                "Failed saving profile_info.txt in {}: {e}",
+                cache_dir.display()
+            ),
         );
     }
     for prof in profiles {
@@ -1124,7 +1138,11 @@ fn write_profiles_to_cache_dir(cache_dir: &Path, profiles: &[DuckyProfile]) {
             crate::bridge::device_controller::record_system_event(
                 "WARN",
                 "STORAGE",
-                format!("Failed caching profile '{}' in {}: {e}", prof.name, cache_dir.display()),
+                format!(
+                    "Failed caching profile '{}' in {}: {e}",
+                    prof.name,
+                    cache_dir.display()
+                ),
             );
         }
     }
@@ -1201,7 +1219,10 @@ pub fn mark_profiles_sd_synced(serial: &str, profiles: &[DuckyProfile]) {
         crate::bridge::device_controller::record_system_event(
             "WARN",
             "STORAGE",
-            format!("Failed writing .sd_synced_hash in {}: {e}", global_dir.display()),
+            format!(
+                "Failed writing .sd_synced_hash in {}: {e}",
+                global_dir.display()
+            ),
         );
     }
     if let Some(ref snap) = snapshot_json {
@@ -1209,7 +1230,10 @@ pub fn mark_profiles_sd_synced(serial: &str, profiles: &[DuckyProfile]) {
             crate::bridge::device_controller::record_system_event(
                 "WARN",
                 "STORAGE",
-                format!("Failed writing .sd_synced_snapshot.json in {}: {e}", global_dir.display()),
+                format!(
+                    "Failed writing .sd_synced_snapshot.json in {}: {e}",
+                    global_dir.display()
+                ),
             );
         }
     }
@@ -1220,14 +1244,20 @@ pub fn mark_profiles_sd_synced(serial: &str, profiles: &[DuckyProfile]) {
             crate::bridge::device_controller::record_system_event(
                 "WARN",
                 "STORAGE",
-                format!("Failed creating device cache dir {}: {e}", dev_dir.display()),
+                format!(
+                    "Failed creating device cache dir {}: {e}",
+                    dev_dir.display()
+                ),
             );
         }
         if let Err(e) = fs::write(dev_dir.join(".sd_synced_hash"), &fp) {
             crate::bridge::device_controller::record_system_event(
                 "WARN",
                 "STORAGE",
-                format!("Failed writing .sd_synced_hash in {}: {e}", dev_dir.display()),
+                format!(
+                    "Failed writing .sd_synced_hash in {}: {e}",
+                    dev_dir.display()
+                ),
             );
         }
         if let Some(ref snap) = snapshot_json {
@@ -1235,7 +1265,10 @@ pub fn mark_profiles_sd_synced(serial: &str, profiles: &[DuckyProfile]) {
                 crate::bridge::device_controller::record_system_event(
                     "WARN",
                     "STORAGE",
-                    format!("Failed writing .sd_synced_snapshot.json in {}: {e}", dev_dir.display()),
+                    format!(
+                        "Failed writing .sd_synced_snapshot.json in {}: {e}",
+                        dev_dir.display()
+                    ),
                 );
             }
         }
@@ -1370,7 +1403,10 @@ pub fn record_mounted_sd_space(serial: &str, mount_root: &Path) {
         crate::bridge::device_controller::record_system_event(
             "WARN",
             "STORAGE",
-            format!("Failed writing .sd_space_info.json in {}: {e}", global_dir.display()),
+            format!(
+                "Failed writing .sd_space_info.json in {}: {e}",
+                global_dir.display()
+            ),
         );
     }
     if dev_dir != global_dir {
@@ -1378,14 +1414,20 @@ pub fn record_mounted_sd_space(serial: &str, mount_root: &Path) {
             crate::bridge::device_controller::record_system_event(
                 "WARN",
                 "STORAGE",
-                format!("Failed creating device cache dir {}: {e}", dev_dir.display()),
+                format!(
+                    "Failed creating device cache dir {}: {e}",
+                    dev_dir.display()
+                ),
             );
         }
         if let Err(e) = fs::write(dev_dir.join(".sd_space_info.json"), &json) {
             crate::bridge::device_controller::record_system_event(
                 "WARN",
                 "STORAGE",
-                format!("Failed writing .sd_space_info.json in {}: {e}", dev_dir.display()),
+                format!(
+                    "Failed writing .sd_space_info.json in {}: {e}",
+                    dev_dir.display()
+                ),
             );
         }
     }
@@ -1556,10 +1598,9 @@ pub fn write_profiles_to_sd_root(
                 if let Some(fname) = p.file_name().and_then(|s| s.to_str()) {
                     if parse_profile_folder_name(fname).is_some()
                         && !valid_folders_lower.contains(&fname.to_ascii_lowercase())
+                        && fs::remove_dir_all(&p).is_ok()
                     {
-                        if fs::remove_dir_all(&p).is_ok() {
-                            summary.folders_removed += 1;
-                        }
+                        summary.folders_removed += 1;
                     }
                 }
             }
@@ -1604,7 +1645,6 @@ pub fn write_profiles_to_sd_root(
     Ok(summary)
 }
 
-
 pub fn check_profile_sync_status(
     serial: &str,
     profiles: &[DuckyProfile],
@@ -1614,19 +1654,18 @@ pub fn check_profile_sync_status(
 ) -> (String, String) {
     let mem_hash = compute_profiles_fingerprint(profiles);
 
-    if connected {
-        if profiles.is_empty()
+    if connected
+        && (profiles.is_empty()
             || (profiles.len() == 1 && profiles[0].name == "Blender Sculpt")
-            || (active_profile as usize) > profiles.len()
-        {
-            return (
-                "mismatch".to_string(),
-                format!(
-                    "Profile mismatch: connected duckyPad is on Profile #{active_profile}, which does not match the {} loaded profile(s). Click to sync.",
-                    profiles.len()
-                ),
-            );
-        }
+            || (active_profile as usize) > profiles.len())
+    {
+        return (
+            "mismatch".to_string(),
+            format!(
+                "Profile mismatch: connected duckyPad is on Profile #{active_profile}, which does not match the {} loaded profile(s). Click to sync.",
+                profiles.len()
+            ),
+        );
     }
 
     if let Some(sd_dir) = sd_root {
@@ -1663,7 +1702,8 @@ pub fn check_profile_sync_status(
 
     if let Some(ref sd_hash) = saved_hash {
         if *sd_hash == mem_hash {
-            let dev_snap_path = profile_cache_dir_for_serial(serial).join(".sd_synced_snapshot.json");
+            let dev_snap_path =
+                profile_cache_dir_for_serial(serial).join(".sd_synced_snapshot.json");
             let global_snap_path = profile_cache_dir().join(".sd_synced_snapshot.json");
             if !dev_snap_path.exists() && !global_snap_path.exists() {
                 mark_profiles_sd_synced(serial, profiles);
@@ -1916,8 +1956,14 @@ pub fn compute_unsynced_changes_json(
 
         // Compare slots 1..=MAX_INPUT_SLOTS
         for slot_idx in 1..=MAX_INPUT_SLOTS {
-            let bk = base.slots.get(&slot_idx).filter(|s| !s.is_effectively_empty());
-            let ck = cur.slots.get(&slot_idx).filter(|s| !s.is_effectively_empty());
+            let bk = base
+                .slots
+                .get(&slot_idx)
+                .filter(|s| !s.is_effectively_empty());
+            let ck = cur
+                .slots
+                .get(&slot_idx)
+                .filter(|s| !s.is_effectively_empty());
             let slot_key = format!("slot:{slot_idx}");
             match (bk, ck) {
                 (Some(b), Some(c)) => {
@@ -1941,12 +1987,20 @@ pub fn compute_unsynced_changes_json(
                         let old_wlbl = if b.widget_label_line2.trim().is_empty() {
                             b.widget_label_line1.trim().to_string()
                         } else {
-                            format!("{} / {}", b.widget_label_line1.trim(), b.widget_label_line2.trim())
+                            format!(
+                                "{} / {}",
+                                b.widget_label_line1.trim(),
+                                b.widget_label_line2.trim()
+                            )
                         };
                         let new_wlbl = if c.widget_label_line2.trim().is_empty() {
                             c.widget_label_line1.trim().to_string()
                         } else {
-                            format!("{} / {}", c.widget_label_line1.trim(), c.widget_label_line2.trim())
+                            format!(
+                                "{} / {}",
+                                c.widget_label_line1.trim(),
+                                c.widget_label_line2.trim()
+                            )
                         };
                         key_diffs.push(format!("widget label \"{}\" → \"{}\"", old_wlbl, new_wlbl));
                     }
@@ -2379,7 +2433,6 @@ pub fn load_cached_or_backup_profiles() -> Option<Vec<DuckyProfile>> {
     None
 }
 
-
 pub fn is_duckypad_sd_root(dir: &Path) -> bool {
     if dir.join("dpp_config.txt").exists()
         || dir.join("profile_info.txt").exists()
@@ -2439,7 +2492,6 @@ pub(crate) fn parse_rgb_triplet(s: &str) -> Option<[u8; 3]> {
     Some([r, g, b])
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileTemplate {
     pub id: String,
@@ -2477,13 +2529,13 @@ pub fn builtin_profile_templates() -> Vec<ProfileTemplate> {
     // 2. Media & Productivity Template
     let mut media_slots = BTreeMap::new();
     let add_slot = |map: &mut BTreeMap<usize, DuckyKeySlot>,
-                        slot: usize,
-                        l1: &str,
-                        l2: &str,
-                        wl1: &str,
-                        wl2: &str,
-                        rgb: Option<[u8; 3]>,
-                        script: &str| {
+                    slot: usize,
+                    l1: &str,
+                    l2: &str,
+                    wl1: &str,
+                    wl2: &str,
+                    rgb: Option<[u8; 3]>,
+                    script: &str| {
         map.insert(
             slot,
             DuckyKeySlot {
@@ -2500,17 +2552,116 @@ pub fn builtin_profile_templates() -> Vec<ProfileTemplate> {
             },
         );
     };
-    add_slot(&mut media_slots, 1, "Copy", "", "Copy", "Ctrl+C", Some([0, 180, 120]), "CONTROL c\n");
-    add_slot(&mut media_slots, 2, "Paste", "", "Paste", "Ctrl+V", Some([0, 180, 120]), "CONTROL v\n");
-    add_slot(&mut media_slots, 3, "Undo", "", "Undo", "Ctrl+Z", Some([240, 140, 0]), "CONTROL z\n");
-    add_slot(&mut media_slots, 4, "Redo", "", "Redo", "Ctrl+Shift+Z", Some([240, 140, 0]), "CONTROL SHIFT z\n");
-    add_slot(&mut media_slots, 5, "Prev", "Track", "Previous", "Media Track", Some([56, 189, 248]), "MK_PREV\n");
-    add_slot(&mut media_slots, 6, "Play", "Pause", "Play / Pause", "Media", Some([34, 197, 94]), "MK_PP\n");
-    add_slot(&mut media_slots, 7, "Next", "Track", "Next", "Media Track", Some([56, 189, 248]), "MK_NEXT\n");
-    add_slot(&mut media_slots, 8, "Mute", "", "Mute Audio", "Toggle", Some([239, 68, 68]), "MK_MUTE\n");
-    add_slot(&mut media_slots, 21, "Vol-", "", "Volume Down", "", None, "MK_VOLDOWN\n");
-    add_slot(&mut media_slots, 22, "Vol+", "", "Volume Up", "", None, "MK_VOLUP\n");
-    add_slot(&mut media_slots, 23, "Mute", "", "Mute", "", None, "MK_MUTE\n");
+    add_slot(
+        &mut media_slots,
+        1,
+        "Copy",
+        "",
+        "Copy",
+        "Ctrl+C",
+        Some([0, 180, 120]),
+        "CONTROL c\n",
+    );
+    add_slot(
+        &mut media_slots,
+        2,
+        "Paste",
+        "",
+        "Paste",
+        "Ctrl+V",
+        Some([0, 180, 120]),
+        "CONTROL v\n",
+    );
+    add_slot(
+        &mut media_slots,
+        3,
+        "Undo",
+        "",
+        "Undo",
+        "Ctrl+Z",
+        Some([240, 140, 0]),
+        "CONTROL z\n",
+    );
+    add_slot(
+        &mut media_slots,
+        4,
+        "Redo",
+        "",
+        "Redo",
+        "Ctrl+Shift+Z",
+        Some([240, 140, 0]),
+        "CONTROL SHIFT z\n",
+    );
+    add_slot(
+        &mut media_slots,
+        5,
+        "Prev",
+        "Track",
+        "Previous",
+        "Media Track",
+        Some([56, 189, 248]),
+        "MK_PREV\n",
+    );
+    add_slot(
+        &mut media_slots,
+        6,
+        "Play",
+        "Pause",
+        "Play / Pause",
+        "Media",
+        Some([34, 197, 94]),
+        "MK_PP\n",
+    );
+    add_slot(
+        &mut media_slots,
+        7,
+        "Next",
+        "Track",
+        "Next",
+        "Media Track",
+        Some([56, 189, 248]),
+        "MK_NEXT\n",
+    );
+    add_slot(
+        &mut media_slots,
+        8,
+        "Mute",
+        "",
+        "Mute Audio",
+        "Toggle",
+        Some([239, 68, 68]),
+        "MK_MUTE\n",
+    );
+    add_slot(
+        &mut media_slots,
+        21,
+        "Vol-",
+        "",
+        "Volume Down",
+        "",
+        None,
+        "MK_VOLDOWN\n",
+    );
+    add_slot(
+        &mut media_slots,
+        22,
+        "Vol+",
+        "",
+        "Volume Up",
+        "",
+        None,
+        "MK_VOLUP\n",
+    );
+    add_slot(
+        &mut media_slots,
+        23,
+        "Mute",
+        "",
+        "Mute",
+        "",
+        None,
+        "MK_MUTE\n",
+    );
 
     list.push(ProfileTemplate {
         id: "builtin_media_productivity".to_string(),
@@ -2531,19 +2682,93 @@ pub fn builtin_profile_templates() -> Vec<ProfileTemplate> {
 
     // 3. Developer / IDE Template
     let mut dev_slots = BTreeMap::new();
-    add_slot(&mut dev_slots, 1, "Build", "", "Build Project", "Ctrl+B", Some([34, 197, 94]), "CONTROL b\n");
-    add_slot(&mut dev_slots, 2, "Run", "", "Run Target", "Shift+F10", Some([16, 185, 129]), "SHIFT F10\n");
-    add_slot(&mut dev_slots, 3, "Debug", "", "Start Debug", "Shift+F9", Some([245, 158, 11]), "SHIFT F9\n");
-    add_slot(&mut dev_slots, 4, "Stop", "", "Stop Process", "Ctrl+F2", Some([239, 68, 68]), "CONTROL F2\n");
-    add_slot(&mut dev_slots, 5, "Find", "All", "Find in Files", "Ctrl+Shift+F", Some([56, 189, 248]), "CONTROL SHIFT f\n");
-    add_slot(&mut dev_slots, 6, "Fmt", "Code", "Format Code", "Ctrl+Shift+I", Some([168, 85, 247]), "CONTROL SHIFT i\n");
-    add_slot(&mut dev_slots, 7, "Term", "", "Toggle Terminal", "Ctrl+`", Some([148, 163, 184]), "CONTROL `\n");
-    add_slot(&mut dev_slots, 8, "Git", "Diff", "Git Commit/Diff", "Ctrl+K", Some([249, 115, 22]), "CONTROL k\n");
+    add_slot(
+        &mut dev_slots,
+        1,
+        "Build",
+        "",
+        "Build Project",
+        "Ctrl+B",
+        Some([34, 197, 94]),
+        "CONTROL b\n",
+    );
+    add_slot(
+        &mut dev_slots,
+        2,
+        "Run",
+        "",
+        "Run Target",
+        "Shift+F10",
+        Some([16, 185, 129]),
+        "SHIFT F10\n",
+    );
+    add_slot(
+        &mut dev_slots,
+        3,
+        "Debug",
+        "",
+        "Start Debug",
+        "Shift+F9",
+        Some([245, 158, 11]),
+        "SHIFT F9\n",
+    );
+    add_slot(
+        &mut dev_slots,
+        4,
+        "Stop",
+        "",
+        "Stop Process",
+        "Ctrl+F2",
+        Some([239, 68, 68]),
+        "CONTROL F2\n",
+    );
+    add_slot(
+        &mut dev_slots,
+        5,
+        "Find",
+        "All",
+        "Find in Files",
+        "Ctrl+Shift+F",
+        Some([56, 189, 248]),
+        "CONTROL SHIFT f\n",
+    );
+    add_slot(
+        &mut dev_slots,
+        6,
+        "Fmt",
+        "Code",
+        "Format Code",
+        "Ctrl+Shift+I",
+        Some([168, 85, 247]),
+        "CONTROL SHIFT i\n",
+    );
+    add_slot(
+        &mut dev_slots,
+        7,
+        "Term",
+        "",
+        "Toggle Terminal",
+        "Ctrl+`",
+        Some([148, 163, 184]),
+        "CONTROL `\n",
+    );
+    add_slot(
+        &mut dev_slots,
+        8,
+        "Git",
+        "Diff",
+        "Git Commit/Diff",
+        "Ctrl+K",
+        Some([249, 115, 22]),
+        "CONTROL k\n",
+    );
 
     list.push(ProfileTemplate {
         id: "builtin_developer_ide".to_string(),
         name: "Developer / IDE".to_string(),
-        description: "Build, Run, Debug, Stop, Find in Files, Format Code, Terminal, and Git workflow keys.".to_string(),
+        description:
+            "Build, Run, Debug, Stop, Find in Files, Format Code, Terminal, and Git workflow keys."
+                .to_string(),
         category: "Development".to_string(),
         is_builtin: true,
         profile: DuckyProfile {
@@ -2703,4 +2928,3 @@ pub fn instantiate_profile_from_template(
         }
     }
 }
-

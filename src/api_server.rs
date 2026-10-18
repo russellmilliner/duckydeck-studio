@@ -62,7 +62,9 @@ fn job_store() -> &'static Mutex<JobStore> {
 }
 
 fn now_iso_timestamp() -> String {
-    chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%:z").to_string()
+    chrono::Local::now()
+        .format("%Y-%m-%dT%H:%M:%S%.3f%:z")
+        .to_string()
 }
 
 pub fn create_api_job(operation: &str) -> ApiJobRecord {
@@ -720,7 +722,12 @@ fn handle_client_connection(
                 "error": "Unauthorized: valid API token required via 'Authorization: Bearer <token>' or 'X-API-Token: <token>' header."
             })
             .to_string();
-            write_http_response(&mut stream, 401, "application/json; charset=utf-8", &err_json);
+            write_http_response(
+                &mut stream,
+                401,
+                "application/json; charset=utf-8",
+                &err_json,
+            );
             return;
         }
     }
@@ -767,7 +774,12 @@ fn handle_client_connection(
             "error": "Internal error: failed queueing request to controller thread"
         })
         .to_string();
-        write_http_response(&mut stream, 500, "application/json; charset=utf-8", &err_json);
+        write_http_response(
+            &mut stream,
+            500,
+            "application/json; charset=utf-8",
+            &err_json,
+        );
         return;
     }
 
@@ -786,7 +798,12 @@ fn handle_client_connection(
                 "error": "Request timed out waiting for controller response"
             })
             .to_string();
-            write_http_response(&mut stream, 504, "application/json; charset=utf-8", &err_json);
+            write_http_response(
+                &mut stream,
+                504,
+                "application/json; charset=utf-8",
+                &err_json,
+            );
         }
     }
 }
@@ -831,10 +848,8 @@ mod tests {
         let mut guards = Vec::new();
 
         for i in 0..MAX_CONCURRENT_CONNECTIONS {
-            let guard = ActiveConnectionGuard::try_new(
-                Arc::clone(&active),
-                MAX_CONCURRENT_CONNECTIONS,
-            );
+            let guard =
+                ActiveConnectionGuard::try_new(Arc::clone(&active), MAX_CONCURRENT_CONNECTIONS);
             assert!(
                 guard.is_some(),
                 "Expected slot #{i} (< {MAX_CONCURRENT_CONNECTIONS}) to be acquired"

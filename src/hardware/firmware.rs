@@ -8,8 +8,7 @@ use crate::hardware::msc::{
 };
 use crate::hardware::profile::find_mounted_duckypad_sd;
 use crate::hardware::storage::{
-    open_duckypad_hid, HID_CMD_SOFTWARE_RESET, HID_IO_LOCK, HID_REPORT_ID_OUT,
-    MSC_SYNC_IN_PROGRESS,
+    open_duckypad_hid, HID_CMD_SOFTWARE_RESET, HID_IO_LOCK, HID_REPORT_ID_OUT, MSC_SYNC_IN_PROGRESS,
 };
 
 #[derive(Debug, Clone)]
@@ -325,8 +324,7 @@ pub fn list_available_duckypad_pro_firmwares(current_version: &str) -> Vec<Firmw
                 continue;
             }
             let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
-            let is_studio_custom = is_bundled_studio_dir
-                || matches!(crc_str.as_str(), "ad2acc81");
+            let is_studio_custom = is_bundled_studio_dir || matches!(crc_str.as_str(), "ad2acc81");
             let is_official = !is_studio_custom;
             let (channel, release_date, notes) =
                 firmware_release_metadata(ver_str, is_studio_custom);
@@ -377,7 +375,10 @@ pub fn list_available_duckypad_pro_firmwares(current_version: &str) -> Vec<Firmw
         let local_path = official_dir.join(&remote.filename);
         let is_downloaded = local_path.is_file();
         let size_bytes = if is_downloaded {
-            local_path.metadata().map(|m| m.len()).unwrap_or(remote.size_bytes)
+            local_path
+                .metadata()
+                .map(|m| m.len())
+                .unwrap_or(remote.size_bytes)
         } else {
             remote.size_bytes
         };
@@ -437,8 +438,10 @@ pub async fn fetch_official_firmwares_from_site(
         .build()
         .map_err(|e| format!("HTTP client init failed: {e}"))?;
 
-    let mut discovered: std::collections::BTreeMap<(u32, u32, u32, String), CachedRemoteFirmwareItem> =
-        std::collections::BTreeMap::new();
+    let mut discovered: std::collections::BTreeMap<
+        (u32, u32, u32, String),
+        CachedRemoteFirmwareItem,
+    > = std::collections::BTreeMap::new();
 
     // Seed with existing cached entries so we never lose previously discovered items
     for item in load_cached_remote_firmwares() {
@@ -447,49 +450,51 @@ pub async fn fetch_official_firmwares_from_site(
         }
     }
 
-    let mut parse_and_insert = |fname: &str, dl_url: &str, size_bytes: u64, date_hint: &str, note_hint: &str| {
-        if !fname.starts_with("DPP_FW_") || !fname.ends_with(".bin") {
-            return;
-        }
-        let inner = &fname["DPP_FW_".len()..fname.len() - ".bin".len()];
-        let mut parts = inner.split('_');
-        let Some(ver_str) = parts.next() else {
-            return;
+    let mut parse_and_insert =
+        |fname: &str, dl_url: &str, size_bytes: u64, date_hint: &str, note_hint: &str| {
+            if !fname.starts_with("DPP_FW_") || !fname.ends_with(".bin") {
+                return;
+            }
+            let inner = &fname["DPP_FW_".len()..fname.len() - ".bin".len()];
+            let mut parts = inner.split('_');
+            let Some(ver_str) = parts.next() else {
+                return;
+            };
+            let crc_str = parts.next().unwrap_or("").to_lowercase();
+            if crc_str.is_empty() || crc_str == "ad2acc81" {
+                return;
+            }
+            let Some((maj, min, pat)) = parse_semver(ver_str) else {
+                return;
+            };
+            let (_, meta_date, meta_notes) = firmware_release_metadata(ver_str, false);
+            let release_date = if !date_hint.trim().is_empty() {
+                date_hint.trim().to_string()
+            } else {
+                meta_date.to_string()
+            };
+            let notes = if !note_hint.trim().is_empty() {
+                note_hint.trim().to_string()
+            } else {
+                meta_notes.to_string()
+            };
+            discovered.insert(
+                (maj, min, pat, crc_str.clone()),
+                CachedRemoteFirmwareItem {
+                    version: ver_str.to_string(),
+                    filename: fname.to_string(),
+                    crc32: crc_str,
+                    size_bytes,
+                    download_url: dl_url.to_string(),
+                    release_date,
+                    notes,
+                },
+            );
         };
-        let crc_str = parts.next().unwrap_or("").to_lowercase();
-        if crc_str.is_empty() || crc_str == "ad2acc81" {
-            return;
-        }
-        let Some((maj, min, pat)) = parse_semver(ver_str) else {
-            return;
-        };
-        let (_, meta_date, meta_notes) = firmware_release_metadata(ver_str, false);
-        let release_date = if !date_hint.trim().is_empty() {
-            date_hint.trim().to_string()
-        } else {
-            meta_date.to_string()
-        };
-        let notes = if !note_hint.trim().is_empty() {
-            note_hint.trim().to_string()
-        } else {
-            meta_notes.to_string()
-        };
-        discovered.insert(
-            (maj, min, pat, crc_str.clone()),
-            CachedRemoteFirmwareItem {
-                version: ver_str.to_string(),
-                filename: fname.to_string(),
-                crc32: crc_str,
-                size_bytes,
-                download_url: dl_url.to_string(),
-                release_date,
-                notes,
-            },
-        );
-    };
 
     // 1. Fetch active firmware directory from dekuNukem/duckyPad-Pro
-    let contents_url = "https://api.github.com/repos/dekuNukem/duckyPad-Pro/contents/firmware?ref=master";
+    let contents_url =
+        "https://api.github.com/repos/dekuNukem/duckyPad-Pro/contents/firmware?ref=master";
     let resp = client
         .get(contents_url)
         .send()
@@ -560,7 +565,8 @@ pub async fn fetch_official_firmwares_from_site(
     }
 
     // 3. Also inspect recent commits to `/firmware` in dekuNukem/duckyPad-Pro so historical versions in git history are listed
-    let commits_url = "https://api.github.com/repos/dekuNukem/duckyPad-Pro/commits?path=firmware&per_page=10";
+    let commits_url =
+        "https://api.github.com/repos/dekuNukem/duckyPad-Pro/commits?path=firmware&per_page=10";
     if let Ok(com_resp) = client.get(commits_url).send().await {
         if com_resp.status().is_success() {
             if let Ok(com_json) = com_resp.json::<serde_json::Value>().await {
@@ -605,7 +611,9 @@ pub async fn fetch_official_firmwares_from_site(
                                                 .unwrap_or("");
                                             if !name.is_empty() && !dl_url.is_empty() {
                                                 let note = if !commit_msg.is_empty() {
-                                                    format!("Official dekuNukem release ({commit_msg})")
+                                                    format!(
+                                                        "Official dekuNukem release ({commit_msg})"
+                                                    )
                                                 } else {
                                                     String::new()
                                                 };
@@ -639,12 +647,22 @@ pub async fn download_official_firmware_binary(
     download_url: &str,
 ) -> Result<PathBuf, String> {
     let clean_name = filename.trim();
-    if !clean_name.starts_with("DPP_FW_") || !clean_name.ends_with(".bin") || clean_name.contains('/') || clean_name.contains('\\') {
-        return Err(format!("Invalid official firmware filename: '{clean_name}'"));
+    if !clean_name.starts_with("DPP_FW_")
+        || !clean_name.ends_with(".bin")
+        || clean_name.contains('/')
+        || clean_name.contains('\\')
+    {
+        return Err(format!(
+            "Invalid official firmware filename: '{clean_name}'"
+        ));
     }
     let dir = official_firmware_cache_dir();
-    fs::create_dir_all(&dir)
-        .map_err(|e| format!("Failed creating firmware cache directory {}: {e}", dir.display()))?;
+    fs::create_dir_all(&dir).map_err(|e| {
+        format!(
+            "Failed creating firmware cache directory {}: {e}",
+            dir.display()
+        )
+    })?;
     let target_path = dir.join(clean_name);
 
     // Extract expected CRC32 from filename `DPP_FW_<ver>_<crc32>.bin`
@@ -714,7 +732,6 @@ pub async fn download_official_firmware_binary(
 
     Ok(target_path)
 }
-
 
 fn write_and_verify_firmware_on_sd(
     sd_root: &Path,
@@ -938,7 +955,8 @@ where
                     &format!("✓ Read-back CRC32 (0x{crc_hex}) verified on microSD; unmounting cleanly..."),
                 );
             }
-            if let Err(unmount_err) = unmount_duckypad_sd_cleanly(&mount_root, real_dev.as_deref()) {
+            if let Err(unmount_err) = unmount_duckypad_sd_cleanly(&mount_root, real_dev.as_deref())
+            {
                 if res.is_ok() {
                     res = Err(unmount_err);
                 }
@@ -983,7 +1001,9 @@ where
             );
             on_progress(
                 100,
-                &format!("Ready on duckyPad Pro: Press ANY KEY on the device to install v{ver_label}!"),
+                &format!(
+                    "Ready on duckyPad Pro: Press ANY KEY on the device to install v{ver_label}!"
+                ),
                 &format!("✓ {msg}"),
             );
             Ok(msg)
@@ -991,4 +1011,3 @@ where
         Err(e) => Err(e),
     }
 }
-

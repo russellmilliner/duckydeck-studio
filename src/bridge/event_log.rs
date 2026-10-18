@@ -33,7 +33,9 @@ pub fn record_system_event(level: &str, category: &str, message: impl AsRef<str>
     if msg.is_empty() {
         return;
     }
-    let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string();
+    let ts = chrono::Local::now()
+        .format("%Y-%m-%d %H:%M:%S%.3f")
+        .to_string();
     let lvl = level.trim().to_ascii_uppercase();
     let cat = category.trim().to_ascii_uppercase();
 
@@ -136,11 +138,12 @@ pub fn serialize_system_event_log_json() -> (String, i32) {
     }
 }
 
-
 pub fn sync_event_log_properties_impl(mut controller: Pin<&mut qobject::DeviceController>) {
     let (json_str, count) = serialize_system_event_log_json();
     controller.as_mut().set_event_log_count(count);
-    controller.as_mut().set_event_log_json(QString::from(&json_str));
+    controller
+        .as_mut()
+        .set_event_log_json(QString::from(&json_str));
 }
 
 pub fn log_event_impl(
@@ -156,7 +159,10 @@ pub fn log_event_impl(
     sync_event_log_properties_impl(controller.as_mut());
 }
 
-pub fn record_status_log_impl(mut controller: Pin<&mut qobject::DeviceController>, message: QString) {
+pub fn record_status_log_impl(
+    mut controller: Pin<&mut qobject::DeviceController>,
+    message: QString,
+) {
     let msg = message.to_string();
     let trimmed = msg.trim();
     if trimmed.is_empty() {
@@ -182,7 +188,9 @@ pub fn record_status_log_impl(mut controller: Pin<&mut qobject::DeviceController
 pub fn refresh_event_log_impl(mut controller: Pin<&mut qobject::DeviceController>) -> QString {
     let (json_str, count) = serialize_system_event_log_json();
     controller.as_mut().set_event_log_count(count);
-    controller.as_mut().set_event_log_json(QString::from(&json_str));
+    controller
+        .as_mut()
+        .set_event_log_json(QString::from(&json_str));
     QString::from(&json_str)
 }
 
@@ -232,7 +240,9 @@ pub fn export_event_log_impl(
         Err(e) => {
             let err_msg = format!("Failed to export event log: {e}");
             record_system_event("ERROR", "SYSTEM", &err_msg);
-            controller.as_mut().set_status_message(QString::from(&err_msg));
+            controller
+                .as_mut()
+                .set_status_message(QString::from(&err_msg));
             sync_event_log_properties_impl(controller.as_mut());
             false
         }

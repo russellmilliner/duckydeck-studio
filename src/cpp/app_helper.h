@@ -1161,15 +1161,16 @@ inline void ensure_global_key_filter() {
 template <typename ControllerT>
 inline void duckydeck_sync_tray(
     ControllerT& controller,
-    bool useLightOnDarkIcon,
     const QString& iconMode,
     const QString& statusHeader,
     const QString& profileHeader,
     const QString& sdSpaceHeader,
     const QString& tooltipText,
-    bool autoSwitchEnabled,
-    bool autostartEnabled
+    std::uint8_t flags
 ) {
+    const bool useLightOnDarkIcon = (flags & 0x01u) != 0u;
+    const bool autoSwitchEnabled = (flags & 0x02u) != 0u;
+    const bool autostartEnabled = (flags & 0x04u) != 0u;
     duckydeck::TrayManager::instance().sync(
         &controller,
         useLightOnDarkIcon,

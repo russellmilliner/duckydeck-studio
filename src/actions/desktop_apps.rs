@@ -15,7 +15,6 @@ pub struct InstalledDesktopApp {
     pub terminal: bool,
 }
 
-
 pub fn split_shell_words(input: &str) -> Vec<String> {
     let mut words = Vec::new();
     let mut current = String::new();
@@ -258,7 +257,7 @@ pub fn scan_installed_desktop_apps() -> Vec<InstalledDesktopApp> {
         }
     }
 
-    apps.sort_by(|a, b| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()));
+    apps.sort_by_key(|a| a.name.to_ascii_lowercase());
     apps
 }
 
@@ -292,4 +291,3 @@ pub(crate) fn find_terminal_emulator() -> Option<(String, Vec<String>)> {
     }
     None
 }
-

@@ -129,8 +129,7 @@ pub fn query_connected_duckypad_info() -> Result<ConnectedDuckyPadInfo, String> 
                     } else {
                         format!("{}.{}.{}", rx[3], rx[4], rx[5])
                     };
-                    let serial =
-                        format!("{:02X}{:02X}{:02X}{:02X}", rx[7], rx[8], rx[9], rx[10]);
+                    let serial = format!("{:02X}{:02X}{:02X}{:02X}", rx[7], rx[8], rx[9], rx[10]);
                     let disk_label = format!("DP{}_{:02X}{:02X}", rx[6], rx[9], rx[10]);
                     let active_profile = rx[11].max(1);
                     return Ok(ConnectedDuckyPadInfo {
@@ -180,7 +179,6 @@ pub fn poll_hardware_active_profile() -> Option<u8> {
     }
     None
 }
-
 
 pub fn read_all_pgvs(device: &HidDevice) -> Result<[i32; PGV_COUNT], String> {
     let mut pgvs = [0i32; PGV_COUNT];
@@ -302,7 +300,6 @@ pub fn goto_profile_by_name(device: &HidDevice, profile_name: &str) -> Result<()
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -356,9 +353,7 @@ mod tests {
 
         // Verify empty slot insertion does NOT change the fingerprint (fixes phantom unsynced state)
         let mut with_empty_slot = base_profiles.clone();
-        with_empty_slot[0]
-            .slots
-            .insert(5, DuckyKeySlot::default());
+        with_empty_slot[0].slots.insert(5, DuckyKeySlot::default());
         assert_eq!(
             compute_profiles_fingerprint(&with_empty_slot),
             base_fp,
@@ -395,10 +390,8 @@ mod tests {
             "Setting a per-profile webhook must NOT require a microSD sync"
         );
 
-        let temp_sd = std::env::temp_dir().join(format!(
-            "duckydeck_rotation_test_{}",
-            std::process::id()
-        ));
+        let temp_sd =
+            std::env::temp_dir().join(format!("duckydeck_rotation_test_{}", std::process::id()));
         let _ = fs::remove_dir_all(&temp_sd); // ignore: best-effort test temp dir cleanup
         fs::create_dir_all(&temp_sd).expect("create temp sd dir");
         base_profiles[0]
@@ -492,5 +485,3 @@ mod tests {
         let _ = fs::remove_dir_all(&temp_sd); // ignore: best-effort test temp dir cleanup
     }
 }
-
-
