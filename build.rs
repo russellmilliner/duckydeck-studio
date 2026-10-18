@@ -27,6 +27,13 @@ fn main() {
                 "src/qml/AutoSwitchDrawer.qml",
                 "src/qml/AiArchitectModal.qml",
                 "src/qml/OledDesktopWidget.qml",
+                "src/qml/ColorPickerWindow.qml",
+                "src/qml/WebApiBuilder.qml",
+                "src/qml/AppLaunchBuilder.qml",
+                "src/qml/EventLogDialog.qml",
+                "src/qml/SettingsPage.qml",
+                "src/qml/SdSyncDialog.qml",
+                "src/qml/RestApiSettings.qml",
             ],
             qrc_files: &[
                 "src/qml/icons/tray-icon-dark.svg",
@@ -48,6 +55,13 @@ fn main() {
     println!("cargo:rerun-if-changed=src/qml/AutoSwitchDrawer.qml");
     println!("cargo:rerun-if-changed=src/qml/AiArchitectModal.qml");
     println!("cargo:rerun-if-changed=src/qml/OledDesktopWidget.qml");
+    println!("cargo:rerun-if-changed=src/qml/ColorPickerWindow.qml");
+    println!("cargo:rerun-if-changed=src/qml/WebApiBuilder.qml");
+    println!("cargo:rerun-if-changed=src/qml/AppLaunchBuilder.qml");
+    println!("cargo:rerun-if-changed=src/qml/EventLogDialog.qml");
+    println!("cargo:rerun-if-changed=src/qml/SettingsPage.qml");
+    println!("cargo:rerun-if-changed=src/qml/SdSyncDialog.qml");
+    println!("cargo:rerun-if-changed=src/qml/RestApiSettings.qml");
     println!("cargo:rustc-link-lib=KF6ColorScheme");
     println!("cargo:rustc-link-lib=KF6ConfigCore");
     println!("cargo:rustc-link-lib=KF6IconThemes");
