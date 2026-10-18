@@ -30,8 +30,8 @@ finish-args:
   - --filesystem=xdg-config/kglobalshortcutsrc:ro
   - --filesystem=xdg-data/kxmlgui5:ro
 
-  # 6. KWin hook script in XDG_RUNTIME_DIR
-  - --filesystem=xdg-run/duckydeck-kwin6-hook.js:create
+  # 6. KWin hook scripts directory in XDG_RUNTIME_DIR
+  - --filesystem=xdg-run/duckydeck-studio:create
 
   # 7. D-Bus Permissions (KWin Auto-Switch, Tray Icon, Keyring, UDisks2, Host Spawn)
   - --talk-name=org.kde.KWin

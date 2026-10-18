@@ -1996,6 +1996,7 @@ pub async fn run_kwin_auto_switcher(
         });
     }
 
+    let pending_check = Arc::clone(&pending);
     let service = KWinBridgeService {
         state,
         ui_event_tx,
@@ -2018,42 +2019,70 @@ pub async fn run_kwin_auto_switcher(
         .await
         {
             let plugin_name = "duckydeck_kwin6_autoswitcher";
-            let _: std::result::Result<bool, _> =
-                kwin_scripting.call("unloadScript", &(plugin_name,)).await;
+            let fallback_name = format!("duckydeck_kwin6_autoswitcher_{}", std::process::id());
 
-            let mut script_id: i32 = kwin_scripting
-                .call("loadScript", &(&script_path, plugin_name))
-                .await
-                .unwrap_or(-1);
-
-            if script_id < 0 {
-                let fallback_name = format!("duckydeck_kwin6_autoswitcher_{}", std::process::id());
-                let _: std::result::Result<bool, _> = kwin_scripting
-                    .call("unloadScript", &(fallback_name.as_str(),))
-                    .await;
-                script_id = kwin_scripting
-                    .call("loadScript", &(&script_path, fallback_name.as_str()))
-                    .await
-                    .unwrap_or(-1);
-            }
-
-            if script_id >= 0 {
-                let script_obj_path = format!("/Scripting/Script{script_id}");
-                if let Ok(kwin_script) = zbus::Proxy::new(
-                    &conn,
-                    "org.kde.KWin",
-                    script_obj_path.as_str(),
-                    "org.kde.kwin.Script",
-                )
-                .await
+            for _attempt in 0..8 {
                 {
-                    if let Err(e) = kwin_script.call_noreply("run", &()).await {
-                        crate::bridge::device_controller::record_system_event(
-                            "WARN",
-                            "KWIN",
-                            format!("Failed running KWin auto-switcher script: {e}"),
-                        );
+                    let _guard = KWIN_SCRIPT_LOCK.lock().await;
+                    let _: std::result::Result<bool, _> = kwin_scripting
+                        .call("unloadScript", &("duckydeck_oled_keep_above_oneshot",))
+                        .await;
+                    let _: std::result::Result<bool, _> =
+                        kwin_scripting.call("unloadScript", &(plugin_name,)).await;
+                    let _: std::result::Result<bool, _> = kwin_scripting
+                        .call("unloadScript", &(fallback_name.as_str(),))
+                        .await;
+
+                    let mut script_id: i32 = kwin_scripting
+                        .call("loadScript", &(&script_path, plugin_name))
+                        .await
+                        .unwrap_or(-1);
+
+                    if script_id < 0 {
+                        script_id = kwin_scripting
+                            .call("loadScript", &(&script_path, fallback_name.as_str()))
+                            .await
+                            .unwrap_or(-1);
                     }
+
+                    if script_id >= 0 {
+                        let script_obj_path = format!("/Scripting/Script{script_id}");
+                        if let Ok(kwin_script) = zbus::Proxy::new(
+                            &conn,
+                            "org.kde.KWin",
+                            script_obj_path.as_str(),
+                            "org.kde.kwin.Script",
+                        )
+                        .await
+                        {
+                            if let Err(e) = kwin_script.call::<_, _, ()>("run", &()).await {
+                                crate::bridge::device_controller::record_system_event(
+                                    "WARN",
+                                    "KWIN",
+                                    format!("Failed running KWin auto-switcher script: {e}"),
+                                );
+                            }
+                        }
+                    }
+                }
+
+                // Wait up to 300ms for sendInitialTopWindow() to deliver the initial window over D-Bus.
+                // If an external tool (such as kdotool) caused a transient KWin scripts.size() ID collision,
+                // retry loading and running the hook script.
+                let mut received_initial = false;
+                for _ in 0..12 {
+                    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                    if pending_check
+                        .lock()
+                        .map(|p| !p.raw_class.is_empty())
+                        .unwrap_or(false)
+                    {
+                        received_initial = true;
+                        break;
+                    }
+                }
+                if received_initial {
+                    break;
                 }
             }
         }
@@ -2096,8 +2125,8 @@ function isOledWidgetWindow(win) {{
 function isDuckyDeckMainWindow(win) {{
     if (!win || isOledWidgetWindow(win)) return false;
     var cls = (win.resourceClass ? win.resourceClass.toString() : "").toLowerCase();
-    var cap = win.caption ? win.caption.toString() : "";
-    return cls.indexOf("duckydeck") !== -1 || cap.indexOf("DuckyDeck Studio") === 0;
+    var name = (win.resourceName ? win.resourceName.toString() : "").toLowerCase();
+    return cls.indexOf("duckydeck") !== -1 || name.indexOf("duckydeck") !== -1;
 }}
 
 function checkOledKeepAbove(win) {{
@@ -2408,6 +2437,7 @@ function sendInitialTopWindow() {
             }
         }
     }
+    sendDesktop();
 }
 
 if (workspace.windowAdded) {
@@ -2425,7 +2455,7 @@ if (workspace.windowActivated) {
 }
 "#;
 
-    let file_path = crate::paths::runtime_dir()
+    let file_path = crate::paths::kwin_runtime_dir()
         .join("duckydeck-kwin6-hook.js")
         .to_string_lossy()
         .to_string();
@@ -2453,12 +2483,11 @@ fn load_saved_oled_geometry_tuple() -> Option<(i32, i32, i32, i32)> {
     Some((x, y, w, h))
 }
 
-static OLED_PIN_SCRIPT_LOCK: std::sync::LazyLock<std::sync::Mutex<()>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(()));
+static KWIN_SCRIPT_LOCK: std::sync::LazyLock<tokio::sync::Mutex<()>> =
+    std::sync::LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 pub fn apply_kwin_oled_keep_above(keep_above: bool, restore_geometry: bool) {
     std::thread::spawn(move || {
-        let _guard = OLED_PIN_SCRIPT_LOCK.lock().ok();
         let geom_opt = if restore_geometry {
             load_saved_oled_geometry_tuple()
         } else {
@@ -2486,7 +2515,7 @@ pub fn apply_kwin_oled_keep_above(keep_above: bool, restore_geometry: bool) {
                 return;
             };
 
-            let script_path = crate::paths::runtime_dir()
+            let script_path = crate::paths::kwin_runtime_dir()
                 .join("duckydeck-kwin6-oled-pin.js")
                 .to_string_lossy()
                 .to_string();
@@ -2516,9 +2545,6 @@ if (list) {{
 }}
 "#
             );
-            if std::fs::write(&script_path, js.as_bytes()).is_err() {
-                return;
-            }
             let plugin_name = "duckydeck_oled_keep_above_oneshot";
             let delays_ms: &[u64] = if geom_opt.is_some() {
                 &[0, 60, 180, 420]
@@ -2528,6 +2554,10 @@ if (list) {{
             for &delay in delays_ms {
                 if delay > 0 {
                     tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                }
+                let _guard = KWIN_SCRIPT_LOCK.lock().await;
+                if std::fs::write(&script_path, js.as_bytes()).is_err() {
+                    return;
                 }
                 let _: std::result::Result<bool, _> =
                     kwin_scripting.call("unloadScript", &(plugin_name,)).await;
@@ -2545,7 +2575,7 @@ if (list) {{
                         )
                         .await
                         {
-                            if let Err(e) = script_proxy.call_noreply("run", &()).await {
+                            if let Err(e) = script_proxy.call::<_, _, ()>("run", &()).await {
                                 crate::bridge::device_controller::record_system_event(
                                     "WARN",
                                     "KWIN",
@@ -2553,7 +2583,7 @@ if (list) {{
                                 );
                             }
                         }
-                        tokio::time::sleep(std::time::Duration::from_millis(35)).await;
+                        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                         let _: std::result::Result<bool, _> =
                             kwin_scripting.call("unloadScript", &(plugin_name,)).await;
                     }

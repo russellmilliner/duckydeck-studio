@@ -94,6 +94,12 @@ pub fn runtime_dir() -> PathBuf {
     fallback
 }
 
+pub fn kwin_runtime_dir() -> PathBuf {
+    let dir = runtime_dir().join(APP_DIR_NAME);
+    ensure_dir_0700(&dir);
+    dir
+}
+
 pub fn sanitize_xdg_env() {
     let resolved_data_home = xdg_data_home();
     let needs_fix = match env::var("XDG_DATA_HOME") {
