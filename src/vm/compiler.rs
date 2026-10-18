@@ -909,7 +909,10 @@ fn replace_word_boundary(haystack: &str, needle: &str, replacement: &str) -> (St
     let mut count = 0;
 
     while i <= haystack.len() - needle.len() {
-        if haystack[i..].starts_with(needle) {
+        let Some(tail) = haystack.get(i..) else {
+            break;
+        };
+        if tail.starts_with(needle) {
             let left_ok = i == 0 || !is_word_char(h_bytes[i - 1]);
             let right_idx = i + needle.len();
             let right_ok = if end_is_word {
@@ -925,11 +928,15 @@ fn replace_word_boundary(haystack: &str, needle: &str, replacement: &str) -> (St
                 continue;
             }
         }
-        let ch = haystack[i..].chars().next().unwrap();
+        let Some(ch) = tail.chars().next() else {
+            break;
+        };
         out.push(ch);
         i += ch.len_utf8();
     }
-    out.push_str(&haystack[i..]);
+    if let Some(rem) = haystack.get(i..) {
+        out.push_str(rem);
+    }
     (out, count)
 }
 
@@ -946,10 +953,11 @@ fn replace_define_once(pgm_line: &str, def_dict: &mut HashMap<String, String>) -
     keys.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
 
     for key in keys {
-        let val = &def_dict[&key];
-        let (replaced, count) = replace_word_boundary(pgm_line, &key, val);
-        if count > 0 {
-            return replaced;
+        if let Some(val) = def_dict.get(&key) {
+            let (replaced, count) = replace_word_boundary(pgm_line, &key, val);
+            if count > 0 {
+                return replaced;
+            }
         }
     }
     pgm_line.to_string()
@@ -959,9 +967,9 @@ fn replace_define(source: &str, def_dict: &mut HashMap<String, String>) -> Resul
     let mut current = source.to_string();
     let mut last = String::new();
     let mut iterations = 0;
-    let max_iter = 512usize.max(def_dict.len() * 2);
+    let max_iter = 512usize.max(def_dict.len().saturating_mul(2));
     while last != current {
-        if iterations > max_iter {
+        if iterations > max_iter || current.len() > 8192 {
             return Err("Recursive DEFINE".to_string());
         }
         last = current.clone();
@@ -1278,7 +1286,7 @@ fn single_pass(
             }
         }
 
-        if indent_lvl < 0 {
+        if !(0..=64).contains(&indent_lvl) {
             return Err(CompileResult::err(
                 lnum_usize,
                 &this_line,
@@ -1483,7 +1491,7 @@ fn preprocess_all(
     }
     if let Some(ls) = pass2.loop_size {
         second_pass_listing.push(DsLine {
-            content: format!("_LOOP_SIZE = {}", ls + 1),
+            content: format!("_LOOP_SIZE = {}", ls.saturating_add(1)),
             orig_lnum_sf1: 0,
             indent_level: 0,
         });
@@ -1853,11 +1861,16 @@ fn tokenize_expr(input: &str) -> Result<Vec<Tok>, String> {
 struct ExprParser {
     tokens: Vec<Tok>,
     pos: usize,
+    depth: usize,
 }
 
 impl ExprParser {
     fn new(tokens: Vec<Tok>) -> Self {
-        Self { tokens, pos: 0 }
+        Self {
+            tokens,
+            pos: 0,
+            depth: 0,
+        }
     }
 
     fn peek(&self) -> Option<&Tok> {
@@ -1873,7 +1886,13 @@ impl ExprParser {
     }
 
     fn parse_expr(&mut self) -> Result<Expr, String> {
-        self.parse_or()
+        if self.depth >= 128 {
+            return Err("Expression nesting too deep".to_string());
+        }
+        self.depth += 1;
+        let res = self.parse_or();
+        self.depth -= 1;
+        res
     }
 
     fn parse_or(&mut self) -> Result<Expr, String> {
@@ -1884,7 +1903,10 @@ impl ExprParser {
             values.push(self.parse_and()?);
         }
         if values.len() == 1 {
-            Ok(values.pop().unwrap())
+            values
+                .into_iter()
+                .next()
+                .ok_or_else(|| "Empty expression".to_string())
         } else {
             Ok(Expr::BoolOp {
                 op: Op::Logior,
@@ -1901,7 +1923,10 @@ impl ExprParser {
             values.push(self.parse_not()?);
         }
         if values.len() == 1 {
-            Ok(values.pop().unwrap())
+            values
+                .into_iter()
+                .next()
+                .ok_or_else(|| "Empty expression".to_string())
         } else {
             Ok(Expr::BoolOp {
                 op: Op::Logiand,
@@ -1912,8 +1937,14 @@ impl ExprParser {
 
     fn parse_not(&mut self) -> Result<Expr, String> {
         if matches!(self.peek(), Some(Tok::Not)) {
+            if self.depth >= 128 {
+                return Err("Expression nesting too deep".to_string());
+            }
+            self.depth += 1;
             self.next();
-            let operand = self.parse_not()?;
+            let res = self.parse_not();
+            self.depth -= 1;
+            let operand = res?;
             return Ok(Expr::UnaryOp {
                 op: Op::Loginot,
                 operand: Box::new(operand),
@@ -2047,26 +2078,38 @@ impl ExprParser {
     }
 
     fn parse_unary(&mut self) -> Result<Expr, String> {
+        if self.depth >= 128 {
+            return Err("Expression nesting too deep".to_string());
+        }
         match self.peek() {
             Some(Tok::Minus) => {
+                self.depth += 1;
                 self.next();
-                let operand = self.parse_unary()?;
+                let res = self.parse_unary();
+                self.depth -= 1;
+                let operand = res?;
                 Ok(Expr::UnaryOp {
                     op: Op::Usub,
                     operand: Box::new(operand),
                 })
             }
             Some(Tok::BitNot) => {
+                self.depth += 1;
                 self.next();
-                let operand = self.parse_unary()?;
+                let res = self.parse_unary();
+                self.depth -= 1;
+                let operand = res?;
                 Ok(Expr::UnaryOp {
                     op: Op::Bitinv,
                     operand: Box::new(operand),
                 })
             }
             Some(Tok::Plus) => {
+                self.depth += 1;
                 self.next();
-                self.parse_unary()
+                let res = self.parse_unary();
+                self.depth -= 1;
+                res
             }
             _ => self.parse_power(),
         }
@@ -2161,20 +2204,8 @@ fn fold_constants(expr: Expr) -> Expr {
                             None
                         }
                     }
-                    Op::Div => {
-                        if *rv != 0 {
-                            Some(lv / rv)
-                        } else {
-                            None
-                        }
-                    }
-                    Op::Mod => {
-                        if *rv != 0 {
-                            Some(lv % rv)
-                        } else {
-                            None
-                        }
-                    }
+                    Op::Div => lv.checked_div(*rv),
+                    Op::Mod => lv.checked_rem(*rv),
                     Op::Lshift => Some(lv.wrapping_shl(*rv as u32)),
                     Op::Rshift => Some(lv.wrapping_shr(*rv as u32)),
                     Op::Bitor => Some(lv | rv),
@@ -2364,11 +2395,12 @@ fn parse_statements(lines: &[DsLine], pos: &mut usize) -> Result<Vec<Stmt>, Comp
             });
         } else if first_word == "OLED_LPRINT" || first_word == "OLED_CPRINT" {
             let opt = if first_word == "OLED_CPRINT" { 1 } else { 0 };
-            let str_content = if raw.len() > first_word.len() + 1 {
-                &raw[first_word.len() + 1..]
-            } else {
-                ""
-            };
+            let after_kw = raw.get(first_word.len()..).unwrap_or("");
+            let str_content = after_kw
+                .chars()
+                .next()
+                .and_then(|c| after_kw.get(c.len_utf8()..))
+                .unwrap_or("");
             stmts.push(Stmt::Assign {
                 target: DUMMY_VAR_NAME.to_string(),
                 value: Expr::Call {
@@ -2379,11 +2411,12 @@ fn parse_statements(lines: &[DsLine], pos: &mut usize) -> Result<Vec<Stmt>, Comp
                 orig_line: raw.to_string(),
             });
         } else if is_str_or_keypress_cmd(first_word) {
-            let str_content = if raw.len() > first_word.len() + 1 {
-                &raw[first_word.len() + 1..]
-            } else {
-                ""
-            };
+            let after_kw = raw.get(first_word.len()..).unwrap_or("");
+            let str_content = after_kw
+                .chars()
+                .next()
+                .and_then(|c| after_kw.get(c.len_utf8()..))
+                .unwrap_or("");
             stmts.push(Stmt::Assign {
                 target: DUMMY_VAR_NAME.to_string(),
                 value: Expr::Call {
@@ -2395,7 +2428,7 @@ fn parse_statements(lines: &[DsLine], pos: &mut usize) -> Result<Vec<Stmt>, Comp
             });
         } else if builtin_func_lookup(first_word).is_some() {
             // Check if called in command style `DELAY 100` vs expression style `DELAY(100)`
-            let after_kw = raw[first_word.len()..].trim();
+            let after_kw = raw.get(first_word.len()..).unwrap_or("").trim();
             let call_expr_str = if after_kw.starts_with('(') && after_kw.ends_with(')') {
                 replace_operators(raw)
             } else {
@@ -2413,7 +2446,7 @@ fn parse_statements(lines: &[DsLine], pos: &mut usize) -> Result<Vec<Stmt>, Comp
             });
         } else {
             let mut stmt_str = if first_word == "VAR" {
-                raw[3..].trim().to_string()
+                raw.strip_prefix("VAR").unwrap_or(raw).trim().to_string()
             } else {
                 raw.to_string()
             };
@@ -2554,7 +2587,7 @@ fn find_top_level_assign(s: &str) -> Option<(&str, &str)> {
             let prev = if i > 0 { bytes[i - 1] } else { 0 };
             let next = if i + 1 < bytes.len() { bytes[i + 1] } else { 0 };
             if next != b'=' && !matches!(prev, b'=' | b'!' | b'<' | b'>') {
-                return Some((&s[..i], &s[i + 1..]));
+                return s.get(..i).zip(s.get(i + 1..));
             }
         }
         i += 1;
@@ -2670,11 +2703,13 @@ struct CodegenCtx {
 impl CodegenCtx {
     fn active_list(&mut self) -> &mut Vec<Instruction> {
         if let Some(ref fname) = self.current_function {
-            if !self.func_assembly_dict.contains_key(fname) {
-                self.func_assembly_order.push(fname.clone());
-                self.func_assembly_dict.insert(fname.clone(), Vec::new());
-            }
-            self.func_assembly_dict.get_mut(fname).unwrap()
+            let order = &mut self.func_assembly_order;
+            self.func_assembly_dict
+                .entry(fname.clone())
+                .or_insert_with(|| {
+                    order.push(fname.clone());
+                    Vec::new()
+                })
         } else {
             &mut self.root_assembly_list
         }
@@ -3301,7 +3336,7 @@ fn extract_printf_specifier(text: &str) -> &str {
         }
     }
     if i < bytes.len() && matches!(bytes[i], b'd' | b'u' | b'x' | b'X') {
-        &text[..=i]
+        text.get(..=i).unwrap_or("")
     } else {
         ""
     }
@@ -3321,10 +3356,12 @@ fn replace_var_in_str(
     while idx < chars.len() {
         let (byte_pos, ch) = chars[idx];
         if ch == '$' {
-            let after_dollar = &msg[byte_pos + 1..];
+            let after_dollar = msg.get(byte_pos + 1..).unwrap_or("");
             let mut matched: Option<(&str, i32, SymType)> = None;
             for (end_byte, end_ch) in after_dollar.char_indices().rev() {
-                let candidate = &after_dollar[..end_byte + end_ch.len_utf8()];
+                let Some(candidate) = after_dollar.get(..end_byte + end_ch.len_utf8()) else {
+                    continue;
+                };
                 if let Some(&addr) = reserved.get(candidate) {
                     matched = Some((candidate, addr as i32, SymType::ReservedVar));
                     break;
@@ -3355,7 +3392,7 @@ fn replace_var_in_str(
                     } else {
                         (VAR_BOUNDARY_UDGV, (var_addr as u16).to_le_bytes())
                     };
-                let after_var = &after_dollar[var_name.len()..];
+                let after_var = after_dollar.get(var_name.len()..).unwrap_or("");
                 let spec = extract_printf_specifier(after_var);
 
                 result.push(boundary);
@@ -3381,6 +3418,9 @@ pub fn compile_duckyscript_to_dsb(
     allow_abort: bool,
     disable_autorepeat: bool,
 ) -> CompileResult {
+    static STDLIB_PREPROCESSED: std::sync::OnceLock<Option<Vec<DsLine>>> =
+        std::sync::OnceLock::new();
+
     let mut program_listing = Vec::new();
     if allow_abort {
         program_listing.push(DsLine {
@@ -3408,16 +3448,20 @@ pub fn compile_duckyscript_to_dsb(
         });
     }
 
-    let stdlib_raw: Vec<DsLine> = default_stdlib_lines()
-        .into_iter()
-        .enumerate()
-        .map(|(i, content)| DsLine {
-            content,
-            orig_lnum_sf1: -((i + 1) as isize),
-            indent_level: 0,
+    let stdlib_preprocessed = STDLIB_PREPROCESSED
+        .get_or_init(|| {
+            let stdlib_raw: Vec<DsLine> = default_stdlib_lines()
+                .into_iter()
+                .enumerate()
+                .map(|(i, content)| DsLine {
+                    content,
+                    orig_lnum_sf1: -((i + 1) as isize),
+                    indent_level: 0,
+                })
+                .collect();
+            preprocess_all(stdlib_raw, None).ok().map(|r| r.lines)
         })
-        .collect();
-    let stdlib_preprocessed = preprocess_all(stdlib_raw, None).ok().map(|r| r.lines);
+        .clone();
 
     let preproc = match preprocess_all(program_listing, stdlib_preprocessed) {
         Ok(r) => r,
@@ -3616,9 +3660,10 @@ pub fn compile_duckyscript_to_dsb(
     for inst in &mut final_assembly {
         if inst.opcode == Op::Pushstr {
             if let Payload::Bytes(ref b) = inst.payload {
-                let addr = string_addrs[b];
-                inst.opcode = Op::Pushc16;
-                inst.payload = Payload::Int(addr as i64);
+                if let Some(&addr) = string_addrs.get(b) {
+                    inst.opcode = Op::Pushc16;
+                    inst.payload = Payload::Int(addr as i64);
+                }
             }
         }
     }
@@ -3843,5 +3888,43 @@ mod tests {
             "{} out of {total} .dsb files differed",
             mismatches.len()
         );
+    }
+
+    #[test]
+    fn test_regression_non_ascii_whitespace_char_boundary_slicing() {
+        for script in [
+            "STRING\u{00A0}hello\n",
+            "STRINGLN\u{3000}world\n",
+            "OLED_CPRINT\u{00A0}title\n",
+            "OLED_LPRINT\u{2003}subtitle\n",
+            "GOTO_PROFILE\u{00A0}Test\n",
+            "KEYDOWN\u{00A0}a\n",
+        ] {
+            let _ = compile_duckyscript_to_dsb(script, false, false);
+        }
+    }
+
+    #[test]
+    fn test_regression_loop_usize_max_and_i64_min_div_overflow() {
+        let _ = compile_duckyscript_to_dsb("LOOP18446744073709551615:\nSTRING ok\n", false, false);
+        let _ = compile_duckyscript_to_dsb(
+            "VAR x = (-9223372036854775807 - 1) / -1\nVAR y = (-9223372036854775807 - 1) % -1\n",
+            false,
+            false,
+        );
+    }
+
+    #[test]
+    fn test_regression_exponential_define_and_deep_nesting() {
+        let res_def = compile_duckyscript_to_dsb("DEFINE A A+A\nA\n", false, false);
+        assert!(!res_def.is_success);
+
+        let deep_unary = format!("VAR x = {}1\n", "-".repeat(1000));
+        let res_unary = compile_duckyscript_to_dsb(&deep_unary, false, false);
+        assert!(!res_unary.is_success);
+
+        let deep_parens = format!("VAR x = {}1{}\n", "(".repeat(500), ")".repeat(500));
+        let res_parens = compile_duckyscript_to_dsb(&deep_parens, false, false);
+        assert!(!res_parens.is_success);
     }
 }

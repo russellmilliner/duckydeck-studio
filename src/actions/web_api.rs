@@ -15,30 +15,13 @@ use crate::hardware::storage::{
 // Web API Key Action Builder, Hardware Trigger Poller (_GV31 + evdev F13-F24)
 // ============================================================================
 
-pub const WEB_API_META_PREFIX: &str = "// @WEB_API ";
+pub use crate::vm::{
+    default_fkey_for_slot, default_web_api_fkey, default_web_api_led_feedback,
+    default_web_api_method, default_web_api_trigger_mode, WebApiConfig, WEB_API_META_PREFIX,
+};
 pub const WEB_API_BLOCK_BEGIN: &str = "// --- BEGIN DUCKYDECK WEB API TRIGGER ---";
 pub const WEB_API_BLOCK_END: &str = "// --- END DUCKYDECK WEB API TRIGGER ---";
 pub const WEB_API_PGV_MAGIC: u32 = 0x444B_0000;
-
-pub(crate) fn default_web_api_method() -> String {
-    "POST".to_string()
-}
-
-fn default_web_api_oled() -> String {
-    String::new()
-}
-
-pub(crate) fn default_web_api_led_feedback() -> bool {
-    true
-}
-
-pub(crate) fn default_web_api_trigger_mode() -> String {
-    "pgv".to_string()
-}
-
-pub(crate) fn default_web_api_fkey() -> String {
-    "F13".to_string()
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -226,48 +209,6 @@ pub fn resolve_web_api_config_destination(cfg: &mut WebApiConfig) {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct WebApiConfig {
-    #[serde(default)]
-    pub enabled: bool,
-    #[serde(default)]
-    pub destination: String,
-    #[serde(default = "default_web_api_method")]
-    pub method: String,
-    #[serde(default)]
-    pub url: String,
-    #[serde(default)]
-    pub headers: String,
-    #[serde(default)]
-    pub body: String,
-    #[serde(default = "default_web_api_oled")]
-    pub oled_text: String,
-    #[serde(default = "default_web_api_led_feedback")]
-    pub led_feedback: bool,
-    #[serde(default = "default_web_api_trigger_mode")]
-    pub trigger_mode: String,
-    #[serde(default = "default_web_api_fkey")]
-    pub fkey: String,
-}
-
-impl Default for WebApiConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            destination: String::new(),
-            method: default_web_api_method(),
-            url: String::new(),
-            headers: String::new(),
-            body: String::new(),
-            oled_text: String::new(),
-            led_feedback: true,
-            trigger_mode: default_web_api_trigger_mode(),
-            fkey: default_web_api_fkey(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WebApiExecutionResult {
@@ -277,11 +218,6 @@ pub struct WebApiExecutionResult {
     pub summary: String,
     pub response_preview: String,
     pub route_note: Option<String>,
-}
-
-pub fn default_fkey_for_slot(slot_num: usize) -> String {
-    let idx = ((slot_num.saturating_sub(1)) % 12) + 13;
-    format!("F{idx}")
 }
 
 pub fn extract_web_api_config(script: &str, slot_num: usize) -> WebApiConfig {

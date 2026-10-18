@@ -27,6 +27,8 @@ pub mod api_server;
 pub mod paths;
 pub mod vm;
 
+use duckydeck_core as _;
+
 use std::collections::BTreeSet;
 use std::env;
 use std::fs;

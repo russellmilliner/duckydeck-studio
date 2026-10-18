@@ -8,6 +8,15 @@ homepage = "https://duckydeckstudio.com"
 documentation = "https://duckydeckstudio.com"
 repository = "https://github.com/russellmilliner/duckydeck-studio"
 
+[lib]
+name = "duckydeck_core"
+path = "src/lib.rs"
+test = false
+
+[[bin]]
+name = "duckydeck-studio"
+path = "src/main.rs"
+
 [features]
 default = []
 demo = []

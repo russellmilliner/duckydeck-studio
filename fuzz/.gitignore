@@ -1,0 +1,7 @@
+target
+corpus/*
+!corpus/compile/
+corpus/compile/*
+!corpus/compile/*.txt
+artifacts
+coverage

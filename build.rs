@@ -1,6 +1,9 @@
 use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {
+    if std::env::var_os("CARGO_CFG_FUZZING").is_some() {
+        return;
+    }
     CxxQtBuilder::new()
         .qt_module("Network")
         .qt_module("Quick")

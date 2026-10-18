@@ -6,59 +6,11 @@ use std::path::{Path, PathBuf};
 use crate::actions::desktop_apps::{
     expand_tilde_str, find_terminal_emulator, scan_installed_desktop_apps, split_shell_words,
 };
-use crate::actions::web_api::{
-    default_fkey_for_slot, default_web_api_fkey, default_web_api_led_feedback,
-    default_web_api_trigger_mode, encode_pgv31_trigger,
-};
+use crate::actions::web_api::{default_fkey_for_slot, encode_pgv31_trigger};
+pub use crate::vm::{AppLaunchConfig, APP_LAUNCH_META_PREFIX};
 
-pub const APP_LAUNCH_META_PREFIX: &str = "// @DUCKYDECK_APP_LAUNCH: ";
 pub const APP_LAUNCH_BLOCK_BEGIN: &str = "// BEGIN_DUCKYDECK_APP_LAUNCH";
 pub const APP_LAUNCH_BLOCK_END: &str = "// END_DUCKYDECK_APP_LAUNCH";
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct AppLaunchConfig {
-    #[serde(default)]
-    pub enabled: bool,
-    #[serde(default)]
-    pub app_name: String,
-    #[serde(default)]
-    pub desktop_id: String,
-    #[serde(default)]
-    pub command: String,
-    #[serde(default)]
-    pub args: String,
-    #[serde(default)]
-    pub working_dir: String,
-    #[serde(default)]
-    pub run_in_terminal: bool,
-    #[serde(default)]
-    pub oled_text: String,
-    #[serde(default = "default_web_api_led_feedback")]
-    pub led_feedback: bool,
-    #[serde(default = "default_web_api_trigger_mode")]
-    pub trigger_mode: String,
-    #[serde(default = "default_web_api_fkey")]
-    pub fkey: String,
-}
-
-impl Default for AppLaunchConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            app_name: String::new(),
-            desktop_id: String::new(),
-            command: String::new(),
-            args: String::new(),
-            working_dir: String::new(),
-            run_in_terminal: false,
-            oled_text: String::new(),
-            led_feedback: true,
-            trigger_mode: default_web_api_trigger_mode(),
-            fkey: default_web_api_fkey(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
