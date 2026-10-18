@@ -7,11 +7,11 @@ import org.kde.kirigami as Kirigami
 
 Window {
     id: aiDialog
-    title: qsTr("AI Profile Architect & Shortcut Scraper — DuckyDeck Studio")
+    title: qsTr("Macro Template Generator (experimental) — DuckyDeck Studio")
     width: 600
-    height: 400
+    height: 440
     minimumWidth: 500
-    minimumHeight: 340
+    minimumHeight: 360
     visible: false
     modality: Qt.WindowModal
     flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMinMaxButtonsHint
@@ -26,7 +26,24 @@ Window {
         ? controller.uiTextScale
         : 100) / 100.0
 
+    property var scrapedShortcuts: []
+
+    function refreshScrapedShortcuts() {
+        if (!aiDialog.controller || !scrapeToggle.checked) {
+            aiDialog.scrapedShortcuts = []
+            return
+        }
+        try {
+            const raw = aiDialog.controller.scrapeAppShortcutsJson(appInput.text)
+            const arr = JSON.parse(raw || "[]")
+            aiDialog.scrapedShortcuts = Array.isArray(arr) ? arr : []
+        } catch (e) {
+            aiDialog.scrapedShortcuts = []
+        }
+    }
+
     function open() {
+        aiDialog.refreshScrapedShortcuts()
         aiDialog.show()
         aiDialog.raise()
         aiDialog.requestActivate()
@@ -90,7 +107,7 @@ Window {
             Layout.fillWidth: true
             font.bold: true
             font.pointSize: 12 * aiDialog.fontScale
-            text: qsTr("AI Profile Architect & Shortcut Scraper")
+            text: qsTr("Macro Template Generator (experimental)")
             color: Kirigami.Theme.textColor
             elide: Text.ElideRight
         }
@@ -136,7 +153,8 @@ Window {
                     Layout.fillWidth: true
                     font.pointSize: 10 * aiDialog.fontScale
                     text: "Kdenlive"
-                    placeholderText: qsTr("e.g., Blender, Kdenlive, Helldivers 2, FreeCAD")
+                    placeholderText: qsTr("e.g., Spectacle, Kdenlive, Dolphin, KWin")
+                    onTextChanged: aiDialog.refreshScrapedShortcuts()
                 }
 
                 QQC2.CheckBox {
@@ -145,6 +163,34 @@ Window {
                     font.pointSize: 10 * aiDialog.fontScale
                     checked: true
                     text: qsTr("Scrape ~/.config/kglobalshortcutsrc for local KDE keybindings")
+                    onToggled: aiDialog.refreshScrapedShortcuts()
+                }
+
+                QQC2.Label {
+                    visible: scrapeToggle.checked
+                    Layout.fillWidth: true
+                    font.bold: true
+                    font.pointSize: 10 * aiDialog.fontScale
+                    text: aiDialog.scrapedShortcuts.length > 0
+                        ? qsTr("Matching KDE Shortcuts (%1 found — select one):").arg(aiDialog.scrapedShortcuts.length)
+                        : qsTr("Matching KDE Shortcuts (none found for filter; default template will be used):")
+                    color: Kirigami.Theme.textColor
+                }
+
+                QQC2.ComboBox {
+                    id: shortcutCombo
+                    visible: scrapeToggle.checked && aiDialog.scrapedShortcuts.length > 0
+                    Layout.fillWidth: true
+                    font.pointSize: 10 * aiDialog.fontScale
+                    model: {
+                        const list = aiDialog.scrapedShortcuts || []
+                        const out = []
+                        for (let i = 0; i < list.length; ++i) {
+                            const it = list[i]
+                            out.push(it.action + "  [" + it.shortcut + "  →  " + it.duckyscript + "]")
+                        }
+                        return out
+                    }
                 }
 
                 QQC2.Label {
@@ -200,7 +246,15 @@ Window {
                 font.pointSize: 10 * aiDialog.fontScale
                 onClicked: {
                     if (aiDialog.controller) {
-                        aiDialog.controller.generateAiMacro(appInput.text, promptInput.text)
+                        let effectivePrompt = promptInput.text
+                        if (scrapeToggle.checked && aiDialog.scrapedShortcuts.length > 0) {
+                            const idx = Math.max(0, Math.min(shortcutCombo.currentIndex, aiDialog.scrapedShortcuts.length - 1))
+                            const picked = aiDialog.scrapedShortcuts[idx]
+                            if (picked && picked.action && picked.shortcut) {
+                                effectivePrompt = "[SHORTCUT:" + picked.action + "|" + picked.shortcut + "]\n" + promptInput.text
+                            }
+                        }
+                        aiDialog.controller.generateAiMacro(appInput.text, effectivePrompt)
                     }
                     aiDialog.close()
                 }

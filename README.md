@@ -7,7 +7,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg?style=for-the-badge)](https://www.gnu.org/licenses/gpl-3.0)
 [![Platform: Linux / KDE Plasma 6](https://img.shields.io/badge/Platform-Linux%20%7C%20KDE%20Plasma%206-3daee9?logo=kde&logoColor=white&style=for-the-badge)](https://kde.org/)
 
-**DuckyDeck Studio** is a native Linux desktop configurator, **DSVM v2 bytecode compiler**, **KDE Plasma 6 Wayland Auto-Switcher**, and **AI Macro Architect** for the **duckyPad Pro (`0x0483:0xd11d`)** and **duckyPad 2020 (`0x0483:0xd11c`)**, built with **Rust**, **CXX-Qt 0.7**, and **KDE Frameworks 6 (Kirigami + KSyntaxHighlighting)**.
+**DuckyDeck Studio** is a native Linux desktop configurator, **DSVM v2 bytecode compiler**, **KDE Plasma 6 Wayland Auto-Switcher**, and **Macro Template Generator (experimental)** for the **duckyPad Pro (`0x0483:0xd11d`)** and **duckyPad 2020 (`0x0483:0xd11c`)**, built with **Rust**, **CXX-Qt 0.7**, and **KDE Frameworks 6 (Kirigami + KSyntaxHighlighting)**.
 
 > 🌐 **Official Website & Online Documentation:** **[https://duckydeckstudio.com](https://duckydeckstudio.com)**
 >
@@ -61,9 +61,9 @@
   - Edits are saved immediately to a local per-device cache (`~/.local/share/duckydeck-studio/profiles_cache/`).
   - Inspect a detailed **Unsynced Changes Summary** before syncing, then write, flush, and verify `.dsb` bytecode and `config.txt` files on the duckyPad microSD card.
   - Export and import individual profiles (`.duckyprofile.json` or folder) or complete **Profile Groups (`.duckygroup.json`)**.
-- **🔢 Live PGV Inspector (`_GV0`..`_GV31`) & ✨ AI Macro Architect:**
+- **🔢 Live PGV Inspector (`_GV0`..`_GV31`) & ✨ Macro Template Generator (experimental):**
   - Read and write all 32 non-volatile 32-bit Persistent Global Variables (`_GV0.._GV31`) over USB HID (`0x18`/`0x19`) in Signed, Unsigned, or Hex format.
-  - Generate duckyScript 3 macros from natural language grounded in your local KDE shortcuts (`~/.config/kglobalshortcutsrc`).
+  - Generate duckyScript 3 macro templates from your local KDE shortcuts (`~/.config/kglobalshortcutsrc`), converting KDE key sequences directly into duckyScript 3 key combos.
 - **📋 System Event Log, Global UI Zoom (`Ctrl++`/`Ctrl+-`) & System Tray:**
   - Built-in **System Event Log** (`DEVICE`, `PROFILE`, `AUTOSWITCH`, `SD_SYNC`, `SCRIPT`, `WEB_API`, `APP_LAUNCH`, `SYSTEM`) with search, category/severity filters, and file export.
   - Global UI text zoom (`75%–160%`, minimum `10pt` base font) with standard <kbd>Ctrl</kbd>+<kbd>+</kbd>, <kbd>Ctrl</kbd>+<kbd>=</kbd>, <kbd>Ctrl</kbd>+<kbd>-</kbd>, and <kbd>Ctrl</kbd>+<kbd>0</kbd> shortcuts persisted across restarts, plus a dynamic KDE `StatusNotifierItem` System Tray icon showing the active profile number and color badge.
@@ -103,9 +103,8 @@ DuckyDeck Studio clearly badges capabilities in the UI as either **✅ Hardware-
 
 **DuckyDeck Studio Firmware `v1.0.0` (`DPP_FW_1.0.0_ad2acc81.bin`)** is an optional, 100% backwards-compatible custom firmware build for **duckyPad Pro (2024)**. All existing `.dsb` bytecode scripts, profiles, and official features work identically to upstream firmware `3.3.5`, while unlocking the following hardware enhancements:
 
-- **📦 Download from GitHub Releases:** [`DPP_FW_1.0.0_ad2acc81.bin` (`v1.0.0`)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.0.0)
+- **📦 Download from GitHub Releases:** [`DPP_FW_1.0.0_ad2acc81.bin` (`v1.0.0`)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.0.0) *(place in `firmware/releases/` locally or download directly inside the app's Firmware Manager)*
 - **🌐 Direct Website Download:** [`https://duckydeckstudio.com/firmware/DPP_FW_1.0.0_ad2acc81.bin`](https://duckydeckstudio.com/firmware/DPP_FW_1.0.0_ad2acc81.bin)
-- **📁 Bundled in Repository:** [`firmware/releases/DPP_FW_1.0.0_ad2acc81.bin`](firmware/releases/DPP_FW_1.0.0_ad2acc81.bin)
 - **🔢 Checksums:** IEEE CRC32 `ad2acc81` · SHA-256 `d558e6b20d6add543822837acec73e2900a1823f7522b13c03ee44c9de7647dd`
 
 | Feature / Capability | Standard Firmware (`3.3.5`) | DuckyDeck Studio Firmware (`1.0.0`) |
@@ -159,6 +158,7 @@ Full documentation and request/response schemas are available at **[https://duck
 | `GET /api/v1/pgv` \| `PUT` \| `POST /api/v1/pgv` | Read or write Persistent Global Variables (`PGV 1..16`). |
 | `POST /api/v1/leds` | Live-override per-key RGB LEDs (`{"colorHex":"#38bdf8"}` or `{"leds":[{"slot":1,"colorHex":"#ff0055"}]}`) or restore profile LEDs (`{"restore":true}`). |
 | `POST /api/v1/sd/sync` \| `/reload` \| `/mount` \| `/unmount` | Sync `.dsb` bytecode & profiles to microSD, reload from SD/cache, mount SD mode, or unmount SD. |
+| `GET /api/v1/jobs/{id}` | Poll background job status (`running`, `done`, `error`) for async SD/reboot operations. |
 | `POST /api/v1/device/sleep` \| `/wake` \| `/reboot` \| `/sync-rtc` | Put duckyPad to sleep, wake it up, soft-reboot, or synchronize hardware RTC with host clock. |
 | `GET /api/v1/logs` | Retrieve recent system, HID, script, and automation event logs. |
 
@@ -176,7 +176,7 @@ Full documentation and request/response schemas are available at **[https://duck
 
 ```text
 duckydeck-studio/
-├── Cargo.toml                             # Rust dependencies (cxx-qt, hidapi, zbus, tokio, ksni, evdev, ureq)
+├── Cargo.toml                             # Rust dependencies (cxx-qt, hidapi, zbus, tokio, reqwest, keyring)
 ├── build.rs                               # CXX-Qt QML module & QObject bridge compiler
 ├── io.github.duckydeck.Studio.yml         # Flatpak manifest (org.kde.Platform 6.8 + Rust SDK)
 ├── docs/
@@ -194,23 +194,16 @@ duckydeck-studio/
 │       ├── 70-duckypad.rules                   # uaccess udev rules for 0x0483:0xd11d & 0xd11c
 │       └── install-udev-rules.sh               # Helper script to install & reload udev rules
 └── src/
-    ├── main.rs                            # Qt 6 / Breeze entrypoint & syntax registration
+    ├── main.rs                            # Qt 6 / Breeze entrypoint, D-Bus IPC & syntax registration
     ├── api_server.rs                      # Embedded HTTP/1.1 REST API Server (/api/v1/*) with Bearer auth
-    ├── tray.rs                            # StatusNotifierItem system tray & dynamic profile icon
-    ├── bridge/device_controller.rs        # #[cxx_qt::bridge] DeviceController QObject
-    ├── hardware/
-    │   ├── dsvm.rs                        # Pure-Rust duckyScript 3 -> DSVM v2 (.dsb) bytecode compiler
-    │   ├── permissions.rs                 # /sys/class/hidraw permission checker & Polkit installer
-    │   └── storage.rs                     # USB HID protocol (0x18/0x19/0x1B), HA client & microSD sync
+    ├── actions/                           # Host actions (web_api.rs, app_launch.rs, desktop_apps.rs)
+    ├── bridge/                            # #[cxx_qt::bridge] DeviceController & submodules
+    ├── hardware/                          # USB HID protocol, profile parser, MSC & firmware manager
+    ├── vm/compiler.rs                     # Pure-Rust duckyScript 3 -> DSVM v2 (.dsb) bytecode compiler
     ├── kwin/auto_switcher.rs              # Pure-Rust zbus listener for Plasma 6 KWin Wayland window focus
-    ├── ai/shortcut_scraper.rs             # Local ~/.config/kglobalshortcutsrc parser for AI grounding
-    └── qml/
-        ├── Main.qml                       # ApplicationWindow shell, Color Picker, Builders, Event Log
-        ├── UdevBanner.qml                 # Polkit 1-click udev setup inline warning
-        ├── HardwareCanvas.qml             # 4x5 RGB matrix, 2 rotary encoders, 128x128 OLED & 32ch expansion
-        ├── AutoSwitchDrawer.qml           # KWin Wayland Auto-Switcher rules & window picker dialog
-        ├── PgvInspectorDrawer.qml         # Live Signed/Unsigned/Hex editor for _GV0.._GV31
-        └── AiArchitectModal.qml           # AI Profile Architect modal dialog
+    ├── ai/shortcut_scraper.rs             # Local ~/.config/kglobalshortcutsrc parser & DuckyScript converter
+    └── qml/                               # Kirigami QML components (Main, HardwareCanvas, Builders, Dialogs)
+        └── AiArchitectModal.qml           # Macro Template Generator (experimental) modal dialog
 ```
 
 ---

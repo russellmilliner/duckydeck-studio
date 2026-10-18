@@ -423,6 +423,9 @@ pub mod qobject {
         fn restore_oled_widget_placement(self: Pin<&mut DeviceController>, keep_above: bool);
 
         #[qinvokable]
+        fn scrape_app_shortcuts_json(self: &DeviceController, app_name: QString) -> QString;
+
+        #[qinvokable]
         fn generate_ai_macro(
             self: Pin<&mut DeviceController>,
             app_name: QString,
@@ -4624,27 +4627,91 @@ impl qobject::DeviceController {
         crate::kwin::auto_switcher::apply_kwin_oled_keep_above(keep_above, true);
     }
 
+    pub fn scrape_app_shortcuts_json(&self, app_name: QString) -> QString {
+        let app = app_name.to_string();
+        let matches = crate::ai::shortcut_scraper::scrape_kde_shortcuts(&app);
+        let items: Vec<serde_json::Value> = matches
+            .into_iter()
+            .filter_map(|(action, shortcut)| {
+                let ducky = crate::ai::shortcut_scraper::kde_shortcut_to_duckyscript(&shortcut)?;
+                Some(serde_json::json!({
+                    "action": action,
+                    "shortcut": shortcut,
+                    "duckyscript": ducky,
+                }))
+            })
+            .collect();
+        QString::from(&serde_json::to_string(&items).unwrap_or_else(|_| "[]".to_string()))
+    }
+
     pub fn generate_ai_macro(mut self: Pin<&mut Self>, app_name: QString, prompt: QString) {
         self.as_mut().set_ai_busy(true);
         let app = app_name.to_string();
-        let user_goal = prompt.to_string();
+        let raw_prompt = prompt.to_string();
 
-        let local_shortcuts = crate::ai::shortcut_scraper::scrape_kde_shortcuts(&app);
-        let shortcut_comment = if let Some((action, key)) = local_shortcuts.first() {
-            format!("// Grounded from ~/.config/kglobalshortcutsrc: {action} = {key}\n")
+        // Support optional "[SHORTCUT:action|shortcut]" prefix from the UI picker while keeping
+        // plain prompts working seamlessly.
+        let (picked_action_key, user_goal) = if let Some(rest) = raw_prompt.strip_prefix("[SHORTCUT:")
+        {
+            if let Some((meta, goal)) = rest.split_once("]\n") {
+                let picked = meta
+                    .split_once('|')
+                    .map(|(a, k)| (a.trim().to_string(), k.trim().to_string()));
+                (picked, goal.trim().to_string())
+            } else {
+                (None, raw_prompt)
+            }
         } else {
-            String::new()
+            (None, raw_prompt)
         };
 
+        let local_shortcuts = crate::ai::shortcut_scraper::scrape_kde_shortcuts(&app);
+        let goal_lower = user_goal.to_lowercase();
+
+        let selected = picked_action_key.or_else(|| {
+            local_shortcuts
+                .iter()
+                .find(|(action, key)| {
+                    (!action.is_empty() && goal_lower.contains(&action.to_lowercase()))
+                        || (!key.is_empty() && goal_lower.contains(&key.to_lowercase()))
+                })
+                .cloned()
+                .or_else(|| local_shortcuts.first().cloned())
+        });
+
+        let mut shortcut_comment = String::new();
+        if !local_shortcuts.is_empty() {
+            shortcut_comment.push_str(
+                "// Scraped from ~/.config/kglobalshortcutsrc (all matching shortcuts):\n",
+            );
+            for (action, key) in &local_shortcuts {
+                if let Some(ds) = crate::ai::shortcut_scraper::kde_shortcut_to_duckyscript(key) {
+                    shortcut_comment.push_str(&format!("//   {action}: {key} -> {ds}\n"));
+                }
+            }
+        }
+
+        let (selected_label, ducky_combo) = if let Some((action, key)) = selected {
+            let combo = crate::ai::shortcut_scraper::kde_shortcut_to_duckyscript(&key)
+                .unwrap_or_else(|| "CONTROL SHIFT m".to_string());
+            shortcut_comment.push_str(&format!(
+                "// Selected shortcut: {action} ({key}) -> {combo}\n"
+            ));
+            (action, combo)
+        } else {
+            ("Running Macro...".to_string(), "CONTROL SHIFT m".to_string())
+        };
+
+        let oled_line: String = selected_label.chars().take(18).collect();
         let preview = format!(
-            "// AI Generated Macro for: {app}\n// Goal: {user_goal}\n{shortcut_comment}DEFAULTDELAY 20\nSWC_SET 0 0 255 128\nOLED_CLEAR\nOLED_CURSOR 8 40\nOLED_PRINT {app}\nOLED_CURSOR 8 56\nOLED_PRINT Running Macro...\nOLED_UPDATE\nCONTROL SHIFT m\nDELAY 150\nSWC_RESET 0\nOLED_RESTORE\n"
+            "// Macro Template Generator (experimental) for: {app}\n// Goal: {user_goal}\n{shortcut_comment}DEFAULTDELAY 20\nSWC_SET 0 0 255 128\nOLED_CLEAR\nOLED_CURSOR 8 40\nOLED_PRINT {app}\nOLED_CURSOR 8 56\nOLED_PRINT {oled_line}\nOLED_UPDATE\n{ducky_combo}\nDELAY 150\nSWC_RESET 0\nOLED_RESTORE\n"
         );
 
         self.as_mut()
             .set_generated_script_preview(QString::from(&preview));
         self.as_mut().set_ai_busy(false);
         self.as_mut().set_status_message(QString::from(&format!(
-            "AI generated duckyScript 3 for {app}"
+            "Generated macro template for {app} ({ducky_combo})"
         )));
     }
 

@@ -1867,7 +1867,7 @@ Kirigami.ApplicationWindow {
 
         QQC2.MenuItem {
             icon.name: "system-run"
-            text: qsTr("AI Macro Architect...")
+            text: qsTr("Macro Template Generator (experimental)...")
             onTriggered: aiModal.open()
         }
 
@@ -3829,14 +3829,14 @@ Kirigami.ApplicationWindow {
                                 }
 
                                 QQC2.Button {
-                                    text: qsTr("✨ AI")
+                                    text: qsTr("✨ Template")
                                     implicitHeight: Math.round(24 * root.inspectorScale)
                                     font.pointSize: 10 * root.fontScale
                                     leftPadding: 6
                                     rightPadding: 6
                                     onClicked: aiModal.open()
                                     QQC2.ToolTip.visible: hovered
-                                    QQC2.ToolTip.text: qsTr("Generate DuckyScript 3 macros from natural language using AI Macro Architect")
+                                    QQC2.ToolTip.text: qsTr("Generate DuckyScript 3 macro templates from KDE shortcuts using Macro Template Generator (experimental)")
                                 }
                             }
                         }
