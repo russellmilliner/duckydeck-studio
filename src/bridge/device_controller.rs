@@ -4485,16 +4485,12 @@ impl qobject::DeviceController {
         favicon_url: QString,
         target_profile: i32,
     ) -> bool {
-        let title_str = title_contains.to_string();
-        let auto_regex = crate::kwin::auto_switcher::extract_inline_regex_pattern(&title_str)
-            .is_some()
-            || crate::kwin::auto_switcher::has_regex_metacharacters(&title_str);
         self.save_auto_switch_rule_full(
             rule_index,
             enabled,
             resource_class,
             title_contains,
-            auto_regex,
+            false,
             favicon_url,
             target_profile,
         )

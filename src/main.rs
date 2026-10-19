@@ -2120,19 +2120,32 @@ mod ui_test_suite {
         )
         .is_none());
 
-        // Inline /pattern/ regex syntax even when `title_is_regex = false`
+        // When `title_is_regex = false`, regex patterns are matched strictly as literal substrings
         assert!(rule_matches_window_title(
             "/^(Inbox|Starred).*Gmail/",
             false,
             "Inbox (4) - user@gmail.com - Gmail — Zen Browser",
             "inbox (4) - user@gmail.com - gmail — zen browser"
         )
+        .is_none());
+        assert!(rule_matches_window_title(
+            "/^(Inbox|Starred).*Gmail/",
+            true,
+            "Inbox (4) - user@gmail.com - Gmail — Zen Browser",
+            "inbox (4) - user@gmail.com - gmail — zen browser"
+        )
         .is_some());
 
-        // Automatic regex metacharacter fallback when `title_is_regex = false`
         assert!(rule_matches_window_title(
             "Pull Request #[0-9]+",
             false,
+            "Fix bug · Pull Request #42 · user/repo",
+            "fix bug · pull request #42 · user/repo"
+        )
+        .is_none());
+        assert!(rule_matches_window_title(
+            "Pull Request #[0-9]+",
+            true,
             "Fix bug · Pull Request #42 · user/repo",
             "fix bug · pull request #42 · user/repo"
         )
@@ -2171,8 +2184,7 @@ mod ui_test_suite {
             Some(5)
         );
 
-        // Regression test: literal "| Microsoft Teams" (leading pipe separator) must NOT match
-        // "Messages - Google Messages for web" via empty regex alternation branch `|...`
+        // Regression test: literal "| Microsoft Teams" with `title_is_regex = false` is a plain substring check
         assert!(rule_matches_window_title(
             "| Microsoft Teams",
             false,

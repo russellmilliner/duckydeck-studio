@@ -117,15 +117,12 @@ pub fn serialize_rules(rules: &[AutoSwitchRule], profiles: &[DuckyProfile]) -> S
                 Some(prof_name),
             );
             let raw_title = r.title_contains.as_deref().unwrap_or("");
-            let is_regex = r.title_is_regex
-                || crate::kwin::auto_switcher::extract_inline_regex_pattern(raw_title).is_some()
-                || crate::kwin::auto_switcher::has_regex_metacharacters(raw_title);
             json!({
                 "index": idx,
                 "enabled": r.enabled,
                 "resourceClass": r.resource_class,
                 "titleContains": raw_title,
-                "titleIsRegex": is_regex,
+                "titleIsRegex": r.title_is_regex,
                 "faviconUrl": r.favicon_url.as_deref().unwrap_or(""),
                 "targetProfile": r.target_profile,
                 "targetProfileName": prof_name,

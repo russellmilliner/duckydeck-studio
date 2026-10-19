@@ -2043,40 +2043,7 @@ pub fn extract_inline_regex_pattern(raw: &str) -> Option<(&str, bool)> {
             }
         }
     }
-    for prefix in ["re:", "regex:"] {
-        if trimmed.len() > prefix.len() && trimmed[..prefix.len()].eq_ignore_ascii_case(prefix) {
-            let body = trimmed[prefix.len()..].trim();
-            if !body.is_empty() {
-                return Some((body, true));
-            }
-        }
-    }
     None
-}
-
-pub fn has_regex_metacharacters(pattern: &str) -> bool {
-    let trimmed = pattern.trim();
-    if trimmed.is_empty() {
-        return false;
-    }
-    let has_non_empty_alternation = trimmed.contains('|')
-        && !trimmed.starts_with('|')
-        && !trimmed.ends_with('|')
-        && trimmed
-            .split('|')
-            .all(|part| !part.is_empty() && !part.starts_with(' ') && !part.ends_with(' '));
-    has_non_empty_alternation
-        || trimmed.starts_with('^')
-        || trimmed.ends_with('$')
-        || trimmed.contains(".*")
-        || trimmed.contains(".+")
-        || trimmed.contains(".?")
-        || trimmed.contains("\\b")
-        || trimmed.contains("\\d")
-        || trimmed.contains("\\w")
-        || trimmed.contains("\\s")
-        || (trimmed.contains('[') && trimmed.contains(']'))
-        || (trimmed.contains('(') && trimmed.contains(')'))
 }
 
 pub fn validate_title_regex(pattern_raw: &str) -> Result<(), String> {
@@ -2104,27 +2071,15 @@ pub fn rule_matches_window_title(
         return Some(0);
     }
 
-    if let Some((regex_body, case_insensitive)) = extract_inline_regex_pattern(sub) {
-        if let Ok(re) = regex::RegexBuilder::new(regex_body)
-            .case_insensitive(case_insensitive)
-            .size_limit(256 * 1024)
-            .build()
-        {
-            if let Some(mat) = re.find(caption) {
-                return Some(mat.len().max(regex_body.len()).max(1));
-            }
-        }
-        return None;
-    }
-
     if title_is_regex {
-        // Guard against leading/trailing unescaped `|` producing a 0-length match on every window
-        let sanitized = sub.trim_matches('|').trim();
+        let (regex_body, case_insensitive) =
+            extract_inline_regex_pattern(sub).unwrap_or((sub, true));
+        let sanitized = regex_body.trim_matches('|').trim();
         if sanitized.is_empty() {
             return None;
         }
         if let Ok(re) = regex::RegexBuilder::new(sanitized)
-            .case_insensitive(true)
+            .case_insensitive(case_insensitive)
             .size_limit(256 * 1024)
             .build()
         {
@@ -2133,31 +2088,12 @@ pub fn rule_matches_window_title(
                     return Some(mat.len().max(sanitized.len()).max(1));
                 }
             }
-            return None;
-        }
-        // Fallback to plain case-insensitive substring if regex fails to compile
-        if caption_lower.contains(&sub.to_lowercase()) {
-            return Some(sub.len());
         }
         return None;
     }
 
     if caption_lower.contains(&sub.to_lowercase()) {
         return Some(sub.len());
-    }
-
-    if has_regex_metacharacters(sub) {
-        if let Ok(re) = regex::RegexBuilder::new(sub)
-            .case_insensitive(true)
-            .size_limit(256 * 1024)
-            .build()
-        {
-            if let Some(mat) = re.find(caption) {
-                if !mat.is_empty() {
-                    return Some(mat.len().max(sub.len()).max(1));
-                }
-            }
-        }
     }
 
     None
