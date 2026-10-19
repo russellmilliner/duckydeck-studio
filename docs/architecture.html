@@ -670,7 +670,7 @@
         <span class="pill accent">Rust 2021 Edition</span>
         <span class="pill accent">CXX-Qt 0.7 Bridge</span>
         <span class="pill accent">Qt 6 &amp; KDE Kirigami 6</span>
-        <span class="pill accent">Flatpak org.kde.Platform//6.8</span>
+        <span class="pill accent">Flatpak org.kde.Platform//6.11</span>
         <span class="pill">Two-Pass DSVM v2 Compiler</span>
         <span class="pill">zbus KWin Wayland Bridge</span>
         <span class="pill">Embedded HTTP/1.1 REST API</span>
@@ -1001,7 +1001,7 @@ pub fn encode_pgv31_trigger(profile_num: u8, slot_num: u8, is_release: bool) -&g
       </p>
       <div class="callout success">
         <div class="callout-title">📦 Flatpak Host Storage Bridge (<code>run_storage_cmd</code>)</div>
-        Inside the Flatpak sandbox (<code>org.kde.Platform//6.8</code>), host utilities like <code>udisksctl</code> and <code>umount</code> are not installed inside the container's <code>/usr/bin</code>.
+        Inside the Flatpak sandbox (<code>org.kde.Platform//6.11</code>), host utilities like <code>udisksctl</code> and <code>umount</code> are not installed inside the container's <code>/usr/bin</code>.
         <code>src/hardware/msc.rs</code> automatically detects <code>/.flatpak-info</code> and routes <code>udisksctl</code>, <code>umount</code>, <code>sync</code>, and host <code>/proc/mounts</code> queries through
         <code>flatpak-spawn --host</code> while accessing the mounted filesystem directly via <code>--filesystem=/run/media:rw</code> and <code>--filesystem=/media:rw</code>.
       </div>
@@ -1158,7 +1158,7 @@ pub fn encode_pgv31_trigger(profile_num: u8, slot_num: u8, is_release: bool) -&g
       <h2>📦 10. Flatpak Sandbox Architecture &amp; Packaging</h2>
       <p>
         DuckyDeck Studio is packaged as a self-contained Flatpak bundle (<code>io.github.duckydeck.Studio</code>) built against
-        <code>org.kde.Platform//6.8</code> and <code>org.kde.Sdk//6.8</code> (configured in <code>io.github.duckydeck.Studio.yml</code> and <code>scripts/build-flatpak.sh</code>).
+        <code>org.kde.Platform//6.11</code> and <code>org.kde.Sdk//6.11</code> (configured in <code>io.github.duckydeck.Studio.yml</code> and <code>scripts/build-flatpak.sh</code>).
       </p>
       <table>
         <thead>

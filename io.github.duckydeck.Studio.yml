@@ -1,10 +1,10 @@
 app-id: io.github.duckydeck.Studio
 runtime: org.kde.Platform
-runtime-version: '6.8'
+runtime-version: '6.11'
 sdk: org.kde.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
-  - org.freedesktop.Sdk.Extension.llvm18
+  - org.freedesktop.Sdk.Extension.llvm22
 command: duckydeck-studio
 
 finish-args:
@@ -33,6 +33,7 @@ finish-args:
   - --filesystem=xdg-data/duckydeck-studio:create
   - --filesystem=xdg-data/duckypad_config:ro
   - --filesystem=xdg-data/duckypad_autoswitcher:ro
+  - --filesystem=xdg-config/duckypad_autoprofile:ro
 
   # 6. KWin hook scripts directory in XDG_RUNTIME_DIR
   - --filesystem=xdg-run/duckydeck-studio:create
@@ -46,11 +47,11 @@ finish-args:
   - --system-talk-name=org.freedesktop.UDisks2
 
 build-options:
-  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm18/bin
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm22/bin
   env:
     CARGO_HOME: /run/build/duckydeck-studio/cargo
-    LIBCLANG_PATH: /usr/lib/sdk/llvm18/lib
-    QMAKE: /usr/bin/qmake6
+    LIBCLANG_PATH: /usr/lib/sdk/llvm22/lib
+    QMAKE: /usr/bin/qmake
     QT_VERSION_MAJOR: '6'
 
 modules:

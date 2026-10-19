@@ -342,7 +342,7 @@ DuckyDeck Studio embeds a bounded, stoppable/restartable HTTP/1.1 REST API serve
 ## 10. Flatpak Sandbox Architecture, Building & Testing
 
 ### Flatpak Sandbox & Host Command Bridging (`io.github.duckydeck.Studio.yml` & `scripts/build-flatpak.sh`)
-- Built against `org.kde.Platform//6.8` and `org.kde.Sdk//6.8` with `rust-stable` and `llvm18` SDK extensions.
+- Built against `org.kde.Platform//6.11` and `org.kde.Sdk//6.11` with `rust-stable` and `llvm22` SDK extensions.
 - **USB HID & Block Device Discovery:** Uses `--device=all` and `--filesystem=/run/udev:ro` for direct `/dev/hidraw*` and `/dev/disk/by-label` / `/dev/disk/by-id` enumeration.
 - **USB Mass Storage (`udisksctl`) Host Bridging:** Inside Flatpak (`/.flatpak-info` present), [`src/hardware/msc.rs`](../src/hardware/msc.rs) invokes `udisksctl`, `umount`, `sync`, and host `/proc/mounts` checks via `flatpak-spawn --host` (`--talk-name=org.freedesktop.Flatpak` and `--system-talk-name=org.freedesktop.UDisks2`) while reading/writing mounted volumes via `--filesystem=/run/media:rw` and `--filesystem=/media:rw`.
 - **Bundled Custom Firmware Discovery:** [`src/hardware/firmware.rs`](../src/hardware/firmware.rs) scans `/app/share/duckydeck-studio/firmware`, `/app/share/duckydeck-studio/firmware/releases`, and embeds `DPP_FW_1.0.0_ad2acc81.bin` as a compile-time fallback so the DuckyDeck Studio `v1.0.0` firmware is always available in the Firmware Manager.

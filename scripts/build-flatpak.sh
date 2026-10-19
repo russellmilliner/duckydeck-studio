@@ -14,12 +14,12 @@ mkdir -p "$WORK_DIR" "$OUT_DIR"
 
 flatpak build-init \
   --sdk-extension=org.freedesktop.Sdk.Extension.rust-stable \
-  --sdk-extension=org.freedesktop.Sdk.Extension.llvm18 \
+  --sdk-extension=org.freedesktop.Sdk.Extension.llvm22 \
   "$WORK_DIR/build-dir" \
   io.github.duckydeck.Studio \
   org.kde.Sdk \
   org.kde.Platform \
-  6.8
+  6.11
 
 CARGO_HOME_DIR="${CARGO_HOME:-$HOME/.cargo}"
 
@@ -28,11 +28,11 @@ flatpak build \
   --filesystem="$REPO_ROOT":ro \
   --filesystem="$CARGO_HOME_DIR":ro \
   --filesystem="$WORK_DIR":rw \
-  --env=PATH=/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm18/bin:/usr/bin:/bin \
+  --env=PATH=/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm22/bin:/usr/bin:/bin \
   --env=CARGO_HOME="$CARGO_HOME_DIR" \
   --env=CARGO_TARGET_DIR="$WORK_DIR/target" \
-  --env=LIBCLANG_PATH=/usr/lib/sdk/llvm18/lib \
-  --env=QMAKE=/usr/bin/qmake6 \
+  --env=LIBCLANG_PATH=/usr/lib/sdk/llvm22/lib \
+  --env=QMAKE=/usr/bin/qmake \
   --env=QT_VERSION_MAJOR=6 \
   "$WORK_DIR/build-dir" \
   sh -c "

@@ -194,7 +194,7 @@ Full documentation and request/response schemas are available at **[https://duck
 duckydeck-studio/
 ├── Cargo.toml                             # Rust dependencies (cxx-qt, hidapi, zbus, tokio, reqwest, keyring)
 ├── build.rs                               # CXX-Qt QML module & QObject bridge compiler
-├── io.github.duckydeck.Studio.yml         # Flatpak manifest (org.kde.Platform 6.8 + Rust SDK)
+├── io.github.duckydeck.Studio.yml         # Flatpak manifest (org.kde.Platform 6.11 + Rust SDK)
 ├── scripts/
 │   ├── check.sh                           # Quality gate (rustfmt, clippy, unit tests, architecture checks)
 │   ├── build-flatpak.sh                   # Builds & bundles target/release/duckydeck-studio-v0.1.3-x86_64.flatpak
@@ -236,7 +236,7 @@ duckydeck-studio/
 Download and install the self-contained `io.github.duckydeck.Studio` Flatpak bundle directly from **[duckydeckstudio.com](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.3-x86_64.flatpak)** or **[GitHub Releases](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.3)**:
 
 ```bash
-# 1. Ensure Flathub is configured (for org.kde.Platform//6.8 runtime):
+# 1. Ensure Flathub is configured (for org.kde.Platform//6.11 runtime):
 flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
 
 # 2. Download & install the DuckyDeck Studio v0.1.3 Flatpak bundle:
@@ -341,11 +341,11 @@ Run the application:
 
 ### 6. Building & Testing the Flatpak from Source
 
-1. Install the KDE Plasma 6.8 Flatpak SDK and Rust/LLVM extensions:
+1. Install the KDE Plasma 6.11 Flatpak SDK and Rust/LLVM extensions:
    ```bash
-   flatpak install --user flathub org.kde.Platform//6.8 org.kde.Sdk//6.8 \
-       org.freedesktop.Sdk.Extension.rust-stable//24.08 \
-       org.freedesktop.Sdk.Extension.llvm18//24.08
+   flatpak install --user flathub org.kde.Platform//6.11 org.kde.Sdk//6.11 \
+       org.freedesktop.Sdk.Extension.rust-stable//25.08 \
+       org.freedesktop.Sdk.Extension.llvm22//25.08
    ```
 2. Build and export the single-file `.flatpak` bundle (`target/release/duckydeck-studio-v0.1.3-x86_64.flatpak`) and install it:
    ```bash
