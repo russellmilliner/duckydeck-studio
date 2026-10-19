@@ -1,17 +1,17 @@
 # <img src="../data/icons/io.github.duckydeck.Studio.svg" width="36" height="36" align="top" alt="DuckyDeck Studio Icon" /> DuckyDeck Studio — Architecture & Design Developer Documentation
 
-[![Version v0.1.2](https://img.shields.io/badge/Version-v0.1.2-38bdf8?style=for-the-badge)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz)
-[![Flatpak v0.1.2](https://img.shields.io/badge/Flatpak-v0.1.2-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak)
+[![Version v0.1.3](https://img.shields.io/badge/Version-v0.1.3-38bdf8?style=for-the-badge)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.3-linux-x86_64.tar.gz)
+[![Flatpak v0.1.3](https://img.shields.io/badge/Flatpak-v0.1.3-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.3-x86_64.flatpak)
 [![Firmware v1.0.0](https://img.shields.io/badge/Custom_Firmware-v1.0.0-10b981?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.0.0)
 [![Website duckydeckstudio.com](https://img.shields.io/badge/Website-duckydeckstudio.com-0ea5e9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://duckydeckstudio.com)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-russellmilliner%2Fduckydeck--studio-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio)
 
-**Application Version:** `v0.1.2` (Custom Firmware `v1.0.0`, KDE Plasma 6 Applet `v1.0.2`)  
+**Application Version:** `v0.1.3` (Custom Firmware `v1.0.0`, KDE Plasma 6 Applet `v1.0.2`)  
 **Author:** Russell Milliner  
 **Official Website & User Guide:** [https://duckydeckstudio.com](https://duckydeckstudio.com)  
 **HTML Architecture Reference:** [`docs/architecture.html`](architecture.html) ([https://duckydeckstudio.com/architecture.html](https://duckydeckstudio.com/architecture.html))  
 **GitHub Repository & Releases:** [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)  
-**Flatpak Release Bundle:** [`duckydeck-studio-v0.1.2-x86_64.flatpak`](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak)  
+**Flatpak Release Bundle:** [`duckydeck-studio-v0.1.3-x86_64.flatpak`](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.3-x86_64.flatpak)  
 **REST API Reference:** [`docs/REST_API.md`](REST_API.md) ([https://duckydeckstudio.com/REST_API.md](https://duckydeckstudio.com/REST_API.md))  
 **Support:** [☕ Buy Me a Coffee on Ko-fi (https://ko-fi.com/russellmilliner)](https://ko-fi.com/russellmilliner)  
 **License:** GPL-3.0-or-later  
@@ -20,7 +20,7 @@
 
 ## 1. System Overview & Design Philosophy
 
-**DuckyDeck Studio** (`v0.1.2`) is a native Linux desktop configurator, **DSVM v2 bytecode compiler**, **KDE Plasma 6 Wayland Auto-Switcher**, and **host automation daemon** for the **duckyPad Pro (`0x0483:0xd11d`)** and **duckyPad 2020 (`0x0483:0xd11c`)**.
+**DuckyDeck Studio** (`v0.1.3`) is a native Linux desktop configurator, **DSVM v2 bytecode compiler**, **KDE Plasma 6 Wayland Auto-Switcher**, and **host automation daemon** for the **duckyPad Pro (`0x0483:0xd11d`)** and **duckyPad 2020 (`0x0483:0xd11c`)**.
 
 ### Core Design Goals
 1. **Zero-Runtime-Wrapper Native Stack:** Built directly in **Rust (2021 edition)** bridged to **Qt 6 / KDE Frameworks 6 (Kirigami + KSyntaxHighlighting)** via **CXX-Qt 0.7**, avoiding Electron/Python packaging overhead while delivering native KDE Breeze theming and Wayland integration.
@@ -95,7 +95,7 @@ flowchart TB
 
 | Path | Responsibility |
 | :--- | :--- |
-| [`Cargo.toml`](../Cargo.toml) | Crate manifest (`version = "0.1.2"`, `cxx-qt 0.7`, `hidapi`, `zbus`, `tokio`, `reqwest`, `keyring`, `serde`, `serde_json`, `sha2`). |
+| [`Cargo.toml`](../Cargo.toml) | Crate manifest (`version = "0.1.3"`, `cxx-qt 0.7`, `hidapi`, `zbus`, `tokio`, `reqwest`, `keyring`, `serde`, `serde_json`, `sha2`). |
 | [`build.rs`](../build.rs) | `CxxQtBuilder` configuration registering QML module `io.github.duckydeck` and compiling [`src/bridge/device_controller.rs`](../src/bridge/device_controller.rs). |
 | [`src/main.rs`](../src/main.rs) | Application entrypoint: CLI & D-Bus single-instance IPC client, `QApplication` initialization, `KSyntaxHighlighting` registration, and QML engine startup. |
 | [`src/paths.rs`](../src/paths.rs) | XDG directory helpers (`XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_RUNTIME_DIR`) and environment sanitization. |
@@ -357,7 +357,7 @@ cargo test ui_test_suite::test_full_qml_ui_overflow_and_contrast_suite -- --igno
 
 # 3. Build & install the Flatpak bundle:
 bash scripts/build-flatpak.sh
-flatpak install --user -y --reinstall target/release/duckydeck-studio-v0.1.2-x86_64.flatpak
+flatpak install --user -y --reinstall target/release/duckydeck-studio-v0.1.3-x86_64.flatpak
 
 # 4. Run the Flatpak QML UI Overflow, Contrast & Behavioral Test Suite:
 bash scripts/test-flatpak-ui.sh

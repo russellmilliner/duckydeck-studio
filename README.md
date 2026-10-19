@@ -1,7 +1,7 @@
 # <img src="data/icons/io.github.duckydeck.Studio.svg" width="36" height="36" align="top" alt="DuckyDeck Studio Icon" /> DuckyDeck Studio
 
-[![Version v0.1.2](https://img.shields.io/badge/Version-v0.1.2-38bdf8?style=for-the-badge)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz)
-[![Flatpak v0.1.2](https://img.shields.io/badge/Flatpak-v0.1.2-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak)
+[![Version v0.1.3](https://img.shields.io/badge/Version-v0.1.3-38bdf8?style=for-the-badge)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.3-linux-x86_64.tar.gz)
+[![Flatpak v0.1.3](https://img.shields.io/badge/Flatpak-v0.1.3-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.3-x86_64.flatpak)
 [![Firmware v1.0.0](https://img.shields.io/badge/Custom%20Firmware-v1.0.0-10b981?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.0.0)
 [![Website & Documentation](https://img.shields.io/badge/Docs%20%26%20Website-duckydeckstudio.com-0ea5e9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://duckydeckstudio.com)
 [![Architecture Guide](https://img.shields.io/badge/Architecture-architecture.html-8b5cf6?style=for-the-badge)](https://duckydeckstudio.com/architecture.html)
@@ -12,13 +12,13 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg?style=for-the-badge)](https://www.gnu.org/licenses/gpl-3.0)
 [![Platform: Linux / KDE Plasma 6](https://img.shields.io/badge/Platform-Linux%20%7C%20KDE%20Plasma%206-3daee9?logo=kde&logoColor=white&style=for-the-badge)](https://kde.org/)
 
-**DuckyDeck Studio (`v0.1.2`)** is a native Linux desktop configurator, **DSVM v2 bytecode compiler**, **KDE Plasma 6 Wayland Auto-Switcher**, and **Macro Template Generator (experimental)** for the **duckyPad Pro (`0x0483:0xd11d`)** and **duckyPad 2020 (`0x0483:0xd11c`)**, built with **Rust**, **CXX-Qt 0.7**, and **KDE Frameworks 6 (Kirigami + KSyntaxHighlighting)**.
+**DuckyDeck Studio (`v0.1.3`)** is a native Linux desktop configurator, **DSVM v2 bytecode compiler**, **KDE Plasma 6 Wayland Auto-Switcher**, and **Macro Template Generator (experimental)** for the **duckyPad Pro (`0x0483:0xd11d`)** and **duckyPad 2020 (`0x0483:0xd11c`)**, built with **Rust**, **CXX-Qt 0.7**, and **KDE Frameworks 6 (Kirigami + KSyntaxHighlighting)**.
 
-> 🏷️ **Current Version:** **DuckyDeck Studio `v0.1.2`** · **Custom Firmware `v1.0.0`** · **KDE Plasma 6 Applet `v1.0.2`**
+> 🏷️ **Current Version:** **DuckyDeck Studio `v0.1.3`** · **Custom Firmware `v1.0.0`** · **KDE Plasma 6 Applet `v1.0.2`**
 >
 > 🌐 **Official Website & Online Documentation:** **[https://duckydeckstudio.com](https://duckydeckstudio.com)** · **[Architecture Reference (`architecture.html`)](https://duckydeckstudio.com/architecture.html)**
 >
-> 💻 **GitHub Repository & Releases:** **[https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)** · **[Flatpak Bundle (`v0.1.2`)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak)** · **[Linux x86_64 Tarball (`v0.1.2`)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz)**
+> 💻 **GitHub Repository & Releases:** **[https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)** · **[Flatpak Bundle (`v0.1.3`)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.3-x86_64.flatpak)** · **[Linux x86_64 Tarball (`v0.1.3`)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.3-linux-x86_64.tar.gz)**
 >
 > ☕ **Enjoying DuckyDeck Studio?** Support development by buying Russell Milliner a coffee on Ko-fi: **[https://ko-fi.com/russellmilliner](https://ko-fi.com/russellmilliner)**
 >
@@ -153,7 +153,7 @@ Full documentation and request/response schemas are available at **[https://duck
 
 | Method & Path | Description |
 | :--- | :--- |
-| `GET /api/v1/health` | Unauthenticated liveness probe (`{"ok":true,"service":"duckydeck-studio","version":"0.1.2","authRequired":true}`). |
+| `GET /api/v1/health` | Unauthenticated liveness probe (`{"ok":true,"service":"duckydeck-studio","version":"0.1.3","authRequired":true}`). |
 | `GET /api/v1/openapi.json` \| `/swagger.json` \| `/openapi.yaml` | Unauthenticated OpenAPI 3.0.3 / Swagger specification in JSON or YAML format. |
 | `GET /api/v1/status` *(or `/api/v1`)* | Full device connection, firmware, active profile, SD sync, and auto-switcher state. |
 | `GET /api/v1/profiles` | List all profiles and their properties. |
@@ -197,7 +197,7 @@ duckydeck-studio/
 ├── io.github.duckydeck.Studio.yml         # Flatpak manifest (org.kde.Platform 6.8 + Rust SDK)
 ├── scripts/
 │   ├── check.sh                           # Quality gate (rustfmt, clippy, unit tests, architecture checks)
-│   ├── build-flatpak.sh                   # Builds & bundles target/release/duckydeck-studio-v0.1.2-x86_64.flatpak
+│   ├── build-flatpak.sh                   # Builds & bundles target/release/duckydeck-studio-v0.1.3-x86_64.flatpak
 │   └── test-flatpak-ui.sh                 # Runs the automated QML UI test suite inside the Flatpak sandbox
 ├── docs/
 │   ├── user-guide.html                    # Interactive Web User Documentation & Manual
@@ -233,15 +233,15 @@ duckydeck-studio/
 
 ### 1. Quick Install: Prebuilt Flatpak Bundle (Recommended for Any Linux Distribution)
 
-Download and install the self-contained `io.github.duckydeck.Studio` Flatpak bundle directly from **[duckydeckstudio.com](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak)** or **[GitHub Releases](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.2)**:
+Download and install the self-contained `io.github.duckydeck.Studio` Flatpak bundle directly from **[duckydeckstudio.com](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.3-x86_64.flatpak)** or **[GitHub Releases](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.3)**:
 
 ```bash
 # 1. Ensure Flathub is configured (for org.kde.Platform//6.8 runtime):
 flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
 
-# 2. Download & install the DuckyDeck Studio v0.1.2 Flatpak bundle:
-curl -LO https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-x86_64.flatpak
-flatpak install --user -y duckydeck-studio-v0.1.2-x86_64.flatpak
+# 2. Download & install the DuckyDeck Studio v0.1.3 Flatpak bundle:
+curl -LO https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.3-x86_64.flatpak
+flatpak install --user -y duckydeck-studio-v0.1.3-x86_64.flatpak
 
 # 3. Launch DuckyDeck Studio (or open from your KDE Application Launcher):
 flatpak run io.github.duckydeck.Studio
@@ -263,9 +263,9 @@ cd duckydeck-studio
 #### Option B: Download Prebuilt Linux x86_64 Tarball or Source ZIP
 Visit **[https://github.com/russellmilliner/duckydeck-studio/releases](https://github.com/russellmilliner/duckydeck-studio/releases)** or **[https://duckydeckstudio.com](https://duckydeckstudio.com)**, or download via terminal:
 ```bash
-curl -LO https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.2-linux-x86_64.tar.gz
-tar -xzf duckydeck-studio-v0.1.2-linux-x86_64.tar.gz
-cd duckydeck-studio-v0.1.2-linux-x86_64
+curl -LO https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.3-linux-x86_64.tar.gz
+tar -xzf duckydeck-studio-v0.1.3-linux-x86_64.tar.gz
+cd duckydeck-studio-v0.1.3-linux-x86_64
 ./duckydeck-studio
 ```
 
@@ -347,10 +347,10 @@ Run the application:
        org.freedesktop.Sdk.Extension.rust-stable//24.08 \
        org.freedesktop.Sdk.Extension.llvm18//24.08
    ```
-2. Build and export the single-file `.flatpak` bundle (`target/release/duckydeck-studio-v0.1.2-x86_64.flatpak`) and install it:
+2. Build and export the single-file `.flatpak` bundle (`target/release/duckydeck-studio-v0.1.3-x86_64.flatpak`) and install it:
    ```bash
    bash scripts/build-flatpak.sh
-   flatpak install --user -y --reinstall target/release/duckydeck-studio-v0.1.2-x86_64.flatpak
+   flatpak install --user -y --reinstall target/release/duckydeck-studio-v0.1.3-x86_64.flatpak
    ```
 3. Run the automated Flatpak QML UI Overflow, Contrast & Behavioral Test Suite:
    ```bash
