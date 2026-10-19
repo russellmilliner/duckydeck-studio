@@ -26,9 +26,13 @@ finish-args:
   - --filesystem=/media:rw
   - --filesystem=/run/udev:ro
 
-  # 5. Read-Only Access to KDE Shortcut Configs for AI Context Scraping
+  # 5. Read-Only Access to KDE Shortcut Configs & Legacy dekuNukem Configs
   - --filesystem=xdg-config/kglobalshortcutsrc:ro
   - --filesystem=xdg-data/kxmlgui5:ro
+  - --filesystem=xdg-config/duckydeck-studio:create
+  - --filesystem=xdg-data/duckydeck-studio:create
+  - --filesystem=xdg-data/duckypad_config:ro
+  - --filesystem=xdg-data/duckypad_autoswitcher:ro
 
   # 6. KWin hook scripts directory in XDG_RUNTIME_DIR
   - --filesystem=xdg-run/duckydeck-studio:create

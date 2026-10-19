@@ -124,6 +124,8 @@ pub mod qobject {
         #[qproperty(QString, rest_api_token)]
         #[qproperty(QString, rest_api_status)]
         #[qproperty(bool, firmware_fetch_busy)]
+        #[qproperty(bool, show_first_run_dialog)]
+        #[qproperty(QString, onboarding_state_json)]
         type DeviceController = super::DeviceControllerRust;
 
         #[qinvokable]
@@ -789,6 +791,27 @@ pub mod qobject {
             qt_modifiers: i32,
             text: QString,
         ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "refreshOnboardingState"]
+        fn refresh_onboarding_state(self: Pin<&mut DeviceController>) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "stopConflictingSoftware"]
+        fn stop_conflicting_software(self: Pin<&mut DeviceController>) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "applyFirstRunImport"]
+        fn apply_first_run_import(
+            self: Pin<&mut DeviceController>,
+            profile_source_id: QString,
+            rule_source_id: QString,
+            shutdown_conflicts: bool,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "dismissFirstRunDialog"]
+        fn dismiss_first_run_dialog(self: Pin<&mut DeviceController>);
     }
 
     impl cxx_qt::Threading for DeviceController {}
@@ -810,9 +833,10 @@ use crate::hardware::storage::{
     check_latest_duckypad_firmware, check_profile_sync_status, compute_profiles_fingerprint,
     compute_unsynced_changes_json, delete_user_profile_template,
     delete_web_api_destination_by_name, detect_unmounted_duckypad_sd,
-    discard_unsynced_change_in_profiles, download_official_firmware_binary, encode_pgv31_trigger,
-    execute_app_launch, execute_profile_webhook_request, execute_web_api_request,
-    extract_app_launch_config, extract_web_api_config, fetch_and_search_home_assistant_entities,
+    discard_unsynced_change_in_profiles, discover_dekunukem_profile_backups,
+    download_official_firmware_binary, encode_pgv31_trigger, execute_app_launch,
+    execute_profile_webhook_request, execute_web_api_request, extract_app_launch_config,
+    extract_web_api_config, fetch_and_search_home_assistant_entities,
     fetch_official_firmwares_from_site, find_duckypad_msc_block_device, find_mounted_duckypad_sd,
     flash_slot_led_feedback, get_sd_card_space_info, instantiate_profile_from_template,
     list_available_duckypad_pro_firmwares, load_all_sd_profiles, load_home_assistant_config,
@@ -820,9 +844,9 @@ use crate::hardware::storage::{
     merge_host_only_profile_settings, mount_duckypad_sd_only, oled_label_to_hardware_ascii,
     poll_and_clear_pgv31_trigger, poll_hardware_active_profile, profile_cache_dir_for_serial,
     query_connected_duckypad_info, read_dpp_config, read_duckypad_pro_profiles_via_msc,
-    read_duckypad_pro_profiles_via_msc_with_progress, reboot_duckypad, save_home_assistant_config,
-    save_profile_as_user_template, save_profile_order_to_sd, scan_installed_desktop_apps,
-    seed_web_api_destinations_from_profiles, set_single_key_led_hid,
+    read_duckypad_pro_profiles_via_msc_with_progress, reboot_duckypad, run_storage_cmd,
+    save_home_assistant_config, save_profile_as_user_template, save_profile_order_to_sd,
+    scan_installed_desktop_apps, seed_web_api_destinations_from_profiles, set_single_key_led_hid,
     stage_duckypad_pro_firmware_via_msc_with_progress, sync_profile_web_api_triggers,
     sync_profiles_to_cache, sync_profiles_to_device_cache, unmount_mounted_duckypad_sd,
     upsert_web_api_destination, write_duckypad_pro_profiles_via_msc_with_progress,
@@ -832,8 +856,10 @@ use crate::hardware::storage::{
     PID_DUCKYPAD_PRO,
 };
 use crate::kwin::auto_switcher::{
-    is_kde_autostart_enabled, is_web_browser_class, set_kde_autostart_enabled,
-    strip_browser_title_suffix, sync_local_desktop_and_icon, AutoSwitchRule, SwitcherState,
+    discover_dekunukem_autoswitcher_configs, is_kde_autostart_enabled, is_web_browser_class,
+    load_rules_bundle_from_dir, parse_dekunukem_autoswitcher_file, save_rules_bundle_to_dir,
+    set_kde_autostart_enabled, strip_browser_title_suffix, sync_local_desktop_and_icon,
+    AutoSwitchRule, SwitcherState,
 };
 
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -958,6 +984,8 @@ pub struct DeviceControllerRust {
     pub(crate) rest_api_token: QString,
     pub(crate) rest_api_status: QString,
     pub(crate) firmware_fetch_busy: bool,
+    pub(crate) show_first_run_dialog: bool,
+    pub(crate) onboarding_state_json: QString,
     pub(crate) copied_key_slot: Option<DuckyKeySlot>,
     pub(crate) firmware_download_url: String,
     pub(crate) sd_root_path: Option<PathBuf>,
@@ -965,6 +993,8 @@ pub struct DeviceControllerRust {
     pub(crate) switcher_state: Arc<Mutex<SwitcherState>>,
     pub(crate) kwin_listener_started: bool,
     pub(crate) picker_bind_to_active_profile: bool,
+    pub(crate) conflict_warning_dismissed: bool,
+    pub(crate) pending_rule_import_source: Option<String>,
 }
 
 impl Default for DeviceControllerRust {
@@ -1179,6 +1209,16 @@ impl Default for DeviceControllerRust {
         );
         let sd_space = get_sd_card_space_info(&sn_str, sd_root_path.as_deref());
 
+        let (onboarding_json, show_first_run) = Self::build_onboarding_state_json(
+            connected,
+            sd_detected,
+            &model_str,
+            &sn_str,
+            &profiles,
+            &switcher,
+            false,
+        );
+
         let (init_lvl, init_cat) = classify_status_message(&status_str);
         record_system_event(init_lvl, init_cat, &status_str);
         let (init_log_json, init_log_count) = serialize_system_event_log_json();
@@ -1267,6 +1307,8 @@ impl Default for DeviceControllerRust {
             rest_api_token: QString::from(&rest_token),
             rest_api_status: QString::from(&rest_status),
             firmware_fetch_busy: false,
+            show_first_run_dialog: show_first_run,
+            onboarding_state_json: QString::from(&onboarding_json),
             copied_key_slot: None,
             firmware_download_url: String::new(),
             sd_root_path,
@@ -1274,6 +1316,8 @@ impl Default for DeviceControllerRust {
             switcher_state: Arc::new(Mutex::new(switcher)),
             kwin_listener_started: false,
             picker_bind_to_active_profile: false,
+            conflict_warning_dismissed: false,
+            pending_rule_import_source: None,
         }
     }
 }
@@ -1308,6 +1352,331 @@ impl DeviceControllerRust {
 
     pub fn serialize_profile_slots(profile: &DuckyProfile) -> String {
         crate::bridge::serialize::serialize_profile_slots(profile)
+    }
+
+    pub fn first_run_marker_paths() -> Vec<PathBuf> {
+        let primary = crate::paths::config_dir().join("first_run_onboarding_state.json");
+        let host = crate::paths::host_config_dir().join("first_run_onboarding_state.json");
+        if primary == host {
+            vec![primary]
+        } else {
+            vec![primary, host]
+        }
+    }
+
+    pub fn is_first_run_onboarding_completed() -> bool {
+        Self::first_run_marker_paths().iter().any(|p| p.is_file())
+    }
+
+    pub fn mark_first_run_onboarding_completed() {
+        let payload = json!({
+            "completed": true,
+            "version": APP_VERSION,
+        })
+        .to_string();
+        for path in Self::first_run_marker_paths() {
+            if let Some(parent) = path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let _ = fs::write(&path, &payload);
+        }
+    }
+
+    fn classify_legacy_cmdline(cmdline: &str) -> Option<(&'static str, &'static str)> {
+        let lower = cmdline.to_ascii_lowercase();
+        if lower.contains("duckydeck") || lower.contains("flatpak-spawn") {
+            return None;
+        }
+        if lower.contains("duckypad_autoprofile")
+            || lower.contains("duckypad-profile-autoswitcher")
+            || lower.contains("duckypad_autoswitcher")
+        {
+            return Some(("autoswitcher", "dekuNukem duckyPad Auto-Switcher"));
+        }
+        if lower.contains("duckypad_config") || lower.contains("duckypad-configurator") {
+            return Some(("configurator", "dekuNukem duckyPad Configurator"));
+        }
+        None
+    }
+
+    pub fn detect_conflicting_legacy_processes() -> Vec<serde_json::Value> {
+        let self_pid = std::process::id();
+        let mut seen_pids = std::collections::HashSet::new();
+        let mut conflicts = Vec::new();
+
+        if let Ok(entries) = fs::read_dir("/proc") {
+            for entry in entries.flatten() {
+                let fname = entry.file_name();
+                let Ok(pid) = fname.to_string_lossy().parse::<u32>() else {
+                    continue;
+                };
+                if pid == self_pid {
+                    continue;
+                }
+                let Ok(raw) = fs::read(entry.path().join("cmdline")) else {
+                    continue;
+                };
+                if raw.is_empty() {
+                    continue;
+                }
+                let cmdline: String = raw
+                    .split(|&b| b == 0)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| String::from_utf8_lossy(s).into_owned())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                if let Some((kind, label)) = Self::classify_legacy_cmdline(&cmdline) {
+                    if seen_pids.insert(pid) {
+                        conflicts.push(json!({
+                            "pid": pid,
+                            "kind": kind,
+                            "name": label,
+                            "cmdline": cmdline,
+                        }));
+                    }
+                }
+            }
+        }
+
+        if crate::paths::is_flatpak() {
+            if let Ok(out) = run_storage_cmd("ps", &["-eo", "pid=,args="]) {
+                if out.status.success() {
+                    let stdout = String::from_utf8_lossy(&out.stdout);
+                    for line in stdout.lines() {
+                        let trimmed = line.trim();
+                        let Some((pid_str, args_str)) = trimmed.split_once(char::is_whitespace)
+                        else {
+                            continue;
+                        };
+                        let Ok(pid) = pid_str.trim().parse::<u32>() else {
+                            continue;
+                        };
+                        let cmdline = args_str.trim();
+                        if let Some((kind, label)) = Self::classify_legacy_cmdline(cmdline) {
+                            if seen_pids.insert(pid) {
+                                conflicts.push(json!({
+                                    "pid": pid,
+                                    "kind": kind,
+                                    "name": label,
+                                    "cmdline": cmdline,
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        conflicts
+    }
+
+    pub fn stop_conflicting_legacy_processes() -> (usize, Vec<String>) {
+        let initial = Self::detect_conflicting_legacy_processes();
+        if initial.is_empty() {
+            return (0, Vec::new());
+        }
+        let mut names = Vec::new();
+        for item in &initial {
+            if let Some(pid) = item.get("pid").and_then(|v| v.as_u64()) {
+                let pid_str = pid.to_string();
+                let _ = run_storage_cmd("kill", &["-TERM", &pid_str]);
+                if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
+                    names.push(format!("{name} (PID {pid})"));
+                }
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        let remaining = Self::detect_conflicting_legacy_processes();
+        for item in &remaining {
+            if let Some(pid) = item.get("pid").and_then(|v| v.as_u64()) {
+                let pid_str = pid.to_string();
+                let _ = run_storage_cmd("kill", &["-KILL", &pid_str]);
+            }
+        }
+        (initial.len(), names)
+    }
+
+    pub fn build_onboarding_state_json(
+        connected: bool,
+        sd_detected: bool,
+        model_name: &str,
+        serial_number: &str,
+        profiles: &[DuckyProfile],
+        switcher: &SwitcherState,
+        conflict_warning_dismissed: bool,
+    ) -> (String, bool) {
+        let conflicts = Self::detect_conflicting_legacy_processes();
+        let first_run_pending = !Self::is_first_run_onboarding_completed();
+        let deck_detected = connected || sd_detected;
+
+        let backups = discover_dekunukem_profile_backups();
+        let autoswitcher_configs = discover_dekunukem_autoswitcher_configs();
+
+        let mut profile_sources = Vec::new();
+        let deck_detail = if serial_number != "-" && !serial_number.is_empty() {
+            format!("Load configurations directly from connected {model_name} (SN {serial_number})")
+        } else {
+            "Mount and load existing profile folders directly from duckyPad microSD".to_string()
+        };
+        profile_sources.push(json!({
+            "id": "deck_sd",
+            "label": format!(
+                "Connected duckyPad Hardware / microSD ({} profile(s) currently loaded)",
+                profiles.len()
+            ),
+            "detail": deck_detail,
+            "profileCount": profiles.len(),
+            "recommended": true
+        }));
+
+        for (b_path, b_name, b_count) in &backups {
+            let path_str = b_path.to_string_lossy().to_string();
+            profile_sources.push(json!({
+                "id": format!("dekunukem_backup:{path_str}"),
+                "label": format!("dekuNukem Configurator Backup — {b_name} ({b_count} profiles)"),
+                "detail": path_str,
+                "profileCount": b_count,
+                "recommended": false
+            }));
+        }
+
+        profile_sources.push(json!({
+            "id": "keep_current",
+            "label": format!("Keep Currently Loaded Profiles ({} profiles)", profiles.len()),
+            "detail": "Continue without reloading profiles",
+            "profileCount": profiles.len(),
+            "recommended": false
+        }));
+
+        let mut rule_sources = Vec::new();
+        let existing_rule_count = switcher.rules.len();
+        let recommend_existing_rules = existing_rule_count > 14 || autoswitcher_configs.is_empty();
+
+        rule_sources.push(json!({
+            "id": "existing_duckydeck_rules",
+            "label": format!("Existing DuckyDeck Studio / SD Rules ({existing_rule_count} rules)"),
+            "detail": "Preserves your DuckyDeck Studio KWin auto-switch rules (host, Flatpak & SD synced)",
+            "ruleCount": existing_rule_count,
+            "recommended": recommend_existing_rules
+        }));
+
+        for (idx, (cfg_path, rule_count)) in autoswitcher_configs.iter().enumerate() {
+            let path_str = cfg_path.to_string_lossy().to_string();
+            let cfg_name = cfg_path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("duckypad_autoprofile_config.json");
+            rule_sources.push(json!({
+                "id": format!("dekunukem_rules:{path_str}"),
+                "label": format!("dekuNukem Auto-Switcher — {cfg_name} ({rule_count} rules)"),
+                "detail": path_str,
+                "ruleCount": rule_count,
+                "recommended": !recommend_existing_rules && idx == 0
+            }));
+        }
+
+        if !recommend_existing_rules {
+            rule_sources.push(json!({
+                "id": "keep_current",
+                "label": format!("Keep Current Auto-Switch Rules ({existing_rule_count} rules)"),
+                "detail": "Do not import external auto-switcher rules",
+                "ruleCount": existing_rule_count,
+                "recommended": false
+            }));
+        }
+
+        let should_show = !is_demo_showcase_env()
+            && ((deck_detected && first_run_pending)
+                || (!conflicts.is_empty() && !conflict_warning_dismissed));
+
+        let payload = json!({
+            "firstRunPending": first_run_pending,
+            "deckDetected": deck_detected,
+            "modelName": model_name,
+            "serialNumber": serial_number,
+            "conflicts": conflicts,
+            "profileSources": profile_sources,
+            "ruleSources": rule_sources,
+        });
+
+        (payload.to_string(), should_show)
+    }
+
+    pub fn apply_rule_source_to_switcher(
+        switcher: &mut SwitcherState,
+        profiles: &[DuckyProfile],
+        rule_source_id: &str,
+        sd_root_path: Option<&Path>,
+        serial_number: &str,
+    ) -> Result<usize, String> {
+        if let Some(path_str) = rule_source_id.strip_prefix("dekunukem_rules:") {
+            let (switch_enabled, fallback_prof, imported_rules) =
+                parse_dekunukem_autoswitcher_file(Path::new(path_str), profiles)?;
+            switcher.rules = imported_rules;
+            if let Some(fb) = fallback_prof {
+                switcher.default_profile = Some(fb);
+            }
+            switcher.enabled = switch_enabled;
+            switcher.loaded_from_disk = true;
+            let _ = switcher.save_to_disk();
+            if let Some(sd_root) = sd_root_path {
+                let _ = save_rules_bundle_to_dir(
+                    sd_root,
+                    switcher.enabled,
+                    switcher.default_profile,
+                    &switcher.rules,
+                    profiles,
+                );
+            }
+            let cache_dir = profile_cache_dir_for_serial(serial_number);
+            let _ = save_rules_bundle_to_dir(
+                &cache_dir,
+                switcher.enabled,
+                switcher.default_profile,
+                &switcher.rules,
+                profiles,
+            );
+            return Ok(switcher.rules.len());
+        }
+
+        if rule_source_id == "existing_duckydeck_rules" {
+            if let Some(sd_root) = sd_root_path {
+                if let Some((sd_en, sd_fb, sd_rules)) =
+                    load_rules_bundle_from_dir(sd_root, profiles)
+                {
+                    if sd_rules.len() > switcher.rules.len() {
+                        switcher.enabled = sd_en;
+                        switcher.rules = sd_rules;
+                        if let Some(fb) = sd_fb {
+                            switcher.default_profile = Some(fb);
+                        }
+                    }
+                }
+            }
+            switcher.align_rules_with_profiles(profiles);
+            let _ = switcher.save_to_disk();
+            if let Some(sd_root) = sd_root_path {
+                let _ = save_rules_bundle_to_dir(
+                    sd_root,
+                    switcher.enabled,
+                    switcher.default_profile,
+                    &switcher.rules,
+                    profiles,
+                );
+            }
+            let cache_dir = profile_cache_dir_for_serial(serial_number);
+            let _ = save_rules_bundle_to_dir(
+                &cache_dir,
+                switcher.enabled,
+                switcher.default_profile,
+                &switcher.rules,
+                profiles,
+            );
+            return Ok(switcher.rules.len());
+        }
+
+        switcher.align_rules_with_profiles(profiles);
+        Ok(switcher.rules.len())
     }
 }
 
@@ -1944,8 +2313,21 @@ impl qobject::DeviceController {
                             let short_fp = &fp[..8.min(fp.len())];
                             {
                                 let rust = qobject.as_mut().rust_mut().get_mut();
+                                let pending_rule_src = rust.pending_rule_import_source.take();
+                                let sn_str = rust.serial_number.to_string();
+                                let sd_opt = rust.sd_root_path.clone();
                                 if let Ok(mut sw) = rust.switcher_state.lock() {
-                                    sw.align_rules_with_profiles(&profiles);
+                                    if let Some(ref src_id) = pending_rule_src {
+                                        let _ = DeviceControllerRust::apply_rule_source_to_switcher(
+                                            &mut sw,
+                                            &profiles,
+                                            src_id,
+                                            sd_opt.as_deref(),
+                                            &sn_str,
+                                        );
+                                    } else {
+                                        sw.align_rules_with_profiles(&profiles);
+                                    }
                                 }
                                 rust.profiles = profiles;
                             }
@@ -2133,6 +2515,8 @@ impl qobject::DeviceController {
                 self.as_mut().sync_tray_state();
             }
         }
+
+        let _ = self.as_mut().refresh_onboarding_state();
 
         // Start the KWin Wayland Auto-Switcher D-Bus listener if not started yet
         if !is_ui_test_suite_env() {
@@ -3276,14 +3660,38 @@ impl qobject::DeviceController {
                 let current_serial = self.serial_number().to_string();
                 {
                     let rust = self.as_mut().rust_mut().get_mut();
-                    if let Ok(mut sw) = rust.switcher_state.lock() {
-                        sw.align_rules_with_profiles(&profiles);
-                    }
                     let sn_for_cache = dpp_cfg
                         .serial_number
                         .as_deref()
                         .filter(|s| !s.is_empty())
                         .unwrap_or(&current_serial);
+                    let pending_rule_src = rust.pending_rule_import_source.take();
+                    if let Ok(mut sw) = rust.switcher_state.lock() {
+                        if let Some(ref src_id) = pending_rule_src {
+                            let _ = DeviceControllerRust::apply_rule_source_to_switcher(
+                                &mut sw,
+                                &profiles,
+                                src_id,
+                                Some(&sd_root),
+                                sn_for_cache,
+                            );
+                        } else {
+                            if let Some((sd_en, sd_fb, sd_rules)) =
+                                load_rules_bundle_from_dir(&sd_root, &profiles)
+                            {
+                                if sd_rules.len() > sw.rules.len() {
+                                    sw.enabled = sd_en;
+                                    sw.rules = sd_rules;
+                                    if let Some(fb) = sd_fb {
+                                        sw.default_profile = Some(fb);
+                                    }
+                                    sw.loaded_from_disk = true;
+                                    let _ = sw.save_to_disk();
+                                }
+                            }
+                            sw.align_rules_with_profiles(&profiles);
+                        }
+                    }
                     sync_profiles_to_device_cache(sn_for_cache, &profiles);
                     mark_profiles_sd_synced(sn_for_cache, &profiles);
                     rust.sd_root_path = Some(sd_root.clone());
@@ -7100,6 +7508,206 @@ impl qobject::DeviceController {
                 false
             }
         }
+    }
+
+    pub fn refresh_onboarding_state(mut self: Pin<&mut Self>) -> QString {
+        if is_demo_showcase_env() {
+            return self.onboarding_state_json().clone();
+        }
+        let connected = *self.connected();
+        let sd_detected = *self.sd_card_detected();
+        let model = self.model_name().to_string();
+        let serial = self.serial_number().to_string();
+        let (json_str, should_show) = {
+            let rust = self.rust();
+            let sw = rust
+                .switcher_state
+                .lock()
+                .map(|g| g.clone())
+                .unwrap_or_default();
+            DeviceControllerRust::build_onboarding_state_json(
+                connected,
+                sd_detected,
+                &model,
+                &serial,
+                &rust.profiles,
+                &sw,
+                rust.conflict_warning_dismissed,
+            )
+        };
+        if self.onboarding_state_json().to_string() != json_str {
+            self.as_mut()
+                .set_onboarding_state_json(QString::from(&json_str));
+        }
+        if should_show && !*self.show_first_run_dialog() {
+            self.as_mut().set_show_first_run_dialog(true);
+        }
+        QString::from(&json_str)
+    }
+
+    pub fn stop_conflicting_software(mut self: Pin<&mut Self>) -> bool {
+        let (stopped_count, stopped_names) =
+            DeviceControllerRust::stop_conflicting_legacy_processes();
+        let _ = self.as_mut().refresh_onboarding_state();
+        if stopped_count > 0 {
+            let msg = format!(
+                "✓ Shut down {} conflicting legacy process(es): {}",
+                stopped_count,
+                stopped_names.join(", ")
+            );
+            record_system_event("INFO", "SYSTEM", &msg);
+            self.as_mut().sync_event_log_properties();
+            self.as_mut().set_status_message(QString::from(&msg));
+            true
+        } else {
+            let msg = "No conflicting dekuNukem configurator or auto-switcher processes running";
+            self.as_mut().set_status_message(QString::from(msg));
+            false
+        }
+    }
+
+    pub fn dismiss_first_run_dialog(mut self: Pin<&mut Self>) {
+        DeviceControllerRust::mark_first_run_onboarding_completed();
+        self.as_mut()
+            .rust_mut()
+            .get_mut()
+            .conflict_warning_dismissed = true;
+        self.as_mut().set_show_first_run_dialog(false);
+        let _ = self.as_mut().refresh_onboarding_state();
+    }
+
+    pub fn apply_first_run_import(
+        mut self: Pin<&mut Self>,
+        profile_source_id: QString,
+        rule_source_id: QString,
+        shutdown_conflicts: bool,
+    ) -> bool {
+        let prof_src = profile_source_id.to_string().trim().to_string();
+        let rule_src = rule_source_id.to_string().trim().to_string();
+
+        let mut actions_summary = Vec::new();
+        if shutdown_conflicts {
+            let (stopped_count, stopped_names) =
+                DeviceControllerRust::stop_conflicting_legacy_processes();
+            if stopped_count > 0 {
+                actions_summary.push(format!(
+                    "stopped {} legacy process(es) ({})",
+                    stopped_count,
+                    stopped_names.join(", ")
+                ));
+            }
+        }
+
+        DeviceControllerRust::mark_first_run_onboarding_completed();
+        self.as_mut()
+            .rust_mut()
+            .get_mut()
+            .conflict_warning_dismissed = true;
+        self.as_mut().set_show_first_run_dialog(false);
+
+        let mut triggered_async_sd_reload = false;
+        if let Some(backup_dir) = prof_src.strip_prefix("dekunukem_backup:") {
+            let dir_path = Path::new(backup_dir.trim());
+            if let Ok(loaded) = load_all_sd_profiles(dir_path) {
+                if !loaded.is_empty() {
+                    let count = loaded.len();
+                    let sn = self.serial_number().to_string();
+                    sync_profiles_to_device_cache(&sn, &loaded);
+                    {
+                        let rust = self.as_mut().rust_mut().get_mut();
+                        rust.profiles = loaded;
+                    }
+                    self.as_mut().set_active_profile(1);
+                    actions_summary.push(format!(
+                        "imported {count} profile(s) from dekuNukem backup '{}'",
+                        dir_path
+                            .file_name()
+                            .map(|f| f.to_string_lossy().to_string())
+                            .unwrap_or_else(|| backup_dir.to_string())
+                    ));
+                }
+            }
+        } else if prof_src == "deck_sd" {
+            if let Some(sd_dir) = self
+                .rust()
+                .sd_root_path
+                .clone()
+                .or_else(find_mounted_duckypad_sd)
+            {
+                let sd_str = sd_dir.to_string_lossy().to_string();
+                self.as_mut()
+                    .rust_mut()
+                    .get_mut()
+                    .pending_rule_import_source = Some(rule_src.clone());
+                if self.as_mut().load_sd_directory(QString::from(&sd_str)) {
+                    actions_summary.push(format!(
+                        "loaded {} profile(s) from {}",
+                        self.rust().profiles.len(),
+                        sd_dir.display()
+                    ));
+                }
+            } else if self.rust().profiles.len() <= 1 && *self.connected() {
+                self.as_mut()
+                    .rust_mut()
+                    .get_mut()
+                    .pending_rule_import_source = Some(rule_src.clone());
+                triggered_async_sd_reload = self.as_mut().reload_profiles_from_device_sd();
+                if triggered_async_sd_reload {
+                    actions_summary.push("mounting duckyPad microSD to load profiles".to_string());
+                }
+            } else {
+                actions_summary.push(format!(
+                    "verified {} deck profile(s)",
+                    self.rust().profiles.len()
+                ));
+            }
+        }
+
+        let rule_apply_res = {
+            let rust = self.as_mut().rust_mut().get_mut();
+            let sd_opt = rust.sd_root_path.clone();
+            let sn_str = rust.serial_number.to_string();
+            let profs = rust.profiles.clone();
+            let res = if let Ok(mut sw) = rust.switcher_state.lock() {
+                DeviceControllerRust::apply_rule_source_to_switcher(
+                    &mut sw,
+                    &profs,
+                    &rule_src,
+                    sd_opt.as_deref(),
+                    &sn_str,
+                )
+            } else {
+                Err("Failed locking switcher state".to_string())
+            };
+            res
+        };
+
+        if let Ok(rule_count) = rule_apply_res {
+            let enabled = self
+                .rust()
+                .switcher_state
+                .lock()
+                .map(|s| s.enabled)
+                .unwrap_or(true);
+            self.as_mut().set_auto_switch_enabled(enabled);
+            actions_summary.push(format!("loaded {rule_count} auto-switch rule(s)"));
+        }
+
+        self.as_mut().sync_active_profile_state();
+        let _ = self.as_mut().refresh_onboarding_state();
+
+        if !triggered_async_sd_reload {
+            let summary_msg = if actions_summary.is_empty() {
+                "First-run configuration complete".to_string()
+            } else {
+                format!("✓ Setup complete: {}", actions_summary.join(" • "))
+            };
+            record_system_event("INFO", "CONFIG", &summary_msg);
+            self.as_mut().sync_event_log_properties();
+            self.as_mut()
+                .set_status_message(QString::from(&summary_msg));
+        }
+        true
     }
 
     pub fn handle_rest_api_request(

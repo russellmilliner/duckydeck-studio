@@ -1052,6 +1052,19 @@ pub fn load_all_sd_profiles(sd_root: &Path) -> io::Result<Vec<DuckyProfile>> {
     }
 
     profiles.sort_by_key(|p| p.number);
+
+    let sd_rules_file = sd_root.join(crate::kwin::auto_switcher::SD_RULES_FILENAME);
+    if sd_rules_file.is_file() {
+        let global_cache = profile_cache_dir();
+        if sd_root != global_cache {
+            let _ = fs::create_dir_all(&global_cache); // ignore: best-effort cache dir creation
+            let _ = fs::copy(
+                &sd_rules_file,
+                global_cache.join(crate::kwin::auto_switcher::SD_RULES_FILENAME),
+            ); // ignore: best-effort SD rules cache copy
+        }
+    }
+
     Ok(profiles)
 }
 
@@ -1154,6 +1167,15 @@ fn write_profiles_to_cache_dir(cache_dir: &Path, profiles: &[DuckyProfile]) {
                 ),
             );
         }
+    }
+    if let Some(cfg) = crate::kwin::auto_switcher::SwitcherState::load_config_from_disk() {
+        let _ = crate::kwin::auto_switcher::save_rules_bundle_to_dir(
+            cache_dir,
+            cfg.enabled,
+            cfg.default_profile,
+            &cfg.rules,
+            profiles,
+        ); // ignore: best-effort rules bundle cache write
     }
 }
 
@@ -1598,6 +1620,26 @@ pub fn write_profiles_to_sd_root(
         Ok(true) => summary.files_written += 1,
         Ok(false) => summary.files_verified_unchanged += 1,
         Err(e) => return Err(format!("Failed writing profile_info.txt: {e}")),
+    }
+
+    if let Some(cfg) = crate::kwin::auto_switcher::SwitcherState::load_config_from_disk() {
+        match crate::kwin::auto_switcher::save_rules_bundle_to_dir(
+            sd_root,
+            cfg.enabled,
+            cfg.default_profile,
+            &cfg.rules,
+            profiles,
+        ) {
+            Ok(true) => summary.files_written += 1,
+            Ok(false) => summary.files_verified_unchanged += 1,
+            Err(e) => {
+                crate::bridge::device_controller::record_system_event(
+                    "WARN",
+                    "STORAGE",
+                    format!("Failed writing duckydeck_rules.json on SD: {e}"),
+                );
+            }
+        }
     }
 
     if let Ok(entries) = fs::read_dir(sd_root) {
@@ -2331,6 +2373,60 @@ pub fn sync_profiles_to_device_cache(serial: &str, profiles: &[DuckyProfile]) {
     }
 }
 
+pub fn discover_dekunukem_profile_backups() -> Vec<(PathBuf, String, usize)> {
+    let mut roots = Vec::new();
+    let host_backups = crate::paths::dekunukem_config_dir().join("profile_backups");
+    if host_backups.is_dir() {
+        roots.push(host_backups);
+    }
+    let xdg_backups = crate::paths::xdg_data_home()
+        .join("duckypad_config")
+        .join("profile_backups");
+    if xdg_backups.is_dir() && !roots.contains(&xdg_backups) {
+        roots.push(xdg_backups);
+    }
+
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    for root in roots {
+        if let Ok(entries) = fs::read_dir(&root) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() && is_duckypad_sd_root(&p) && !dirs.contains(&p) {
+                    dirs.push(p);
+                }
+            }
+        }
+    }
+    dirs.sort();
+    dirs.reverse(); // newest first
+
+    let mut out = Vec::new();
+    for dir in dirs {
+        let Some(fname) = dir.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let count = fs::read_dir(&dir)
+            .ok()
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .filter(|e| {
+                        e.path().is_dir()
+                            && e.file_name()
+                                .to_str()
+                                .and_then(parse_profile_folder_name)
+                                .is_some()
+                    })
+                    .count()
+            })
+            .unwrap_or(0);
+        if count > 0 {
+            out.push((dir.clone(), fname.to_string(), count));
+        }
+    }
+    out
+}
+
 pub fn load_cached_profiles_for_serial(serial: &str) -> Option<Vec<DuckyProfile>> {
     let clean: String = serial
         .chars()
@@ -2339,11 +2435,17 @@ pub fn load_cached_profiles_for_serial(serial: &str) -> Option<Vec<DuckyProfile>
     if clean.is_empty() || clean == "-" {
         return None;
     }
-    let dev_cache = profile_cache_dir_for_serial(&clean);
-    if dev_cache.is_dir() {
-        if let Ok(profiles) = load_all_sd_profiles(&dev_cache) {
-            if !profiles.is_empty() {
-                return Some(profiles);
+    for dev_cache in [
+        profile_cache_dir_for_serial(&clean),
+        crate::paths::host_data_dir()
+            .join("device_profiles")
+            .join(&clean),
+    ] {
+        if dev_cache.is_dir() {
+            if let Ok(profiles) = load_all_sd_profiles(&dev_cache) {
+                if !profiles.is_empty() {
+                    return Some(profiles);
+                }
             }
         }
     }
@@ -2355,51 +2457,34 @@ pub fn load_profiles_for_connected_device(pid: u16, serial: &str) -> Option<Vec<
         return Some(profiles);
     }
 
+    for global_cache in [
+        profile_cache_dir(),
+        crate::paths::host_data_dir().join("profile_cache"),
+    ] {
+        if global_cache.is_dir() {
+            if let Ok(profiles) = load_all_sd_profiles(&global_cache) {
+                if !profiles.is_empty() {
+                    sync_profiles_to_device_cache(serial, &profiles);
+                    return Some(profiles);
+                }
+            }
+        }
+    }
+
     // Check if there is a backup from duckyPad-Configurator for this device model
-    let backups_root = crate::paths::xdg_data_home()
-        .join("duckypad_config")
-        .join("profile_backups");
     let model_prefix = if pid == PID_DUCKYPAD_PRO {
         "duckyPad_Pro_backup_"
     } else {
         "duckyPad_backup_"
     };
 
-    let mut latest_backup: Option<PathBuf> = None;
-    if backups_root.is_dir() {
-        if let Ok(entries) = fs::read_dir(&backups_root) {
-            let mut matching: Vec<PathBuf> = entries
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| {
-                    p.is_dir()
-                        && p.file_name()
-                            .and_then(|s| s.to_str())
-                            .map(|n| n.starts_with(model_prefix))
-                            .unwrap_or(false)
-                        && is_duckypad_sd_root(p)
-                })
-                .collect();
-            matching.sort();
-            latest_backup = matching.pop();
-        }
-    }
-
-    if let Some(backup_dir) = latest_backup {
-        if let Ok(profiles) = load_all_sd_profiles(&backup_dir) {
-            if !profiles.is_empty() {
-                sync_profiles_to_device_cache(serial, &profiles);
-                return Some(profiles);
-            }
-        }
-    }
-
-    let global_cache = profile_cache_dir();
-    if global_cache.is_dir() {
-        if let Ok(profiles) = load_all_sd_profiles(&global_cache) {
-            if !profiles.is_empty() {
-                sync_profiles_to_device_cache(serial, &profiles);
-                return Some(profiles);
+    for (backup_dir, fname, _) in discover_dekunukem_profile_backups() {
+        if fname.starts_with(model_prefix) {
+            if let Ok(profiles) = load_all_sd_profiles(&backup_dir) {
+                if !profiles.is_empty() {
+                    sync_profiles_to_device_cache(serial, &profiles);
+                    return Some(profiles);
+                }
             }
         }
     }
@@ -2408,33 +2493,24 @@ pub fn load_profiles_for_connected_device(pid: u16, serial: &str) -> Option<Vec<
 }
 
 pub fn load_cached_or_backup_profiles() -> Option<Vec<DuckyProfile>> {
-    let cache_dir = profile_cache_dir();
-    if cache_dir.is_dir() {
-        if let Ok(profiles) = load_all_sd_profiles(&cache_dir) {
-            if !profiles.is_empty() {
-                return Some(profiles);
+    for cache_dir in [
+        profile_cache_dir(),
+        crate::paths::host_data_dir().join("profile_cache"),
+    ] {
+        if cache_dir.is_dir() {
+            if let Ok(profiles) = load_all_sd_profiles(&cache_dir) {
+                if !profiles.is_empty() {
+                    return Some(profiles);
+                }
             }
         }
     }
 
-    let backups_root = crate::paths::xdg_data_home()
-        .join("duckypad_config")
-        .join("profile_backups");
-    if backups_root.is_dir() {
-        if let Ok(entries) = fs::read_dir(&backups_root) {
-            let mut dirs: Vec<PathBuf> = entries
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| p.is_dir() && is_duckypad_sd_root(p))
-                .collect();
-            dirs.sort();
-            if let Some(latest_backup) = dirs.last() {
-                if let Ok(profiles) = load_all_sd_profiles(latest_backup) {
-                    if !profiles.is_empty() {
-                        sync_profiles_to_cache(&profiles);
-                        return Some(profiles);
-                    }
-                }
+    for (backup_dir, _, _) in discover_dekunukem_profile_backups() {
+        if let Ok(profiles) = load_all_sd_profiles(&backup_dir) {
+            if !profiles.is_empty() {
+                sync_profiles_to_cache(&profiles);
+                return Some(profiles);
             }
         }
     }

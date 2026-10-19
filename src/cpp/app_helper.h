@@ -34,6 +34,7 @@
 #include <QProcess>
 #include <QPushButton>
 #include <QQmlApplicationEngine>
+#include <QQuickItem>
 #include <QQuickWindow>
 #include <QScreen>
 #include <QStandardPaths>
@@ -1698,8 +1699,10 @@ inline bool duckydeck_capture_composite_frame(
     p.setRenderHint(QPainter::SmoothPixmapTransform, true);
     p.setRenderHint(QPainter::TextAntialiasing, true);
 
-    QImage scaledMain = mainImg.scaled(1920, 1080, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-    p.drawImage(0, 0, scaledMain);
+    QImage scaledMain = mainImg.scaled(1920, 1080, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    const int mainPosX = (1920 - scaledMain.width()) / 2;
+    const int mainPosY = (1080 - scaledMain.height()) / 2;
+    p.drawImage(mainPosX, mainPosY, scaledMain);
 
     const double scaleX = 1920.0 / std::max(1, mainWin->width());
     const double scaleY = 1080.0 / std::max(1, mainWin->height());
@@ -1714,6 +1717,13 @@ inline bool duckydeck_capture_composite_frame(
         if (!subWin) {
             continue;
         }
+        if (QQuickItem* ci = subWin->contentItem()) {
+            if (ci->width() < subWin->width() || ci->height() < subWin->height()) {
+                ci->setWidth(subWin->width());
+                ci->setHeight(subWin->height());
+                QCoreApplication::processEvents();
+            }
+        }
         QImage subImg = subWin->grabWindow();
         if (subImg.isNull()) {
             continue;
@@ -1722,8 +1732,11 @@ inline bool duckydeck_capture_composite_frame(
         // Dim background slightly to emphasize modal/dialog window
         p.fillRect(0, 0, 1920, 1080, QColor(8, 10, 16, 130));
 
-        const int targetW = std::min(1820, static_cast<int>(subWin->width() * uniformScale));
-        const int targetH = std::min(980, static_cast<int>(subWin->height() * uniformScale));
+        const int desiredW = std::min(1820, static_cast<int>(std::round(subWin->width() * uniformScale)));
+        const int desiredH = std::min(940, static_cast<int>(std::round(subWin->height() * uniformScale)));
+        QImage scaledSub = subImg.scaled(desiredW, desiredH, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        const int targetW = scaledSub.width();
+        const int targetH = scaledSub.height();
         const int titleBarH = 34;
         const int totalH = targetH + titleBarH;
         const int posX = (1920 - targetW) / 2;
@@ -1757,7 +1770,6 @@ inline bool duckydeck_capture_composite_frame(
             subWin->title()
         );
 
-        QImage scaledSub = subImg.scaled(targetW, targetH, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
         p.drawImage(posX, posY + titleBarH, scaledSub);
         p.restore();
 

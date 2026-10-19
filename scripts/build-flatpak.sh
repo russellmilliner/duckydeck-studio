@@ -65,6 +65,10 @@ flatpak build-finish "$WORK_DIR/build-dir" \
   --filesystem=/run/udev:ro \
   --filesystem=xdg-config/kglobalshortcutsrc:ro \
   --filesystem=xdg-data/kxmlgui5:ro \
+  --filesystem=xdg-config/duckydeck-studio:create \
+  --filesystem=xdg-data/duckydeck-studio:create \
+  --filesystem=xdg-data/duckypad_config:ro \
+  --filesystem=xdg-data/duckypad_autoswitcher:ro \
   --filesystem=xdg-run/duckydeck-studio:create \
   --talk-name=org.kde.KWin \
   --talk-name=org.kde.StatusNotifierWatcher \

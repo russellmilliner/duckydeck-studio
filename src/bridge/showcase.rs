@@ -180,7 +180,7 @@ pub fn create_default_demo_profile() -> DuckyProfile {
             "Auto",
             "Click",
             [180, 80, 255],
-            "WHILE _KEYPRESS\n    LCLICK\n    DELAY 50\nEND_WHILE\n",
+            "WHILE _SW_BITFIELD != 0\n    LMOUSE\n    DELAY 50\nEND_WHILE\n",
             "",
         ),
         (
@@ -196,7 +196,7 @@ pub fn create_default_demo_profile() -> DuckyProfile {
         (23, "Invert", "", [56, 189, 248], "CONTROL i\n", ""),
         (24, "Zoom -", "", [56, 189, 248], "KP_MINUS\n", ""),
         (25, "Zoom +", "", [56, 189, 248], "KP_PLUS\n", ""),
-        (26, "Frame", "", [56, 189, 248], "KP_PERIOD\n", ""),
+        (26, "Frame", "", [56, 189, 248], "KP_DOT\n", ""),
     ];
 
     for &(slot_idx, l1, l2, rgb, press, release) in defaults {
@@ -729,7 +729,7 @@ pub fn create_showcase_profiles_and_rules() -> (Vec<DuckyProfile>, Vec<AutoSwitc
                 "Play",
                 "Pause",
                 [30, 215, 96],
-                "DEFAULTDELAY 20\nMK_PLAYPAUSE\n",
+                "DEFAULTDELAY 20\nMK_PP\n",
                 "",
             ),
             (
@@ -825,7 +825,7 @@ pub fn create_showcase_profiles_and_rules() -> (Vec<DuckyProfile>, Vec<AutoSwitc
             (23, "Mute", "", [239, 68, 68], "MK_MUTE\n", ""),
             (24, "Back", "", [56, 189, 248], "SHIFT LEFT\n", ""),
             (25, "Fwd", "", [56, 189, 248], "SHIFT RIGHT\n", ""),
-            (26, "Play", "", [30, 215, 96], "MK_PLAYPAUSE\n", ""),
+            (26, "Play", "", [30, 215, 96], "MK_PP\n", ""),
         ],
     );
 
@@ -1084,6 +1084,53 @@ pub fn create_showcase_instance() -> DeviceControllerRust {
         {"name": "Blender", "exec": "blender", "icon": "blender", "desktopId": "blender.desktop", "comment": "3D modeling, animation, rendering and post-production"}
     ]);
 
+    let demo_onboarding = json!({
+        "firstRunPending": false,
+        "deckDetected": true,
+        "modelName": "duckyPad Pro",
+        "serialNumber": "DP24-8F4A1C9E",
+        "conflicts": [],
+        "profileSources": [
+            {
+                "id": "deck_sd",
+                "label": "Connected duckyPad Hardware / microSD (8 profiles)",
+                "detail": "Load existing profiles directly from connected duckyPad Pro (SN DP24-8F4A1C9E)",
+                "profileCount": 8,
+                "recommended": true
+            },
+            {
+                "id": "dekunukem_backup:/home/demo/.local/share/duckypad_config/profile_backups/duckyPad_Pro_backup",
+                "label": "dekuNukem Configurator Backup — duckyPad_Pro_backup (8 profiles)",
+                "detail": "~/.local/share/duckypad_config/profile_backups/duckyPad_Pro_backup",
+                "profileCount": 8,
+                "recommended": false
+            },
+            {
+                "id": "keep_current",
+                "label": "Keep Currently Loaded Profiles (8 profiles)",
+                "detail": "Continue with the profiles currently loaded in DuckyDeck Studio",
+                "profileCount": 8,
+                "recommended": false
+            }
+        ],
+        "ruleSources": [
+            {
+                "id": "existing_duckydeck_rules",
+                "label": "Existing DuckyDeck Studio / SD Rules (7 rules)",
+                "detail": "Preserves your configured DuckyDeck Studio KWin auto-switcher rules",
+                "ruleCount": 7,
+                "recommended": true
+            },
+            {
+                "id": "dekunukem_rules:/home/demo/.local/share/duckypad_autoswitcher/config.txt",
+                "label": "dekuNukem Auto-Switcher — config.txt (21 rules)",
+                "detail": "~/.local/share/duckypad_autoswitcher/config.txt",
+                "ruleCount": 21,
+                "recommended": false
+            }
+        ]
+    });
+
     DeviceControllerRust {
             connected: true,
             udev_rule_missing: false,
@@ -1175,6 +1222,8 @@ pub fn create_showcase_instance() -> DeviceControllerRust {
             rest_api_token: QString::from("ddk_9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e"),
             rest_api_status: QString::from("Disabled"),
             firmware_fetch_busy: false,
+            show_first_run_dialog: false,
+            onboarding_state_json: QString::from(&demo_onboarding.to_string()),
             copied_key_slot: None,
             firmware_download_url: String::new(),
             sd_root_path: None,
@@ -1182,6 +1231,8 @@ pub fn create_showcase_instance() -> DeviceControllerRust {
             switcher_state: Arc::new(Mutex::new(switcher)),
             kwin_listener_started: true,
             picker_bind_to_active_profile: false,
+            conflict_warning_dismissed: false,
+            pending_rule_import_source: None,
         }
 }
 

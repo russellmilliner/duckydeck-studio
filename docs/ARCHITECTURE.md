@@ -201,6 +201,7 @@ Each profile resides in a folder named `profile<N>_<Name>` on the FAT32 microSD 
   - `ab <N>` / `dr <N>` — Allow abort (`$_ALLOW_ABORT`) or disable auto-repeat (`$_DONT_REPEAT`) on slot `N`.
 - `key<N>.txt` & `key<N>.dsb`: On-press duckyScript 3 source and compiled DSVM v2 bytecode binary.
 - `key<N>-release.txt` & `key<N>-release.dsb`: On-release duckyScript 3 source and compiled DSVM v2 bytecode binary.
+- `duckydeck_rules.json` (microSD root): Portable KWin Wayland auto-switcher rules bundle (`SdPersistedRulesBundle`), synchronized automatically between local config (`~/.config/duckydeck-studio/kwin_rules.json`) and the deck microSD card upon save/sync (`save_rules_bundle_to_dir`). Stores window resource class filters, window title patterns, default fallback profile, and associated profile names for cross-machine rule portability.
 
 ---
 

@@ -19,6 +19,7 @@ Window {
     property var inspectorCard: null
     property alias unsyncedChangesDialog: unsyncedChangesDialog
     property alias firmwareUpdateDialog: firmwareUpdateDialog
+    property alias firstRunSetupDialog: firstRunSetupDialog
 
     component HighContrastScrollBar: QQC2.ScrollBar {
         id: hcBar
@@ -1185,6 +1186,404 @@ Window {
                     icon.name: "window-close"
                     text: qsTr("Close")
                     onClicked: firmwareUpdateDialog.close()
+                }
+            }
+        }
+    }
+
+    Window {
+        id: firstRunSetupDialog
+        readonly property bool closableWithEscape: true
+        title: qsTr("First-Run Deck Setup & Migration — DuckyDeck Studio")
+        width: Math.max(
+            780,
+            Math.ceil(firstRunFooterRow.implicitWidth + 64),
+            Math.ceil(firstRunTitleMetrics.width + 180)
+        )
+        height: Math.min(640, Screen.desktopAvailableHeight > 0 ? Screen.desktopAvailableHeight - 80 : 640)
+        minimumWidth: Math.max(
+            740,
+            Math.ceil(firstRunFooterRow.implicitWidth + 56),
+            Math.ceil(firstRunTitleMetrics.width + 160)
+        )
+        minimumHeight: 480
+        visible: false
+        transientParent: root
+        modality: Qt.WindowModal
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint
+
+        onMinimumWidthChanged: {
+            if (firstRunSetupDialog.width < firstRunSetupDialog.minimumWidth) {
+                firstRunSetupDialog.width = firstRunSetupDialog.minimumWidth
+            }
+        }
+
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
+        color: Kirigami.Theme.backgroundColor
+
+        property var conflictsList: []
+        property var profileSourcesList: []
+        property var ruleSourcesList: []
+        property int selectedProfileSourceIndex: 0
+        property int selectedRuleSourceIndex: 0
+        property bool shutdownConflictsChecked: true
+
+        TextMetrics {
+            id: firstRunTitleMetrics
+            font.bold: true
+            font.pointSize: 11 * root.fontScale
+            text: firstRunSetupDialog.title
+        }
+
+        function refreshState() {
+            if (!deviceController) return
+            const raw = deviceController.refreshOnboardingState()
+            try {
+                const parsed = JSON.parse(raw || "{}")
+                firstRunSetupDialog.conflictsList = Array.isArray(parsed.conflicts) ? parsed.conflicts : []
+                firstRunSetupDialog.profileSourcesList = Array.isArray(parsed.profileSources) ? parsed.profileSources : []
+                firstRunSetupDialog.ruleSourcesList = Array.isArray(parsed.ruleSources) ? parsed.ruleSources : []
+
+                let recProfIdx = 0
+                for (let i = 0; i < firstRunSetupDialog.profileSourcesList.length; ++i) {
+                    if (firstRunSetupDialog.profileSourcesList[i].recommended) {
+                        recProfIdx = i
+                        break
+                    }
+                }
+                firstRunSetupDialog.selectedProfileSourceIndex = recProfIdx
+
+                let recRuleIdx = 0
+                for (let j = 0; j < firstRunSetupDialog.ruleSourcesList.length; ++j) {
+                    if (firstRunSetupDialog.ruleSourcesList[j].recommended) {
+                        recRuleIdx = j
+                        break
+                    }
+                }
+                firstRunSetupDialog.selectedRuleSourceIndex = recRuleIdx
+                firstRunSetupDialog.shutdownConflictsChecked = firstRunSetupDialog.conflictsList.length > 0
+            } catch (e) {
+                firstRunSetupDialog.conflictsList = []
+                firstRunSetupDialog.profileSourcesList = []
+                firstRunSetupDialog.ruleSourcesList = []
+            }
+        }
+
+        function selectedProfileSourceId() {
+            if (firstRunSetupDialog.selectedProfileSourceIndex >= 0
+                && firstRunSetupDialog.selectedProfileSourceIndex < firstRunSetupDialog.profileSourcesList.length) {
+                return firstRunSetupDialog.profileSourcesList[firstRunSetupDialog.selectedProfileSourceIndex].id || "deck_sd"
+            }
+            return "deck_sd"
+        }
+
+        function selectedProfileSourceDetail() {
+            if (firstRunSetupDialog.selectedProfileSourceIndex >= 0
+                && firstRunSetupDialog.selectedProfileSourceIndex < firstRunSetupDialog.profileSourcesList.length) {
+                return firstRunSetupDialog.profileSourcesList[firstRunSetupDialog.selectedProfileSourceIndex].detail || ""
+            }
+            return ""
+        }
+
+        function selectedRuleSourceId() {
+            if (firstRunSetupDialog.selectedRuleSourceIndex >= 0
+                && firstRunSetupDialog.selectedRuleSourceIndex < firstRunSetupDialog.ruleSourcesList.length) {
+                return firstRunSetupDialog.ruleSourcesList[firstRunSetupDialog.selectedRuleSourceIndex].id || "existing_duckydeck_rules"
+            }
+            return "existing_duckydeck_rules"
+        }
+
+        function selectedRuleSourceDetail() {
+            if (firstRunSetupDialog.selectedRuleSourceIndex >= 0
+                && firstRunSetupDialog.selectedRuleSourceIndex < firstRunSetupDialog.ruleSourcesList.length) {
+                return firstRunSetupDialog.ruleSourcesList[firstRunSetupDialog.selectedRuleSourceIndex].detail || ""
+            }
+            return ""
+        }
+
+        function open() {
+            firstRunSetupDialog.refreshState()
+            if (firstRunSetupDialog.width < firstRunSetupDialog.minimumWidth) {
+                firstRunSetupDialog.width = firstRunSetupDialog.minimumWidth
+            }
+            firstRunSetupDialog.show()
+            firstRunSetupDialog.raise()
+            firstRunSetupDialog.requestActivate()
+            Qt.callLater(function() {
+                if (firstRunSetupDialog.width < firstRunSetupDialog.minimumWidth) {
+                    firstRunSetupDialog.width = firstRunSetupDialog.minimumWidth
+                }
+                firstRunRootLayout.forceActiveFocus()
+            })
+        }
+
+        Shortcut {
+            sequence: "Escape"
+            context: Qt.WindowShortcut
+            enabled: firstRunSetupDialog.visible
+            onActivated: {
+                if (deviceController) deviceController.dismissFirstRunDialog()
+                firstRunSetupDialog.close()
+            }
+        }
+
+        ColumnLayout {
+            id: firstRunRootLayout
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 12
+            focus: true
+            Keys.onEscapePressed: {
+                if (deviceController) deviceController.dismissFirstRunDialog()
+                firstRunSetupDialog.close()
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                radius: 6
+                color: Qt.alpha(Kirigami.Theme.highlightColor, 0.14)
+                border.color: Qt.alpha(Kirigami.Theme.highlightColor, 0.55)
+                border.width: 1
+                implicitHeight: firstRunHeaderCol.implicitHeight + 20
+
+                ColumnLayout {
+                    id: firstRunHeaderCol
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 4
+
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        font.bold: true
+                        font.pointSize: 11 * root.fontScale
+                        wrapMode: Text.WordWrap
+                        text: deviceController && (deviceController.connected || deviceController.sdCardDetected)
+                            ? qsTr("🦆 %1 Detected — Load Existing Deck & Auto-Switcher Configurations").arg(deviceController.modelName)
+                            : qsTr("🦆 Import Existing Deck, dekuNukem Configurator & Auto-Switcher Setup")
+                        color: Kirigami.Theme.textColor
+                    }
+
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        font.pointSize: 10 * root.fontScale
+                        text: qsTr("Select where to load your existing profiles (from the duckyPad microSD or dekuNukem's duckypad_config backups) and your window auto-switching rules (from DuckyDeck Studio or dekuNukem's standard duckypad_autoswitcher).")
+                        color: Kirigami.Theme.textColor
+                    }
+                }
+            }
+
+            // Concurrent legacy software warning / status card
+            Rectangle {
+                Layout.fillWidth: true
+                radius: 6
+                color: firstRunSetupDialog.conflictsList.length > 0
+                    ? Qt.alpha(Kirigami.Theme.negativeTextColor, 0.16)
+                    : Qt.alpha(Kirigami.Theme.positiveTextColor, 0.12)
+                border.color: firstRunSetupDialog.conflictsList.length > 0
+                    ? Qt.alpha(Kirigami.Theme.negativeTextColor, 0.70)
+                    : Qt.alpha(Kirigami.Theme.positiveTextColor, 0.45)
+                border.width: 1
+                implicitHeight: conflictCardCol.implicitHeight + 20
+
+                ColumnLayout {
+                    id: conflictCardCol
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 6
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            font.bold: true
+                            font.pointSize: 10 * root.fontScale
+                            wrapMode: Text.WordWrap
+                            text: firstRunSetupDialog.conflictsList.length > 0
+                                ? qsTr("⚠ Warning: Legacy dekuNukem / Auto-Switcher Software Running Concurrently (%1)").arg(firstRunSetupDialog.conflictsList.length)
+                                : qsTr("✓ No Conflicting dekuNukem Configurator or Auto-Switcher Processes Running")
+                            color: Kirigami.Theme.textColor
+                        }
+
+                        QQC2.Button {
+                            visible: firstRunSetupDialog.conflictsList.length > 0
+                            font.pointSize: 10 * root.fontScale
+                            icon.name: "process-stop"
+                            text: qsTr("Shut Down Now")
+                            onClicked: {
+                                if (deviceController) {
+                                    deviceController.stopConflictingSoftware()
+                                    firstRunSetupDialog.refreshState()
+                                }
+                            }
+                        }
+                    }
+
+                    Repeater {
+                        model: firstRunSetupDialog.conflictsList
+                        delegate: QQC2.Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            font.family: "monospace"
+                            font.pointSize: 10 * root.fontScale
+                            text: qsTr("• %1 (PID %2) — %3")
+                                .arg(modelData.name || "Legacy Process")
+                                .arg(modelData.pid || "?")
+                                .arg(modelData.cmdline || "")
+                            color: Kirigami.Theme.textColor
+                        }
+                    }
+
+                    QQC2.CheckBox {
+                        visible: firstRunSetupDialog.conflictsList.length > 0
+                        Layout.fillWidth: true
+                        font.pointSize: 10 * root.fontScale
+                        checked: firstRunSetupDialog.shutdownConflictsChecked
+                        text: qsTr("Shut down conflicting dekuNukem configurator & auto-switcher processes before continuing")
+                        onToggled: firstRunSetupDialog.shutdownConflictsChecked = checked
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: 6
+                color: Kirigami.Theme.alternateBackgroundColor
+                border.color: Qt.rgba(
+                    Kirigami.Theme.textColor.r,
+                    Kirigami.Theme.textColor.g,
+                    Kirigami.Theme.textColor.b,
+                    0.25
+                )
+                border.width: 1
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    spacing: 12
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            font.bold: true
+                            font.pointSize: 10 * root.fontScale
+                            text: qsTr("1. Load Profiles From (Deck microSD or dekuNukem Configurator):")
+                            color: Kirigami.Theme.textColor
+                        }
+
+                        QQC2.ComboBox {
+                            id: profileSourceCombo
+                            Layout.fillWidth: true
+                            font.pointSize: 10 * root.fontScale
+                            model: firstRunSetupDialog.profileSourcesList.map(function(it) { return it.label || "" })
+                            currentIndex: firstRunSetupDialog.selectedProfileSourceIndex
+                            onActivated: function(idx) {
+                                firstRunSetupDialog.selectedProfileSourceIndex = idx
+                            }
+                        }
+
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            font.family: "monospace"
+                            font.pointSize: 10 * root.fontScale
+                            text: firstRunSetupDialog.selectedProfileSourceDetail()
+                            color: Kirigami.Theme.textColor
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 1
+                        color: Kirigami.Theme.separatorColor
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            font.bold: true
+                            font.pointSize: 10 * root.fontScale
+                            text: qsTr("2. Load Window Auto-Switcher Rules From (DuckyDeck Studio or Standard Auto-Switcher):")
+                            color: Kirigami.Theme.textColor
+                        }
+
+                        QQC2.ComboBox {
+                            id: ruleSourceCombo
+                            Layout.fillWidth: true
+                            font.pointSize: 10 * root.fontScale
+                            model: firstRunSetupDialog.ruleSourcesList.map(function(it) { return it.label || "" })
+                            currentIndex: firstRunSetupDialog.selectedRuleSourceIndex
+                            onActivated: function(idx) {
+                                firstRunSetupDialog.selectedRuleSourceIndex = idx
+                            }
+                        }
+
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            font.family: "monospace"
+                            font.pointSize: 10 * root.fontScale
+                            text: firstRunSetupDialog.selectedRuleSourceDetail()
+                            color: Kirigami.Theme.textColor
+                        }
+                    }
+
+                    Item { Layout.fillHeight: true }
+                }
+            }
+
+            RowLayout {
+                id: firstRunFooterRow
+                Layout.fillWidth: true
+                spacing: 8
+
+                QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
+                    icon.name: "view-refresh"
+                    text: qsTr("Rescan Sources")
+                    onClicked: firstRunSetupDialog.refreshState()
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
+                    icon.name: "document-import"
+                    highlighted: true
+                    text: qsTr("Load Configurations & Continue")
+                    onClicked: {
+                        if (!deviceController) return
+                        const profId = firstRunSetupDialog.selectedProfileSourceId()
+                        const ruleId = firstRunSetupDialog.selectedRuleSourceId()
+                        const stopConflicts = firstRunSetupDialog.conflictsList.length > 0
+                            && firstRunSetupDialog.shutdownConflictsChecked
+                        deviceController.applyFirstRunImport(profId, ruleId, stopConflicts)
+                        if (hardwareCanvas) hardwareCanvas.syncSlotsFromController()
+                        firstRunSetupDialog.close()
+                        if (deviceController.sdSyncBusy) {
+                            sdSyncDialog.open()
+                        }
+                    }
+                }
+
+                QQC2.Button {
+                    font.pointSize: 10 * root.fontScale
+                    icon.name: "dialog-cancel"
+                    text: qsTr("Keep Current & Close")
+                    onClicked: {
+                        if (deviceController) deviceController.dismissFirstRunDialog()
+                        firstRunSetupDialog.close()
+                    }
                 }
             }
         }

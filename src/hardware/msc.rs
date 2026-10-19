@@ -10,10 +10,7 @@ use crate::hardware::storage::{
     open_duckypad_hid, HID_CMD_SOFTWARE_RESET, HID_IO_LOCK, HID_REPORT_ID_OUT, MSC_SYNC_IN_PROGRESS,
 };
 
-pub(crate) fn run_storage_cmd(
-    program: &str,
-    args: &[&str],
-) -> std::io::Result<std::process::Output> {
+pub fn run_storage_cmd(program: &str, args: &[&str]) -> std::io::Result<std::process::Output> {
     if Path::new("/.flatpak-info").exists() {
         let mut cmd = std::process::Command::new("flatpak-spawn");
         cmd.arg("--host").arg(program);

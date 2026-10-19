@@ -909,7 +909,7 @@ Window {
         minimumHeight: 510
         visible: false
         transientParent: (root && root.visible) ? root : null
-        modality: (root && root.visible) ? Qt.WindowModal : Qt.NonModal
+        modality: Qt.NonModal
         flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint
 
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
@@ -918,7 +918,7 @@ Window {
 
         function openAboutWindow() {
             aboutDialog.transientParent = (root && root.visible) ? root : null
-            aboutDialog.modality = (root && root.visible) ? Qt.WindowModal : Qt.NonModal
+            aboutDialog.modality = Qt.NonModal
             aboutDialog.showNormal()
             aboutDialog.show()
             aboutDialog.raise()
@@ -933,8 +933,10 @@ Window {
         }
 
         ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: Kirigami.Units.largeSpacing
+            x: Kirigami.Units.largeSpacing
+            y: Kirigami.Units.largeSpacing
+            width: Math.max(200, aboutDialog.width - Kirigami.Units.largeSpacing * 2)
+            height: Math.max(200, aboutDialog.height - Kirigami.Units.largeSpacing * 2)
             spacing: Kirigami.Units.mediumSpacing
 
             // App Header Banner

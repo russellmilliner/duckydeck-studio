@@ -12,7 +12,7 @@ Window {
     minimumWidth: 660
     minimumHeight: 540
     visible: false
-    modality: Qt.WindowModal
+    modality: Qt.NonModal
     flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
 
     property var controller: null
@@ -398,7 +398,8 @@ Window {
     }
 
     Rectangle {
-        anchors.fill: parent
+        width: drawerRoot.width
+        height: drawerRoot.height
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
         Kirigami.Theme.inherit: false
         color: Kirigami.Theme.backgroundColor

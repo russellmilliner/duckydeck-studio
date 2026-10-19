@@ -41,11 +41,14 @@ Kirigami.ApplicationWindow {
     readonly property int requiredWindowWidth: root.hasSelectedSlot
         ? root.expandedWindowWidth
         : root.compactWindowWidth
+    readonly property bool isShowcaseCaptureWindow: Boolean(
+        deviceController && deviceController.isDemoShowcaseMode() && !deviceController.isUiTestSuiteMode()
+    )
     visible: false
-    width: (deviceController && deviceController.isDemoShowcaseMode()) ? 1920 : compactWindowWidth
-    height: (deviceController && deviceController.isDemoShowcaseMode()) ? 1080 : 800
-    minimumWidth: root.hasSelectedSlot ? root.expandedWindowWidth : root.compactWindowWidth
-    minimumHeight: 680
+    width: root.isShowcaseCaptureWindow ? 1600 : compactWindowWidth
+    height: root.isShowcaseCaptureWindow ? 900 : 800
+    minimumWidth: root.isShowcaseCaptureWindow ? 1600 : (root.hasSelectedSlot ? root.expandedWindowWidth : root.compactWindowWidth)
+    minimumHeight: root.isShowcaseCaptureWindow ? 900 : 680
 
     TextEdit {
         id: clipboardHelper
@@ -60,9 +63,9 @@ Kirigami.ApplicationWindow {
     }
 
     function syncWindowWidthToEditorState() {
-        if (deviceController && deviceController.isDemoShowcaseMode()) {
-            root.width = 1920
-            root.height = 1080
+        if (root.isShowcaseCaptureWindow) {
+            root.width = 1600
+            root.height = 900
             return
         }
         if (root.visibility === Window.Maximized || root.visibility === Window.FullScreen) {
@@ -137,6 +140,7 @@ Kirigami.ApplicationWindow {
             { name: "UnsyncedChangesDialog", win: unsyncedChangesDialog, openFn: function() { unsyncedChangesDialog.open() } },
             { name: "SdSyncDialog", win: sdSyncDialog, openFn: function() { sdSyncDialog.open() } },
             { name: "FirmwareUpdateDialog", win: firmwareUpdateDialog, openFn: function() { firmwareUpdateDialog.open() } },
+            { name: "FirstRunSetupDialog", win: firstRunSetupDialog, openFn: function() { firstRunSetupDialog.open() } },
             { name: "ProfileTemplatesDialog", win: profileTemplatesDialog, openFn: function() { profileTemplatesDialog.openGeneral() } },
             { name: "SettingsDialog", win: settingsDialog, openFn: function() { settingsDialog.open() } },
             { name: "AboutDialog", win: aboutDialog, openFn: function() { aboutDialog.openAboutWindow() } },
@@ -786,6 +790,7 @@ Kirigami.ApplicationWindow {
     readonly property var appLaunchCommandField: appLaunchConfigWindow.appLaunchCommandField
     readonly property var unsyncedChangesDialog: sdSyncDialog.unsyncedChangesDialog
     readonly property var firmwareUpdateDialog: sdSyncDialog.firmwareUpdateDialog
+    readonly property var firstRunSetupDialog: sdSyncDialog.firstRunSetupDialog
     readonly property var newProfileGroupDialog: settingsDialog.newProfileGroupDialog
     readonly property var profileTemplatesDialog: settingsDialog.profileTemplatesDialog
     readonly property var renameProfileDialog: settingsDialog.renameProfileDialog
@@ -1267,6 +1272,8 @@ Kirigami.ApplicationWindow {
             }
             if (deviceController.isStartupSyncSdRequested()) {
                 root.triggerSyncToDeviceSd()
+            } else if (deviceController.showFirstRunDialog && !deviceController.isDemoShowcaseMode() && !deviceController.isUiTestSuiteMode()) {
+                firstRunSetupDialog.open()
             }
         })
     }
@@ -1284,6 +1291,11 @@ Kirigami.ApplicationWindow {
 
     DeviceController {
         id: deviceController
+        onShowFirstRunDialogChanged: {
+            if (deviceController.showFirstRunDialog && !deviceController.isDemoShowcaseMode() && !deviceController.isUiTestSuiteMode()) {
+                firstRunSetupDialog.open()
+            }
+        }
         onSdSyncBusyChanged: {
             if (deviceController.sdSyncBusy) {
                 sdSyncDialog.open()
@@ -1870,6 +1882,12 @@ Kirigami.ApplicationWindow {
             icon.name: "folder-open"
             text: qsTr("Import Single Profile Folder...")
             onTriggered: importProfileFolderDialog.open()
+        }
+
+        QQC2.MenuItem {
+            icon.name: "system-switch-user"
+            text: qsTr("Import Deck / dekuNukem Setup & Auto-Switcher...")
+            onTriggered: firstRunSetupDialog.open()
         }
 
         QQC2.MenuSeparator {}

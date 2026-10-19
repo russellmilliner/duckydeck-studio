@@ -170,6 +170,7 @@ pub struct PersistedSwitcherConfig {
     pub profile_webhook_body: String,
 }
 
+#[derive(Clone)]
 pub struct SwitcherState {
     pub enabled: bool,
     pub paused_for_editing: bool,
@@ -330,6 +331,164 @@ impl Default for SwitcherState {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SdPersistedRule {
+    pub enabled: bool,
+    pub resource_class: String,
+    #[serde(default)]
+    pub title_contains: Option<String>,
+    #[serde(default)]
+    pub favicon_url: Option<String>,
+    pub target_profile: u8,
+    #[serde(default)]
+    pub target_profile_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SdPersistedRulesBundle {
+    #[serde(default = "default_rules_bundle_version")]
+    pub version: u32,
+    pub enabled: bool,
+    pub default_profile: Option<u8>,
+    #[serde(default)]
+    pub default_profile_name: String,
+    pub rules: Vec<SdPersistedRule>,
+}
+
+fn default_rules_bundle_version() -> u32 {
+    1
+}
+
+pub const SD_RULES_FILENAME: &str = "duckydeck_rules.json";
+
+pub fn save_rules_bundle_to_dir(
+    dir: &Path,
+    enabled: bool,
+    default_profile: Option<u8>,
+    rules: &[AutoSwitchRule],
+    profiles: &[DuckyProfile],
+) -> Result<bool, String> {
+    if !dir.is_dir() {
+        return Ok(false);
+    }
+    let fb_num = default_profile.unwrap_or(1).max(1);
+    let fb_name = profiles
+        .iter()
+        .find(|p| p.number == fb_num)
+        .map(|p| p.name.clone())
+        .unwrap_or_default();
+    let sd_rules: Vec<SdPersistedRule> = rules
+        .iter()
+        .map(|r| {
+            let p_name = profiles
+                .iter()
+                .find(|p| p.number == r.target_profile)
+                .map(|p| p.name.clone())
+                .unwrap_or_default();
+            SdPersistedRule {
+                enabled: r.enabled,
+                resource_class: r.resource_class.clone(),
+                title_contains: r.title_contains.clone(),
+                favicon_url: r.favicon_url.clone(),
+                target_profile: r.target_profile,
+                target_profile_name: p_name,
+            }
+        })
+        .collect();
+    let bundle = SdPersistedRulesBundle {
+        version: 1,
+        enabled,
+        default_profile: Some(fb_num),
+        default_profile_name: fb_name,
+        rules: sd_rules,
+    };
+    let json = serde_json::to_string_pretty(&bundle)
+        .map_err(|e| format!("Failed serializing SD rules bundle: {e}"))?;
+    let path = dir.join(SD_RULES_FILENAME);
+    if path.is_file() {
+        if let Ok(existing) = fs::read_to_string(&path) {
+            if existing == json {
+                return Ok(false);
+            }
+        }
+    }
+    fs::write(&path, json).map_err(|e| format!("Failed writing {}: {e}", path.display()))?;
+    Ok(true)
+}
+
+pub fn load_rules_bundle_from_dir(
+    dir: &Path,
+    profiles: &[DuckyProfile],
+) -> Option<(bool, Option<u8>, Vec<AutoSwitchRule>)> {
+    let path = dir.join(SD_RULES_FILENAME);
+    let raw = fs::read_to_string(&path).ok()?;
+    let bundle: SdPersistedRulesBundle = serde_json::from_str(&raw).ok()?;
+    if bundle.rules.is_empty() {
+        return None;
+    }
+    let max_prof = profiles.len().max(1) as u8;
+    let resolved_fb = if !bundle.default_profile_name.trim().is_empty() {
+        profiles
+            .iter()
+            .find(|p| {
+                p.name
+                    .eq_ignore_ascii_case(bundle.default_profile_name.trim())
+            })
+            .map(|p| p.number)
+            .or(bundle.default_profile)
+    } else {
+        bundle.default_profile
+    }
+    .unwrap_or(1)
+    .clamp(1, max_prof.max(64));
+
+    let mut rules = Vec::with_capacity(bundle.rules.len());
+    for sr in bundle.rules {
+        let target = if !sr.target_profile_name.trim().is_empty() {
+            profiles
+                .iter()
+                .find(|p| p.name.eq_ignore_ascii_case(sr.target_profile_name.trim()))
+                .map(|p| p.number)
+                .unwrap_or(sr.target_profile)
+        } else {
+            sr.target_profile
+        };
+        rules.push(AutoSwitchRule {
+            enabled: sr.enabled,
+            resource_class: sr.resource_class,
+            title_contains: sr.title_contains,
+            favicon_url: sr.favicon_url,
+            target_profile: target.max(1),
+        });
+    }
+    Some((bundle.enabled, Some(resolved_fb), rules))
+}
+
+pub fn sync_host_companion_configs_if_needed() {
+    if std::env::var("DUCKYDECK_UI_TEST_SUITE").as_deref() == Ok("1")
+        || std::env::var("DUCKYDECK_DEMO_SHOWCASE").as_deref() == Ok("1")
+    {
+        return;
+    }
+    let cfg_dir = crate::paths::config_dir();
+    let host_dir = crate::paths::host_config_dir();
+    if cfg_dir == host_dir || !host_dir.is_dir() {
+        return;
+    }
+    let _ = fs::create_dir_all(&cfg_dir); // ignore: best-effort directory creation
+    for fname in [
+        "home_assistant.json",
+        "web_api_destinations.json",
+        "oled_widget_geometry.json",
+    ] {
+        let src = host_dir.join(fname);
+        let dst = cfg_dir.join(fname);
+        if src.is_file() && !dst.is_file() {
+            let _ = fs::copy(&src, &dst); // ignore: best-effort companion config migration
+        }
+    }
+}
+
 impl SwitcherState {
     pub fn config_file_path() -> PathBuf {
         if std::env::var("DUCKYDECK_UI_TEST_SUITE").as_deref() == Ok("1") {
@@ -340,10 +499,58 @@ impl SwitcherState {
         crate::paths::config_dir().join("kwin_rules.json")
     }
 
+    pub fn host_config_file_path() -> PathBuf {
+        crate::paths::host_config_dir().join("kwin_rules.json")
+    }
+
     pub fn load_config_from_disk() -> Option<PersistedSwitcherConfig> {
+        sync_host_companion_configs_if_needed();
         let path = Self::config_file_path();
-        let raw = fs::read_to_string(path).ok()?;
-        serde_json::from_str(&raw).ok()
+        let primary_cfg = fs::read_to_string(&path)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<PersistedSwitcherConfig>(&raw).ok());
+
+        if std::env::var("DUCKYDECK_UI_TEST_SUITE").as_deref() == Ok("1") {
+            return primary_cfg;
+        }
+
+        let host_path = Self::host_config_file_path();
+        let host_cfg = if host_path != path {
+            fs::read_to_string(&host_path)
+                .ok()
+                .and_then(|raw| serde_json::from_str::<PersistedSwitcherConfig>(&raw).ok())
+        } else {
+            None
+        };
+
+        match (primary_cfg, host_cfg) {
+            (Some(p_cfg), Some(h_cfg)) => {
+                // If the Flatpak config only has the initial default/auto-aligned rules (<= 14)
+                // while the host config has the user's richer rule set, adopt the host config!
+                if h_cfg.rules.len() > p_cfg.rules.len() && p_cfg.rules.len() <= 14 {
+                    if let Ok(json) = serde_json::to_string_pretty(&h_cfg) {
+                        if let Some(parent) = path.parent() {
+                            let _ = fs::create_dir_all(parent); // ignore: best-effort
+                        }
+                        let _ = fs::write(&path, json); // ignore: best-effort sync to Flatpak config
+                    }
+                    Some(h_cfg)
+                } else {
+                    Some(p_cfg)
+                }
+            }
+            (None, Some(h_cfg)) => {
+                if let Ok(json) = serde_json::to_string_pretty(&h_cfg) {
+                    if let Some(parent) = path.parent() {
+                        let _ = fs::create_dir_all(parent); // ignore: best-effort
+                    }
+                    let _ = fs::write(&path, json); // ignore: best-effort sync to Flatpak config
+                }
+                Some(h_cfg)
+            }
+            (Some(p_cfg), None) => Some(p_cfg),
+            (None, None) => None,
+        }
     }
 
     pub fn save_to_disk(&self) -> Result<(), String> {
@@ -387,7 +594,18 @@ impl SwitcherState {
         };
         let json = serde_json::to_string_pretty(&payload)
             .map_err(|e| format!("Failed serializing KWin rules: {e}"))?;
-        fs::write(&path, json).map_err(|e| format!("Failed writing {}: {e}", path.display()))
+        fs::write(&path, &json).map_err(|e| format!("Failed writing {}: {e}", path.display()))?;
+
+        if std::env::var("DUCKYDECK_UI_TEST_SUITE").as_deref() != Ok("1") {
+            let host_path = Self::host_config_file_path();
+            if host_path != path {
+                if let Some(h_parent) = host_path.parent() {
+                    let _ = fs::create_dir_all(h_parent); // ignore: best-effort host mirror
+                }
+                let _ = fs::write(&host_path, &json); // ignore: best-effort host mirror
+            }
+        }
+        Ok(())
     }
 }
 
@@ -532,8 +750,12 @@ pub fn rule_matches_window_class(rule_class_raw: &str, active_window_class_lower
     if trimmed.is_empty() || active_window_class_lower.is_empty() {
         return false;
     }
+    if trimmed == "*" || trimmed.eq_ignore_ascii_case("any") {
+        return true;
+    }
     if is_any_browser_wildcard(trimmed) {
-        return is_web_browser_class(active_window_class_lower);
+        return is_web_browser_class(active_window_class_lower)
+            || is_chromium_pwa_class(active_window_class_lower);
     }
 
     let is_pwa = is_chromium_pwa_class(active_window_class_lower);
@@ -547,8 +769,13 @@ pub fn rule_matches_window_class(rule_class_raw: &str, active_window_class_lower
         if token.is_empty() {
             continue;
         }
+        if token == "*" || token == "any" {
+            return true;
+        }
         if is_any_browser_wildcard(&token) {
-            if is_web_browser_class(active_window_class_lower) {
+            if is_web_browser_class(active_window_class_lower)
+                || is_chromium_pwa_class(active_window_class_lower)
+            {
                 return true;
             }
             continue;
@@ -1504,46 +1731,335 @@ pub fn set_kde_autostart_enabled(enabled: bool) -> Result<PathBuf, String> {
     }
 }
 
+pub fn discover_dekunukem_autoswitcher_configs() -> Vec<(PathBuf, usize)> {
+    let mut dirs = Vec::new();
+    let host_dir = crate::paths::dekunukem_autoswitcher_dir();
+    if host_dir.is_dir() {
+        dirs.push(host_dir);
+    }
+    let xdg_dir = crate::paths::xdg_data_home().join("duckypad_autoswitcher");
+    if xdg_dir.is_dir() && !dirs.contains(&xdg_dir) {
+        dirs.push(xdg_dir);
+    }
+
+    let mut found: Vec<(PathBuf, usize)> = Vec::new();
+    for dir in dirs {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+        paths.sort_by(|a, b| {
+            let a_name = a.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            let b_name = b.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            let rank = |n: &str| -> u8 {
+                if n.eq_ignore_ascii_case("config-LinuxPro.txt") {
+                    0
+                } else if n.eq_ignore_ascii_case("config-Pro.txt") {
+                    1
+                } else if n.eq_ignore_ascii_case("config.txt") {
+                    2
+                } else {
+                    3
+                }
+            };
+            rank(a_name)
+                .cmp(&rank(b_name))
+                .then_with(|| a_name.cmp(b_name))
+        });
+        for p in paths {
+            if !p.is_file() {
+                continue;
+            }
+            let Some(fname) = p.file_name().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            if fname.eq_ignore_ascii_case("debug_log.txt") {
+                continue;
+            }
+            let Ok(raw) = fs::read_to_string(&p) else {
+                continue;
+            };
+            let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) else {
+                continue;
+            };
+            if let Some(arr) = val.get("rules_list").and_then(|v| v.as_array()) {
+                if !arr.is_empty() {
+                    found.push((p, arr.len()));
+                }
+            }
+        }
+    }
+    found
+}
+
+fn resolve_dekunukem_switch_to(
+    switch_to: &serde_json::Value,
+    profiles: &[DuckyProfile],
+) -> Option<u8> {
+    if let Some(num) = switch_to.as_u64() {
+        if (1..=64).contains(&num) {
+            return Some(num as u8);
+        }
+    }
+    let s = switch_to.as_str()?.trim();
+    if s.is_empty() {
+        return None;
+    }
+    if let Some(p) = profiles.iter().find(|p| p.name.eq_ignore_ascii_case(s)) {
+        return Some(p.number);
+    }
+    let norm = |txt: &str| -> String {
+        txt.chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .collect::<String>()
+            .to_ascii_lowercase()
+    };
+    let target_norm = norm(s);
+    if !target_norm.is_empty() {
+        if let Some(p) = profiles.iter().find(|p| norm(&p.name) == target_norm) {
+            return Some(p.number);
+        }
+        // Common shorthand aliases used on 5-16 char duckyPad profile names
+        let aliases: &[(&str, &[&str])] = &[
+            ("ytmusic", &["youtubemusic", "ytmusic", "music"]),
+            ("homeassist", &["homeassistant", "homeassist", "hass"]),
+            ("msteams", &["microsoftteams", "msteams", "teams"]),
+            ("gcalendar", &["googlecalendar", "gcalendar", "calendar"]),
+            ("gmaps", &["googlemaps", "gmaps", "maps"]),
+            (
+                "ageofemiresii",
+                &["ageofempiresii", "ageofemiresii", "aoe2"],
+            ),
+        ];
+        for &(key, group) in aliases {
+            if target_norm == key || group.contains(&target_norm.as_str()) {
+                if let Some(p) = profiles
+                    .iter()
+                    .find(|p| group.contains(&norm(&p.name).as_str()))
+                {
+                    return Some(p.number);
+                }
+            }
+        }
+        if target_norm.len() >= 4 {
+            if let Some(p) = profiles.iter().find(|p| {
+                let pn = norm(&p.name);
+                pn.len() >= 4 && (pn.starts_with(&target_norm) || target_norm.starts_with(&pn))
+            }) {
+                return Some(p.number);
+            }
+        }
+    }
+    if let Ok(num) = s.parse::<u8>() {
+        if (1..=64).contains(&num) {
+            return Some(num);
+        }
+    }
+    None
+}
+
+pub fn parse_dekunukem_autoswitcher_file(
+    path: &Path,
+    profiles: &[DuckyProfile],
+) -> Result<(bool, Option<u8>, Vec<AutoSwitchRule>), String> {
+    let raw =
+        fs::read_to_string(path).map_err(|e| format!("Failed reading {}: {e}", path.display()))?;
+    let val: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|e| format!("Failed parsing {}: {e}", path.display()))?;
+    let autoswitch_enabled = val
+        .get("autoswitch_enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let arr = val
+        .get("rules_list")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| format!("No 'rules_list' array found in {}", path.display()))?;
+
+    let mut default_profile: Option<u8> = None;
+    let mut rules: Vec<AutoSwitchRule> = Vec::new();
+
+    for item in arr {
+        let app_raw = item
+            .get("app_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        let title_raw = item
+            .get("window_title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        let enabled = item
+            .get("enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let Some(switch_val) = item.get("switch_to") else {
+            continue;
+        };
+        let Some(target_profile) = resolve_dekunukem_switch_to(switch_val, profiles) else {
+            continue;
+        };
+
+        if app_raw.is_empty() && title_raw.is_empty() {
+            if enabled {
+                default_profile = Some(target_profile);
+            }
+            continue;
+        }
+
+        let app_lower = app_raw.to_ascii_lowercase();
+        if app_lower == "kthreadd" || app_lower == "kded5" {
+            continue;
+        }
+
+        let (resource_class, title_opt) = if app_raw.is_empty() {
+            let cleaned_t = strip_browser_title_suffix(title_raw)
+                .trim_matches(|c: char| c == '-' || c.is_whitespace())
+                .to_string();
+            let final_t = if cleaned_t.is_empty() {
+                title_raw.to_string()
+            } else {
+                cleaned_t
+            };
+            (ANY_BROWSER_CLASS.to_string(), Some(final_t))
+        } else {
+            let norm_class = match app_lower.as_str() {
+                "dolphin" => "org.kde.dolphin".to_string(),
+                "yakuake" => "org.kde.yakuake".to_string(),
+                "zen" => "app.zen_browser.zen".to_string(),
+                "orcaslicer" => "OrcaSlicer".to_string(),
+                "upnote" => "upnote".to_string(),
+                _ => app_raw.to_string(),
+            };
+            let cleaned_t = if title_raw.is_empty() {
+                String::new()
+            } else if is_web_browser_class(&norm_class) {
+                strip_browser_title_suffix(title_raw)
+                    .trim_matches(|c: char| c == '-' || c.is_whitespace())
+                    .to_string()
+            } else {
+                let tl = title_raw.to_ascii_lowercase();
+                if (app_lower == "code" && tl.contains("visual studio code"))
+                    || (app_lower == "codium" && tl.contains("vscodium"))
+                    || (app_lower == "upnote" && tl == "upnote")
+                {
+                    String::new()
+                } else {
+                    title_raw.to_string()
+                }
+            };
+            (
+                norm_class,
+                if cleaned_t.is_empty() {
+                    None
+                } else {
+                    Some(cleaned_t)
+                },
+            )
+        };
+
+        let duplicate = rules.iter().any(|r| {
+            r.resource_class.eq_ignore_ascii_case(&resource_class)
+                && r.title_contains
+                    .as_deref()
+                    .unwrap_or("")
+                    .eq_ignore_ascii_case(title_opt.as_deref().unwrap_or(""))
+                && r.target_profile == target_profile
+        });
+        if !duplicate {
+            rules.push(AutoSwitchRule {
+                enabled,
+                resource_class,
+                title_contains: title_opt,
+                favicon_url: None,
+                target_profile,
+            });
+        }
+    }
+
+    Ok((autoswitch_enabled, default_profile, rules))
+}
+
+pub fn build_auto_aligned_rules(profiles: &[DuckyProfile]) -> Vec<AutoSwitchRule> {
+    let known_mappings: &[(&str, &str, Option<&str>)] = &[
+        ("Firefox", "firefox", None),
+        ("Chrome", "chrome", None),
+        ("Dolphin", "org.kde.dolphin", None),
+        ("Yakuake", "org.kde.yakuake", None),
+        ("VS Code", "code", None),
+        ("OBS", "com.obsproject.Studio", None),
+        ("Discord", "discord", None),
+        ("Slack", "Slack", None),
+        ("Zoom", "zoom", None),
+        ("OrcaSlicer", "OrcaSlicer", None),
+        ("UpNote", "upnote", None),
+        ("YouTube", ANY_BROWSER_CLASS, Some("YouTube")),
+        ("Gmail", ANY_BROWSER_CLASS, Some("Gmail")),
+    ];
+
+    let mut aligned = Vec::new();
+    for &(prof_name_pat, class_name, title_sub) in known_mappings {
+        if let Some(prof) = profiles
+            .iter()
+            .find(|p| p.name.eq_ignore_ascii_case(prof_name_pat))
+        {
+            aligned.push(AutoSwitchRule {
+                enabled: true,
+                resource_class: class_name.to_string(),
+                title_contains: title_sub.map(|s| s.to_string()),
+                favicon_url: None,
+                target_profile: prof.number,
+            });
+        }
+    }
+    aligned
+}
+
 impl SwitcherState {
-    /// When SD profiles are loaded for the first time and the user hasn't saved custom rules yet,
-    /// automatically align default KWin rules with matching profile names on their duckyPad.
+    /// When SD profiles are loaded and the user hasn't saved custom rules yet (or only had auto-aligned defaults),
+    /// first check if full rules exist in host config or SD/cache `duckydeck_rules.json`, and otherwise align default rules.
     pub fn align_rules_with_profiles(&mut self, profiles: &[DuckyProfile]) {
-        if self.loaded_from_disk || profiles.len() <= 1 {
+        if profiles.len() <= 1 {
             return;
         }
 
-        let known_mappings: &[(&str, &str, Option<&str>)] = &[
-            ("Firefox", "firefox", None),
-            ("Chrome", "chrome", None),
-            ("Dolphin", "org.kde.dolphin", None),
-            ("Yakuake", "org.kde.yakuake", None),
-            ("VS Code", "code", None),
-            ("OBS", "com.obsproject.Studio", None),
-            ("Discord", "discord", None),
-            ("Slack", "Slack", None),
-            ("Zoom", "zoom", None),
-            ("OrcaSlicer", "OrcaSlicer", None),
-            ("UpNote", "upnote", None),
-            ("YouTube", ANY_BROWSER_CLASS, Some("YouTube")),
-            ("Gmail", ANY_BROWSER_CLASS, Some("Gmail")),
-        ];
-
-        let mut aligned = Vec::new();
-        for &(prof_name_pat, class_name, title_sub) in known_mappings {
-            if let Some(prof) = profiles
-                .iter()
-                .find(|p| p.name.eq_ignore_ascii_case(prof_name_pat))
-            {
-                aligned.push(AutoSwitchRule {
-                    enabled: true,
-                    resource_class: class_name.to_string(),
-                    title_contains: title_sub.map(|s| s.to_string()),
-                    favicon_url: None,
-                    target_profile: prof.number,
-                });
+        // 1. Check if host config or SD card rules bundle has a fuller rule set than what is currently in memory
+        if let Some(disk_cfg) = Self::load_config_from_disk() {
+            if disk_cfg.rules.len() > self.rules.len() && self.rules.len() <= 14 {
+                self.enabled = disk_cfg.enabled;
+                self.default_profile = Some(disk_cfg.default_profile.unwrap_or(1).max(1));
+                self.rules = disk_cfg.rules;
+                self.loaded_from_disk = true;
+                let _ = self.save_to_disk(); // ignore: best-effort persist
+                return;
             }
         }
 
+        for candidate_dir in [
+            crate::hardware::profile::profile_cache_dir(),
+            crate::paths::host_data_dir().join("profile_cache"),
+        ] {
+            if let Some((en, fb, sd_rules)) = load_rules_bundle_from_dir(&candidate_dir, profiles) {
+                if !self.loaded_from_disk
+                    || (sd_rules.len() > self.rules.len() && self.rules.len() <= 14)
+                {
+                    self.enabled = en;
+                    if fb.is_some() {
+                        self.default_profile = fb;
+                    }
+                    self.rules = sd_rules;
+                    self.loaded_from_disk = true;
+                    let _ = self.save_to_disk(); // ignore: best-effort persist
+                    return;
+                }
+            }
+        }
+
+        if self.loaded_from_disk {
+            return;
+        }
+
+        let aligned = build_auto_aligned_rules(profiles);
         if !aligned.is_empty() {
             self.rules = aligned;
             if let Err(e) = self.save_to_disk() {

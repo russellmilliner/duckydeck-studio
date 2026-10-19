@@ -5,6 +5,10 @@ use std::path::{Path, PathBuf};
 
 const APP_DIR_NAME: &str = "duckydeck-studio";
 
+pub fn is_flatpak() -> bool {
+    Path::new("/.flatpak-info").exists() || env::var_os("FLATPAK_ID").is_some()
+}
+
 pub fn home_dir() -> Option<PathBuf> {
     if let Some(val) = env::var_os("HOME") {
         let p = PathBuf::from(&val);
@@ -60,8 +64,33 @@ pub fn config_dir() -> PathBuf {
     xdg_config_home().join(APP_DIR_NAME)
 }
 
+pub fn host_config_dir() -> PathBuf {
+    home_or_cwd().join(".config").join(APP_DIR_NAME)
+}
+
 pub fn data_dir() -> PathBuf {
     xdg_data_home().join(APP_DIR_NAME)
+}
+
+pub fn host_data_dir() -> PathBuf {
+    home_or_cwd()
+        .join(".local")
+        .join("share")
+        .join(APP_DIR_NAME)
+}
+
+pub fn dekunukem_config_dir() -> PathBuf {
+    home_or_cwd()
+        .join(".local")
+        .join("share")
+        .join("duckypad_config")
+}
+
+pub fn dekunukem_autoswitcher_dir() -> PathBuf {
+    home_or_cwd()
+        .join(".local")
+        .join("share")
+        .join("duckypad_autoswitcher")
 }
 
 pub fn cache_dir() -> PathBuf {
