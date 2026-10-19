@@ -297,6 +297,23 @@ pub mod qobject {
         ) -> bool;
 
         #[qinvokable]
+        #[cxx_name = "saveAutoSwitchRuleFull"]
+        fn save_auto_switch_rule_full(
+            self: Pin<&mut DeviceController>,
+            rule_index: i32,
+            enabled: bool,
+            resource_class: QString,
+            title_contains: QString,
+            title_is_regex: bool,
+            favicon_url: QString,
+            target_profile: i32,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "validateTitleRegexPattern"]
+        fn validate_title_regex_pattern(self: &DeviceController, pattern: QString) -> QString;
+
+        #[qinvokable]
         fn remove_auto_switch_rule(self: Pin<&mut DeviceController>, rule_index: i32) -> bool;
 
         #[qinvokable]
@@ -4460,11 +4477,37 @@ impl qobject::DeviceController {
     }
 
     pub fn save_auto_switch_rule_with_favicon(
+        self: Pin<&mut Self>,
+        rule_index: i32,
+        enabled: bool,
+        resource_class: QString,
+        title_contains: QString,
+        favicon_url: QString,
+        target_profile: i32,
+    ) -> bool {
+        let title_str = title_contains.to_string();
+        let auto_regex = crate::kwin::auto_switcher::extract_inline_regex_pattern(&title_str)
+            .is_some()
+            || crate::kwin::auto_switcher::has_regex_metacharacters(&title_str);
+        self.save_auto_switch_rule_full(
+            rule_index,
+            enabled,
+            resource_class,
+            title_contains,
+            auto_regex,
+            favicon_url,
+            target_profile,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn save_auto_switch_rule_full(
         mut self: Pin<&mut Self>,
         rule_index: i32,
         enabled: bool,
         resource_class: QString,
         title_contains: QString,
+        title_is_regex: bool,
         favicon_url: QString,
         target_profile: i32,
     ) -> bool {
@@ -4478,6 +4521,11 @@ impl qobject::DeviceController {
         } else {
             Some(title_str)
         };
+        let is_regex = if title_opt.is_none() {
+            false
+        } else {
+            title_is_regex
+        };
         let fav_str = favicon_url.to_string().trim().to_string();
         let fav_opt = if fav_str.is_empty() {
             None
@@ -4490,6 +4538,7 @@ impl qobject::DeviceController {
             enabled,
             resource_class: class_str.clone(),
             title_contains: title_opt,
+            title_is_regex: is_regex,
             favicon_url: fav_opt,
             target_profile: target,
         };
@@ -4524,6 +4573,14 @@ impl qobject::DeviceController {
             "Saved Auto-Switcher rule: '{class_str}' → Profile #{target}"
         )));
         true
+    }
+
+    pub fn validate_title_regex_pattern(&self, pattern: QString) -> QString {
+        let raw = pattern.to_string();
+        match crate::kwin::auto_switcher::validate_title_regex(&raw) {
+            Ok(()) => QString::default(),
+            Err(err) => QString::from(&err),
+        }
     }
 
     pub fn remove_auto_switch_rule(mut self: Pin<&mut Self>, rule_index: i32) -> bool {

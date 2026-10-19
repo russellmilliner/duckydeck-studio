@@ -18,6 +18,8 @@ pub struct AutoSwitchRule {
     pub resource_class: String,
     pub title_contains: Option<String>,
     #[serde(default)]
+    pub title_is_regex: bool,
+    #[serde(default)]
     pub favicon_url: Option<String>,
     pub target_profile: u8,
 }
@@ -283,6 +285,7 @@ impl Default for SwitcherState {
                     enabled: true,
                     resource_class: "org.kde.dolphin".into(),
                     title_contains: None,
+                    title_is_regex: false,
                     favicon_url: None,
                     target_profile: 2,
                 },
@@ -290,6 +293,7 @@ impl Default for SwitcherState {
                     enabled: true,
                     resource_class: "firefox".into(),
                     title_contains: None,
+                    title_is_regex: false,
                     favicon_url: None,
                     target_profile: 3,
                 },
@@ -297,6 +301,7 @@ impl Default for SwitcherState {
                     enabled: true,
                     resource_class: "code".into(),
                     title_contains: None,
+                    title_is_regex: false,
                     favicon_url: None,
                     target_profile: 4,
                 },
@@ -337,6 +342,8 @@ pub struct SdPersistedRule {
     pub resource_class: String,
     #[serde(default)]
     pub title_contains: Option<String>,
+    #[serde(default)]
+    pub title_is_regex: bool,
     #[serde(default)]
     pub favicon_url: Option<String>,
     pub target_profile: u8,
@@ -389,6 +396,7 @@ pub fn save_rules_bundle_to_dir(
                 enabled: r.enabled,
                 resource_class: r.resource_class.clone(),
                 title_contains: r.title_contains.clone(),
+                title_is_regex: r.title_is_regex,
                 favicon_url: r.favicon_url.clone(),
                 target_profile: r.target_profile,
                 target_profile_name: p_name,
@@ -457,6 +465,7 @@ pub fn load_rules_bundle_from_dir(
             enabled: sr.enabled,
             resource_class: sr.resource_class,
             title_contains: sr.title_contains,
+            title_is_regex: sr.title_is_regex,
             favicon_url: sr.favicon_url,
             target_profile: target.max(1),
         });
@@ -1971,6 +1980,7 @@ pub fn parse_dekunukem_autoswitcher_file(
                 enabled,
                 resource_class,
                 title_contains: title_opt,
+                title_is_regex: false,
                 favicon_url: None,
                 target_profile,
             });
@@ -2007,12 +2017,131 @@ pub fn build_auto_aligned_rules(profiles: &[DuckyProfile]) -> Vec<AutoSwitchRule
                 enabled: true,
                 resource_class: class_name.to_string(),
                 title_contains: title_sub.map(|s| s.to_string()),
+                title_is_regex: false,
                 favicon_url: None,
                 target_profile: prof.number,
             });
         }
     }
     aligned
+}
+
+pub fn extract_inline_regex_pattern(raw: &str) -> Option<(&str, bool)> {
+    let trimmed = raw.trim();
+    if let Some(rest) = trimmed.strip_prefix('/') {
+        if let Some(body) = rest.strip_suffix("/i") {
+            if !body.is_empty() {
+                return Some((body, true));
+            }
+        } else if let Some(body) = rest.strip_suffix("/s") {
+            if !body.is_empty() {
+                return Some((body, false));
+            }
+        } else if let Some(body) = rest.strip_suffix('/') {
+            if !body.is_empty() {
+                return Some((body, true));
+            }
+        }
+    }
+    for prefix in ["re:", "regex:"] {
+        if trimmed.len() > prefix.len() && trimmed[..prefix.len()].eq_ignore_ascii_case(prefix) {
+            let body = trimmed[prefix.len()..].trim();
+            if !body.is_empty() {
+                return Some((body, true));
+            }
+        }
+    }
+    None
+}
+
+pub fn has_regex_metacharacters(pattern: &str) -> bool {
+    pattern.contains('|')
+        || pattern.contains('^')
+        || pattern.contains('$')
+        || pattern.contains(".*")
+        || pattern.contains(".+")
+        || pattern.contains(".?")
+        || pattern.contains("\\b")
+        || pattern.contains("\\d")
+        || pattern.contains("\\w")
+        || pattern.contains("\\s")
+        || (pattern.contains('[') && pattern.contains(']'))
+        || (pattern.contains('(') && pattern.contains(')'))
+}
+
+pub fn validate_title_regex(pattern_raw: &str) -> Result<(), String> {
+    let trimmed = pattern_raw.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+    let (body, case_insensitive) = extract_inline_regex_pattern(trimmed).unwrap_or((trimmed, true));
+    regex::RegexBuilder::new(body)
+        .case_insensitive(case_insensitive)
+        .size_limit(256 * 1024)
+        .build()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+pub fn rule_matches_window_title(
+    pattern_raw: &str,
+    title_is_regex: bool,
+    caption: &str,
+    caption_lower: &str,
+) -> Option<usize> {
+    let sub = pattern_raw.trim();
+    if sub.is_empty() {
+        return Some(0);
+    }
+
+    if let Some((regex_body, case_insensitive)) = extract_inline_regex_pattern(sub) {
+        if let Ok(re) = regex::RegexBuilder::new(regex_body)
+            .case_insensitive(case_insensitive)
+            .size_limit(256 * 1024)
+            .build()
+        {
+            if let Some(mat) = re.find(caption) {
+                return Some(mat.len().max(regex_body.len()).max(1));
+            }
+        }
+        return None;
+    }
+
+    if title_is_regex {
+        if let Ok(re) = regex::RegexBuilder::new(sub)
+            .case_insensitive(true)
+            .size_limit(256 * 1024)
+            .build()
+        {
+            if let Some(mat) = re.find(caption) {
+                return Some(mat.len().max(sub.len()).max(1));
+            }
+            return None;
+        }
+        // Fallback to plain case-insensitive substring if regex fails to compile
+        if caption_lower.contains(&sub.to_lowercase()) {
+            return Some(sub.len());
+        }
+        return None;
+    }
+
+    if caption_lower.contains(&sub.to_lowercase()) {
+        return Some(sub.len());
+    }
+
+    if has_regex_metacharacters(sub) {
+        if let Ok(re) = regex::RegexBuilder::new(sub)
+            .case_insensitive(true)
+            .size_limit(256 * 1024)
+            .build()
+        {
+            if let Some(mat) = re.find(caption) {
+                return Some(mat.len().max(sub.len()).max(1));
+            }
+        }
+    }
+
+    None
 }
 
 impl SwitcherState {
@@ -2091,13 +2220,15 @@ impl SwitcherState {
             }
 
             let title_specificity = match rule.title_contains.as_ref().map(|s| s.trim()) {
-                Some(sub) if !sub.is_empty() => {
-                    if caption_lower.contains(&sub.to_lowercase()) {
-                        sub.len()
-                    } else {
-                        continue;
-                    }
-                }
+                Some(sub) if !sub.is_empty() => match rule_matches_window_title(
+                    sub,
+                    rule.title_is_regex,
+                    &resolved_caption,
+                    &caption_lower,
+                ) {
+                    Some(spec) => spec,
+                    None => continue,
+                },
                 _ => 0,
             };
 

@@ -1390,7 +1390,7 @@ Window {
             var enableRestoredOk = autoSwitchDrawer.enableSectionExpanded === true
             autoSwitchDrawer.ruleEditorSectionExpanded = false
             var ruleMinimizedOk = autoSwitchDrawer.ruleEditorSectionExpanded === false
-            autoSwitchDrawer.loadRuleIntoEditor(0, "code", "", "", 1)
+            autoSwitchDrawer.loadRuleIntoEditor(0, "code", "", "", 1, false)
             var ruleAutoExpandedOnDoubleClickOk = autoSwitchDrawer.ruleEditorSectionExpanded === true
             autoSwitchDrawer.editingRuleIndex = -1
             recordBehavior(
@@ -1399,6 +1399,30 @@ Window {
                 "enableMin=" + enableMinimizedOk
                     + " ruleMin=" + ruleMinimizedOk
                     + " autoExpand=" + ruleAutoExpandedOnDoubleClickOk
+            )
+
+            // 15. Auto-Switcher regex title matching & validation support
+            var validRegexErr = deviceController.validateTitleRegexPattern("YouTube|Twitch|^\\[PROD\\]")
+            var invalidRegexErr = deviceController.validateTitleRegexPattern("[unclosed(")
+            var saveRegexRuleOk = deviceController.saveAutoSwitchRuleFull(-1, true, "*browser*", "YouTube|Twitch", true, "", 1)
+            var regexRulesAfterSave = []
+            try { regexRulesAfterSave = JSON.parse(deviceController.autoSwitchRulesJson || "[]") } catch (e) {}
+            var savedRegexRule = regexRulesAfterSave.find(function(r) {
+                return r.resourceClass === "*browser*" && r.titleContains === "YouTube|Twitch"
+            })
+            autoSwitchDrawer.loadRuleIntoEditor(0, "*browser*", "YouTube|Twitch", "", 1, true)
+            var editorRegexErr = autoSwitchDrawer.titleRegexError
+            autoSwitchDrawer.editingRuleIndex = -1
+            recordBehavior(
+                "autoswitch_rule_title_regex_support",
+                validRegexErr === ""
+                    && invalidRegexErr.length > 0
+                    && saveRegexRuleOk
+                    && Boolean(savedRegexRule && savedRegexRule.titleIsRegex === true)
+                    && editorRegexErr === "",
+                "validErrLen=" + validRegexErr.length
+                    + " invalidErrLen=" + invalidRegexErr.length
+                    + " savedTitleIsRegex=" + (savedRegexRule ? savedRegexRule.titleIsRegex : false)
             )
 
             // Restore initial profile group for visual window steps

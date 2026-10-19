@@ -32,9 +32,20 @@ Window {
     property int contextMenuRuleIndex: -1
     property string contextMenuResourceClass: ""
     property string contextMenuTitleContains: ""
+    property bool contextMenuTitleIsRegex: false
     property string contextMenuFaviconUrl: ""
     property int contextMenuTargetProfile: 1
     property bool contextMenuRuleEnabled: true
+    property string titleRegexError: {
+        if (!titleRegexCheck || !titleRegexCheck.checked || !drawerRoot.controller) {
+            return ""
+        }
+        const pat = titleInput ? titleInput.text.trim() : ""
+        if (pat.length === 0) {
+            return ""
+        }
+        return drawerRoot.controller.validateTitleRegexPattern(pat)
+    }
 
     readonly property bool closableWithEscape: true
     readonly property real fontScale: (controller && controller.uiTextScale > 0
@@ -161,11 +172,12 @@ Window {
         }
     }
 
-    function loadRuleIntoEditor(rIdx, resClass, titleSubstr, favUrl, targetProf) {
+    function loadRuleIntoEditor(rIdx, resClass, titleSubstr, favUrl, targetProf, isRegex) {
         drawerRoot.ruleEditorSectionExpanded = true
         drawerRoot.editingRuleIndex = rIdx
         classInput.text = resClass
         titleInput.text = titleSubstr
+        titleRegexCheck.checked = !!isRegex
         faviconUrlInput.text = favUrl || ""
         const pIdx = drawerRoot.profileNumbers.indexOf(targetProf)
         if (pIdx >= 0) {
@@ -198,7 +210,8 @@ Window {
                     drawerRoot.contextMenuResourceClass,
                     drawerRoot.contextMenuTitleContains,
                     drawerRoot.contextMenuFaviconUrl,
-                    drawerRoot.contextMenuTargetProfile
+                    drawerRoot.contextMenuTargetProfile,
+                    drawerRoot.contextMenuTitleIsRegex
                 )
             }
         }
@@ -302,6 +315,7 @@ Window {
                 const rIdx = r.index !== undefined ? r.index : i
                 const resClass = r.resourceClass || ""
                 const titleSub = r.titleContains || ""
+                const titleRegex = !!r.titleIsRegex
                 const favUrl = r.faviconUrl || ""
                 const tProf = r.targetProfile || 1
                 const tProfName = r.targetProfileName || "Default"
@@ -315,6 +329,7 @@ Window {
                         resClass + " " +
                         browserKeywords + " " +
                         titleSub + " " +
+                        (titleRegex ? "regex " : "") +
                         favUrl + " " +
                         "p" + tProf + " #" + tProf + " " + tProf + " " +
                         tProfName
@@ -329,6 +344,7 @@ Window {
                     ruleEnabled: !!r.enabled,
                     resourceClass: resClass,
                     titleContains: titleSub,
+                    titleIsRegex: titleRegex,
                     faviconUrl: favUrl,
                     targetProfile: tProf,
                     targetProfileName: tProfName,
@@ -1105,14 +1121,37 @@ Window {
                                     color: Kirigami.Theme.disabledTextColor
                                 }
 
-                                QQC2.TextField {
-                                    id: titleInput
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    Layout.minimumWidth: 80
+                                    Layout.minimumWidth: 0
                                     Layout.preferredWidth: 1
-                                    placeholderText: qsTr("Optional (e.g. YouTube, Gmail, Twitch — matched against window title)")
-                                    font.pointSize: 10 * drawerRoot.fontScale
-                                    selectByMouse: true
+                                    spacing: 8
+
+                                    QQC2.TextField {
+                                        id: titleInput
+                                        objectName: "titleSubstringInput"
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 80
+                                        Layout.preferredWidth: 1
+                                        placeholderText: titleRegexCheck.checked
+                                            ? qsTr("Regular expression (e.g. YouTube|Twitch, ^Gmail.*Inbox, /pattern/)")
+                                            : qsTr("Optional substring or regex (e.g. YouTube, Gmail, YouTube|Twitch)")
+                                        font.family: titleRegexCheck.checked ? "monospace" : undefined
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        selectByMouse: true
+                                        QQC2.ToolTip.visible: drawerRoot.titleRegexError.length > 0
+                                        QQC2.ToolTip.text: qsTr("Invalid regex: %1").arg(drawerRoot.titleRegexError)
+                                    }
+
+                                    HighContrastCheckBox {
+                                        id: titleRegexCheck
+                                        objectName: "titleRegexCheckBox"
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr(".* Regex")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Match window title using a regular expression (case-insensitive by default; supports |, ^, $, .*, [a-z], etc.)")
+                                    }
                                 }
 
                                 QQC2.Label {
@@ -1165,31 +1204,38 @@ Window {
                                             drawerRoot.editingRuleIndex = -1
                                             classInput.text = ""
                                             titleInput.text = ""
+                                            titleRegexCheck.checked = false
                                             faviconUrlInput.text = ""
                                         }
                                     }
 
                                     QQC2.Button {
+                                        id: saveRuleBtn
+                                        objectName: "saveAutoSwitchRuleButton"
                                         Layout.alignment: Qt.AlignVCenter
                                         icon.name: drawerRoot.editingRuleIndex >= 0 ? "document-save" : "list-add"
                                         text: drawerRoot.editingRuleIndex >= 0 ? qsTr("Update Rule") : qsTr("Save Rule")
                                         font.pointSize: 10 * drawerRoot.fontScale
                                         highlighted: true
-                                        enabled: classInput.text.trim().length > 0 && targetProfileCombo.currentIndex >= 0
+                                        enabled: classInput.text.trim().length > 0
+                                            && targetProfileCombo.currentIndex >= 0
+                                            && drawerRoot.titleRegexError.length === 0
                                         onClicked: {
                                             if (!drawerRoot.controller) return
                                             const profNum = drawerRoot.profileNumbers[targetProfileCombo.currentIndex] || 1
-                                            drawerRoot.controller.saveAutoSwitchRuleWithFavicon(
+                                            drawerRoot.controller.saveAutoSwitchRuleFull(
                                                 drawerRoot.editingRuleIndex,
                                                 true,
                                                 classInput.text.trim(),
                                                 titleInput.text.trim(),
+                                                titleRegexCheck.checked,
                                                 faviconUrlInput.text.trim(),
                                                 profNum
                                             )
                                             drawerRoot.editingRuleIndex = -1
                                             classInput.text = ""
                                             titleInput.text = ""
+                                            titleRegexCheck.checked = false
                                             faviconUrlInput.text = ""
                                         }
                                     }
@@ -1317,6 +1363,7 @@ Window {
                                 required property bool ruleEnabled
                                 required property string resourceClass
                                 required property string titleContains
+                                required property bool titleIsRegex
                                 required property string faviconUrl
                                 required property int targetProfile
                                 required property string targetProfileName
@@ -1388,6 +1435,7 @@ Window {
                                             drawerRoot.contextMenuRuleIndex = ruleDelegate.ruleIndex
                                             drawerRoot.contextMenuResourceClass = ruleDelegate.resourceClass
                                             drawerRoot.contextMenuTitleContains = ruleDelegate.titleContains
+                                            drawerRoot.contextMenuTitleIsRegex = ruleDelegate.titleIsRegex
                                             drawerRoot.contextMenuFaviconUrl = ruleDelegate.faviconUrl
                                             drawerRoot.contextMenuTargetProfile = ruleDelegate.targetProfile
                                             drawerRoot.contextMenuRuleEnabled = ruleDelegate.ruleEnabled
@@ -1408,7 +1456,8 @@ Window {
                                                 ruleDelegate.resourceClass,
                                                 ruleDelegate.titleContains,
                                                 ruleDelegate.faviconUrl,
-                                                ruleDelegate.targetProfile
+                                                ruleDelegate.targetProfile,
+                                                ruleDelegate.titleIsRegex
                                             )
                                         }
                                     }
@@ -1603,7 +1652,10 @@ Window {
                                                         anchors.leftMargin: 6
                                                         anchors.rightMargin: 6
                                                         verticalAlignment: Text.AlignVCenter
-                                                        text: qsTr("title: \"%1\"").arg(titleContains)
+                                                        text: titleIsRegex
+                                                            ? qsTr("regex: /%1/").arg(titleContains)
+                                                            : qsTr("title: \"%1\"").arg(titleContains)
+                                                        font.family: titleIsRegex ? "monospace" : undefined
                                                         font.pointSize: 10 * drawerRoot.fontScale
                                                         elide: Text.ElideRight
                                                         color: Kirigami.Theme.disabledTextColor

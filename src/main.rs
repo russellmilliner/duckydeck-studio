@@ -1806,6 +1806,8 @@ mod ui_test_suite {
             "profile_reorder_and_add_updates_autoswitch_rules",
             "deleted_profile_rule_reassigned_to_fallback",
             "duckydeck_studio_firmware_available_in_catalog",
+            "autoswitch_sections_twist_minimize_and_auto_expand_on_double_click",
+            "autoswitch_rule_title_regex_support",
         ];
         for req_name in required_behaviors {
             let behavior_passed = report
@@ -2045,6 +2047,8 @@ mod ui_test_suite {
             "profile_reorder_and_add_updates_autoswitch_rules",
             "deleted_profile_rule_reassigned_to_fallback",
             "duckydeck_studio_firmware_available_in_catalog",
+            "autoswitch_sections_twist_minimize_and_auto_expand_on_double_click",
+            "autoswitch_rule_title_regex_support",
         ];
         for req_name in required_behaviors {
             let behavior_passed = report
@@ -2071,6 +2075,100 @@ mod ui_test_suite {
             exit_status,
             serde_json::to_string_pretty(&report["summary"]).unwrap_or_default(),
             stderr_text
+        );
+    }
+
+    #[test]
+    fn test_rule_title_regex_and_substring_matching() {
+        use crate::kwin::auto_switcher::{
+            rule_matches_window_title, validate_title_regex, AutoSwitchRule, SwitcherState,
+        };
+
+        assert!(validate_title_regex("YouTube|Twitch|^\\[PROD\\]").is_ok());
+        assert!(validate_title_regex("/^Gmail.*Inbox$/i").is_ok());
+        assert!(validate_title_regex("[unclosed(").is_err());
+
+        // Plain substring matching
+        assert!(rule_matches_window_title(
+            "youtube",
+            false,
+            "Watching Video - YouTube — Zen Browser",
+            "watching video - youtube — zen browser"
+        )
+        .is_some());
+
+        // Explicit regex matching (`title_is_regex = true`)
+        assert!(rule_matches_window_title(
+            "YouTube|Twitch",
+            true,
+            "Live Stream - Twitch — Mozilla Firefox",
+            "live stream - twitch — mozilla firefox"
+        )
+        .is_some());
+        assert!(rule_matches_window_title(
+            "^\\[PROD\\]",
+            true,
+            "[PROD] Kubernetes Dashboard",
+            "[prod] kubernetes dashboard"
+        )
+        .is_some());
+        assert!(rule_matches_window_title(
+            "^\\[PROD\\]",
+            true,
+            "Staging: [PROD] Kubernetes Dashboard",
+            "staging: [prod] kubernetes dashboard"
+        )
+        .is_none());
+
+        // Inline /pattern/ regex syntax even when `title_is_regex = false`
+        assert!(rule_matches_window_title(
+            "/^(Inbox|Starred).*Gmail/",
+            false,
+            "Inbox (4) - user@gmail.com - Gmail — Zen Browser",
+            "inbox (4) - user@gmail.com - gmail — zen browser"
+        )
+        .is_some());
+
+        // Automatic regex metacharacter fallback when `title_is_regex = false`
+        assert!(rule_matches_window_title(
+            "Pull Request #[0-9]+",
+            false,
+            "Fix bug · Pull Request #42 · user/repo",
+            "fix bug · pull request #42 · user/repo"
+        )
+        .is_some());
+
+        // Full SwitcherState::match_profile_for_window priority test
+        let sw = SwitcherState {
+            default_profile: Some(1),
+            rules: vec![
+                AutoSwitchRule {
+                    enabled: true,
+                    resource_class: "*browser*".to_string(),
+                    title_contains: None,
+                    title_is_regex: false,
+                    favicon_url: None,
+                    target_profile: 2,
+                },
+                AutoSwitchRule {
+                    enabled: true,
+                    resource_class: "*browser*".to_string(),
+                    title_contains: Some("YouTube|Twitch".to_string()),
+                    title_is_regex: true,
+                    favicon_url: None,
+                    target_profile: 5,
+                },
+            ],
+            ..SwitcherState::default()
+        };
+
+        assert_eq!(
+            sw.match_profile_for_window("firefox", "Hacker News — Mozilla Firefox"),
+            Some(2)
+        );
+        assert_eq!(
+            sw.match_profile_for_window("firefox", "Twitch Stream — Mozilla Firefox"),
+            Some(5)
         );
     }
 }
