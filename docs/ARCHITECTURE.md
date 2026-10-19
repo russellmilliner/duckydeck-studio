@@ -259,6 +259,13 @@ sequenceDiagram
   - **On Profile Reorder (`remap_rules_on_profile_reorder`)**: Moving a profile from `from_num` to `to_num` atomically updates `fallback_profile`, every `AutoSwitchRule::profile_number`, and `profile_name` in `~/.config/duckydeck-studio/kwin_rules.json`.
   - **On Profile Deletion (`remap_rules_on_profile_delete`)**: Deleting a profile shifts higher-numbered `fallback_profile` and rule indices down by `1`, and automatically reassigns any `AutoSwitchRule` that referenced the deleted profile to the updated `fallback_profile`.
 
+### 7.1 First-Run Deck Setup, Legacy Migration & Conflict Resolution
+When launching DuckyDeck Studio on a fresh install or a system with legacy dekuNukem duckyPad software:
+1. **Conflicting Process Detection**: Detects running legacy background processes (`duckypad_autoprofile.py`, `duckypad_autoswitcher`, `duckypad_configurator`) via `/proc` inspection and host inspection (`flatpak-spawn --host pgrep/ps`). Offers one-click graceful shutdown (`stop_conflicting_software`) to prevent USB HID bus contention.
+2. **Profile & Rule Discovery**: Discovers profiles from the connected deck microSD card, local DuckyDeck cache, and legacy dekuNukem profile backups in `~/.local/share/duckypad_config/profile_backups/` ([`src/hardware/profile.rs`](../src/hardware/profile.rs)). Discovers rules from microSD `duckydeck_rules.json`, local DuckyDeck rules, and legacy dekuNukem auto-switcher configurations (`~/.local/share/duckypad_autoswitcher/rules.txt`) ([`src/kwin/auto_switcher.rs`](../src/kwin/auto_switcher.rs)).
+3. **One-Click Migration**: The user can import profiles and auto-switcher rules simultaneously, automatically remapping profile numbers and names into DuckyDeck Studio's synchronized cache.
+4. **Onboarding State Tracking**: Marks onboarding completion in `~/.config/duckydeck-studio/first_run_onboarding_state.json` (and host config if running inside Flatpak), preventing redundant prompts on subsequent launches while remaining accessible via SD Sync.
+
 ---
 
 ## 8. Keycap Layout, Desktop OLED Widget, Color Picker & UI Verification
@@ -285,6 +292,8 @@ Each mechanical keycap cell in the 4×5 hardware matrix uses a non-overlapping 3
 | Path | Format | Contents |
 | :--- | :--- | :--- |
 | `~/.config/duckydeck-studio/kwin_rules.json` | JSON | Auto-Switcher rules, fallback profile, UI text scale, tray preferences, **HTTP REST API Server config (`rest_api_*`)**, **Global Profile Change Webhook (`profile_webhook_*`)**, and **Saved Colors** palette. Sensitive tokens are stored in the OS keyring (`keyring` crate) with `"__keyring__"` sentinel markers on disk. |
+| `~/.config/duckydeck-studio/first_run_onboarding_state.json` | JSON | First-run setup completion state and version tracking for seamless onboarding and migration. |
+| `<microSD>/duckydeck_rules.json` | JSON | Portable KWin Wayland auto-switcher rules bundle (`SdPersistedRulesBundle`) stored on the deck microSD card for cross-machine rule synchronization. |
 | `~/.config/duckydeck-studio/home_assistant.json` | JSON | Home Assistant Web API connection (`base_url`; Long-Lived Access Token stored in OS keyring). |
 | `~/.config/duckydeck-studio/oled_widget_geometry.json` | JSON | Multi-monitor screen name (`screen_name`), position (`x`, `y`), size (`width`, `height`), `transparency_percent`, `always_on_top`, `frameless_mode`, and `show_rgb_dots` for the Desktop OLED Widget. |
 | `~/.config/duckydeck-studio/profile_templates.json` | JSON | User-created reusable profile templates saved from existing profiles (merged with built-in templates). |

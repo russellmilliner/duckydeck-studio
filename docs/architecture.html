@@ -1053,6 +1053,14 @@ pub fn encode_pgv31_trigger(profile_num: u8, slot_num: u8, is_release: bool) -&g
         <li><strong>Non-Deletable Fallback Profile:</strong> <code>delete_profile</code> rejects deletion of the currently configured <code>fallback_profile</code> so unmatched windows and reassigned rules always have a valid target.</li>
         <li><strong>Automatic Rule Remapping on Reorder &amp; Delete:</strong> Reordering profiles (<code>remap_rules_on_profile_reorder</code>) atomically updates <code>fallback_profile</code> and every rule's target profile number/name. Deleting a profile (<code>remap_rules_on_profile_delete</code>) shifts higher indices down by 1 and reassigns any rule referencing the deleted profile to the <code>fallback_profile</code>.</li>
       </ul>
+
+      <h3>First-Run Deck Setup, Legacy Migration &amp; Conflict Resolution</h3>
+      <ul>
+        <li><strong>Conflicting Process Detection:</strong> Detects legacy background processes (<code>duckypad_autoprofile.py</code>, <code>duckypad_autoswitcher</code>, <code>duckypad_configurator</code>) via <code>/proc</code> and host process inspection, offering one-click graceful shutdown to prevent USB HID bus contention.</li>
+        <li><strong>Profile &amp; Rule Discovery:</strong> Discovers profiles from the deck microSD, local cache, and legacy dekuNukem backups in <code>~/.local/share/duckypad_config/profile_backups/</code> (<code>src/hardware/profile.rs</code>). Discovers rules from microSD <code>duckydeck_rules.json</code>, local rules, and legacy auto-switcher files in <code>~/.local/share/duckypad_autoswitcher/</code> (<code>src/kwin/auto_switcher.rs</code>).</li>
+        <li><strong>Portable SD Rules Bundle:</strong> <code>duckydeck_rules.json</code> on the microSD card syncs auto-switcher rules alongside hardware profiles, enabling instant cross-machine rule portability.</li>
+        <li><strong>Onboarding State Tracking:</strong> Persists completion in <code>first_run_onboarding_state.json</code> across local and host configs.</li>
+      </ul>
     </section>
 
     <!-- 8. Keycap UI & Automated Scene-Graph Verification -->
@@ -1101,6 +1109,16 @@ pub fn encode_pgv31_trigger(profile_num: u8, slot_num: u8, is_release: bool) -&g
             <td><code>~/.config/duckydeck-studio/kwin_rules.json</code></td>
             <td><code>~/.var/app/io.github.duckydeck.Studio/config/duckydeck-studio/kwin_rules.json</code></td>
             <td>Auto-Switcher rules, fallback profile, UI text scale, tray settings, REST API config, Global Profile Webhook, and Saved Colors palette.</td>
+          </tr>
+          <tr>
+            <td><code>~/.config/duckydeck-studio/first_run_onboarding_state.json</code></td>
+            <td><code>~/.var/app/io.github.duckydeck.Studio/config/duckydeck-studio/first_run_onboarding_state.json</code></td>
+            <td>Onboarding setup completion flag and application version metadata.</td>
+          </tr>
+          <tr>
+            <td><code>&lt;microSD&gt;/duckydeck_rules.json</code></td>
+            <td><code>&lt;microSD&gt;/duckydeck_rules.json</code></td>
+            <td>Portable KWin Wayland auto-switcher rules bundle (<code>SdPersistedRulesBundle</code>) stored on deck microSD.</td>
           </tr>
           <tr>
             <td><code>~/.config/duckydeck-studio/oled_widget_geometry.json</code></td>

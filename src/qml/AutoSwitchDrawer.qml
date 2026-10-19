@@ -26,6 +26,8 @@ Window {
     property string previousSpecificClass: ""
     property int settleMsValue: controller ? controller.autoSwitchSettleMs : 250
     property int dwellMsValue: controller ? controller.autoSwitchDwellMs : 150
+    property bool enableSectionExpanded: true
+    property bool ruleEditorSectionExpanded: true
 
     property int contextMenuRuleIndex: -1
     property string contextMenuResourceClass: ""
@@ -160,6 +162,7 @@ Window {
     }
 
     function loadRuleIntoEditor(rIdx, resClass, titleSubstr, favUrl, targetProf) {
+        drawerRoot.ruleEditorSectionExpanded = true
         drawerRoot.editingRuleIndex = rIdx
         classInput.text = resClass
         titleInput.text = titleSubstr
@@ -386,6 +389,7 @@ Window {
         }
         function onLastPickedWindowClassChanged() {
             if (drawerRoot.controller && drawerRoot.controller.lastPickedWindowClass.length > 0) {
+                drawerRoot.ruleEditorSectionExpanded = true
                 classInput.text = drawerRoot.controller.lastPickedWindowClass
                 titleInput.text = drawerRoot.controller.lastPickedWindowTitle
             }
@@ -519,7 +523,46 @@ Window {
 
                             RowLayout {
                                 Layout.fillWidth: true
-                                spacing: 8
+                                spacing: 6
+
+                                Rectangle {
+                                    id: enableSectionTwistButton
+                                    objectName: "enableSectionTwistButton"
+                                    Layout.alignment: Qt.AlignVCenter
+                                    implicitWidth: 26
+                                    implicitHeight: 26
+                                    width: 26
+                                    height: 26
+                                    radius: 5
+                                    color: enableTwistMouse.containsMouse
+                                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.22)
+                                        : Kirigami.Theme.alternateBackgroundColor
+                                    border.color: enableTwistMouse.containsMouse
+                                        ? Kirigami.Theme.highlightColor
+                                        : drawerRoot.subtleBorder
+                                    border.width: 1
+
+                                    QQC2.Label {
+                                        anchors.centerIn: parent
+                                        text: drawerRoot.enableSectionExpanded ? "▾" : "▸"
+                                        font.bold: true
+                                        font.pointSize: 11 * drawerRoot.fontScale
+                                        color: Kirigami.Theme.textColor
+                                    }
+
+                                    MouseArea {
+                                        id: enableTwistMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: drawerRoot.enableSectionExpanded = !drawerRoot.enableSectionExpanded
+                                    }
+
+                                    QQC2.ToolTip.visible: enableTwistMouse.containsMouse
+                                    QQC2.ToolTip.text: drawerRoot.enableSectionExpanded
+                                        ? qsTr("Minimize Auto-Switcher enable & timing settings")
+                                        : qsTr("Expand Auto-Switcher enable & timing settings")
+                                }
 
                                 QQC2.Switch {
                                     id: masterEnableSwitch
@@ -528,7 +571,7 @@ Window {
                                     checked: drawerRoot.controller ? drawerRoot.controller.autoSwitchEnabled : true
                                     text: qsTr("Enable Automatic Profile Switching on Window Focus")
                                     font.bold: true
-                                    font.pointSize: 11 * drawerRoot.fontScale
+                                    font.pointSize: 10.5 * drawerRoot.fontScale
                                     onToggled: {
                                         if (drawerRoot.controller) {
                                             const fbNum = drawerRoot.fallbackNumbers[fallbackCombo.currentIndex] || 0
@@ -536,248 +579,264 @@ Window {
                                         }
                                     }
                                 }
-                            }
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
 
                                 QQC2.Label {
+                                    visible: !drawerRoot.enableSectionExpanded
                                     Layout.alignment: Qt.AlignVCenter
-                                    text: qsTr("Fallback Profile (when no rule matches):")
+                                    text: qsTr("%1 / %2 ms").arg(drawerRoot.settleMsValue).arg(drawerRoot.dwellMsValue)
+                                    font.family: "monospace"
                                     font.pointSize: 10 * drawerRoot.fontScale
                                     color: Kirigami.Theme.disabledTextColor
                                 }
+                            }
 
-                                QQC2.ComboBox {
-                                    id: fallbackCombo
+                            ColumnLayout {
+                                id: enableSectionDetailsCol
+                                visible: drawerRoot.enableSectionExpanded
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    Layout.minimumWidth: 120
-                                    Layout.preferredWidth: 1
-                                    Layout.alignment: Qt.AlignVCenter
-                                    font.pointSize: 10 * drawerRoot.fontScale
-                                    model: drawerRoot.fallbackChoices
-                                    onActivated: (index) => {
-                                        if (drawerRoot.controller && index >= 0 && index < drawerRoot.fallbackNumbers.length) {
-                                            drawerRoot.controller.setAutoSwitchConfig(
-                                                masterEnableSwitch.checked,
-                                                drawerRoot.fallbackNumbers[index]
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 1
-                                color: drawerRoot.subtleBorder
-                            }
-
-                            // Row 3a: Mouse Settle & Window Dwell Steppers (wide & readable)
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 10
-
-                                QQC2.Label {
-                                    Layout.alignment: Qt.AlignVCenter
-                                    text: qsTr("Mouse Settle:")
-                                    font.pointSize: 10 * drawerRoot.fontScale
-                                    font.bold: true
-                                    color: Kirigami.Theme.textColor
-                                    QQC2.ToolTip.visible: settleLabelHover.hovered
-                                    QQC2.ToolTip.text: qsTr("How long the mouse cursor must stop moving inside a window before switching profiles")
-                                    HoverHandler { id: settleLabelHover }
-                                }
-
-                                RowLayout {
-                                    spacing: 4
-                                    Layout.alignment: Qt.AlignVCenter
-
-                                    QQC2.Button {
-                                        text: "−"
-                                        implicitWidth: 28
-                                        implicitHeight: 30
-                                        font.bold: true
-                                        font.pointSize: 11 * drawerRoot.fontScale
-                                        enabled: drawerRoot.settleMsValue > 0
-                                        onClicked: drawerRoot.applyTimings(Math.max(0, drawerRoot.settleMsValue - 50), drawerRoot.dwellMsValue)
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Decrease Mouse Settle by 50 ms")
-                                    }
-
-                                    QQC2.TextField {
-                                        id: mouseSettleInput
-                                        Layout.preferredWidth: 78
-                                        Layout.minimumWidth: 78
-                                        implicitHeight: 30
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
-                                        font.family: "monospace"
-                                        font.bold: true
-                                        font.pointSize: 11 * drawerRoot.fontScale
-                                        selectByMouse: true
-                                        text: String(drawerRoot.settleMsValue)
-                                        validator: IntValidator { bottom: 0; top: 5000 }
-                                        onEditingFinished: {
-                                            const parsed = parseInt(text, 10)
-                                            drawerRoot.applyTimings(isNaN(parsed) ? 0 : parsed, drawerRoot.dwellMsValue)
-                                        }
-                                        WheelHandler {
-                                            onWheel: (event) => {
-                                                const step = event.angleDelta.y > 0 ? 50 : -50
-                                                drawerRoot.applyTimings(drawerRoot.settleMsValue + step, drawerRoot.dwellMsValue)
-                                                event.accepted = true
-                                            }
-                                        }
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Wait for the mouse cursor to stop moving for this duration before switching profiles (0–5000 ms)")
-                                    }
-
-                                    QQC2.Button {
-                                        text: "+"
-                                        implicitWidth: 28
-                                        implicitHeight: 30
-                                        font.bold: true
-                                        font.pointSize: 11 * drawerRoot.fontScale
-                                        enabled: drawerRoot.settleMsValue < 5000
-                                        onClicked: drawerRoot.applyTimings(Math.min(5000, drawerRoot.settleMsValue + 50), drawerRoot.dwellMsValue)
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Increase Mouse Settle by 50 ms")
-                                    }
+                                    spacing: 8
 
                                     QQC2.Label {
-                                        text: qsTr("ms")
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr("Fallback Profile (when no rule matches):")
                                         font.pointSize: 10 * drawerRoot.fontScale
                                         color: Kirigami.Theme.disabledTextColor
                                     }
-                                }
 
-                                Item { Layout.preferredWidth: 8 }
-
-                                QQC2.Label {
-                                    Layout.alignment: Qt.AlignVCenter
-                                    text: qsTr("Window Dwell:")
-                                    font.pointSize: 10 * drawerRoot.fontScale
-                                    font.bold: true
-                                    color: Kirigami.Theme.textColor
-                                    QQC2.ToolTip.visible: dwellLabelHover.hovered
-                                    QQC2.ToolTip.text: qsTr("Minimum time a window must stay hovered or focused before switching profiles")
-                                    HoverHandler { id: dwellLabelHover }
-                                }
-
-                                RowLayout {
-                                    spacing: 4
-                                    Layout.alignment: Qt.AlignVCenter
-
-                                    QQC2.Button {
-                                        text: "−"
-                                        implicitWidth: 28
-                                        implicitHeight: 30
-                                        font.bold: true
-                                        font.pointSize: 11 * drawerRoot.fontScale
-                                        enabled: drawerRoot.dwellMsValue > 0
-                                        onClicked: drawerRoot.applyTimings(drawerRoot.settleMsValue, Math.max(0, drawerRoot.dwellMsValue - 50))
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Decrease Window Dwell by 50 ms")
-                                    }
-
-                                    QQC2.TextField {
-                                        id: windowDwellInput
-                                        Layout.preferredWidth: 78
-                                        Layout.minimumWidth: 78
-                                        implicitHeight: 30
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
-                                        font.family: "monospace"
-                                        font.bold: true
-                                        font.pointSize: 11 * drawerRoot.fontScale
-                                        selectByMouse: true
-                                        text: String(drawerRoot.dwellMsValue)
-                                        validator: IntValidator { bottom: 0; top: 5000 }
-                                        onEditingFinished: {
-                                            const parsed = parseInt(text, 10)
-                                            drawerRoot.applyTimings(drawerRoot.settleMsValue, isNaN(parsed) ? 0 : parsed)
-                                        }
-                                        WheelHandler {
-                                            onWheel: (event) => {
-                                                const step = event.angleDelta.y > 0 ? 50 : -50
-                                                drawerRoot.applyTimings(drawerRoot.settleMsValue, drawerRoot.dwellMsValue + step)
-                                                event.accepted = true
+                                    QQC2.ComboBox {
+                                        id: fallbackCombo
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 120
+                                        Layout.preferredWidth: 1
+                                        Layout.alignment: Qt.AlignVCenter
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        model: drawerRoot.fallbackChoices
+                                        onActivated: (index) => {
+                                            if (drawerRoot.controller && index >= 0 && index < drawerRoot.fallbackNumbers.length) {
+                                                drawerRoot.controller.setAutoSwitchConfig(
+                                                    masterEnableSwitch.checked,
+                                                    drawerRoot.fallbackNumbers[index]
+                                                )
                                             }
                                         }
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Minimum time cursor/focus must stay in the window before switching profiles (0–5000 ms)")
                                     }
+                                }
 
-                                    QQC2.Button {
-                                        text: "+"
-                                        implicitWidth: 28
-                                        implicitHeight: 30
-                                        font.bold: true
-                                        font.pointSize: 11 * drawerRoot.fontScale
-                                        enabled: drawerRoot.dwellMsValue < 5000
-                                        onClicked: drawerRoot.applyTimings(drawerRoot.settleMsValue, Math.min(5000, drawerRoot.dwellMsValue + 50))
-                                        QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Increase Window Dwell by 50 ms")
-                                    }
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    height: 1
+                                    color: drawerRoot.subtleBorder
+                                }
+
+                                // Row 3a: Mouse Settle & Window Dwell Steppers (wide & readable)
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 10
 
                                     QQC2.Label {
-                                        text: qsTr("ms")
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr("Mouse Settle:")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        font.bold: true
+                                        color: Kirigami.Theme.textColor
+                                        QQC2.ToolTip.visible: settleLabelHover.hovered
+                                        QQC2.ToolTip.text: qsTr("How long the mouse cursor must stop moving inside a window before switching profiles")
+                                        HoverHandler { id: settleLabelHover }
+                                    }
+
+                                    RowLayout {
+                                        spacing: 4
+                                        Layout.alignment: Qt.AlignVCenter
+
+                                        QQC2.Button {
+                                            text: "−"
+                                            implicitWidth: 28
+                                            implicitHeight: 30
+                                            font.bold: true
+                                            font.pointSize: 11 * drawerRoot.fontScale
+                                            enabled: drawerRoot.settleMsValue > 0
+                                            onClicked: drawerRoot.applyTimings(Math.max(0, drawerRoot.settleMsValue - 50), drawerRoot.dwellMsValue)
+                                            QQC2.ToolTip.visible: hovered
+                                            QQC2.ToolTip.text: qsTr("Decrease Mouse Settle by 50 ms")
+                                        }
+
+                                        QQC2.TextField {
+                                            id: mouseSettleInput
+                                            Layout.preferredWidth: 78
+                                            Layout.minimumWidth: 78
+                                            implicitHeight: 30
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                            font.family: "monospace"
+                                            font.bold: true
+                                            font.pointSize: 11 * drawerRoot.fontScale
+                                            selectByMouse: true
+                                            text: String(drawerRoot.settleMsValue)
+                                            validator: IntValidator { bottom: 0; top: 5000 }
+                                            onEditingFinished: {
+                                                const parsed = parseInt(text, 10)
+                                                drawerRoot.applyTimings(isNaN(parsed) ? 0 : parsed, drawerRoot.dwellMsValue)
+                                            }
+                                            WheelHandler {
+                                                onWheel: (event) => {
+                                                    const step = event.angleDelta.y > 0 ? 50 : -50
+                                                    drawerRoot.applyTimings(drawerRoot.settleMsValue + step, drawerRoot.dwellMsValue)
+                                                    event.accepted = true
+                                                }
+                                            }
+                                            QQC2.ToolTip.visible: hovered
+                                            QQC2.ToolTip.text: qsTr("Wait for the mouse cursor to stop moving for this duration before switching profiles (0–5000 ms)")
+                                        }
+
+                                        QQC2.Button {
+                                            text: "+"
+                                            implicitWidth: 28
+                                            implicitHeight: 30
+                                            font.bold: true
+                                            font.pointSize: 11 * drawerRoot.fontScale
+                                            enabled: drawerRoot.settleMsValue < 5000
+                                            onClicked: drawerRoot.applyTimings(Math.min(5000, drawerRoot.settleMsValue + 50), drawerRoot.dwellMsValue)
+                                            QQC2.ToolTip.visible: hovered
+                                            QQC2.ToolTip.text: qsTr("Increase Mouse Settle by 50 ms")
+                                        }
+
+                                        QQC2.Label {
+                                            text: qsTr("ms")
+                                            font.pointSize: 10 * drawerRoot.fontScale
+                                            color: Kirigami.Theme.disabledTextColor
+                                        }
+                                    }
+
+                                    Item { Layout.preferredWidth: 8 }
+
+                                    QQC2.Label {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr("Window Dwell:")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        font.bold: true
+                                        color: Kirigami.Theme.textColor
+                                        QQC2.ToolTip.visible: dwellLabelHover.hovered
+                                        QQC2.ToolTip.text: qsTr("Minimum time a window must stay hovered or focused before switching profiles")
+                                        HoverHandler { id: dwellLabelHover }
+                                    }
+
+                                    RowLayout {
+                                        spacing: 4
+                                        Layout.alignment: Qt.AlignVCenter
+
+                                        QQC2.Button {
+                                            text: "−"
+                                            implicitWidth: 28
+                                            implicitHeight: 30
+                                            font.bold: true
+                                            font.pointSize: 11 * drawerRoot.fontScale
+                                            enabled: drawerRoot.dwellMsValue > 0
+                                            onClicked: drawerRoot.applyTimings(drawerRoot.settleMsValue, Math.max(0, drawerRoot.dwellMsValue - 50))
+                                            QQC2.ToolTip.visible: hovered
+                                            QQC2.ToolTip.text: qsTr("Decrease Window Dwell by 50 ms")
+                                        }
+
+                                        QQC2.TextField {
+                                            id: windowDwellInput
+                                            Layout.preferredWidth: 78
+                                            Layout.minimumWidth: 78
+                                            implicitHeight: 30
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                            font.family: "monospace"
+                                            font.bold: true
+                                            font.pointSize: 11 * drawerRoot.fontScale
+                                            selectByMouse: true
+                                            text: String(drawerRoot.dwellMsValue)
+                                            validator: IntValidator { bottom: 0; top: 5000 }
+                                            onEditingFinished: {
+                                                const parsed = parseInt(text, 10)
+                                                drawerRoot.applyTimings(drawerRoot.settleMsValue, isNaN(parsed) ? 0 : parsed)
+                                            }
+                                            WheelHandler {
+                                                onWheel: (event) => {
+                                                    const step = event.angleDelta.y > 0 ? 50 : -50
+                                                    drawerRoot.applyTimings(drawerRoot.settleMsValue, drawerRoot.dwellMsValue + step)
+                                                    event.accepted = true
+                                                }
+                                            }
+                                            QQC2.ToolTip.visible: hovered
+                                            QQC2.ToolTip.text: qsTr("Minimum time cursor/focus must stay in the window before switching profiles (0–5000 ms)")
+                                        }
+
+                                        QQC2.Button {
+                                            text: "+"
+                                            implicitWidth: 28
+                                            implicitHeight: 30
+                                            font.bold: true
+                                            font.pointSize: 11 * drawerRoot.fontScale
+                                            enabled: drawerRoot.dwellMsValue < 5000
+                                            onClicked: drawerRoot.applyTimings(drawerRoot.settleMsValue, Math.min(5000, drawerRoot.dwellMsValue + 50))
+                                            QQC2.ToolTip.visible: hovered
+                                            QQC2.ToolTip.text: qsTr("Increase Window Dwell by 50 ms")
+                                        }
+
+                                        QQC2.Label {
+                                            text: qsTr("ms")
+                                            font.pointSize: 10 * drawerRoot.fontScale
+                                            color: Kirigami.Theme.disabledTextColor
+                                        }
+                                    }
+
+                                    Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                                }
+
+                                // Row 3b: Timing Presets Row
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    QQC2.Label {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr("Timing Presets:")
                                         font.pointSize: 10 * drawerRoot.fontScale
                                         color: Kirigami.Theme.disabledTextColor
                                     }
+
+                                    QQC2.Button {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr("Instant (0 ms)")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        implicitHeight: 26
+                                        highlighted: drawerRoot.settleMsValue === 0 && drawerRoot.dwellMsValue === 0
+                                        onClicked: drawerRoot.applyTimings(0, 0)
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Switch immediately when entering a window (0 ms settle, 0 ms dwell)")
+                                    }
+
+                                    QQC2.Button {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr("Balanced (250 / 150 ms)")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        implicitHeight: 26
+                                        highlighted: drawerRoot.settleMsValue === 250 && drawerRoot.dwellMsValue === 150
+                                        onClicked: drawerRoot.applyTimings(250, 150)
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Default balanced settle timing (250 ms mouse settle, 150 ms window dwell)")
+                                    }
+
+                                    QQC2.Button {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr("Relaxed (500 / 300 ms)")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        implicitHeight: 26
+                                        highlighted: drawerRoot.settleMsValue === 500 && drawerRoot.dwellMsValue === 300
+                                        onClicked: drawerRoot.applyTimings(500, 300)
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Relaxed settle timing (500 ms mouse settle, 300 ms window dwell)")
+                                    }
+
+                                    Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
                                 }
-
-                                Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
-                            }
-
-                            // Row 3b: Timing Presets Row
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
-
-                                QQC2.Label {
-                                    Layout.alignment: Qt.AlignVCenter
-                                    text: qsTr("Timing Presets:")
-                                    font.pointSize: 10 * drawerRoot.fontScale
-                                    color: Kirigami.Theme.disabledTextColor
-                                }
-
-                                QQC2.Button {
-                                    Layout.alignment: Qt.AlignVCenter
-                                    text: qsTr("Instant (0 ms)")
-                                    font.pointSize: 10 * drawerRoot.fontScale
-                                    implicitHeight: 26
-                                    highlighted: drawerRoot.settleMsValue === 0 && drawerRoot.dwellMsValue === 0
-                                    onClicked: drawerRoot.applyTimings(0, 0)
-                                    QQC2.ToolTip.visible: hovered
-                                    QQC2.ToolTip.text: qsTr("Switch immediately when entering a window (0 ms settle, 0 ms dwell)")
-                                }
-
-                                QQC2.Button {
-                                    Layout.alignment: Qt.AlignVCenter
-                                    text: qsTr("Balanced (250 / 150 ms)")
-                                    font.pointSize: 10 * drawerRoot.fontScale
-                                    implicitHeight: 26
-                                    highlighted: drawerRoot.settleMsValue === 250 && drawerRoot.dwellMsValue === 150
-                                    onClicked: drawerRoot.applyTimings(250, 150)
-                                    QQC2.ToolTip.visible: hovered
-                                    QQC2.ToolTip.text: qsTr("Default balanced settle timing (250 ms mouse settle, 150 ms window dwell)")
-                                }
-
-                                QQC2.Button {
-                                    Layout.alignment: Qt.AlignVCenter
-                                    text: qsTr("Relaxed (500 / 300 ms)")
-                                    font.pointSize: 10 * drawerRoot.fontScale
-                                    implicitHeight: 26
-                                    highlighted: drawerRoot.settleMsValue === 500 && drawerRoot.dwellMsValue === 300
-                                    onClicked: drawerRoot.applyTimings(500, 300)
-                                    QQC2.ToolTip.visible: hovered
-                                    QQC2.ToolTip.text: qsTr("Relaxed settle timing (500 ms mouse settle, 300 ms window dwell)")
-                                }
-
-                                Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
                             }
                         }
                     }
@@ -848,6 +907,7 @@ Window {
                                 font.pointSize: 10 * drawerRoot.fontScale
                                 highlighted: drawerRoot.controller && drawerRoot.controller.windowPickerArmed
                                 onClicked: {
+                                    drawerRoot.ruleEditorSectionExpanded = true
                                     if (drawerRoot.controller) {
                                         drawerRoot.controller.armWindowPicker(false)
                                     }
@@ -865,6 +925,7 @@ Window {
                                     && drawerRoot.controller.activeWindowClass.length > 0
                                     && drawerRoot.controller.activeWindowClass !== "Listening for KWin..."
                                 onClicked: {
+                                    drawerRoot.ruleEditorSectionExpanded = true
                                     if (drawerRoot.controller) {
                                         const cls = drawerRoot.controller.activeWindowClass
                                         const rawTitle = drawerRoot.controller.activeWindowTitle
@@ -903,16 +964,72 @@ Window {
                             anchors.margins: 9
                             spacing: 6
 
-                            QQC2.Label {
-                                text: drawerRoot.editingRuleIndex >= 0
-                                    ? qsTr("Edit Rule #%1").arg(drawerRoot.editingRuleIndex + 1)
-                                    : qsTr("Add New Window Rule")
-                                font.bold: true
-                                font.pointSize: 11 * drawerRoot.fontScale
-                                color: Kirigami.Theme.textColor
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 6
+
+                                Rectangle {
+                                    id: ruleEditorTwistButton
+                                    objectName: "ruleEditorTwistButton"
+                                    Layout.alignment: Qt.AlignVCenter
+                                    implicitWidth: 26
+                                    implicitHeight: 26
+                                    width: 26
+                                    height: 26
+                                    radius: 5
+                                    color: ruleTwistMouse.containsMouse
+                                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.22)
+                                        : Kirigami.Theme.alternateBackgroundColor
+                                    border.color: ruleTwistMouse.containsMouse
+                                        ? Kirigami.Theme.highlightColor
+                                        : drawerRoot.subtleBorder
+                                    border.width: 1
+
+                                    QQC2.Label {
+                                        anchors.centerIn: parent
+                                        text: drawerRoot.ruleEditorSectionExpanded ? "▾" : "▸"
+                                        font.bold: true
+                                        font.pointSize: 11 * drawerRoot.fontScale
+                                        color: Kirigami.Theme.textColor
+                                    }
+
+                                    MouseArea {
+                                        id: ruleTwistMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: drawerRoot.ruleEditorSectionExpanded = !drawerRoot.ruleEditorSectionExpanded
+                                    }
+
+                                    QQC2.ToolTip.visible: ruleTwistMouse.containsMouse
+                                    QQC2.ToolTip.text: drawerRoot.ruleEditorSectionExpanded
+                                        ? qsTr("Minimize Add / Edit Window Rule section")
+                                        : qsTr("Expand Add / Edit Window Rule section")
+                                }
+
+                                QQC2.Label {
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 0
+                                    Layout.alignment: Qt.AlignVCenter
+                                    text: drawerRoot.editingRuleIndex >= 0
+                                        ? qsTr("Edit Rule #%1").arg(drawerRoot.editingRuleIndex + 1)
+                                        : qsTr("Add New Window Rule")
+                                    font.bold: true
+                                    font.pointSize: 11 * drawerRoot.fontScale
+                                    color: Kirigami.Theme.textColor
+                                    elide: Text.ElideRight
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: drawerRoot.ruleEditorSectionExpanded = !drawerRoot.ruleEditorSectionExpanded
+                                    }
+                                }
                             }
 
                             GridLayout {
+                                id: ruleEditorGrid
+                                visible: drawerRoot.ruleEditorSectionExpanded
                                 Layout.fillWidth: true
                                 columns: 2
                                 rowSpacing: 6

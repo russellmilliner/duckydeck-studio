@@ -1383,6 +1383,24 @@ Window {
                 "fwCount=" + fwList.length + " studioFw=" + (studioFw ? studioFw.filename + "@" + studioFw.path : "missing")
             )
 
+            // 14. Auto-Switcher Rules window twist minimize & auto-expand on rule double-click
+            autoSwitchDrawer.enableSectionExpanded = false
+            var enableMinimizedOk = autoSwitchDrawer.enableSectionExpanded === false
+            autoSwitchDrawer.enableSectionExpanded = true
+            var enableRestoredOk = autoSwitchDrawer.enableSectionExpanded === true
+            autoSwitchDrawer.ruleEditorSectionExpanded = false
+            var ruleMinimizedOk = autoSwitchDrawer.ruleEditorSectionExpanded === false
+            autoSwitchDrawer.loadRuleIntoEditor(0, "code", "", "", 1)
+            var ruleAutoExpandedOnDoubleClickOk = autoSwitchDrawer.ruleEditorSectionExpanded === true
+            autoSwitchDrawer.editingRuleIndex = -1
+            recordBehavior(
+                "autoswitch_sections_twist_minimize_and_auto_expand_on_double_click",
+                enableMinimizedOk && enableRestoredOk && ruleMinimizedOk && ruleAutoExpandedOnDoubleClickOk,
+                "enableMin=" + enableMinimizedOk
+                    + " ruleMin=" + ruleMinimizedOk
+                    + " autoExpand=" + ruleAutoExpandedOnDoubleClickOk
+            )
+
             // Restore initial profile group for visual window steps
             deviceController.loadProfileGroup(backupGroupPath)
             root.syncSidebarProfilesFromController()

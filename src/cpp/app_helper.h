@@ -1106,6 +1106,16 @@ protected:
         if (!watched || !watched->isWindowType() || !event) {
             return false;
         }
+        if (event->type() == QEvent::Show || event->type() == QEvent::PlatformSurface) {
+            QWindow* win = qobject_cast<QWindow*>(watched);
+            QWindow* mainWin = main_window_ref().data();
+            if (win && mainWin && win != mainWin
+                && win->objectName() != QStringLiteral("duckydeckOledWidgetWindow")
+                && mainWin->screen() && win->screen() != mainWin->screen()) {
+                win->setScreen(mainWin->screen());
+            }
+            return false;
+        }
         if (event->type() != QEvent::KeyPress) {
             return false;
         }
@@ -1498,6 +1508,9 @@ inline QtMessageHandler& prev_qt_msg_handler() {
 inline void duckydeck_qt_msg_handler(QtMsgType type, const QMessageLogContext& ctx, const QString& msg) {
     if (msg.contains(QStringLiteral("org/kde/breeze/TextArea.qml"))
         && msg.contains(QStringLiteral("QQuickTextInput"))) {
+        return;
+    }
+    if (msg.contains(QStringLiteral("cached device pixel ratio value was stale on window update"))) {
         return;
     }
     if (QtMessageHandler prev = prev_qt_msg_handler()) {
