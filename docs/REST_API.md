@@ -1,16 +1,16 @@
 # DuckyDeck Studio HTTP REST API Reference
 
-[![Version v0.1.3](https://img.shields.io/badge/Version-v0.1.3-38bdf8?style=for-the-badge)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.3-linux-x86_64.tar.gz)
-[![Flatpak v0.1.3](https://img.shields.io/badge/Flatpak-v0.1.3-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.3-x86_64.flatpak)
+[![Version v0.1.4](https://img.shields.io/badge/Version-v0.1.4-38bdf8?style=for-the-badge)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.4-linux-x86_64.tar.gz)
+[![Flatpak v0.1.4](https://img.shields.io/badge/Flatpak-v0.1.4-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.4-x86_64.flatpak)
 [![Website duckydeckstudio.com](https://img.shields.io/badge/Website-duckydeckstudio.com-0ea5e9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://duckydeckstudio.com)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-russellmilliner%2Fduckydeck--studio-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio)
 
-DuckyDeck Studio (`v0.1.3`) includes a built-in, low-latency HTTP/1.1 REST API server (`src/api_server.rs`) that exposes full programmatic control over your **duckyPad Pro** (`0x0483:0xd11d`, Custom Firmware `v1.0.0`) and **duckyPad (2020)** (`0x0483:0xd11c`), profiles, mechanical key & rotary encoder slots, duckyScript 3 DSVM compiler, 32 Persistent Global Variables (`_GV0.._GV31`), live RGB LED overrides, and microSD synchronization.
+DuckyDeck Studio (`v0.1.4`) includes a built-in, low-latency HTTP/1.1 REST API server (`src/api_server.rs`) that exposes full programmatic control over your **duckyPad Pro** (`0x0483:0xd11d`, Custom Firmware `v1.0.1`) and **duckyPad (2020)** (`0x0483:0xd11c`), profiles, mechanical key & rotary encoder slots, duckyScript 3 DSVM compiler, 32 Persistent Global Variables (`_GV0.._GV31`), live RGB LED overrides, and microSD synchronization.
 
-- **Application Version**: `v0.1.3` (Custom Firmware `v1.0.0`)
+- **Application Version**: `v0.1.4` (Custom Firmware `v1.0.1`)
 - **Official Website & User Guide**: [https://duckydeckstudio.com](https://duckydeckstudio.com)
 - **System Architecture Reference**: [`docs/architecture.html`](architecture.html) ([https://duckydeckstudio.com/architecture.html](https://duckydeckstudio.com/architecture.html)) · [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)
-- **GitHub Repository & Releases**: [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio) · [Flatpak Bundle (`v0.1.3`)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.3-x86_64.flatpak)
+- **GitHub Repository & Releases**: [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio) · [Flatpak Bundle (`v0.1.4`)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.4-x86_64.flatpak)
 - **OpenAPI 3.0.3 YAML Specification**: [`docs/openapi.yaml`](openapi.yaml) (`GET /api/v1/openapi.yaml`)
 - **Swagger / OpenAPI 3.0 JSON Specification**: [`docs/swagger.json`](swagger.json) (`GET /api/v1/swagger.json` or `GET /api/v1/openapi.json`)
 
@@ -54,7 +54,7 @@ X-API-Token: <YOUR_API_TOKEN>
 
 | Method | Endpoint | Auth | Description |
 | :--- | :--- | :---: | :--- |
-| `GET` | `/api/v1/health` | No | Liveness probe, version (`0.1.3`), and whether auth is required |
+| `GET` | `/api/v1/health` | No | Liveness probe, version (`0.1.4`), and whether auth is required |
 | `GET` | `/api/v1/openapi.json` | No | OpenAPI 3.0 / Swagger JSON specification |
 | `GET` | `/api/v1/swagger.json` | No | Alias for `/api/v1/openapi.json` |
 | `GET` | `/api/v1/openapi.yaml` | No | OpenAPI 3.0 YAML specification |
@@ -111,7 +111,7 @@ curl -s "$DUCKY_URL/api/v1/health"
 {
   "ok": true,
   "service": "duckydeck-studio",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "authRequired": true
 }
 ```
@@ -126,7 +126,7 @@ curl -s -H "Authorization: Bearer $DUCKY_TOKEN" "$DUCKY_URL/api/v1/status"
 ```json
 {
   "ok": true,
-  "version": "0.1.3",
+  "version": "0.1.4",
   "connected": true,
   "sdCardMode": false,
   "sdMounted": false,

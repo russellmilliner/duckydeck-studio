@@ -30,6 +30,101 @@ pub const ONBOARD_KEY_COUNT: usize = 20;
 pub static HID_IO_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 pub static MSC_SYNC_IN_PROGRESS: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
+pub static LAST_EVDEV_KEY_ACTIVITY_MS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub static LAST_EVDEV_KEYDOWN_MS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub static EVDEV_KEYS_HELD_COUNT: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(0);
+pub static ACTIVE_PROFILE_HAS_PGV31_TRIGGER: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(true);
+
+static CACHED_HID_DEVICE: std::sync::OnceLock<std::sync::Mutex<Option<HidDevice>>> =
+    std::sync::OnceLock::new();
+
+pub fn invalidate_cached_hid_device() {
+    if let Some(lock) = CACHED_HID_DEVICE.get() {
+        if let Ok(mut guard) = lock.lock() {
+            *guard = None;
+        }
+    }
+}
+
+pub fn drain_pending_hid_reports(device: &HidDevice) {
+    let mut flush_buf = [0u8; 64];
+    for _ in 0..32 {
+        match device.read_timeout(&mut flush_buf, 0) {
+            Ok(n) if n > 0 => continue,
+            _ => break,
+        }
+    }
+}
+
+pub fn read_hid_report4(
+    device: &HidDevice,
+    rx: &mut [u8; 64],
+    timeout_ms: i32,
+) -> Result<usize, String> {
+    let deadline =
+        std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms.max(1) as u64);
+    loop {
+        let rem_ms = deadline
+            .saturating_duration_since(std::time::Instant::now())
+            .as_millis() as i32;
+        if rem_ms <= 0 {
+            return Ok(0);
+        }
+        rx.fill(0);
+        let n = device
+            .read_timeout(rx, rem_ms.max(1))
+            .map_err(|e| e.to_string())?;
+        if n == 0 {
+            return Ok(0);
+        }
+        if rx[0] == 4 || rx[0] == 0 {
+            return Ok(n);
+        }
+    }
+}
+
+pub fn with_cached_duckypad_hid<T, F>(f: F) -> Result<T, String>
+where
+    F: FnOnce(&HidDevice) -> Result<T, String>,
+{
+    let mutex = CACHED_HID_DEVICE.get_or_init(|| std::sync::Mutex::new(None));
+    let mut guard = mutex
+        .lock()
+        .map_err(|_| "HID cache lock poisoned".to_string())?;
+    if guard.is_none() {
+        *guard = Some(open_duckypad_hid()?);
+    }
+    let res = {
+        let dev = guard.as_ref().unwrap();
+        drain_pending_hid_reports(dev);
+        f(dev)
+    };
+    if res.is_err() {
+        *guard = None;
+    }
+    res
+}
+
+pub fn is_duckypad_key_activity_recent(cooldown_ms: u64) -> bool {
+    let now = crate::kwin::auto_switcher::current_epoch_ms();
+    let held = EVDEV_KEYS_HELD_COUNT.load(std::sync::atomic::Ordering::SeqCst);
+    if held > 0 {
+        let last_down = LAST_EVDEV_KEYDOWN_MS.load(std::sync::atomic::Ordering::SeqCst);
+        if now.saturating_sub(last_down) < 5000 {
+            return true;
+        }
+        EVDEV_KEYS_HELD_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
+    }
+    let last = LAST_EVDEV_KEY_ACTIVITY_MS.load(std::sync::atomic::Ordering::SeqCst);
+    if last == 0 {
+        return false;
+    }
+    now.saturating_sub(last) < cooldown_ms
+}
 
 #[derive(Debug, Clone)]
 pub struct ConnectedDuckyPadInfo {
@@ -41,7 +136,45 @@ pub struct ConnectedDuckyPadInfo {
     pub active_profile: u8,
 }
 
+pub fn find_duckypad_hidraw_node() -> Option<(std::path::PathBuf, u16, Option<String>)> {
+    let entries = fs::read_dir("/sys/class/hidraw").ok()?;
+    for entry in entries.flatten() {
+        if let Ok(uevent) = fs::read_to_string(entry.path().join("device/uevent")) {
+            let upper = uevent.to_ascii_uppercase();
+            let pid = if upper.contains("00000483:0000D11D") {
+                Some(PID_DUCKYPAD_PRO)
+            } else if upper.contains("00000483:0000D11C") {
+                Some(PID_DUCKYPAD_2020)
+            } else {
+                None
+            };
+            if let Some(pid) = pid {
+                let dev_node = Path::new("/dev").join(entry.file_name());
+                if dev_node.exists() {
+                    let uniq = uevent
+                        .lines()
+                        .find_map(|l| l.strip_prefix("HID_UNIQ="))
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty());
+                    return Some((dev_node, pid, uniq));
+                }
+            }
+        }
+    }
+    None
+}
+
+#[allow(deprecated)]
 pub fn open_duckypad_hid() -> Result<HidDevice, String> {
+    if let Some((dev_node, _, _)) = find_duckypad_hidraw_node() {
+        if let Ok(c_path) = std::ffi::CString::new(dev_node.to_string_lossy().as_bytes()) {
+            if let Ok(api) = HidApi::new_without_enumerate() {
+                if let Ok(device) = api.open_path(c_path.as_c_str()) {
+                    return Ok(device);
+                }
+            }
+        }
+    }
     let api = HidApi::new().map_err(|e| format!("Failed to initialize hidapi: {e}"))?;
     for pid in [PID_DUCKYPAD_PRO, PID_DUCKYPAD_2020] {
         if let Ok(device) = api.open(DUCKYPAD_VID, pid) {
@@ -52,41 +185,44 @@ pub fn open_duckypad_hid() -> Result<HidDevice, String> {
 }
 
 pub fn is_duckypad_hid_present() -> bool {
-    let Ok(entries) = fs::read_dir("/sys/class/hidraw") else {
-        return open_duckypad_hid().is_ok();
-    };
-    for entry in entries.flatten() {
-        if let Ok(uevent) = fs::read_to_string(entry.path().join("device/uevent")) {
-            let upper = uevent.to_ascii_uppercase();
-            if upper.contains("00000483:0000D11D") || upper.contains("00000483:0000D11C") {
-                let dev_node = Path::new("/dev").join(entry.file_name());
-                if dev_node.exists() {
-                    return true;
+    if find_duckypad_hidraw_node().is_some() {
+        return true;
+    }
+    invalidate_cached_hid_device();
+    false
+}
+
+#[allow(deprecated)]
+pub fn query_connected_duckypad_info() -> Result<ConnectedDuckyPadInfo, String> {
+    let _guard = HID_IO_LOCK.lock().ok();
+    let mut found_dev: Option<(HidDevice, u16, Option<String>)> = None;
+    if let Some((dev_node, pid, uniq)) = find_duckypad_hidraw_node() {
+        if let Ok(c_path) = std::ffi::CString::new(dev_node.to_string_lossy().as_bytes()) {
+            if let Ok(api) = HidApi::new_without_enumerate() {
+                if let Ok(dev) = api.open_path(c_path.as_c_str()) {
+                    found_dev = Some((dev, pid, uniq));
                 }
             }
         }
     }
-    false
-}
-
-pub fn query_connected_duckypad_info() -> Result<ConnectedDuckyPadInfo, String> {
-    let _guard = HID_IO_LOCK.lock().ok();
-    let api = HidApi::new().map_err(|e| format!("HID init error: {e}"))?;
-    let mut found_dev: Option<(HidDevice, u16)> = None;
-    for pid in [PID_DUCKYPAD_PRO, PID_DUCKYPAD_2020] {
-        if let Ok(dev) = api.open(DUCKYPAD_VID, pid) {
-            found_dev = Some((dev, pid));
-            break;
+    if found_dev.is_none() {
+        let api = HidApi::new().map_err(|e| format!("HID init error: {e}"))?;
+        for pid in [PID_DUCKYPAD_PRO, PID_DUCKYPAD_2020] {
+            if let Ok(dev) = api.open(DUCKYPAD_VID, pid) {
+                found_dev = Some((dev, pid, None));
+                break;
+            }
         }
     }
-    let Some((device, pid)) = found_dev else {
+    let Some((device, pid, sysfs_uniq)) = found_dev else {
         return Err("No duckyPad Pro (0xd11d) or duckyPad 2020 (0xd11c) found".to_string());
     };
 
     let default_model = if pid == PID_DUCKYPAD_PRO { 24u8 } else { 20u8 };
     let mut fallback_serial = "-".to_string();
     let mut fallback_disk_label = String::new();
-    if let Ok(Some(usb_serial)) = device.get_serial_number_string() {
+    let serial_source = sysfs_uniq.or_else(|| device.get_serial_number_string().ok().flatten());
+    if let Some(usb_serial) = serial_source {
         let trimmed = usb_serial.trim();
         if let Some((_, ser)) = trimmed.split_once('_') {
             if !ser.is_empty() {
@@ -120,12 +256,13 @@ pub fn query_connected_duckypad_info() -> Result<ConnectedDuckyPadInfo, String> 
                     let has_dds_sig = len >= 23 && &rx[20..23] == b"DDS";
                     let has_rtc_payload = len >= 20 && rx[16..20].iter().any(|&b| b != 0);
                     let fw_version = if raw_ver == (3, 4, 0)
-                        || has_dds_sig
-                        || (raw_ver == (1, 0, 0) && has_rtc_payload)
+                        || (raw_ver == (1, 0, 0) && (has_dds_sig || has_rtc_payload))
                     {
                         "1.0.0".to_string()
-                    } else if raw_ver == (1, 0, 0) {
-                        "1.0.0 (Official)".to_string()
+                    } else if has_dds_sig || (raw_ver == (1, 0, 1) && has_rtc_payload) {
+                        format!("{}.{}.{}", rx[3], rx[4], rx[5])
+                    } else if raw_ver.0 == 1 && raw_ver.1 == 0 {
+                        format!("{}.{}.{} (Official)", rx[3], rx[4], rx[5])
                     } else {
                         format!("{}.{}.{}", rx[3], rx[4], rx[5])
                     };
@@ -157,27 +294,29 @@ pub fn query_connected_duckypad_info() -> Result<ConnectedDuckyPadInfo, String> 
 }
 
 pub fn poll_hardware_active_profile() -> Option<u8> {
-    if MSC_SYNC_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst) {
+    if MSC_SYNC_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst)
+        || is_duckypad_key_activity_recent(280)
+    {
         return None;
     }
     let _guard = HID_IO_LOCK.try_lock().ok()?;
-    let device = open_duckypad_hid().ok()?;
+    with_cached_duckypad_hid(|device| {
+        let mut tx = [0u8; 64];
+        tx[0] = HID_REPORT_ID_OUT;
+        tx[1] = 0x2E;
+        tx[2] = HID_CMD_QUERY_INFO;
 
-    let mut tx = [0u8; 64];
-    tx[0] = HID_REPORT_ID_OUT;
-    tx[1] = 0x2E;
-    tx[2] = HID_CMD_QUERY_INFO;
+        device.write(&tx).map_err(|e| e.to_string())?;
 
-    if device.write(&tx).is_err() {
-        return None;
-    }
-
-    let mut rx = [0u8; 64];
-    let len = device.read_timeout(&mut rx, 120).ok()?;
-    if len >= 12 && rx[2] == 0 && rx[6] != 0 && rx[11] > 0 {
-        return Some(rx[11]);
-    }
-    None
+        let mut rx = [0u8; 64];
+        let len = read_hid_report4(device, &mut rx, 120)?;
+        if len >= 12 && rx[2] == 0 && rx[6] != 0 && rx[11] > 0 {
+            return Ok(Some(rx[11]));
+        }
+        Ok(None)
+    })
+    .ok()
+    .flatten()
 }
 
 pub fn read_all_pgvs(device: &HidDevice) -> Result<[i32; PGV_COUNT], String> {
@@ -306,17 +445,17 @@ mod tests {
 
     #[test]
     fn test_firmware_catalog_and_crc32_integrity() {
-        let list = list_available_duckypad_pro_firmwares("1.0.0 (DuckyDeck Studio)");
+        let list = list_available_duckypad_pro_firmwares("1.0.1 (DuckyDeck Studio)");
         assert!(
             !list.is_empty(),
             "Expected at least 1 DuckyDeck Studio firmware release, got {}",
             list.len()
         );
-        // First entry should be v1.0.0 (DuckyDeck Studio Firmware)
+        // First entry should be v1.0.1 (DuckyDeck Studio Firmware)
         let studio_entries: Vec<&FirmwareVersionEntry> =
             list.iter().filter(|e| !e.is_official).collect();
         assert!(!studio_entries.is_empty());
-        assert_eq!(studio_entries[0].version, "1.0.0");
+        assert_eq!(studio_entries[0].version, "1.0.1");
         assert_eq!(studio_entries[0].vendor, "DuckyDeck Studio");
         assert!(studio_entries[0].supports_monochrome_icons);
         for entry in studio_entries {

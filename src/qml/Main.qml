@@ -5201,7 +5201,7 @@ Kirigami.ApplicationWindow {
                     QQC2.ToolTip.visible: fwBadgeMouse.containsMouse
                     QQC2.ToolTip.text: {
                         const originDesc = root.isDuckyDeckStudioFirmware(deviceController.firmwareVersion)
-                            ? qsTr("DuckyDeck Studio Custom Firmware v1.0.0 (Monochrome Icons & 0°/90°/180°/270° OLED)")
+                            ? qsTr("DuckyDeck Studio Custom Firmware v%1 (Monochrome Icons & 0°/90°/180°/270° OLED)").arg(deviceController.firmwareVersion.split(" ")[0])
                             : qsTr("Official dekuNukem Firmware Release")
                         return deviceController.firmwareUpdateAvailable
                             ? qsTr("%1 — Update v%2 is available! Click to open Firmware Manager.").arg(originDesc).arg(deviceController.latestFirmwareVersion)

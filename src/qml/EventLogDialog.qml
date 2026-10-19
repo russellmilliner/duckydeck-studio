@@ -1368,14 +1368,14 @@ Window {
                     + " fallback=" + deviceController.defaultFallbackProfile
             )
 
-            // 13. DuckyDeck Studio custom firmware (DPP_FW_1.0.0_ad2acc81.bin) is available in the firmware catalog
+            // 13. DuckyDeck Studio custom firmware (DPP_FW_1.0.1_bf177326.bin) is available in the firmware catalog
             var fwList = []
             try { fwList = JSON.parse(deviceController.listAvailableFirmwaresJson() || "[]") } catch (e) {}
             var studioFw = fwList.find(function(fw) {
                 return fw.is_official === false
                     && fw.supports_monochrome_icons === true
                     && fw.is_downloaded === true
-                    && fw.filename === "DPP_FW_1.0.0_ad2acc81.bin"
+                    && fw.filename === "DPP_FW_1.0.1_bf177326.bin"
             })
             recordBehavior(
                 "duckydeck_studio_firmware_available_in_catalog",

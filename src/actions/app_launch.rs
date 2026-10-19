@@ -280,10 +280,32 @@ impl DuckypadEvdevListener {
                         let ev_type = u16::from_ne_bytes([buf[16], buf[17]]);
                         let ev_code = u16::from_ne_bytes([buf[18], buf[19]]);
                         let ev_value = i32::from_ne_bytes([buf[20], buf[21], buf[22], buf[23]]);
-                        // EV_KEY == 1, value == 1 (key press), KEY_F13 (183)..=KEY_F24 (194)
-                        if ev_type == 1 && ev_value == 1 && (183..=194).contains(&ev_code) {
-                            let f_num = 13 + (ev_code - 183);
-                            triggered.push(format!("F{f_num}"));
+                        if ev_type == 1 {
+                            let now_ms = crate::kwin::auto_switcher::current_epoch_ms();
+                            crate::hardware::storage::LAST_EVDEV_KEY_ACTIVITY_MS
+                                .store(now_ms, std::sync::atomic::Ordering::SeqCst);
+                            if ev_value == 1 {
+                                crate::hardware::storage::LAST_EVDEV_KEYDOWN_MS
+                                    .store(now_ms, std::sync::atomic::Ordering::SeqCst);
+                                let cur = crate::hardware::storage::EVDEV_KEYS_HELD_COUNT
+                                    .load(std::sync::atomic::Ordering::SeqCst);
+                                crate::hardware::storage::EVDEV_KEYS_HELD_COUNT.store(
+                                    cur.saturating_add(1).min(16),
+                                    std::sync::atomic::Ordering::SeqCst,
+                                );
+                            } else if ev_value == 0 {
+                                let cur = crate::hardware::storage::EVDEV_KEYS_HELD_COUNT
+                                    .load(std::sync::atomic::Ordering::SeqCst);
+                                crate::hardware::storage::EVDEV_KEYS_HELD_COUNT.store(
+                                    cur.saturating_sub(1),
+                                    std::sync::atomic::Ordering::SeqCst,
+                                );
+                            }
+                            // EV_KEY == 1, value == 1 (key press), KEY_F13 (183)..=KEY_F24 (194)
+                            if ev_value == 1 && (183..=194).contains(&ev_code) {
+                                let f_num = 13 + (ev_code - 183);
+                                triggered.push(format!("F{f_num}"));
+                            }
                         }
                     }
                     Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
@@ -295,6 +317,10 @@ impl DuckypadEvdevListener {
             }
         }
 
+        if !drop_indices.is_empty() {
+            crate::hardware::storage::EVDEV_KEYS_HELD_COUNT
+                .store(0, std::sync::atomic::Ordering::SeqCst);
+        }
         for idx in drop_indices.into_iter().rev() {
             self.files.remove(idx);
         }

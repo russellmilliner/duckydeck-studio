@@ -454,41 +454,45 @@ pub fn sync_profile_web_api_triggers(profiles: &mut [DuckyProfile]) -> bool {
 }
 
 pub fn poll_and_clear_pgv31_trigger() -> Option<(u8, usize, bool)> {
-    if MSC_SYNC_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst) {
+    if MSC_SYNC_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst)
+        || !crate::hardware::storage::ACTIVE_PROFILE_HAS_PGV31_TRIGGER
+            .load(std::sync::atomic::Ordering::SeqCst)
+        || crate::hardware::storage::is_duckypad_key_activity_recent(280)
+    {
         return None;
     }
     let _guard = HID_IO_LOCK.try_lock().ok()?;
-    let device = open_duckypad_hid().ok()?;
+    crate::hardware::storage::with_cached_duckypad_hid(|device| {
+        let mut tx = [0u8; 64];
+        tx[0] = HID_REPORT_ID_OUT;
+        tx[1] = 0x3F;
+        tx[2] = HID_CMD_DUMP_PGV;
+        tx[3] = 30; // Dump _GV30 and _GV31 in a single packet
 
-    let mut tx = [0u8; 64];
-    tx[0] = HID_REPORT_ID_OUT;
-    tx[1] = 0x3F;
-    tx[2] = HID_CMD_DUMP_PGV;
-    tx[3] = 30; // Dump _GV30 and _GV31 in a single packet
+        device.write(&tx).map_err(|e| e.to_string())?;
 
-    if device.write(&tx).is_err() {
-        return None;
-    }
-
-    let mut rx = [0u8; 64];
-    let bytes_read = device.read_timeout(&mut rx, 120).ok()?;
-    if bytes_read < 11 || rx[2] != 0 {
-        return None;
-    }
-
-    // rx[0]=ReportID(4), rx[1]=Seq, rx[2]=Status(0), rx[3..7]=_GV30, rx[7..11]=_GV31
-    let raw_gv31 = i32::from_le_bytes([rx[7], rx[8], rx[9], rx[10]]);
-    if let Some(decoded) = decode_pgv31_trigger(raw_gv31) {
-        if let Err(e) = write_single_pgv(&device, 31, 0) {
-            crate::bridge::device_controller::record_system_event(
-                "WARN",
-                "HID",
-                format!("Failed clearing _GV31 trigger register: {e}"),
-            );
+        let mut rx = [0u8; 64];
+        let bytes_read = crate::hardware::storage::read_hid_report4(device, &mut rx, 120)?;
+        if bytes_read < 11 || rx[2] != 0 {
+            return Ok(None);
         }
-        return Some(decoded);
-    }
-    None
+
+        // rx[0]=ReportID(4), rx[1]=Seq, rx[2]=Status(0), rx[3..7]=_GV30, rx[7..11]=_GV31
+        let raw_gv31 = i32::from_le_bytes([rx[7], rx[8], rx[9], rx[10]]);
+        if let Some(decoded) = decode_pgv31_trigger(raw_gv31) {
+            if let Err(e) = write_single_pgv(device, 31, 0) {
+                crate::bridge::device_controller::record_system_event(
+                    "WARN",
+                    "HID",
+                    format!("Failed clearing _GV31 trigger register: {e}"),
+                );
+            }
+            return Ok(Some(decoded));
+        }
+        Ok(None)
+    })
+    .ok()
+    .flatten()
 }
 
 pub fn set_single_key_led_hid(slot_num: usize, rgb: [u8; 3]) -> bool {

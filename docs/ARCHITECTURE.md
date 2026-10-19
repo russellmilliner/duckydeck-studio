@@ -1,17 +1,17 @@
 # <img src="../data/icons/io.github.duckydeck.Studio.svg" width="36" height="36" align="top" alt="DuckyDeck Studio Icon" /> DuckyDeck Studio — Architecture & Design Developer Documentation
 
-[![Version v0.1.3](https://img.shields.io/badge/Version-v0.1.3-38bdf8?style=for-the-badge)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.3-linux-x86_64.tar.gz)
-[![Flatpak v0.1.3](https://img.shields.io/badge/Flatpak-v0.1.3-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.3-x86_64.flatpak)
+[![Version v0.1.4](https://img.shields.io/badge/Version-v0.1.4-38bdf8?style=for-the-badge)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.4-linux-x86_64.tar.gz)
+[![Flatpak v0.1.4](https://img.shields.io/badge/Flatpak-v0.1.4-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.4-x86_64.flatpak)
 [![Firmware v1.0.0](https://img.shields.io/badge/Custom_Firmware-v1.0.0-10b981?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.0.0)
 [![Website duckydeckstudio.com](https://img.shields.io/badge/Website-duckydeckstudio.com-0ea5e9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://duckydeckstudio.com)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-russellmilliner%2Fduckydeck--studio-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio)
 
-**Application Version:** `v0.1.3` (Custom Firmware `v1.0.0`, KDE Plasma 6 Applet `v1.0.2`)  
+**Application Version:** `v0.1.4` (Custom Firmware `v1.0.1`, KDE Plasma 6 Applet `v1.0.2`)  
 **Author:** Russell Milliner  
 **Official Website & User Guide:** [https://duckydeckstudio.com](https://duckydeckstudio.com)  
 **HTML Architecture Reference:** [`docs/architecture.html`](architecture.html) ([https://duckydeckstudio.com/architecture.html](https://duckydeckstudio.com/architecture.html))  
 **GitHub Repository & Releases:** [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)  
-**Flatpak Release Bundle:** [`duckydeck-studio-v0.1.3-x86_64.flatpak`](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.3-x86_64.flatpak)  
+**Flatpak Release Bundle:** [`duckydeck-studio-v0.1.4-x86_64.flatpak`](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.4-x86_64.flatpak)  
 **REST API Reference:** [`docs/REST_API.md`](REST_API.md) ([https://duckydeckstudio.com/REST_API.md](https://duckydeckstudio.com/REST_API.md))  
 **Support:** [☕ Buy Me a Coffee on Ko-fi (https://ko-fi.com/russellmilliner)](https://ko-fi.com/russellmilliner)  
 **License:** GPL-3.0-or-later  
@@ -20,7 +20,7 @@
 
 ## 1. System Overview & Design Philosophy
 
-**DuckyDeck Studio** (`v0.1.3`) is a native Linux desktop configurator, **DSVM v2 bytecode compiler**, **KDE Plasma 6 Wayland Auto-Switcher**, and **host automation daemon** for the **duckyPad Pro (`0x0483:0xd11d`)** and **duckyPad 2020 (`0x0483:0xd11c`)**.
+**DuckyDeck Studio** (`v0.1.4`) is a native Linux desktop configurator, **DSVM v2 bytecode compiler**, **KDE Plasma 6 Wayland Auto-Switcher**, and **host automation daemon** for the **duckyPad Pro (`0x0483:0xd11d`)** and **duckyPad 2020 (`0x0483:0xd11c`)**.
 
 ### Core Design Goals
 1. **Zero-Runtime-Wrapper Native Stack:** Built directly in **Rust (2021 edition)** bridged to **Qt 6 / KDE Frameworks 6 (Kirigami + KSyntaxHighlighting)** via **CXX-Qt 0.7**, avoiding Electron/Python packaging overhead while delivering native KDE Breeze theming and Wayland integration.
@@ -95,7 +95,7 @@ flowchart TB
 
 | Path | Responsibility |
 | :--- | :--- |
-| [`Cargo.toml`](../Cargo.toml) | Crate manifest (`version = "0.1.3"`, `cxx-qt 0.7`, `hidapi`, `zbus`, `tokio`, `reqwest`, `keyring`, `serde`, `serde_json`, `sha2`). |
+| [`Cargo.toml`](../Cargo.toml) | Crate manifest (`version = "0.1.4"`, `cxx-qt 0.7`, `hidapi`, `zbus`, `tokio`, `reqwest`, `keyring`, `serde`, `serde_json`, `sha2`). |
 | [`build.rs`](../build.rs) | `CxxQtBuilder` configuration registering QML module `io.github.duckydeck` and compiling [`src/bridge/device_controller.rs`](../src/bridge/device_controller.rs). |
 | [`src/main.rs`](../src/main.rs) | Application entrypoint: CLI & D-Bus single-instance IPC client, `QApplication` initialization, `KSyntaxHighlighting` registration, and QML engine startup. |
 | [`src/paths.rs`](../src/paths.rs) | XDG directory helpers (`XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_RUNTIME_DIR`) and environment sanitization. |
@@ -321,7 +321,7 @@ DuckyDeck Studio distinguishes between **Standalone Hardware-Portable Capabiliti
 
 ## 9.6 Firmware Versioning (`v1.0.0`) & Official Firmware Catalog Downloader (`src/hardware/firmware.rs`)
 
-- **DuckyDeck Studio Firmware (`v1.0.0`)**: Built from `firmware/duckyPad-Pro/firmware/` (`DPP_FW_1.0.0_ad2acc81.bin`, downloadable from the [GitHub Releases page](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.0.0)) and identified over USB HID `GET_INFO` (`0x00`) via the `'D', 'D', 'S'` signature at bytes `20..22`. Adds `0°/90°/180°/270°` hardware OLED orientation and `0x80..0x9F` 1-bit monochrome key icons.
+- **DuckyDeck Studio Firmware (`v1.0.0`)**: Built from `firmware/duckyPad-Pro/firmware/` (`DPP_FW_1.0.1_bf177326.bin`, downloadable from the [GitHub Releases page](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.0.0)) and identified over USB HID `GET_INFO` (`0x00`) via the `'D', 'D', 'S'` signature at bytes `20..22`. Adds `0°/90°/180°/270°` hardware OLED orientation and `0x80..0x9F` 1-bit monochrome key icons.
 - **Official dekuNukem Firmware Catalog Downloader**: `fetch_official_firmwares_from_site()` in [`src/hardware/firmware.rs`](../src/hardware/firmware.rs) queries the official `dekuNukem/duckyPad-Pro` GitHub repository to list available `DPP_FW_<ver>_<crc32>.bin` releases inside the Firmware Manager window and verifies IEEE CRC32 checksums before staging.
 
 ---
@@ -345,7 +345,7 @@ DuckyDeck Studio embeds a bounded, stoppable/restartable HTTP/1.1 REST API serve
 - Built against `org.kde.Platform//6.11` and `org.kde.Sdk//6.11` with `rust-stable` and `llvm22` SDK extensions.
 - **USB HID & Block Device Discovery:** Uses `--device=all` and `--filesystem=/run/udev:ro` for direct `/dev/hidraw*` and `/dev/disk/by-label` / `/dev/disk/by-id` enumeration.
 - **USB Mass Storage (`udisksctl`) Host Bridging:** Inside Flatpak (`/.flatpak-info` present), [`src/hardware/msc.rs`](../src/hardware/msc.rs) invokes `udisksctl`, `umount`, `sync`, and host `/proc/mounts` checks via `flatpak-spawn --host` (`--talk-name=org.freedesktop.Flatpak` and `--system-talk-name=org.freedesktop.UDisks2`) while reading/writing mounted volumes via `--filesystem=/run/media:rw` and `--filesystem=/media:rw`.
-- **Bundled Custom Firmware Discovery:** [`src/hardware/firmware.rs`](../src/hardware/firmware.rs) scans `/app/share/duckydeck-studio/firmware`, `/app/share/duckydeck-studio/firmware/releases`, and embeds `DPP_FW_1.0.0_ad2acc81.bin` as a compile-time fallback so the DuckyDeck Studio `v1.0.0` firmware is always available in the Firmware Manager.
+- **Bundled Custom Firmware Discovery:** [`src/hardware/firmware.rs`](../src/hardware/firmware.rs) scans `/app/share/duckydeck-studio/firmware`, `/app/share/duckydeck-studio/firmware/releases`, and embeds `DPP_FW_1.0.1_bf177326.bin` as a compile-time fallback so the DuckyDeck Studio `v1.0.0` firmware is always available in the Firmware Manager.
 
 ### Running Unit, Compiler, Native UI & Flatpak UI Checks
 ```bash
@@ -357,7 +357,7 @@ cargo test ui_test_suite::test_full_qml_ui_overflow_and_contrast_suite -- --igno
 
 # 3. Build & install the Flatpak bundle:
 bash scripts/build-flatpak.sh
-flatpak install --user -y --reinstall target/release/duckydeck-studio-v0.1.3-x86_64.flatpak
+flatpak install --user -y --reinstall target/release/duckydeck-studio-v0.1.4-x86_64.flatpak
 
 # 4. Run the Flatpak QML UI Overflow, Contrast & Behavioral Test Suite:
 bash scripts/test-flatpak-ui.sh

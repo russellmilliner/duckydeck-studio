@@ -702,7 +702,7 @@ Window {
                         Layout.minimumWidth: 0
                         wrapMode: Text.WordWrap
                         font.pointSize: 10 * root.fontScale
-                        text: qsTr("DuckyDeck Studio includes its custom DuckyDeck Studio Firmware v1.0.0 (with monochrome key icons & 0°/90°/180°/270° OLED orientation) and can fetch & download official dekuNukem firmware releases directly from github.com/dekuNukem/duckyPad-Pro.")
+                        text: qsTr("DuckyDeck Studio includes its custom DuckyDeck Studio Firmware v1.0.1 (with monochrome key icons & 0°/90°/180°/270° OLED orientation) and can fetch & download official dekuNukem firmware releases directly from github.com/dekuNukem/duckyPad-Pro.")
                         color: Kirigami.Theme.textColor
                     }
                 }

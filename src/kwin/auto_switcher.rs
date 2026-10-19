@@ -1,4 +1,3 @@
-use hidapi::HidApi;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
@@ -8,8 +7,7 @@ use tokio::sync::mpsc;
 use zbus::{interface, Result as ZbusResult};
 
 use crate::hardware::storage::{
-    DuckyProfile, DUCKYPAD_VID, HID_CMD_GOTO_PROFILE_BY_NUM, HID_CMD_QUERY_INFO, HID_REPORT_ID_OUT,
-    PID_DUCKYPAD_2020, PID_DUCKYPAD_PRO,
+    DuckyProfile, HID_CMD_GOTO_PROFILE_BY_NUM, HID_CMD_QUERY_INFO, HID_REPORT_ID_OUT,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2404,54 +2402,49 @@ pub fn send_hid_switch_profile(profile_number: u8) -> bool {
     LAST_SW_PROFILE_SWITCH_MS.store(current_epoch_ms(), std::sync::atomic::Ordering::SeqCst);
 
     let _guard = crate::hardware::storage::HID_IO_LOCK.lock().ok();
-    let Ok(api) = HidApi::new() else {
-        return false;
-    };
-
-    for pid in [PID_DUCKYPAD_PRO, PID_DUCKYPAD_2020] {
-        if let Ok(device) = api.open(DUCKYPAD_VID, pid) {
-            // Query current hardware profile first so we don't re-flash the OLED if already on `clamped`,
-            // while still switching if the user manually changed profiles on the physical device.
-            let mut qtx = [0u8; 64];
-            qtx[0] = HID_REPORT_ID_OUT;
-            qtx[1] = 0x76;
-            qtx[2] = HID_CMD_QUERY_INFO;
-            if device.write(&qtx).is_ok() {
-                let mut qrx = [0u8; 64];
-                if let Ok(n) = device.read_timeout(&mut qrx, 200) {
-                    if n >= 12 && qrx[2] == 0 && qrx[6] != 0 && qrx[11] == clamped {
-                        LAST_SW_PROFILE_SWITCH_MS
-                            .store(current_epoch_ms(), std::sync::atomic::Ordering::SeqCst);
-                        return true;
-                    }
-                }
-            }
-
-            for attempt in 0..6u8 {
-                let mut tx = [0u8; 64];
-                tx[0] = HID_REPORT_ID_OUT;
-                tx[1] = 0x77u8.wrapping_add(attempt);
-                tx[2] = HID_CMD_GOTO_PROFILE_BY_NUM;
-                tx[3] = clamped;
-
-                if device.write(&tx).is_ok() {
-                    let mut rx = [0u8; 64];
-                    if let Ok(n) = device.read_timeout(&mut rx, 500) {
-                        if n >= 3 && rx[2] == 2 {
-                            // HID_RESPONSE_BUSY: wait briefly and retry
-                            std::thread::sleep(std::time::Duration::from_millis(75));
-                            continue;
-                        }
-                    }
+    crate::hardware::storage::with_cached_duckypad_hid(|device| {
+        // Query current hardware profile first so we don't re-flash the OLED if already on `clamped`,
+        // while still switching if the user manually changed profiles on the physical device.
+        let mut qtx = [0u8; 64];
+        qtx[0] = HID_REPORT_ID_OUT;
+        qtx[1] = 0x76;
+        qtx[2] = HID_CMD_QUERY_INFO;
+        if device.write(&qtx).is_ok() {
+            let mut qrx = [0u8; 64];
+            if let Ok(n) = crate::hardware::storage::read_hid_report4(device, &mut qrx, 200) {
+                if n >= 12 && qrx[2] == 0 && qrx[6] != 0 && qrx[11] == clamped {
                     LAST_SW_PROFILE_SWITCH_MS
                         .store(current_epoch_ms(), std::sync::atomic::Ordering::SeqCst);
-                    return true;
+                    return Ok(true);
                 }
-                std::thread::sleep(std::time::Duration::from_millis(50));
             }
         }
-    }
-    false
+
+        for attempt in 0..6u8 {
+            let mut tx = [0u8; 64];
+            tx[0] = HID_REPORT_ID_OUT;
+            tx[1] = 0x77u8.wrapping_add(attempt);
+            tx[2] = HID_CMD_GOTO_PROFILE_BY_NUM;
+            tx[3] = clamped;
+
+            if device.write(&tx).is_ok() {
+                let mut rx = [0u8; 64];
+                if let Ok(n) = crate::hardware::storage::read_hid_report4(device, &mut rx, 500) {
+                    if n >= 3 && rx[2] == 2 {
+                        // HID_RESPONSE_BUSY: wait briefly and retry
+                        std::thread::sleep(std::time::Duration::from_millis(75));
+                        continue;
+                    }
+                }
+                LAST_SW_PROFILE_SWITCH_MS
+                    .store(current_epoch_ms(), std::sync::atomic::Ordering::SeqCst);
+                return Ok(true);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        Err("Failed switching profile over HID".to_string())
+    })
+    .unwrap_or(false)
 }
 
 pub async fn pick_window_via_kwin_dbus() -> std::result::Result<WindowChangeEvent, String> {

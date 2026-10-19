@@ -1936,6 +1936,16 @@ impl qobject::DeviceController {
                 .find(|p| p.number == active_num)
                 .or_else(|| rust.profiles.first())
             {
+                let has_pgv31 = prof.slots.values().any(|s| {
+                    s.on_press_script.contains("_GV31")
+                        || s.on_release_script.contains("_GV31")
+                        || crate::actions::web_api::has_web_api_config(&s.on_press_script)
+                        || crate::actions::web_api::has_web_api_config(&s.on_release_script)
+                        || crate::actions::app_launch::has_app_launch_config(&s.on_press_script)
+                        || crate::actions::app_launch::has_app_launch_config(&s.on_release_script)
+                });
+                crate::hardware::storage::ACTIVE_PROFILE_HAS_PGV31_TRIGGER
+                    .store(has_pgv31, std::sync::atomic::Ordering::SeqCst);
                 let bg_hex = format!(
                     "#{:02x}{:02x}{:02x}",
                     prof.bg_color[0], prof.bg_color[1], prof.bg_color[2]
@@ -1952,6 +1962,8 @@ impl qobject::DeviceController {
                     fb_num,
                 )
             } else {
+                crate::hardware::storage::ACTIVE_PROFILE_HAS_PGV31_TRIGGER
+                    .store(false, std::sync::atomic::Ordering::SeqCst);
                 (
                     "Default".to_string(),
                     "#00aaff".to_string(),
@@ -4040,32 +4052,32 @@ impl qobject::DeviceController {
                 // Background Hybrid Web API Trigger Listener (PGV _GV31 + evdev F13..F24)
                 tokio::spawn(async move {
                     let mut interval =
-                        tokio::time::interval(std::time::Duration::from_millis(45));
+                        tokio::time::interval(std::time::Duration::from_millis(50));
                     let mut evdev_listener = DuckypadEvdevListener::new();
-                    let mut idle_ticks = 0u32;
+                    let mut tick_count = 0u32;
                     loop {
                         interval.tick().await;
                         if crate::hardware::storage::MSC_SYNC_IN_PROGRESS
                             .load(std::sync::atomic::Ordering::SeqCst)
                         {
+                            crate::hardware::storage::invalidate_cached_hid_device();
                             continue;
                         }
 
-                        // 1. Poll evdev F13..F24 sentinel keys (fallback for duckyPad 2020 / fkey mode)
+                        // 1. Poll evdev F13..F24 sentinel keys + track EV_KEY press/release state
                         for fkey_name in evdev_listener.poll_fkey_triggers() {
                             let _ = web_api_qt_thread.queue(move |mut qobject| {
                                 qobject.as_mut().handle_hardware_fkey_web_api_trigger(&fkey_name);
                             });
                         }
 
-                        // 2. Poll silent PGV _GV31 hardware trigger (0x444Bxxxx)
-                        if !crate::hardware::storage::is_duckypad_hid_present() {
-                            idle_ticks = idle_ticks.saturating_add(1);
-                            if !idle_ticks.is_multiple_of(10) {
-                                continue;
-                            }
-                        } else {
-                            idle_ticks = 0;
+                        // 2. Poll silent PGV _GV31 hardware trigger (0x444Bxxxx) every 150ms when active profile uses PGV31
+                        tick_count = tick_count.wrapping_add(1);
+                        if !tick_count.is_multiple_of(3)
+                            || !crate::hardware::storage::ACTIVE_PROFILE_HAS_PGV31_TRIGGER
+                                .load(std::sync::atomic::Ordering::SeqCst)
+                        {
+                            continue;
                         }
 
                         if let Some((encoded_prof, slot_num, is_release)) =
@@ -4084,12 +4096,13 @@ impl qobject::DeviceController {
 
                 tokio::spawn(async move {
                     let mut interval =
-                        tokio::time::interval(std::time::Duration::from_millis(400));
+                        tokio::time::interval(std::time::Duration::from_millis(800));
                     loop {
                         interval.tick().await;
                         if crate::hardware::storage::MSC_SYNC_IN_PROGRESS
                             .load(std::sync::atomic::Ordering::SeqCst)
                         {
+                            crate::hardware::storage::invalidate_cached_hid_device();
                             continue;
                         }
                         let hid_present = crate::hardware::storage::is_duckypad_hid_present();

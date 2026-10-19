@@ -113,11 +113,19 @@ pub async fn check_latest_duckypad_firmware(
         }
     }
 
-    let (remote_semver, latest_version, download_url) =
+    let (remote_semver, mut latest_version, download_url) =
         best.ok_or_else(|| "No firmware image found in repository".to_string())?;
 
     let update_available = if is_duckydeck_studio_firmware_version(current_version) {
-        remote_semver > (3, 3, 5)
+        let curr_studio = parse_semver(current_version.split_whitespace().next().unwrap_or(""))
+            .map(|v| if v == (3, 4, 0) { (1, 0, 0) } else { v })
+            .unwrap_or((1, 0, 0));
+        if curr_studio < (1, 0, 1) {
+            latest_version = "1.0.1".to_string();
+            true
+        } else {
+            remote_semver > (3, 3, 5)
+        }
     } else {
         match parse_semver(current_version) {
             Some(curr_semver) => remote_semver > curr_semver,
@@ -215,7 +223,7 @@ pub fn is_duckydeck_studio_firmware_version(version: &str) -> bool {
         return true;
     }
     let clean = trimmed.trim_start_matches(['v', 'V']);
-    clean == "1.0.0" || clean == "3.4.0"
+    clean == "1.0.1" || clean == "1.0.0" || clean == "3.4.0"
 }
 
 pub fn compute_ieee_crc32(data: &[u8]) -> u32 {
@@ -238,10 +246,17 @@ fn firmware_release_metadata(
     is_studio_custom: bool,
 ) -> (&'static str, &'static str, &'static str) {
     if is_studio_custom {
+        if version == "1.0.0" {
+            return (
+                "DuckyDeck Studio Custom (v1.0.0)",
+                "Oct 17, 2026",
+                "DuckyDeck Studio custom firmware v1.0.0 (built on duckyPad Pro 3.3.5 / DSVM v2): adds native 1-bit monochrome pixel-art OLED icons (16×16 full-cell, 10×10 top-icon + caption, and 7×10 / 6×8 inline glyphs), 0°/90°/180°/270° OLED orientation, UTF-8 key label decoding, and DuckyDeck Studio HID identification.",
+            );
+        }
         return (
-            "DuckyDeck Studio Custom (v1.0.0)",
-            "Oct 17, 2026",
-            "DuckyDeck Studio custom firmware v1.0.0 (built on duckyPad Pro 3.3.5 / DSVM v2): adds native 1-bit monochrome pixel-art OLED icons (16×16 full-cell, 10×10 top-icon + caption, and 7×10 / 6×8 inline glyphs), 0°/90°/180°/270° OLED orientation, UTF-8 key label decoding, and DuckyDeck Studio HID identification.",
+            "DuckyDeck Studio Custom (v1.0.1)",
+            "Oct 19, 2026",
+            "DuckyDeck Studio custom firmware v1.0.1 (built on duckyPad Pro 3.3.5 / DSVM v2): fixes USB HID endpoint contention and stuck modifier/key states by waiting for USB endpoint readiness before sending custom HID reports and releasing held keyboard keys on profile switch and script abort/sleep; includes native 1-bit monochrome pixel-art OLED icons and 0°/90°/180°/270° OLED orientation.",
         );
     }
     match version {
@@ -273,9 +288,9 @@ fn firmware_release_metadata(
     }
 }
 
-const EMBEDDED_STUDIO_FW_FILENAME: &str = "DPP_FW_1.0.0_ad2acc81.bin";
+const EMBEDDED_STUDIO_FW_FILENAME: &str = "DPP_FW_1.0.1_bf177326.bin";
 const EMBEDDED_STUDIO_FW_BYTES: &[u8] =
-    include_bytes!("../../firmware/releases/DPP_FW_1.0.0_ad2acc81.bin");
+    include_bytes!("../../firmware/releases/DPP_FW_1.0.1_bf177326.bin");
 
 fn ensure_embedded_studio_firmware_cached() -> PathBuf {
     let user_fw_dir = crate::paths::data_dir().join("firmware");
@@ -349,7 +364,8 @@ pub fn list_available_duckypad_pro_firmwares(current_version: &str) -> Vec<Firmw
                 continue;
             }
             let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
-            let is_studio_custom = is_bundled_studio_dir || matches!(crc_str.as_str(), "ad2acc81");
+            let is_studio_custom =
+                is_bundled_studio_dir || matches!(crc_str.as_str(), "bf177326" | "ad2acc81");
             let is_official = !is_studio_custom;
             let (channel, release_date, notes) =
                 firmware_release_metadata(ver_str, is_studio_custom);
@@ -359,10 +375,15 @@ pub fn list_available_duckypad_pro_firmwares(current_version: &str) -> Vec<Firmw
                 "DuckyDeck Studio".to_string()
             };
             let supports_monochrome_icons = is_studio_custom;
+            let curr_clean = current_version
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_start_matches(['v', 'V']);
             let is_installed = if is_studio_custom {
                 is_duckydeck_studio_firmware_version(current_version)
-                    && (current_version.trim().trim_start_matches(['v', 'V']) == ver_str
-                        || current_version.trim() == "3.4.0")
+                    && (curr_clean == ver_str
+                        || (ver_str == "1.0.0" && curr_clean == "3.4.0"))
             } else {
                 !is_duckydeck_studio_firmware_version(current_version)
                     && current_version.trim().starts_with(ver_str)
@@ -486,7 +507,7 @@ pub async fn fetch_official_firmwares_from_site(
                 return;
             };
             let crc_str = parts.next().unwrap_or("").to_lowercase();
-            if crc_str.is_empty() || crc_str == "ad2acc81" {
+            if crc_str.is_empty() || matches!(crc_str.as_str(), "bf177326" | "ad2acc81") {
                 return;
             }
             let Some((maj, min, pat)) = parse_semver(ver_str) else {

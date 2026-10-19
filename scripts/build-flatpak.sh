@@ -48,7 +48,8 @@ flatpak build \
     install -Dm644 '$REPO_ROOT/data/syntax/duckyscript3.xml' -t /app/share/org.kde.syntax-highlighting/syntax/
     install -Dm644 '$REPO_ROOT/docs/user-guide.html' -t /app/share/duckydeck-studio/docs/
     install -Dm644 '$REPO_ROOT/docs/architecture.html' -t /app/share/duckydeck-studio/docs/
-    install -Dm644 '$REPO_ROOT/firmware/releases/DPP_FW_1.0.0_ad2acc81.bin' -t /app/share/duckydeck-studio/firmware/
+    install -Dm644 '$REPO_ROOT/firmware/releases/DPP_FW_1.0.1_bf177326.bin' -t /app/share/duckydeck-studio/firmware/
+    install -Dm644 '$REPO_ROOT/firmware/releases/DPP_FW_1.0.1_bf177326.bin' -t /app/share/duckydeck-studio/firmware/releases/
     install -Dm644 '$REPO_ROOT/firmware/releases/DPP_FW_1.0.0_ad2acc81.bin' -t /app/share/duckydeck-studio/firmware/releases/
   "
 
