@@ -1219,7 +1219,6 @@ Kirigami.ApplicationWindow {
                 if (deviceController) {
                     deviceController.minimizeToTray()
                 }
-                root.hide()
             })
         }
     }
@@ -1227,8 +1226,11 @@ Kirigami.ApplicationWindow {
     onClosing: (close) => {
         if (deviceController && deviceController.closeToTray) {
             close.accepted = false
-            deviceController.minimizeToTray()
-            root.hide()
+            Qt.callLater(function() {
+                if (deviceController) {
+                    deviceController.minimizeToTray()
+                }
+            })
         }
     }
 

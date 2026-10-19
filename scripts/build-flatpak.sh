@@ -37,6 +37,7 @@ flatpak build \
   "$WORK_DIR/build-dir" \
   sh -c "
     set -euo pipefail
+    rm -rf \"\$CARGO_TARGET_DIR\"/release/build/duckydeck-studio-* \"\$CARGO_TARGET_DIR\"/release/.fingerprint/duckydeck-studio-*
     cargo build --release --manifest-path '$REPO_ROOT/Cargo.toml'
     install -Dm755 \"\$CARGO_TARGET_DIR/release/duckydeck-studio\" -t /app/bin/
     install -Dm644 '$REPO_ROOT/data/io.github.duckydeck.Studio.desktop' -t /app/share/applications/
@@ -69,6 +70,7 @@ flatpak build-finish "$WORK_DIR/build-dir" \
   --filesystem=xdg-data/duckydeck-studio:create \
   --filesystem=xdg-data/duckypad_config:ro \
   --filesystem=xdg-data/duckypad_autoswitcher:ro \
+  --filesystem=xdg-config/duckypad_autoprofile:ro \
   --filesystem=xdg-run/duckydeck-studio:create \
   --talk-name=org.kde.KWin \
   --talk-name=org.kde.StatusNotifierWatcher \
@@ -82,3 +84,8 @@ flatpak build-bundle "$WORK_DIR/repo" "$OUT_DIR/$BUNDLE_NAME" io.github.duckydec
 (cd "$OUT_DIR" && sha256sum "$BUNDLE_NAME" > "${BUNDLE_NAME}.sha256" && ln -sf "$BUNDLE_NAME" duckydeck-studio.flatpak)
 
 echo "==> Built Flatpak bundle: $OUT_DIR/$BUNDLE_NAME"
+
+if [[ "${1:-}" != "--no-install" ]]; then
+  echo "==> Installing Flatpak bundle into user installation..."
+  flatpak install --user -y --reinstall "$OUT_DIR/$BUNDLE_NAME"
+fi
