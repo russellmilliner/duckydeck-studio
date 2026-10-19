@@ -2055,18 +2055,28 @@ pub fn extract_inline_regex_pattern(raw: &str) -> Option<(&str, bool)> {
 }
 
 pub fn has_regex_metacharacters(pattern: &str) -> bool {
-    pattern.contains('|')
-        || pattern.contains('^')
-        || pattern.contains('$')
-        || pattern.contains(".*")
-        || pattern.contains(".+")
-        || pattern.contains(".?")
-        || pattern.contains("\\b")
-        || pattern.contains("\\d")
-        || pattern.contains("\\w")
-        || pattern.contains("\\s")
-        || (pattern.contains('[') && pattern.contains(']'))
-        || (pattern.contains('(') && pattern.contains(')'))
+    let trimmed = pattern.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    let has_non_empty_alternation = trimmed.contains('|')
+        && !trimmed.starts_with('|')
+        && !trimmed.ends_with('|')
+        && trimmed
+            .split('|')
+            .all(|part| !part.is_empty() && !part.starts_with(' ') && !part.ends_with(' '));
+    has_non_empty_alternation
+        || trimmed.starts_with('^')
+        || trimmed.ends_with('$')
+        || trimmed.contains(".*")
+        || trimmed.contains(".+")
+        || trimmed.contains(".?")
+        || trimmed.contains("\\b")
+        || trimmed.contains("\\d")
+        || trimmed.contains("\\w")
+        || trimmed.contains("\\s")
+        || (trimmed.contains('[') && trimmed.contains(']'))
+        || (trimmed.contains('(') && trimmed.contains(')'))
 }
 
 pub fn validate_title_regex(pattern_raw: &str) -> Result<(), String> {
@@ -2108,13 +2118,20 @@ pub fn rule_matches_window_title(
     }
 
     if title_is_regex {
-        if let Ok(re) = regex::RegexBuilder::new(sub)
+        // Guard against leading/trailing unescaped `|` producing a 0-length match on every window
+        let sanitized = sub.trim_matches('|').trim();
+        if sanitized.is_empty() {
+            return None;
+        }
+        if let Ok(re) = regex::RegexBuilder::new(sanitized)
             .case_insensitive(true)
             .size_limit(256 * 1024)
             .build()
         {
             if let Some(mat) = re.find(caption) {
-                return Some(mat.len().max(sub.len()).max(1));
+                if !mat.is_empty() || sanitized == "^$" {
+                    return Some(mat.len().max(sanitized.len()).max(1));
+                }
             }
             return None;
         }
@@ -2136,7 +2153,9 @@ pub fn rule_matches_window_title(
             .build()
         {
             if let Some(mat) = re.find(caption) {
-                return Some(mat.len().max(sub.len()).max(1));
+                if !mat.is_empty() {
+                    return Some(mat.len().max(sub.len()).max(1));
+                }
             }
         }
     }

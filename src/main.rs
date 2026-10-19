@@ -2170,5 +2170,24 @@ mod ui_test_suite {
             sw.match_profile_for_window("firefox", "Twitch Stream — Mozilla Firefox"),
             Some(5)
         );
+
+        // Regression test: literal "| Microsoft Teams" (leading pipe separator) must NOT match
+        // "Messages - Google Messages for web" via empty regex alternation branch `|...`
+        assert!(rule_matches_window_title(
+            "| Microsoft Teams",
+            false,
+            "Messages - Google Messages for web",
+            "messages - google messages for web"
+        )
+        .is_none());
+        assert_eq!(
+            rule_matches_window_title(
+                "Messages -",
+                false,
+                "Messages - Google Messages for web",
+                "messages - google messages for web"
+            ),
+            Some(10)
+        );
     }
 }
