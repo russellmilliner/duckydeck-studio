@@ -67,6 +67,8 @@ pub mod qobject {
         #[qproperty(i32, default_fallback_profile)]
         #[qproperty(i32, auto_switch_settle_ms)]
         #[qproperty(i32, auto_switch_dwell_ms)]
+        #[qproperty(bool, autoswitch_enable_section_expanded)]
+        #[qproperty(bool, autoswitch_rule_editor_expanded)]
         #[qproperty(QString, active_window_class)]
         #[qproperty(QString, active_window_title)]
         #[qproperty(bool, window_picker_armed)]
@@ -268,6 +270,18 @@ pub mod qobject {
 
         #[qinvokable]
         fn set_auto_switch_timings(self: Pin<&mut DeviceController>, settle_ms: i32, dwell_ms: i32);
+
+        #[qinvokable]
+        #[cxx_name = "setAutoSwitchSectionsExpanded"]
+        fn set_auto_switch_sections_expanded(
+            self: Pin<&mut DeviceController>,
+            enable_expanded: bool,
+            rule_editor_expanded: bool,
+        );
+
+        #[qinvokable]
+        #[cxx_name = "reloadAutoSwitchSectionsFromDisk"]
+        fn reload_auto_switch_sections_from_disk(self: Pin<&mut DeviceController>);
 
         #[qinvokable]
         fn set_script_editor_open(self: Pin<&mut DeviceController>, open: bool);
@@ -944,6 +958,8 @@ pub struct DeviceControllerRust {
     pub(crate) default_fallback_profile: i32,
     pub(crate) auto_switch_settle_ms: i32,
     pub(crate) auto_switch_dwell_ms: i32,
+    pub(crate) autoswitch_enable_section_expanded: bool,
+    pub(crate) autoswitch_rule_editor_expanded: bool,
     pub(crate) active_window_class: QString,
     pub(crate) active_window_title: QString,
     pub(crate) window_picker_armed: bool,
@@ -1152,6 +1168,8 @@ impl Default for DeviceControllerRust {
         let fallback_prof = clamped_fb as i32;
         let settle_ms = switcher.mouse_settle_ms.clamp(0, 5000);
         let dwell_ms = switcher.window_dwell_ms.clamp(0, 5000);
+        let enable_sec_expanded = switcher.autoswitch_enable_section_expanded;
+        let rule_editor_expanded = switcher.autoswitch_rule_editor_expanded;
         let tray_mode = switcher.tray_icon_mode.clone();
         let app_theme = switcher.app_theme_mode.clone();
         let close_tray = switcher.close_to_tray;
@@ -1265,6 +1283,8 @@ impl Default for DeviceControllerRust {
             default_fallback_profile: fallback_prof,
             auto_switch_settle_ms: settle_ms,
             auto_switch_dwell_ms: dwell_ms,
+            autoswitch_enable_section_expanded: enable_sec_expanded,
+            autoswitch_rule_editor_expanded: rule_editor_expanded,
             active_window_class: QString::from("Listening for KWin..."),
             active_window_title: QString::from(""),
             window_picker_armed: false,
@@ -4381,6 +4401,56 @@ impl qobject::DeviceController {
             "Auto-Switcher timings set: mouse settle = {} ms, window dwell = {} ms",
             clamped_settle, clamped_dwell
         )));
+    }
+
+    pub fn set_auto_switch_sections_expanded(
+        mut self: Pin<&mut Self>,
+        enable_expanded: bool,
+        rule_editor_expanded: bool,
+    ) {
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                if sw.autoswitch_enable_section_expanded != enable_expanded
+                    || sw.autoswitch_rule_editor_expanded != rule_editor_expanded
+                {
+                    sw.autoswitch_enable_section_expanded = enable_expanded;
+                    sw.autoswitch_rule_editor_expanded = rule_editor_expanded;
+                    if let Err(e) = sw.save_to_disk() {
+                        record_system_event(
+                            "WARN",
+                            "CONFIG",
+                            format!("Failed saving auto-switch section states: {e}"),
+                        );
+                    }
+                }
+            }
+        }
+        self.as_mut()
+            .set_autoswitch_enable_section_expanded(enable_expanded);
+        self.as_mut()
+            .set_autoswitch_rule_editor_expanded(rule_editor_expanded);
+    }
+
+    pub fn reload_auto_switch_sections_from_disk(mut self: Pin<&mut Self>) {
+        let (enable_exp, rule_exp) = SwitcherState::load_config_from_disk()
+            .map(|c| {
+                (
+                    c.autoswitch_enable_section_expanded,
+                    c.autoswitch_rule_editor_expanded,
+                )
+            })
+            .unwrap_or((true, true));
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                sw.autoswitch_enable_section_expanded = enable_exp;
+                sw.autoswitch_rule_editor_expanded = rule_exp;
+            }
+        }
+        self.as_mut()
+            .set_autoswitch_enable_section_expanded(enable_exp);
+        self.as_mut().set_autoswitch_rule_editor_expanded(rule_exp);
     }
 
     pub fn arm_window_picker(mut self: Pin<&mut Self>, bind_to_active_profile: bool) {

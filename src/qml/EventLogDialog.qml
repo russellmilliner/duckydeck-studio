@@ -1383,22 +1383,48 @@ Window {
                 "fwCount=" + fwList.length + " studioFw=" + (studioFw ? studioFw.filename + "@" + studioFw.path : "missing")
             )
 
-            // 14. Auto-Switcher Rules window twist minimize & auto-expand on rule double-click
+            // 14. Auto-Switcher Rules window twist minimize, disk persistence/restore, & auto-expand on rule double-click
             autoSwitchDrawer.enableSectionExpanded = false
-            var enableMinimizedOk = autoSwitchDrawer.enableSectionExpanded === false
-            autoSwitchDrawer.enableSectionExpanded = true
-            var enableRestoredOk = autoSwitchDrawer.enableSectionExpanded === true
             autoSwitchDrawer.ruleEditorSectionExpanded = false
+            var enableMinimizedOk = autoSwitchDrawer.enableSectionExpanded === false
             var ruleMinimizedOk = autoSwitchDrawer.ruleEditorSectionExpanded === false
+            deviceController.reloadAutoSwitchSectionsFromDisk()
+            var persistedMinimizedOk = (
+                deviceController.autoswitchEnableSectionExpanded === false
+                && deviceController.autoswitchRuleEditorExpanded === false
+                && autoSwitchDrawer.enableSectionExpanded === false
+                && autoSwitchDrawer.ruleEditorSectionExpanded === false
+            )
             autoSwitchDrawer.loadRuleIntoEditor(0, "code", "", "", 1, false)
             var ruleAutoExpandedOnDoubleClickOk = autoSwitchDrawer.ruleEditorSectionExpanded === true
+            deviceController.reloadAutoSwitchSectionsFromDisk()
+            var persistedAfterAutoExpandOk = (
+                deviceController.autoswitchEnableSectionExpanded === false
+                && deviceController.autoswitchRuleEditorExpanded === true
+            )
+            autoSwitchDrawer.setSectionsExpanded(true, true)
+            deviceController.reloadAutoSwitchSectionsFromDisk()
+            var enableRestoredOk = (
+                autoSwitchDrawer.enableSectionExpanded === true
+                && autoSwitchDrawer.ruleEditorSectionExpanded === true
+                && deviceController.autoswitchEnableSectionExpanded === true
+                && deviceController.autoswitchRuleEditorExpanded === true
+            )
             autoSwitchDrawer.editingRuleIndex = -1
             recordBehavior(
                 "autoswitch_sections_twist_minimize_and_auto_expand_on_double_click",
-                enableMinimizedOk && enableRestoredOk && ruleMinimizedOk && ruleAutoExpandedOnDoubleClickOk,
+                enableMinimizedOk
+                    && ruleMinimizedOk
+                    && persistedMinimizedOk
+                    && ruleAutoExpandedOnDoubleClickOk
+                    && persistedAfterAutoExpandOk
+                    && enableRestoredOk,
                 "enableMin=" + enableMinimizedOk
                     + " ruleMin=" + ruleMinimizedOk
+                    + " persistedMin=" + persistedMinimizedOk
                     + " autoExpand=" + ruleAutoExpandedOnDoubleClickOk
+                    + " persistedAutoExpand=" + persistedAfterAutoExpandOk
+                    + " restored=" + enableRestoredOk
             )
 
             // 15. Auto-Switcher regex title matching & validation support

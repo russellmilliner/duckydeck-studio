@@ -170,6 +170,10 @@ pub struct PersistedSwitcherConfig {
     pub profile_webhook_headers: String,
     #[serde(default)]
     pub profile_webhook_body: String,
+    #[serde(default = "default_true")]
+    pub autoswitch_enable_section_expanded: bool,
+    #[serde(default = "default_true")]
+    pub autoswitch_rule_editor_expanded: bool,
 }
 
 #[derive(Clone)]
@@ -201,6 +205,8 @@ pub struct SwitcherState {
     pub profile_webhook_url: String,
     pub profile_webhook_headers: String,
     pub profile_webhook_body: String,
+    pub autoswitch_enable_section_expanded: bool,
+    pub autoswitch_rule_editor_expanded: bool,
     pub last_switched_profile: u8,
     pub picker_armed: bool,
     pub loaded_from_disk: bool,
@@ -270,6 +276,8 @@ impl Default for SwitcherState {
                 profile_webhook_url: cfg.profile_webhook_url.trim().to_string(),
                 profile_webhook_headers: cfg.profile_webhook_headers.trim().to_string(),
                 profile_webhook_body: cfg.profile_webhook_body,
+                autoswitch_enable_section_expanded: cfg.autoswitch_enable_section_expanded,
+                autoswitch_rule_editor_expanded: cfg.autoswitch_rule_editor_expanded,
                 last_switched_profile: 0,
                 picker_armed: false,
                 loaded_from_disk: true,
@@ -329,6 +337,8 @@ impl Default for SwitcherState {
             profile_webhook_url: String::new(),
             profile_webhook_headers: default_webhook_headers(),
             profile_webhook_body: String::new(),
+            autoswitch_enable_section_expanded: true,
+            autoswitch_rule_editor_expanded: true,
             last_switched_profile: 0,
             picker_armed: false,
             loaded_from_disk: false,
@@ -600,6 +610,8 @@ impl SwitcherState {
             profile_webhook_url: self.profile_webhook_url.clone(),
             profile_webhook_headers: self.profile_webhook_headers.clone(),
             profile_webhook_body: self.profile_webhook_body.clone(),
+            autoswitch_enable_section_expanded: self.autoswitch_enable_section_expanded,
+            autoswitch_rule_editor_expanded: self.autoswitch_rule_editor_expanded,
         };
         let json = serde_json::to_string_pretty(&payload)
             .map_err(|e| format!("Failed serializing KWin rules: {e}"))?;

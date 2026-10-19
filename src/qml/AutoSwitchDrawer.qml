@@ -26,8 +26,38 @@ Window {
     property string previousSpecificClass: ""
     property int settleMsValue: controller ? controller.autoSwitchSettleMs : 250
     property int dwellMsValue: controller ? controller.autoSwitchDwellMs : 150
-    property bool enableSectionExpanded: true
-    property bool ruleEditorSectionExpanded: true
+    property bool enableSectionExpanded: controller ? controller.autoswitchEnableSectionExpanded : true
+    property bool ruleEditorSectionExpanded: controller ? controller.autoswitchRuleEditorExpanded : true
+
+    function setSectionsExpanded(enableExp, ruleExp) {
+        const nextEnable = !!enableExp
+        const nextRule = !!ruleExp
+        drawerRoot.enableSectionExpanded = nextEnable
+        drawerRoot.ruleEditorSectionExpanded = nextRule
+        if (drawerRoot.controller) {
+            drawerRoot.controller.setAutoSwitchSectionsExpanded(nextEnable, nextRule)
+        }
+    }
+
+    onEnableSectionExpandedChanged: {
+        if (drawerRoot.controller
+            && drawerRoot.controller.autoswitchEnableSectionExpanded !== drawerRoot.enableSectionExpanded) {
+            drawerRoot.controller.setAutoSwitchSectionsExpanded(
+                drawerRoot.enableSectionExpanded,
+                drawerRoot.ruleEditorSectionExpanded
+            )
+        }
+    }
+
+    onRuleEditorSectionExpandedChanged: {
+        if (drawerRoot.controller
+            && drawerRoot.controller.autoswitchRuleEditorExpanded !== drawerRoot.ruleEditorSectionExpanded) {
+            drawerRoot.controller.setAutoSwitchSectionsExpanded(
+                drawerRoot.enableSectionExpanded,
+                drawerRoot.ruleEditorSectionExpanded
+            )
+        }
+    }
 
     property int contextMenuRuleIndex: -1
     property string contextMenuResourceClass: ""
@@ -256,6 +286,8 @@ Window {
         if (!controller) return
         const savedScrollY = rulesListView ? rulesListView.contentY : 0
 
+        drawerRoot.enableSectionExpanded = controller.autoswitchEnableSectionExpanded
+        drawerRoot.ruleEditorSectionExpanded = controller.autoswitchRuleEditorExpanded
         drawerRoot.settleMsValue = controller.autoSwitchSettleMs
         drawerRoot.dwellMsValue = controller.autoSwitchDwellMs
         if (!mouseSettleInput.activeFocus) {
@@ -386,6 +418,16 @@ Window {
         }
         function onDefaultFallbackProfileChanged() {
             drawerRoot.syncFromController()
+        }
+        function onAutoswitchEnableSectionExpandedChanged() {
+            if (drawerRoot.controller) {
+                drawerRoot.enableSectionExpanded = drawerRoot.controller.autoswitchEnableSectionExpanded
+            }
+        }
+        function onAutoswitchRuleEditorExpandedChanged() {
+            if (drawerRoot.controller) {
+                drawerRoot.ruleEditorSectionExpanded = drawerRoot.controller.autoswitchRuleEditorExpanded
+            }
         }
         function onAutoSwitchSettleMsChanged() {
             if (drawerRoot.controller) {
