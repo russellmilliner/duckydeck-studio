@@ -37,6 +37,7 @@ fn main() {
                 "src/qml/SettingsPage.qml",
                 "src/qml/SdSyncDialog.qml",
                 "src/qml/RestApiSettings.qml",
+                "src/qml/ProfileWizardDialog.qml",
             ],
             qrc_files: &[
                 "src/qml/icons/tray-icon-dark.svg",
@@ -66,6 +67,7 @@ fn main() {
     println!("cargo:rerun-if-changed=src/qml/SettingsPage.qml");
     println!("cargo:rerun-if-changed=src/qml/SdSyncDialog.qml");
     println!("cargo:rerun-if-changed=src/qml/RestApiSettings.qml");
+    println!("cargo:rerun-if-changed=src/qml/ProfileWizardDialog.qml");
     println!("cargo:rustc-link-lib=KF6ColorScheme");
     println!("cargo:rustc-link-lib=KF6ConfigCore");
     println!("cargo:rustc-link-lib=KF6IconThemes");

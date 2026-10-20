@@ -129,6 +129,9 @@ pub mod qobject {
         #[qproperty(bool, firmware_fetch_busy)]
         #[qproperty(bool, show_first_run_dialog)]
         #[qproperty(QString, onboarding_state_json)]
+        #[qproperty(bool, google_search_shortcuts_permitted)]
+        #[qproperty(bool, search_shortcuts_busy)]
+        #[qproperty(QString, discovered_shortcuts_json)]
         type DeviceController = super::DeviceControllerRust;
 
         #[qinvokable]
@@ -852,6 +855,40 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "dismissFirstRunDialog"]
         fn dismiss_first_run_dialog(self: Pin<&mut DeviceController>);
+
+        #[qinvokable]
+        #[cxx_name = "searchAppShortcuts"]
+        fn search_app_shortcuts(
+            self: Pin<&mut DeviceController>,
+            app_name: QString,
+            allow_google: bool,
+        );
+
+        #[qinvokable]
+        #[cxx_name = "setGoogleSearchPermission"]
+        fn set_google_search_permission(
+            self: Pin<&mut DeviceController>,
+            permitted: bool,
+        );
+
+        #[qinvokable]
+        #[cxx_name = "createWizardProfile"]
+        fn create_wizard_profile(
+            self: Pin<&mut DeviceController>,
+            wizard_json: QString,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "assignShortcutToKeySlot"]
+        fn assign_shortcut_to_key_slot(
+            self: Pin<&mut DeviceController>,
+            profile_num: i32,
+            slot: i32,
+            action: QString,
+            shortcut: QString,
+            duckyscript: QString,
+            category: QString,
+        ) -> bool;
     }
 
     impl cxx_qt::Threading for DeviceController {}
@@ -1029,6 +1066,9 @@ pub struct DeviceControllerRust {
     pub(crate) firmware_fetch_busy: bool,
     pub(crate) show_first_run_dialog: bool,
     pub(crate) onboarding_state_json: QString,
+    pub(crate) google_search_shortcuts_permitted: bool,
+    pub(crate) search_shortcuts_busy: bool,
+    pub(crate) discovered_shortcuts_json: QString,
     pub(crate) copied_key_slot: Option<DuckyKeySlot>,
     pub(crate) firmware_download_url: String,
     pub(crate) sd_root_path: Option<PathBuf>,
@@ -1183,6 +1223,7 @@ impl Default for DeviceControllerRust {
         let tray_mode = switcher.tray_icon_mode.clone();
         let app_theme = switcher.app_theme_mode.clone();
         let close_tray = switcher.close_to_tray;
+        let google_shortcuts_permitted = switcher.google_search_shortcuts_permitted;
         let text_scale = switcher.ui_text_scale.clamp(75, 160);
         qobject::duckydeck_apply_ui_font_scale(text_scale);
         let sidebar_scale = text_scale;
@@ -1359,6 +1400,9 @@ impl Default for DeviceControllerRust {
             firmware_fetch_busy: false,
             show_first_run_dialog: show_first_run,
             onboarding_state_json: QString::from(&onboarding_json),
+            google_search_shortcuts_permitted: google_shortcuts_permitted,
+            search_shortcuts_busy: false,
+            discovered_shortcuts_json: QString::from("[]"),
             copied_key_slot: None,
             firmware_download_url: String::new(),
             sd_root_path,
@@ -7901,6 +7945,299 @@ impl qobject::DeviceController {
             self.as_mut()
                 .set_status_message(QString::from(&summary_msg));
         }
+        true
+    }
+
+    pub fn search_app_shortcuts(
+        mut self: Pin<&mut Self>,
+        app_name: QString,
+        allow_google: bool,
+    ) {
+        let app = app_name.to_string();
+        self.as_mut().set_search_shortcuts_busy(true);
+
+        let qt_thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let results = crate::ai::web_shortcuts::search_app_shortcuts(&app, allow_google);
+            let json = serde_json::to_string(&results).unwrap_or_else(|_| "[]".to_string());
+            let _ = qt_thread.queue(move |mut ctrl| {
+                ctrl.as_mut().set_discovered_shortcuts_json(QString::from(&json));
+                ctrl.as_mut().set_search_shortcuts_busy(false);
+            });
+        });
+    }
+
+    pub fn set_google_search_permission(
+        mut self: Pin<&mut Self>,
+        permitted: bool,
+    ) {
+        self.as_mut().set_google_search_shortcuts_permitted(permitted);
+        let rust = self.as_mut().rust_mut().get_mut();
+        if let Ok(mut sw) = rust.switcher_state.lock() {
+            sw.google_search_shortcuts_permitted = permitted;
+            let _ = sw.save_to_disk();
+        }
+    }
+
+    pub fn assign_shortcut_to_key_slot(
+        mut self: Pin<&mut Self>,
+        profile_num: i32,
+        slot: i32,
+        action: QString,
+        shortcut: QString,
+        duckyscript: QString,
+        _category: QString,
+    ) -> bool {
+        let act_str = action.to_string();
+        let sc_str = shortcut.to_string();
+        let ds_str = duckyscript.to_string();
+        let target_prof = if profile_num > 0 {
+            profile_num as u8
+        } else {
+            *self.active_profile() as u8
+        };
+        let slot_idx = slot.clamp(1, MAX_INPUT_SLOTS as i32) as usize;
+
+        let (l1, l2) = crate::ai::web_shortcuts::make_smart_labels(&act_str, &sc_str);
+
+        let script = if ds_str.trim().is_empty() {
+            crate::ai::web_shortcuts::shortcut_to_duckyscript(&sc_str, &act_str)
+        } else {
+            ds_str
+        };
+
+        let updated = {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Some(prof) = rust.profiles.iter_mut().find(|p| p.number == target_prof) {
+                let key_slot = prof.ensure_slot(slot_idx);
+                key_slot.label_line1 = l1.clone();
+                key_slot.label_line2 = l2.clone();
+                key_slot.on_press_script = script;
+
+                if let Some(ref sd_root) = rust.sd_root_path {
+                    let _ = prof.save_to_sd_root(sd_root);
+                }
+                let sn = rust.serial_number.to_string();
+                sync_profiles_to_device_cache(&sn, &rust.profiles);
+                true
+            } else {
+                false
+            }
+        };
+
+        if updated {
+            let active_num = *self.active_profile() as u8;
+            if target_prof == active_num {
+                let rust = self.as_mut().rust_mut().get_mut();
+                if let Some(prof) = rust.profiles.iter().find(|p| p.number == active_num) {
+                    let slots_json = DeviceControllerRust::serialize_profile_slots(prof);
+                    self.as_mut()
+                        .set_active_profile_slots_json(QString::from(&slots_json));
+                }
+            }
+            self.as_mut().set_status_message(QString::from(&format!(
+                "Assigned shortcut '{}' ({}) to Key {}",
+                act_str, sc_str, slot_idx
+            )));
+        }
+        updated
+    }
+
+    pub fn create_wizard_profile(mut self: Pin<&mut Self>, wizard_json: QString) -> bool {
+        #[derive(serde::Deserialize)]
+        struct WizardSlotInput {
+            slot: usize,
+            #[serde(default)]
+            label1: String,
+            #[serde(default)]
+            label2: String,
+            #[serde(default)]
+            script: String,
+            #[serde(default)]
+            action: String,
+            #[serde(default)]
+            shortcut: String,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct WizardProfileInput {
+            name: String,
+            #[serde(default)]
+            slot_number: Option<u8>,
+            #[serde(default)]
+            template_id: Option<String>,
+            #[serde(default)]
+            bg_color: Option<[u8; 3]>,
+            #[serde(default)]
+            keydown_color: Option<[u8; 3]>,
+            #[serde(default)]
+            dim_unused_keys: Option<bool>,
+            #[serde(default)]
+            auto_switch_class: Option<String>,
+            #[serde(default)]
+            auto_switch_title: Option<String>,
+            #[serde(default)]
+            auto_switch_enabled: Option<bool>,
+            #[serde(default)]
+            slots: Vec<WizardSlotInput>,
+        }
+
+        let json_str = wizard_json.to_string();
+        let input: WizardProfileInput = match serde_json::from_str(&json_str) {
+            Ok(v) => v,
+            Err(e) => {
+                self.as_mut().set_status_message(QString::from(&format!(
+                    "Invalid wizard profile JSON: {e}"
+                )));
+                return false;
+            }
+        };
+
+        let trimmed_name = input.name.trim().to_string();
+        if trimmed_name.is_empty() {
+            self.as_mut()
+                .set_status_message(QString::from("Profile name cannot be blank"));
+            return false;
+        }
+
+        let clean_name: String = trimmed_name
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == ' ' || *c == '-' || *c == '_')
+            .take(16)
+            .collect();
+        if clean_name.is_empty() {
+            return false;
+        }
+
+        let (target_num, is_dpp) = {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if rust.profiles.len() >= 64 {
+                return false;
+            }
+            let is_dpp = rust
+                .sd_root_path
+                .as_ref()
+                .map(|r| r.join("profile_info.txt").is_file())
+                .unwrap_or(true);
+            let next_num = input
+                .slot_number
+                .unwrap_or_else(|| (rust.profiles.len() + 1) as u8)
+                .clamp(1, 64);
+            (next_num, is_dpp)
+        };
+
+        let mut prof = if let Some(ref tpl) = input.template_id {
+            if !tpl.trim().is_empty() && tpl != "builtin_blank" {
+                instantiate_profile_from_template(tpl, target_num, &clean_name)
+            } else {
+                DuckyProfile {
+                    number: target_num,
+                    name: clean_name.clone(),
+                    ..Default::default()
+                }
+            }
+        } else {
+            DuckyProfile {
+                number: target_num,
+                name: clean_name.clone(),
+                ..Default::default()
+            }
+        };
+
+        prof.number = target_num;
+        prof.name = clean_name.clone();
+        if is_dpp {
+            prof.folder_name_override = Some(format!("profile_{clean_name}"));
+        }
+
+        if let Some(bg) = input.bg_color {
+            prof.bg_color = bg;
+        }
+        if let Some(kd) = input.keydown_color {
+            prof.keydown_color = Some(kd);
+        }
+        if let Some(dim) = input.dim_unused_keys {
+            prof.dim_unused_keys = dim;
+        }
+
+        // Apply slots
+        for slot_item in input.slots {
+            let s_idx = slot_item.slot.clamp(1, MAX_INPUT_SLOTS);
+
+            let mut l1 = slot_item.label1;
+            let mut l2 = slot_item.label2;
+            let mut script = slot_item.script;
+
+            if (l1.is_empty() || l2.is_empty()) && (!slot_item.action.is_empty() || !slot_item.shortcut.is_empty()) {
+                let (gen_l1, gen_l2) = crate::ai::web_shortcuts::make_smart_labels(&slot_item.action, &slot_item.shortcut);
+                if l1.is_empty() { l1 = gen_l1; }
+                if l2.is_empty() { l2 = gen_l2; }
+            }
+
+            if script.trim().is_empty() && !slot_item.shortcut.is_empty() {
+                script = crate::ai::web_shortcuts::shortcut_to_duckyscript(&slot_item.shortcut, &slot_item.action);
+            }
+
+            let target_slot = prof.ensure_slot(s_idx);
+            target_slot.label_line1 = l1.chars().take(5).collect();
+            target_slot.label_line2 = l2.chars().take(5).collect();
+            target_slot.on_press_script = script;
+        }
+
+        // Save to SD root if mounted
+        let mut saved = false;
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Some(ref sd_root) = rust.sd_root_path {
+                if prof.save_to_sd_root(sd_root).is_ok() {
+                    saved = true;
+                    let _ = save_profile_order_to_sd(sd_root, &rust.profiles);
+                }
+            }
+            let sn = rust.serial_number.to_string();
+            rust.profiles.push(prof);
+            sync_profiles_to_device_cache(&sn, &rust.profiles);
+        }
+
+        // Auto-switch rule creation
+        let auto_switch_class = input.auto_switch_class.unwrap_or_default().trim().to_string();
+        let auto_enabled = input.auto_switch_enabled.unwrap_or(true);
+        if auto_enabled && !auto_switch_class.is_empty() {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                // If a rule for this class already exists, point it to this profile; otherwise append
+                if let Some(existing) = sw.rules.iter_mut().find(|r| r.resource_class.eq_ignore_ascii_case(&auto_switch_class)) {
+                    existing.target_profile = target_num;
+                    existing.enabled = true;
+                } else {
+                    sw.rules.push(AutoSwitchRule {
+                        enabled: true,
+                        resource_class: auto_switch_class.clone(),
+                        title_contains: input.auto_switch_title.filter(|t| !t.trim().is_empty()),
+                        title_is_regex: false,
+                        favicon_url: None,
+                        target_profile: target_num,
+                    });
+                }
+                let _ = sw.save_to_disk();
+            }
+        }
+
+        // Switch to the newly created profile
+        self.as_mut().switch_profile(target_num as i32);
+        self.as_mut().sync_active_profile_state();
+
+        record_system_event(
+            "INFO",
+            "PROFILE",
+            format!("Created Profile #{target_num} '{clean_name}' via Profile Wizard"),
+        );
+        self.as_mut().set_status_message(QString::from(&format!(
+            "✓ Created profile '{}' (#{target_num}){}",
+            clean_name,
+            if saved { " (saved to SD)" } else { " (sync needed)" }
+        )));
+
         true
     }
 

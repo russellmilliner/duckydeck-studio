@@ -22,6 +22,7 @@ pub mod kwin {
 }
 pub mod ai {
     pub mod shortcut_scraper;
+    pub mod web_shortcuts;
 }
 pub mod api_server;
 pub mod paths;

@@ -1106,8 +1106,8 @@ Item {
                                 opacity: keycapItem.isDraggingThis ? 0.92 : 1.0
                                 radius: 8
                                 color: Kirigami.Theme.backgroundColor
-                                border.width: keycapItem.isDropTarget ? 2.5 : (keycapItem.isSelected ? 2 : 1)
-                                border.color: keycapItem.isDropTarget
+                                border.width: (keycapItem.isDropTarget || shortcutDropArea.containsDrag) ? 2.5 : (keycapItem.isSelected ? 2 : 1)
+                                border.color: (keycapItem.isDropTarget || shortcutDropArea.containsDrag)
                                     ? Kirigami.Theme.positiveTextColor
                                     : (keycapItem.isSelected
                                         ? Kirigami.Theme.highlightColor
@@ -1442,6 +1442,36 @@ Item {
                                 QQC2.ToolTip.text: (keycapItem.hasAppLaunch || keycapItem.hasWebApi)
                                     ? qsTr("Key %1 • 💻 Uses Host Action (App Launch / Web API) — requires DuckyDeck Studio running on host PC (not portable standalone) • Click to edit • Drag to swap • Right-click for Copy/Paste").arg(keycapItem.slot)
                                     : qsTr("Key %1 • ✅ Standalone Hardware Macro • Click to edit (click again to close editor) • Drag to swap (Shift+Drag to shift) • Right-click for Copy/Paste").arg(keycapItem.slot)
+                            }
+
+                            DropArea {
+                                id: shortcutDropArea
+                                anchors.fill: parent
+                                keys: ["application/x-ducky-shortcut"]
+                                onEntered: (drag) => {
+                                    drag.acceptProposedAction()
+                                }
+                                onDropped: (drop) => {
+                                    if (drop.hasFormat("application/x-ducky-shortcut")) {
+                                        try {
+                                            const sc = JSON.parse(drop.getDataAsString("application/x-ducky-shortcut"))
+                                            if (sc && canvasRoot.controller) {
+                                                canvasRoot.controller.assignShortcutToKeySlot(
+                                                    0,
+                                                    keycapItem.slot,
+                                                    sc.action || "",
+                                                    sc.shortcut || "",
+                                                    sc.duckyscript || "",
+                                                    sc.category || ""
+                                                )
+                                                canvasRoot.slotContentMutated(keycapItem.slot)
+                                                drop.acceptProposedAction()
+                                            }
+                                        } catch (e) {
+                                            console.warn("Failed dropping shortcut:", e)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

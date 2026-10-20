@@ -1,6 +1,6 @@
 [package]
 name = "duckydeck-studio"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 license = "GPL-3.0-or-later"
 description = "KDE Plasma 6 / Kirigami Configurator & AI Macro Architect for duckyPad Pro"
@@ -33,7 +33,7 @@ hidapi = { version = "2.6.3", default-features = false, features = ["linux-stati
 # Async Runtime, Wayland KWin DBus & AI HTTP Client
 tokio = { version = "1.41", features = ["rt-multi-thread", "macros", "sync", "time"] }
 zbus = { version = "5.1", default-features = false, features = ["tokio"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
 
 # Serialization & Config Parsing (for SD card profiles & KDE shortcut scraping)
 serde = { version = "1.0", features = ["derive"] }

@@ -174,6 +174,8 @@ pub struct PersistedSwitcherConfig {
     pub autoswitch_enable_section_expanded: bool,
     #[serde(default = "default_true")]
     pub autoswitch_rule_editor_expanded: bool,
+    #[serde(default)]
+    pub google_search_shortcuts_permitted: bool,
 }
 
 #[derive(Clone)]
@@ -208,6 +210,7 @@ pub struct SwitcherState {
     pub profile_webhook_body: String,
     pub autoswitch_enable_section_expanded: bool,
     pub autoswitch_rule_editor_expanded: bool,
+    pub google_search_shortcuts_permitted: bool,
     pub last_switched_profile: u8,
     pub picker_armed: bool,
     pub loaded_from_disk: bool,
@@ -280,6 +283,7 @@ impl Default for SwitcherState {
                 profile_webhook_body: cfg.profile_webhook_body,
                 autoswitch_enable_section_expanded: cfg.autoswitch_enable_section_expanded,
                 autoswitch_rule_editor_expanded: cfg.autoswitch_rule_editor_expanded,
+                google_search_shortcuts_permitted: cfg.google_search_shortcuts_permitted,
                 last_switched_profile: 0,
                 picker_armed: false,
                 loaded_from_disk: true,
@@ -342,6 +346,7 @@ impl Default for SwitcherState {
             profile_webhook_body: String::new(),
             autoswitch_enable_section_expanded: true,
             autoswitch_rule_editor_expanded: true,
+            google_search_shortcuts_permitted: false,
             last_switched_profile: 0,
             picker_armed: false,
             loaded_from_disk: false,
@@ -616,6 +621,7 @@ impl SwitcherState {
             profile_webhook_body: self.profile_webhook_body.clone(),
             autoswitch_enable_section_expanded: self.autoswitch_enable_section_expanded,
             autoswitch_rule_editor_expanded: self.autoswitch_rule_editor_expanded,
+            google_search_shortcuts_permitted: self.google_search_shortcuts_permitted,
         };
         let json = serde_json::to_string_pretty(&payload)
             .map_err(|e| format!("Failed serializing KWin rules: {e}"))?;

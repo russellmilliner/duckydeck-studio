@@ -2022,6 +2022,12 @@ Kirigami.ApplicationWindow {
         inspectorCard: inspectorCard
     }
 
+    ProfileWizardDialog {
+        id: profileWizardDialog
+        root: root
+        controller: deviceController
+    }
+
     pageStack.globalToolBar.style: Kirigami.ApplicationHeaderStyle.None
 
     pageStack.initialPage: Kirigami.Page {
@@ -2762,6 +2768,16 @@ Kirigami.ApplicationWindow {
 
                             QQC2.Button {
                                 Layout.fillWidth: true
+                                icon.name: "tools-wizard"
+                                text: qsTr("Wizard...")
+                                font.pointSize: 10 * root.fontScale
+                                onClicked: profileWizardDialog.openWizard()
+                                QQC2.ToolTip.visible: hovered
+                                QQC2.ToolTip.text: qsTr("Open New Profile Wizard: step-by-step setup with window picker, auto-switch rule, and shortcut search")
+                            }
+
+                            QQC2.Button {
+                                Layout.fillWidth: true
                                 icon.name: "document-import"
                                 text: qsTr("Import")
                                 font.pointSize: 10 * root.fontScale
@@ -2788,6 +2804,12 @@ Kirigami.ApplicationWindow {
                                     font.pointSize: 10 * root.fontScale
                                     id: profileGroupMenu
                                     title: qsTr("Templates & Profile Groups")
+
+                                    QQC2.MenuItem {
+                                        icon.name: "tools-wizard"
+                                        text: qsTr("New Profile Wizard...")
+                                        onTriggered: profileWizardDialog.openWizard()
+                                    }
 
                                     QQC2.MenuItem {
                                         icon.name: "document-new-from-template"
@@ -3950,6 +3972,75 @@ Kirigami.ApplicationWindow {
                                     QQC2.ToolTip.text: qsTr("Switch to Web API tab")
                                 }
 
+                                // Tab 4: Shortcuts Library
+                                Rectangle {
+                                    id: shortcutsToggleBtn
+                                    readonly property bool isActiveTab: root.inspectorMode === "shortcuts"
+                                    Layout.preferredHeight: Math.round(30 * root.inspectorScale)
+                                    implicitWidth: shortcutsTabLbl.implicitWidth + 18
+                                    topLeftRadius: 6
+                                    topRightRadius: 6
+                                    bottomLeftRadius: 0
+                                    bottomRightRadius: 0
+                                    color: isActiveTab
+                                        ? Kirigami.Theme.backgroundColor
+                                        : (shortcutsTabMouse.containsMouse
+                                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.14)
+                                            : Kirigami.Theme.alternateBackgroundColor)
+                                    border.color: isActiveTab
+                                        ? Kirigami.Theme.highlightColor
+                                        : Qt.alpha(Kirigami.Theme.textColor, 0.18)
+                                    border.width: 1
+
+                                    Rectangle {
+                                        visible: parent.isActiveTab
+                                        anchors.top: parent.top
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        height: 3
+                                        topLeftRadius: 6
+                                        topRightRadius: 6
+                                        color: Kirigami.Theme.highlightColor
+                                    }
+
+                                    Rectangle {
+                                        visible: parent.isActiveTab
+                                        anchors.bottom: parent.bottom
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.leftMargin: 1
+                                        anchors.rightMargin: 1
+                                        height: 2
+                                        color: Kirigami.Theme.backgroundColor
+                                    }
+
+                                    QQC2.Label {
+                                        id: shortcutsTabLbl
+                                        anchors.centerIn: parent
+                                        text: qsTr("⌨️ Shortcuts")
+                                        font.pointSize: 10 * root.fontScale
+                                        font.bold: parent.isActiveTab
+                                        color: parent.isActiveTab
+                                            ? root.highContrastHighlightText
+                                            : Kirigami.Theme.textColor
+                                    }
+
+                                    MouseArea {
+                                        id: shortcutsTabMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            root.showAppLaunchBuilder = false
+                                            root.showWebApiBuilder = false
+                                            root.inspectorMode = "shortcuts"
+                                        }
+                                    }
+
+                                    QQC2.ToolTip.visible: shortcutsTabMouse.containsMouse
+                                    QQC2.ToolTip.text: qsTr("Search application keyboard shortcuts (Google & local cheatsheets) and drag or assign them to keys")
+                                }
+
                                 Item { Layout.fillWidth: true }
 
                                 QQC2.Button {
@@ -4306,6 +4397,213 @@ Kirigami.ApplicationWindow {
                                             QQC2.ToolTip.delay: 400
                                             QQC2.ToolTip.text: refRow.syntax + " — " + refRow.summary + "\n" + qsTr("Click to insert at cursor")
                                         }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Collapsible Shortcuts Discovery & Library Panel
+                        Rectangle {
+                            id: shortcutsLibraryCard
+                            visible: root.inspectorMode === "shortcuts"
+                            Layout.fillWidth: true
+                            Layout.fillHeight: root.inspectorMode === "shortcuts"
+                            implicitHeight: visible ? Math.round(320 * root.inspectorScale) : 0
+                            radius: Kirigami.Units.smallSpacing
+                            color: Kirigami.Theme.alternateBackgroundColor
+                            border.color: Qt.alpha(Kirigami.Theme.highlightColor, 0.45)
+                            border.width: 1
+                            clip: true
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 10
+                                spacing: 8
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    QQC2.TextField {
+                                        id: shortcutAppInputField
+                                        Layout.fillWidth: true
+                                        implicitHeight: Math.round(28 * root.inspectorScale)
+                                        font.pointSize: 10 * root.fontScale
+                                        placeholderText: qsTr("Application name or window class (e.g. Dolphin, Chrome, VS Code)...")
+                                        text: (deviceController && deviceController.lastPickedWindowClass) ? deviceController.lastPickedWindowClass : ""
+                                        onAccepted: searchShortcutsBtn.clicked()
+                                    }
+
+                                    QQC2.Button {
+                                        text: deviceController && deviceController.windowPickerArmed ? qsTr("🎯 Picking...") : qsTr("🎯 Pick Window")
+                                        implicitHeight: Math.round(28 * root.inspectorScale)
+                                        font.pointSize: 10 * root.fontScale
+                                        highlighted: deviceController && deviceController.windowPickerArmed
+                                        onClicked: {
+                                            if (deviceController) deviceController.armWindowPicker(false)
+                                        }
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Pick any open desktop window to search its shortcuts")
+                                    }
+
+                                    QQC2.Button {
+                                        id: searchShortcutsBtn
+                                        text: qsTr("🔍 Search")
+                                        implicitHeight: Math.round(28 * root.inspectorScale)
+                                        font.pointSize: 10 * root.fontScale
+                                        highlighted: true
+                                        enabled: shortcutAppInputField.text.trim().length > 0 && !(deviceController && deviceController.searchShortcutsBusy)
+                                        onClicked: {
+                                            if (deviceController) {
+                                                deviceController.searchAppShortcuts(
+                                                    shortcutAppInputField.text.trim(),
+                                                    allowGoogleShortcutsCheck.checked
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    QQC2.CheckBox {
+                                        id: allowGoogleShortcutsCheck
+                                        text: qsTr("Allow Google Search (privacy permission)")
+                                        font.pointSize: 9.5 * root.fontScale
+                                        checked: deviceController ? deviceController.googleSearchShortcutsPermitted : false
+                                        onToggled: {
+                                            if (deviceController) {
+                                                deviceController.setGoogleSearchPermission(checked)
+                                            }
+                                        }
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    QQC2.Button {
+                                        text: qsTr("🧙 New Profile Wizard...")
+                                        implicitHeight: Math.round(24 * root.inspectorScale)
+                                        font.pointSize: 9.5 * root.fontScale
+                                        onClicked: profileWizardDialog.openWizard()
+                                    }
+                                }
+
+                                // Shortcuts list view
+                                ListView {
+                                    id: keyEditorShortcutsListView
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    clip: true
+                                    spacing: 4
+                                    model: {
+                                        if (!deviceController || !deviceController.discoveredShortcutsJson) return []
+                                        try {
+                                            const arr = JSON.parse(deviceController.discoveredShortcutsJson)
+                                            return Array.isArray(arr) ? arr : []
+                                        } catch (e) {
+                                            return []
+                                        }
+                                    }
+
+                                    delegate: Item {
+                                        width: keyEditorShortcutsListView.width
+                                        height: 44
+
+                                        Rectangle {
+                                            anchors.fill: parent
+                                            radius: 5
+                                            color: scCardMouse.containsMouse ? Qt.alpha(Kirigami.Theme.highlightColor, 0.14) : Qt.alpha(Kirigami.Theme.backgroundColor, 0.6)
+                                            border.width: 1
+                                            border.color: scCardMouse.containsMouse ? Kirigami.Theme.highlightColor : Qt.alpha(Kirigami.Theme.textColor, 0.15)
+
+                                            RowLayout {
+                                                anchors.fill: parent
+                                                anchors.leftMargin: 8
+                                                anchors.rightMargin: 8
+                                                spacing: 6
+
+                                                QQC2.Label {
+                                                    text: "⋮⋮"
+                                                    color: Kirigami.Theme.disabledTextColor
+                                                }
+
+                                                ColumnLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: 0
+
+                                                    QQC2.Label {
+                                                        text: modelData.action
+                                                        font.bold: true
+                                                        font.pointSize: 9.5 * root.fontScale
+                                                        elide: Text.ElideRight
+                                                    }
+
+                                                    QQC2.Label {
+                                                        text: modelData.shortcut + " • " + (modelData.source || modelData.category || "")
+                                                        font.pointSize: 8.5 * root.fontScale
+                                                        color: Kirigami.Theme.highlightColor
+                                                    }
+                                                }
+
+                                                QQC2.Button {
+                                                    text: qsTr("Apply to Key %1").arg(root.selectedSlotNumber)
+                                                    implicitHeight: Math.round(24 * root.inspectorScale)
+                                                    font.pointSize: 9 * root.fontScale
+                                                    highlighted: true
+                                                    onClicked: {
+                                                        if (deviceController && root.hasSelectedSlot) {
+                                                            deviceController.assignShortcutToKeySlot(
+                                                                0,
+                                                                root.selectedSlotNumber,
+                                                                modelData.action || "",
+                                                                modelData.shortcut || "",
+                                                                modelData.duckyscript || "",
+                                                                modelData.category || ""
+                                                            )
+                                                            root.refreshSelectedSlotFromController()
+                                                            hardwareCanvas.syncSlotsFromController()
+                                                            root.selectedSlotTitle = hardwareCanvas.slotTitleFor(root.selectedSlotNumber)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Item {
+                                            id: scDragItem
+                                            Drag.active: scCardMouse.drag.active
+                                            Drag.source: scDragItem
+                                            Drag.hotSpot.x: width / 2
+                                            Drag.hotSpot.y: height / 2
+                                            Drag.mimeData: ({
+                                                "application/x-ducky-shortcut": JSON.stringify(modelData)
+                                            })
+                                            Drag.dragType: Drag.Automatic
+                                        }
+
+                                        MouseArea {
+                                            id: scCardMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.OpenHandCursor
+                                            drag.target: scDragItem
+                                        }
+                                    }
+
+                                    QQC2.Label {
+                                        anchors.centerIn: parent
+                                        visible: keyEditorShortcutsListView.count === 0 && !(deviceController && deviceController.searchShortcutsBusy)
+                                        text: qsTr("Enter an application name or pick a window above, then click Search.")
+                                        color: Kirigami.Theme.disabledTextColor
+                                        font.pointSize: 9.5 * root.fontScale
+                                    }
+
+                                    QQC2.BusyIndicator {
+                                        anchors.centerIn: parent
+                                        running: deviceController && deviceController.searchShortcutsBusy
+                                        visible: running
                                     }
                                 }
                             }
