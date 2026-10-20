@@ -163,7 +163,7 @@ Window {
         visible: false
         transientParent: root
         modality: Qt.WindowModal
-        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
 
         onMinimumWidthChanged: {
             if (unsyncedChangesDialog.width < unsyncedChangesDialog.minimumWidth) {
@@ -494,7 +494,7 @@ Window {
         visible: false
         transientParent: root
         modality: Qt.WindowModal
-        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMinMaxButtonsHint
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0) | Qt.WindowMinMaxButtonsHint
 
         property var availableFirmwares: []
         property string vendorFilter: "all" // "all" | "official" | "studio"
@@ -579,7 +579,7 @@ Window {
 
         FileDialog {
             id: customFirmwareFileDialog
-            title: qsTr("Select duckyPad Pro Firmware Binary (DPP_FW_*.bin)")
+            title: qsTr("Select duckyPad Pro Firmware Binary (DDS_FW_*.bin / DPP_FW_*.bin)")
             nameFilters: ["duckyPad Pro Firmware (*.bin)", "All Files (*)"]
             onAccepted: {
                 let p = selectedFile.toString()
@@ -702,7 +702,7 @@ Window {
                         Layout.minimumWidth: 0
                         wrapMode: Text.WordWrap
                         font.pointSize: 10 * root.fontScale
-                        text: qsTr("DuckyDeck Studio includes its custom DuckyDeck Studio Firmware v1.0.1 (with monochrome key icons & 0°/90°/180°/270° OLED orientation) and can fetch & download official dekuNukem firmware releases directly from github.com/dekuNukem/duckyPad-Pro.")
+                        text: qsTr("DuckyDeck Studio includes its custom DuckyDeck Studio Firmware v1.1.0 (with Home Automation icons, smooth LED fade, 0°/90°/180°/270° OLED orientation, SPI DMA dirty page tracking, and sub-ms USB HID) and can fetch official dekuNukem firmware releases directly from github.com/dekuNukem/duckyPad-Pro.")
                         color: Kirigami.Theme.textColor
                     }
                 }
@@ -842,7 +842,7 @@ Window {
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
                         font.pointSize: 10 * root.fontScale
-                        text: qsTr("Click 'Fetch Official List' to query dekuNukem's official duckyPad-Pro repository for available firmware releases, or browse a local DPP_FW_*.bin file.")
+                        text: qsTr("Click 'Fetch Official List' to query dekuNukem's official duckyPad-Pro repository for available firmware releases, or browse a local DDS_FW_*.bin / DPP_FW_*.bin file.")
                         color: Kirigami.Theme.textColor
                     }
 
@@ -1210,7 +1210,7 @@ Window {
         visible: false
         transientParent: root
         modality: Qt.WindowModal
-        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
 
         onMinimumWidthChanged: {
             if (firstRunSetupDialog.width < firstRunSetupDialog.minimumWidth) {

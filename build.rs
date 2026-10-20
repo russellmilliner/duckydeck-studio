@@ -42,10 +42,12 @@ fn main() {
                 "src/qml/icons/tray-icon-dark.svg",
                 "src/qml/icons/tray-icon-light.svg",
                 "src/qml/icons/oled-widget-icon.svg",
+                "src/qml/icons/duckydeck-studio.svg",
                 "docs/user-guide.html",
             ],
         })
         .build();
+    println!("cargo:rerun-if-changed=src/qml/icons/duckydeck-studio.svg");
     println!("cargo:rerun-if-changed=src/cpp/app_helper.h");
     println!("cargo:rerun-if-changed=src/paths.rs");
     println!("cargo:rerun-if-changed=src/bridge/device_controller.rs");

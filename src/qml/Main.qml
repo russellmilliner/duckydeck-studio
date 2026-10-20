@@ -479,6 +479,7 @@ Kirigami.ApplicationWindow {
         { token: "OLED_CIRCLE", category: "OLED & RGB", badge: "OLED", syntax: "OLED_CIRCLE <x> <y> <radius> <opt>", insertText: "OLED_CIRCLE 64 32 16 1", summary: "Draw a circle on the OLED (opt: 0=clear, 1=outline, 2=filled)." },
         { token: "SWCOLOR", category: "OLED & RGB", badge: "LED", syntax: "SWCOLOR <r> <g> <b>", insertText: "SWCOLOR 0 170 255", summary: "Set the current key's RGB LED color (0..255 per channel)." },
         { token: "SWC_SET", category: "OLED & RGB", badge: "LED", syntax: "SWC_SET <key> <r> <g> <b>", insertText: "SWC_SET $_THIS_KEYID 0 255 128", summary: "Set RGB LED color of a specific key (0 = current key, 1..20 = key slot)." },
+        { token: "SWC_FADE_TO", category: "OLED & RGB", badge: "LED", syntax: "SWC_FADE_TO <key> <r> <g> <b> <ms>", insertText: "SWC_FADE_TO $_THIS_KEYID 255 128 0 250", summary: "Hardware smooth RGB color fade over specified duration in milliseconds (0 = all keys, 1..20 = slot)." },
         { token: "SWC_FILL", category: "OLED & RGB", badge: "LED", syntax: "SWC_FILL <r> <g> <b>", insertText: "SWC_FILL 0 170 255", summary: "Fill all key RGB LEDs with the specified (r, g, b) color." },
         { token: "SWC_RESET", category: "OLED & RGB", badge: "LED", syntax: "SWC_RESET <key>", insertText: "SWC_RESET 0", summary: "Reset key RGB LED(s) back to profile default colors (0 = all keys, 1..20 = slot)." },
 
@@ -1634,11 +1635,14 @@ Kirigami.ApplicationWindow {
     AutoSwitchDrawer {
         id: autoSwitchDrawer
         transientParent: root
+        root: root
         controller: deviceController
     }
 
     AiArchitectModal {
         id: aiModal
+        transientParent: root
+        root: root
         controller: deviceController
     }
 
@@ -3289,10 +3293,16 @@ Kirigami.ApplicationWindow {
                                 }
 
                                 // Row 1B: OLED Key Labels (Line 1 & Line 2 with 5-char indicators + Icon Picker) + Clear Slot Action
+                                FontMetrics {
+                                    id: oledLabelMetrics
+                                    font.family: "monospace"
+                                    font.pointSize: 10 * root.fontScale
+                                }
+
                                 RowLayout {
                                     id: inspectorLabelsRow
                                     Layout.fillWidth: true
-                                    spacing: 5
+                                    spacing: 6
 
                                     QQC2.Label {
                                         text: inspectorCard.isMechanicalKey ? qsTr("OLED L1:") : qsTr("OLED Label:")
@@ -3305,9 +3315,12 @@ Kirigami.ApplicationWindow {
                                         spacing: 3
                                         QQC2.TextField {
                                             id: label1Input
-                                            Layout.preferredWidth: Math.round(66 * root.inspectorScale)
-                                            Layout.minimumWidth: 52
-                                            implicitHeight: Math.round(25 * root.inspectorScale)
+                                            Layout.preferredWidth: Math.max(Math.round(96 * root.inspectorScale), Math.ceil(oledLabelMetrics.advanceWidth("WWWWW") + 32))
+                                            Layout.minimumWidth: Math.max(Math.round(86 * root.inspectorScale), Math.ceil(oledLabelMetrics.advanceWidth("WWWWW") + 22))
+                                            implicitHeight: Math.max(Math.round(30 * root.inspectorScale), Math.ceil(oledLabelMetrics.height + 8))
+                                            verticalAlignment: TextInput.AlignVCenter
+                                            leftPadding: 6
+                                            rightPadding: 6
                                             maximumLength: 10
                                             placeholderText: qsTr("Top (5ch)")
                                             selectByMouse: true
@@ -3344,9 +3357,12 @@ Kirigami.ApplicationWindow {
                                         spacing: 3
                                         QQC2.TextField {
                                             id: label2Input
-                                            Layout.preferredWidth: Math.round(66 * root.inspectorScale)
-                                            Layout.minimumWidth: 52
-                                            implicitHeight: Math.round(25 * root.inspectorScale)
+                                            Layout.preferredWidth: Math.max(Math.round(96 * root.inspectorScale), Math.ceil(oledLabelMetrics.advanceWidth("WWWWW") + 32))
+                                            Layout.minimumWidth: Math.max(Math.round(86 * root.inspectorScale), Math.ceil(oledLabelMetrics.advanceWidth("WWWWW") + 22))
+                                            implicitHeight: Math.max(Math.round(30 * root.inspectorScale), Math.ceil(oledLabelMetrics.height + 8))
+                                            verticalAlignment: TextInput.AlignVCenter
+                                            leftPadding: 6
+                                            rightPadding: 6
                                             maximumLength: 10
                                             placeholderText: qsTr("Bot (5ch)")
                                             selectByMouse: true
@@ -3372,7 +3388,7 @@ Kirigami.ApplicationWindow {
 
                                     QQC2.Button {
                                         text: qsTr("★ Icon")
-                                        implicitHeight: Math.round(24 * root.inspectorScale)
+                                        implicitHeight: Math.max(Math.round(28 * root.inspectorScale), Math.ceil(oledLabelMetrics.height + 6))
                                         font.pointSize: 10 * root.fontScale
                                         font.bold: true
                                         onClicked: oledIconPickerDialog.openForInspector(1)
@@ -3385,7 +3401,7 @@ Kirigami.ApplicationWindow {
                                     QQC2.Button {
                                         icon.name: "edit-clear"
                                         text: qsTr("Clear")
-                                        implicitHeight: Math.round(24 * root.inspectorScale)
+                                        implicitHeight: Math.max(Math.round(28 * root.inspectorScale), Math.ceil(oledLabelMetrics.height + 6))
                                         font.pointSize: 10 * root.fontScale
                                         onClicked: root.clearSelectedSlotNow()
                                         QQC2.ToolTip.visible: hovered
@@ -3415,7 +3431,10 @@ Kirigami.ApplicationWindow {
                                         id: widgetLabel1Input
                                         Layout.fillWidth: true
                                         Layout.minimumWidth: 70
-                                        implicitHeight: Math.round(24 * root.inspectorScale)
+                                        implicitHeight: Math.max(Math.round(28 * root.inspectorScale), Math.ceil(oledLabelMetrics.height + 6))
+                                        verticalAlignment: TextInput.AlignVCenter
+                                        leftPadding: 6
+                                        rightPadding: 6
                                         maximumLength: 24
                                         placeholderText: inspectorCard.isMechanicalKey
                                             ? qsTr("Desktop Widget L1 (up to 24ch, host widget only)")
@@ -3439,7 +3458,10 @@ Kirigami.ApplicationWindow {
                                         visible: inspectorCard.isMechanicalKey
                                         Layout.fillWidth: true
                                         Layout.minimumWidth: 70
-                                        implicitHeight: Math.round(24 * root.inspectorScale)
+                                        implicitHeight: Math.max(Math.round(28 * root.inspectorScale), Math.ceil(oledLabelMetrics.height + 6))
+                                        verticalAlignment: TextInput.AlignVCenter
+                                        leftPadding: 6
+                                        rightPadding: 6
                                         maximumLength: 24
                                         placeholderText: qsTr("Widget L2 (host widget only)")
                                         selectByMouse: true
@@ -4868,47 +4890,6 @@ Kirigami.ApplicationWindow {
                                     ? qsTr("Restore Key %1 labels, color, flags, and scripts to their state when this key was selected").arg(root.selectedSlotNumber)
                                     : qsTr("No changes made to Key %1 since it was selected").arg(root.selectedSlotNumber)
                             }
-
-                            QQC2.Button {
-                                text: deviceController.sdMountPath.length > 0
-                                    ? qsTr("✓ Apply Key %1 (SD)").arg(root.selectedSlotNumber)
-                                    : qsTr("✓ Apply Key %1").arg(root.selectedSlotNumber)
-                                enabled: inspectorCard.hasRevertibleChanges
-                                implicitHeight: Math.round(28 * root.inspectorScale)
-                                font.pointSize: 10 * root.fontScale
-                                font.bold: true
-                                highlighted: inspectorCard.hasRevertibleChanges
-                                onClicked: {
-                                    liveSlotAutoSaveTimer.stop()
-                                    root.saveCurrentSlotToController()
-                                    root.captureSlotSnapshot()
-                                }
-                                QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: inspectorCard.hasRevertibleChanges
-                                    ? qsTr("Compile Key %1 DSVM v2 bytecode and commit this key's current state as the new baseline").arg(root.selectedSlotNumber)
-                                    : qsTr("No uncommitted changes on Key %1").arg(root.selectedSlotNumber)
-                            }
-
-                            QQC2.Button {
-                                text: qsTr("⬆ Sync SD")
-                                enabled: !deviceController.sdSyncBusy
-                                    && (deviceController.profileSyncState !== "synced" || inspectorCard.hasRevertibleChanges)
-                                    && (deviceController.connected || deviceController.sdMountPath.length > 0)
-                                implicitHeight: Math.round(28 * root.inspectorScale)
-                                font.pointSize: 10 * root.fontScale
-                                font.bold: true
-                                highlighted: deviceController.profileSyncState !== "synced"
-                                onClicked: {
-                                    liveSlotAutoSaveTimer.stop()
-                                    root.saveCurrentSlotToController()
-                                    root.captureSlotSnapshot()
-                                    root.openUnsyncedChangesDialog()
-                                }
-                                QQC2.ToolTip.visible: hovered
-                                QQC2.ToolTip.text: (deviceController.profileSyncState !== "synced" || inspectorCard.hasRevertibleChanges)
-                                    ? qsTr("Review and push unsynced local profile and bytecode changes to the duckyPad SD card")
-                                    : qsTr("All profiles and keys are already synced with the duckyPad SD card")
-                            }
                         }
                     }
                 }
@@ -5373,6 +5354,12 @@ Kirigami.ApplicationWindow {
         id: oledDesktopWidget
         controller: deviceController
         selectedSlot: root.selectedSlotNumber
+        keyEditorOpen: root.hasSelectedSlot
+        onRequestOpenMainWindow: {
+            root.show()
+            root.raise()
+            root.requestActivate()
+        }
     }
 
     // =========================================================================

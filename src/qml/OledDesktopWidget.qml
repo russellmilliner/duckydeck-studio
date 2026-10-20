@@ -11,7 +11,7 @@ Window {
         ? qsTr("duckyPad OLED — P%1: %2").arg(activeProfile).arg(activeProfileName)
         : qsTr("duckyPad OLED — P%1: %2 [Unpinned]").arg(activeProfile).arg(activeProfileName)
     width: 284
-    height: 382
+    height: 412 // 382 base + ~30 for 1-line title footer (expands down for multi-line titles, contracts for short)
     minimumWidth: 184
     minimumHeight: 264
     visible: false
@@ -25,7 +25,123 @@ Window {
     property bool showSizeSlider: false
     property bool showTransparencySlider: false
     property int transparencyPercent: 0
+    property bool keyEditorOpen: false
+    readonly property bool autoSwitchDisabled: (controller && !controller.autoSwitchEnabled)
+    readonly property bool autoSwitchPaused: autoSwitchDisabled || (keyEditorOpen && controller && controller.autoSwitchEnabled)
     readonly property real windowOpacity: Math.max(0.20, Math.min(1.0, (100 - transparencyPercent) / 100.0))
+    readonly property int transparencyMax: 80
+    readonly property int transparencyWheelStep: 5
+    signal requestOpenMainWindow()
+    property real wheelTransparencyAccum: 0
+
+    // Active window title footer (KWin focus tracking via controller.activeWindowTitle)
+    property bool showWindowTitle: true
+    property string lastExternalWindowTitle: ""
+    property string lastExternalWindowClass: ""
+    property int currentExtraTitleHeight: 0
+    property int lockedTopY: -1
+    property bool isAdjustingExpansion: false
+
+    onYChanged: {
+        if (!isAdjustingExpansion) {
+            lockedTopY = y
+        }
+    }
+
+    function updateTitleExpansion() {
+        if (!showWindowTitle) {
+            if (currentExtraTitleHeight !== 0) {
+                const diff = -currentExtraTitleHeight
+                currentExtraTitleHeight = 0
+                isAdjustingExpansion = true
+                const savedY = lockedTopY >= 0 ? lockedTopY : y
+                height = Math.max(minimumHeight, height + diff)
+                if (savedY >= 0 && y !== savedY) {
+                    y = savedY
+                }
+                isAdjustingExpansion = false
+            }
+            return
+        }
+        if (!windowTitleText) return
+        const textH = windowTitleText.contentHeight
+        const needed = Math.max(baseTitleBarHeight, Math.round(textH + 8))
+        const newExtra = Math.max(0, needed - baseTitleBarHeight)
+        if (newExtra !== currentExtraTitleHeight) {
+            const diff = newExtra - currentExtraTitleHeight
+            currentExtraTitleHeight = newExtra
+            isAdjustingExpansion = true
+            const savedY = lockedTopY >= 0 ? lockedTopY : y
+            height = Math.max(minimumHeight, height + diff)
+            if (savedY >= 0 && y !== savedY) {
+                y = savedY
+            }
+            isAdjustingExpansion = false
+        }
+    }
+
+    function isOwnWindowClass(cls) {
+        const c = String(cls || "").toLowerCase()
+        return c.length === 0 || c === "listening for kwin..." || c.indexOf("duckydeck") !== -1
+    }
+
+    function refreshExternalWindowInfo() {
+        if (!controller) return
+        const cls = String(controller.activeWindowClass || "")
+        // Ignore focus moving to DuckyDeck's own windows (including this widget) so
+        // clicking the widget keeps showing the last real application title.
+        if (isOwnWindowClass(cls)) return
+        lastExternalWindowClass = cls
+        lastExternalWindowTitle = String(controller.activeWindowTitle || "")
+        Qt.callLater(updateTitleExpansion)
+    }
+
+    function setTransparency(percent) {
+        const clamped = Math.max(0, Math.min(transparencyMax, Math.round(percent)))
+        if (clamped !== transparencyPercent) {
+            transparencyPercent = clamped
+        }
+        transparencySlider.value = clamped
+        transparencyHud.flash()
+    }
+
+    // Scroll up = more opaque, scroll down = more transparent.
+    // Accumulates high-resolution touchpad deltas into 120-unit notches.
+    function handleTransparencyWheel(wheel) {
+        const dy = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.pixelDelta.y * 4
+        if (dy === 0) return
+        wheelTransparencyAccum += dy
+        const notches = wheelTransparencyAccum > 0
+            ? Math.floor(wheelTransparencyAccum / 120)
+            : Math.ceil(wheelTransparencyAccum / 120)
+        if (notches === 0) return
+        wheelTransparencyAccum -= notches * 120
+        setTransparency(transparencyPercent - notches * transparencyWheelStep)
+        wheel.accepted = true
+    }
+
+    onShowWindowTitleChanged: {
+        windowTitleIconCanvas.requestPaint()
+        isAdjustingExpansion = true
+        const savedY = lockedTopY >= 0 ? lockedTopY : y
+        if (showWindowTitle) {
+            const delta = baseTitleBarHeight + sectionGap
+            height = Math.max(minimumHeight, height + delta)
+            if (savedY >= 0 && y !== savedY) {
+                y = savedY
+            }
+            isAdjustingExpansion = false
+            Qt.callLater(updateTitleExpansion)
+        } else {
+            const delta = baseTitleBarHeight + sectionGap + currentExtraTitleHeight
+            currentExtraTitleHeight = 0
+            height = Math.max(minimumHeight, height - delta)
+            if (savedY >= 0 && y !== savedY) {
+                y = savedY
+            }
+            isAdjustingExpansion = false
+        }
+    }
 
     onTransparencyPercentChanged: {
         transparencyIconCanvas.requestPaint()
@@ -84,6 +200,7 @@ Window {
             if (controller) {
                 controller.restoreOledWidgetPlacement(alwaysOnTop)
             }
+            Qt.callLater(updateTitleExpansion)
         } else {
             showSizeSlider = false
             showTransparencySlider = false
@@ -106,14 +223,21 @@ Window {
         onActivated: oledWidgetWindow.close()
     }
 
-    // Pure top-down geometry calculations (no child implicitHeight dependencies -> zero binding loops)
-    readonly property real uiScale: Math.max(0.85, Math.min(width / 260.0, height / 366.0))
+    // Dynamic Window Title Footer expansion metrics
+    readonly property int baseTitleBarHeight: Math.max(22, Math.round(windowTitleFontPx * 1.35) + 8)
+    readonly property int currentTitleBarHeight: showWindowTitle ? (baseTitleBarHeight + currentExtraTitleHeight) : 0
+    readonly property int windowTitleReserved: showWindowTitle ? (baseTitleBarHeight + sectionGap) : 0
+
+    // Pure top-down geometry calculations (based on baseWindowHeight so title expansion doesn't loop)
+    readonly property real baseWindowHeight: Math.max(240, height - currentExtraTitleHeight)
+    readonly property real uiScale: Math.max(0.85, Math.min(width / 260.0, baseWindowHeight / 366.0))
     readonly property int outerPad: Math.max(6, Math.round(8 * uiScale))
     readonly property int sectionGap: Math.max(4, Math.round(6 * uiScale))
     readonly property int headerBarHeight: Math.max(26, Math.round(28 * uiScale))
     readonly property int footerBarHeight: Math.max(70, Math.round(78 * uiScale))
+    readonly property int windowTitleFontPx: Math.max(10, Math.round(10 * uiScale))
     readonly property int availOledWidth: Math.max(120, width - outerPad * 2)
-    readonly property int availOledHeight: Math.max(120, height - outerPad * 2 - headerBarHeight - footerBarHeight - sectionGap * 2)
+    readonly property int availOledHeight: Math.max(120, baseWindowHeight - outerPad * 2 - headerBarHeight - footerBarHeight - windowTitleReserved - sectionGap * 2)
     readonly property int oledSide: Math.max(120, Math.min(availOledWidth, availOledHeight))
     readonly property real currentScaleMultiplier: Math.max(0.8, Math.min(3.0, oledSide / 128.0))
 
@@ -291,7 +415,7 @@ Window {
         const clamped = Math.max(0.8, Math.min(3.0, mult))
         const targetOled = Math.round(128 * clamped)
         oledWidgetWindow.width = Math.max(minimumWidth, targetOled + 32)
-        oledWidgetWindow.height = Math.max(minimumHeight, targetOled + Math.round(140 * Math.max(1.0, clamped * 0.75)))
+        oledWidgetWindow.height = Math.max(minimumHeight, targetOled + Math.round(140 * Math.max(1.0, clamped * 0.75)) + (showWindowTitle ? baseTitleBarHeight + sectionGap + currentExtraTitleHeight : 0))
     }
 
     Connections {
@@ -308,11 +432,19 @@ Window {
         function onProfilesJsonChanged() {
             oledWidgetWindow.syncFromController()
         }
+        function onActiveWindowTitleChanged() {
+            oledWidgetWindow.refreshExternalWindowInfo()
+        }
+        function onActiveWindowClassChanged() {
+            oledWidgetWindow.refreshExternalWindowInfo()
+        }
     }
 
     Component.onCompleted: {
         transientParent = null
         syncFromController()
+        refreshExternalWindowInfo()
+        Qt.callLater(updateTitleExpansion)
     }
 
     Rectangle {
@@ -321,7 +453,9 @@ Window {
         radius: oledWidgetWindow.framelessMode ? 10 : 0
         color: "#0b0f19"
         border.width: oledWidgetWindow.framelessMode ? 1.5 : 1
-        border.color: oledWidgetWindow.alwaysOnTop ? "#38bdf8" : "#334155"
+        border.color: oledWidgetWindow.autoSwitchPaused
+            ? "#f59e0b"
+            : (oledWidgetWindow.alwaysOnTop ? "#38bdf8" : "#334155")
         opacity: oledWidgetWindow.windowOpacity
         layer.enabled: oledWidgetWindow.windowOpacity < 0.999
 
@@ -335,7 +469,7 @@ Window {
             height: oledWidgetWindow.headerBarHeight
             radius: 6
             color: "#111827"
-            border.color: "#1e293b"
+            border.color: oledWidgetWindow.autoSwitchPaused ? "#f59e0b" : "#1e293b"
             border.width: 1
 
             MouseArea {
@@ -347,30 +481,106 @@ Window {
                 onDoubleClicked: {
                     oledWidgetWindow.framelessMode = !oledWidgetWindow.framelessMode
                 }
+                onWheel: (wheel) => oledWidgetWindow.handleTransparencyWheel(wheel)
             }
 
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 6
                 anchors.rightMargin: 4
-                spacing: 4
+                spacing: 5
+
+                // DuckyDeck Studio Application Icon
+                Image {
+                    id: appIcon
+                    width: Math.max(16, Math.round(16 * oledWidgetWindow.uiScale))
+                    height: width
+                    Layout.preferredWidth: width
+                    Layout.preferredHeight: height
+                    Layout.alignment: Qt.AlignVCenter
+                    source: "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/duckydeck-studio.svg"
+                    sourceSize.width: width * 2
+                    sourceSize.height: height * 2
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    mipmap: true
+
+                    QQC2.ToolTip.visible: iconMouse.containsMouse
+                    QQC2.ToolTip.text: qsTr("DuckyDeck Studio — Click to open main window")
+
+                    MouseArea {
+                        id: iconMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        acceptedButtons: Qt.LeftButton
+                        onClicked: oledWidgetWindow.requestOpenMainWindow()
+                        onWheel: (wheel) => oledWidgetWindow.handleTransparencyWheel(wheel)
+                    }
+                }
 
                 Rectangle {
-                    width: Math.max(7, Math.round(8 * oledWidgetWindow.uiScale))
-                    height: width
+                    Layout.preferredWidth: Math.max(7, Math.round(8 * oledWidgetWindow.uiScale))
+                    Layout.preferredHeight: Layout.preferredWidth
+                    Layout.alignment: Qt.AlignVCenter
+                    width: Layout.preferredWidth
+                    height: Layout.preferredHeight
                     radius: width / 2
                     color: (oledWidgetWindow.controller && oledWidgetWindow.controller.connected)
                         ? "#22c55e"
                         : "#38bdf8"
+
+                    QQC2.ToolTip.visible: dotMouse.containsMouse
+                    QQC2.ToolTip.text: (oledWidgetWindow.controller && oledWidgetWindow.controller.connected)
+                        ? qsTr("Connected · P%1: %2").arg(oledWidgetWindow.activeProfile).arg(oledWidgetWindow.activeProfileName)
+                        : qsTr("Disconnected · P%1: %2").arg(oledWidgetWindow.activeProfile).arg(oledWidgetWindow.activeProfileName)
+
+                    MouseArea {
+                        id: dotMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.NoButton
+                    }
                 }
 
-                QQC2.Label {
-                    text: "P" + oledWidgetWindow.activeProfile + ": " + oledWidgetWindow.activeProfileName
-                    font.bold: true
-                    font.pointSize: Math.max(10, Math.round(10 * oledWidgetWindow.uiScale))
-                    color: "#f8fafc"
-                    elide: Text.ElideRight
+                // Auto-Switcher Paused / Disabled Indicator Pill
+                Rectangle {
+                    visible: oledWidgetWindow.autoSwitchPaused
+                    Layout.preferredHeight: Math.max(16, Math.round(18 * oledWidgetWindow.uiScale))
+                    Layout.preferredWidth: pausedLabel.implicitWidth + 10
+                    radius: height / 2
+                    color: Qt.rgba(0.96, 0.62, 0.04, 0.22)
+                    border.width: 1
+                    border.color: "#f59e0b"
+                    Layout.alignment: Qt.AlignVCenter
+
+                    QQC2.Label {
+                        id: pausedLabel
+                        anchors.centerIn: parent
+                        text: qsTr("PAUSED")
+                        font.bold: true
+                        font.pixelSize: Math.max(8, Math.round(9 * oledWidgetWindow.uiScale))
+                        font.family: "monospace"
+                        color: "#f59e0b"
+                    }
+
+                    QQC2.ToolTip.visible: pausedMouse.containsMouse
+                    QQC2.ToolTip.text: oledWidgetWindow.autoSwitchDisabled
+                        ? qsTr("Auto-Switcher is disabled in settings")
+                        : qsTr("Auto-Switcher paused while Key Editor is open in DuckyDeck Studio")
+
+                    MouseArea {
+                        id: pausedMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.NoButton
+                    }
+                }
+
+                // Flexible spacer / drag region between connection dot and control buttons
+                Item {
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
                 }
 
                 // Always-on-Top Pin Icon Button
@@ -519,7 +729,80 @@ Window {
                             : "#344663"
                     }
                     QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: qsTr("Window Transparency: %1% (Click to adjust)").arg(oledWidgetWindow.transparencyPercent)
+                    QQC2.ToolTip.text: qsTr("Window Transparency: %1% (Click to adjust · Scroll to change)").arg(oledWidgetWindow.transparencyPercent)
+
+                    // Scroll directly over the button to change transparency
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.NoButton
+                        onWheel: (wheel) => oledWidgetWindow.handleTransparencyWheel(wheel)
+                    }
+                }
+
+                // Active Window Title Footer Toggle Button
+                QQC2.ToolButton {
+                    id: windowTitleToggleBtn
+                    objectName: "oledWidgetWindowTitleToggle"
+                    Layout.preferredWidth: Math.max(24, Math.round(24 * oledWidgetWindow.uiScale))
+                    Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
+                    implicitWidth: Layout.preferredWidth
+                    implicitHeight: Layout.preferredHeight
+                    padding: 0
+                    onClicked: {
+                        oledWidgetWindow.showWindowTitle = !oledWidgetWindow.showWindowTitle
+                    }
+                    contentItem: Item {
+                        Canvas {
+                            id: windowTitleIconCanvas
+                            width: 16
+                            height: 16
+                            anchors.centerIn: parent
+                            scale: Math.max(0.85, Math.min(1.35, oledWidgetWindow.uiScale * 0.92))
+                            onPaint: {
+                                const ctx = getContext("2d")
+                                ctx.reset()
+                                const active = oledWidgetWindow.showWindowTitle
+                                const col = active ? "#38bdf8" : "#cbd5e1"
+                                ctx.strokeStyle = col
+                                ctx.fillStyle = col
+                                ctx.lineWidth = 1.5
+                                ctx.lineCap = "round"
+
+                                // Window frame
+                                ctx.beginPath()
+                                ctx.rect(2, 2.5, 12, 11)
+                                ctx.stroke()
+
+                                // Text lines at the bottom (the title caption)
+                                ctx.beginPath()
+                                ctx.moveTo(4.5, 9)
+                                ctx.lineTo(11.5, 9)
+                                ctx.moveTo(4.5, 11.5)
+                                ctx.lineTo(9, 11.5)
+                                ctx.stroke()
+
+                                // Strike-through when hidden
+                                if (!active) {
+                                    ctx.beginPath()
+                                    ctx.moveTo(1.5, 14.5)
+                                    ctx.lineTo(14.5, 1.5)
+                                    ctx.stroke()
+                                }
+                            }
+                        }
+                    }
+                    background: Rectangle {
+                        radius: 4
+                        color: oledWidgetWindow.showWindowTitle
+                            ? Qt.rgba(0.22, 0.74, 0.97, 0.22)
+                            : (windowTitleToggleBtn.hovered ? "#25334a" : "#1a2333")
+                        border.width: 1
+                        border.color: oledWidgetWindow.showWindowTitle ? "#38bdf8" : "#344663"
+                    }
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.text: oledWidgetWindow.showWindowTitle
+                        ? qsTr("Active Window Title: shown (Click to hide)")
+                        : qsTr("Active Window Title: hidden (Click to show)")
                 }
 
                 // Scale / Size Slider Toggle Button with Resize Icon
@@ -904,22 +1187,110 @@ Window {
             }
         }
 
+        // Active Window Title Footer (multi-line, word-wrapped; positioned at the very bottom below profile buttons)
+        Rectangle {
+            id: windowTitleBar
+            objectName: "oledWidgetWindowTitleBar"
+            visible: oledWidgetWindow.showWindowTitle
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: oledWidgetWindow.outerPad
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: oledWidgetWindow.outerPad
+            anchors.rightMargin: oledWidgetWindow.outerPad
+            height: oledWidgetWindow.currentTitleBarHeight
+            radius: 6
+            color: oledWidgetWindow.autoSwitchPaused
+                ? Qt.tint("#111827", Qt.rgba(0.96, 0.62, 0.04, 0.16))
+                : "#111827"
+            border.color: oledWidgetWindow.autoSwitchPaused ? "#f59e0b" : "#1e293b"
+            border.width: 1
+            clip: true
+
+            readonly property string titleText: {
+                if (oledWidgetWindow.autoSwitchPaused) {
+                    const winName = oledWidgetWindow.lastExternalWindowTitle.length > 0
+                        ? oledWidgetWindow.lastExternalWindowTitle
+                        : oledWidgetWindow.lastExternalWindowClass
+                    if (winName.length > 0) {
+                        return qsTr("⏸ Auto-Switcher Paused • %1").arg(winName)
+                    }
+                    return oledWidgetWindow.autoSwitchDisabled
+                        ? qsTr("⏸ Auto-Switcher Paused (Disabled)")
+                        : qsTr("⏸ Auto-Switcher Paused (Key Editor)")
+                }
+                return oledWidgetWindow.lastExternalWindowTitle.length > 0
+                    ? oledWidgetWindow.lastExternalWindowTitle
+                    : (oledWidgetWindow.lastExternalWindowClass.length > 0
+                        ? oledWidgetWindow.lastExternalWindowClass
+                        : qsTr("No active window detected"))
+            }
+
+            MouseArea {
+                id: windowTitleMouse
+                anchors.fill: parent
+                acceptedButtons: Qt.NoButton
+                hoverEnabled: true
+                onWheel: (wheel) => oledWidgetWindow.handleTransparencyWheel(wheel)
+            }
+
+            Text {
+                id: windowTitleText
+                objectName: "oledWidgetWindowTitleText"
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 8
+                anchors.rightMargin: 8
+                text: windowTitleBar.titleText
+                color: oledWidgetWindow.autoSwitchPaused
+                    ? "#f59e0b"
+                    : (oledWidgetWindow.lastExternalWindowTitle.length > 0 ? "#e2e8f0" : "#64748b")
+                font.bold: oledWidgetWindow.autoSwitchPaused || oledWidgetWindow.lastExternalWindowTitle.length > 0
+                font.pixelSize: oledWidgetWindow.windowTitleFontPx
+                font.italic: !oledWidgetWindow.autoSwitchPaused && oledWidgetWindow.lastExternalWindowTitle.length === 0
+                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                lineHeight: 1.15
+
+                onContentHeightChanged: {
+                    oledWidgetWindow.updateTitleExpansion()
+                }
+            }
+
+            QQC2.ToolTip.visible: windowTitleMouse.containsMouse && windowTitleBar.titleText.length > 0
+            QQC2.ToolTip.delay: 400
+            QQC2.ToolTip.text: (oledWidgetWindow.lastExternalWindowClass.length > 0
+                ? "[" + oledWidgetWindow.lastExternalWindowClass + "] "
+                : "") + windowTitleBar.titleText
+        }
+
         // Bottom Rotary Knob Summary (with Rotary Knob Icons 1 & 2), Bottom Profile Buttons & Corner Resize Grip
         Rectangle {
             id: bottomFooterBar
-            anchors.bottom: parent.bottom
+            anchors.bottom: oledWidgetWindow.showWindowTitle ? windowTitleBar.top : parent.bottom
+            anchors.bottomMargin: oledWidgetWindow.showWindowTitle ? oledWidgetWindow.sectionGap : oledWidgetWindow.outerPad
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.margins: oledWidgetWindow.outerPad
+            anchors.leftMargin: oledWidgetWindow.outerPad
+            anchors.rightMargin: oledWidgetWindow.outerPad
             height: oledWidgetWindow.footerBarHeight
             radius: 6
             color: "#111827"
-            border.color: "#1e293b"
+            border.color: oledWidgetWindow.autoSwitchPaused ? "#f59e0b" : "#1e293b"
             border.width: 1
 
             readonly property int knobDiameter: Math.max(15, Math.round(oledWidgetWindow.oledSide * 0.082))
             readonly property int encFontSize: Math.max(10, Math.round(oledWidgetWindow.oledSide * 0.056))
             readonly property int profileBtnHeight: Math.max(20, Math.round(21 * oledWidgetWindow.uiScale))
+
+            // Scroll anywhere on the footer to change transparency (declared first so buttons stay on top)
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.NoButton
+                onWheel: (wheel) => oledWidgetWindow.handleTransparencyWheel(wheel)
+            }
 
             ColumnLayout {
                 anchors.fill: parent
@@ -1121,6 +1492,52 @@ Window {
             }
         }
 
+        // Transient transparency percentage HUD (shown while scrolling)
+        Rectangle {
+            id: transparencyHud
+            objectName: "oledWidgetTransparencyHud"
+            z: 30
+            anchors.centerIn: parent
+            width: hudLabel.implicitWidth + 24
+            height: hudLabel.implicitHeight + 12
+            radius: 8
+            color: "#e6162033"
+            border.color: "#38bdf8"
+            border.width: 1
+            opacity: 0
+            visible: opacity > 0
+
+            function flash() {
+                hudFadeOut.stop()
+                opacity = 1
+                hudHideTimer.restart()
+            }
+
+            Text {
+                id: hudLabel
+                anchors.centerIn: parent
+                text: qsTr("Transparency %1%").arg(oledWidgetWindow.transparencyPercent)
+                color: "#38bdf8"
+                font.family: "monospace"
+                font.bold: true
+                font.pixelSize: Math.max(11, Math.round(12 * oledWidgetWindow.uiScale))
+            }
+
+            Timer {
+                id: hudHideTimer
+                interval: 700
+                onTriggered: hudFadeOut.start()
+            }
+
+            NumberAnimation {
+                id: hudFadeOut
+                target: transparencyHud
+                property: "opacity"
+                to: 0
+                duration: 250
+            }
+        }
+
         // Center 1:1 Aspect-Preserving OLED Bezel (Pure GPU Scene-Graph -> Zero Resize Freeze)
         Item {
             id: oledViewportContainer
@@ -1140,23 +1557,14 @@ Window {
                 anchors.centerIn: parent
                 radius: 8
                 color: "#000000"
-                border.color: "#38bdf8"
+                border.color: oledWidgetWindow.autoSwitchPaused ? "#f59e0b" : "#38bdf8"
                 border.width: 2
                 clip: true
 
                 MouseArea {
                     anchors.fill: parent
                     acceptedButtons: Qt.NoButton
-                    onWheel: (wheel) => {
-                        if (!oledWidgetWindow.controller) return
-                        if (wheel.angleDelta.y > 0) {
-                            const prev = Math.max(1, oledWidgetWindow.activeProfile - 1)
-                            oledWidgetWindow.controller.switchProfile(prev)
-                        } else if (wheel.angleDelta.y < 0) {
-                            const next = Math.min(64, oledWidgetWindow.activeProfile + 1)
-                            oledWidgetWindow.controller.switchProfile(next)
-                        }
-                    }
+                    onWheel: (wheel) => oledWidgetWindow.handleTransparencyWheel(wheel)
                 }
 
                 Item {
@@ -1383,6 +1791,7 @@ Window {
                                     onClicked: {
                                         oledWidgetWindow.selectedSlot = (oledWidgetWindow.selectedSlot === parent.slotNum) ? 0 : parent.slotNum
                                     }
+                                    onWheel: (wheel) => oledWidgetWindow.handleTransparencyWheel(wheel)
                                 }
 
                                 QQC2.ToolTip.visible: cellMouse.containsMouse && (disp1.length > 0 || disp2.length > 0)

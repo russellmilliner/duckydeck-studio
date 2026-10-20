@@ -530,6 +530,15 @@ pub fn set_single_key_led_hid(slot_num: usize, rgb: [u8; 3]) -> bool {
     ok
 }
 
+static LAST_HARDWARE_LEDS: std::sync::Mutex<[Option<[u8; 3]>; 21]> =
+    std::sync::Mutex::new([None; 21]);
+
+pub fn invalidate_hardware_led_cache() {
+    if let Ok(mut cache) = LAST_HARDWARE_LEDS.lock() {
+        *cache = [None; 21];
+    }
+}
+
 pub fn set_batch_key_leds_hid(updates: &[(usize, [u8; 3])]) -> bool {
     if updates.is_empty() {
         return true;
@@ -537,14 +546,45 @@ pub fn set_batch_key_leds_hid(updates: &[(usize, [u8; 3])]) -> bool {
     if MSC_SYNC_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst) {
         return false;
     }
+
+    // Filter updates to only slots that actually changed compared to the last sent frame
+    let filtered_updates: Vec<(usize, [u8; 3])> = {
+        let Ok(mut cache) = LAST_HARDWARE_LEDS.lock() else {
+            return false;
+        };
+        let mut diffs = Vec::new();
+        for &(slot, rgb) in updates {
+            if !(1..=ONBOARD_KEY_COUNT).contains(&slot) {
+                continue;
+            }
+            if cache[slot] != Some(rgb) {
+                diffs.push((slot, rgb));
+                cache[slot] = Some(rgb);
+            }
+        }
+        diffs
+    };
+
+    if filtered_updates.is_empty() {
+        return true;
+    }
+
     let Ok(_guard) = HID_IO_LOCK.try_lock() else {
+        // If HID lock is busy with another transaction, invalidate cached keys so next tick retries
+        if let Ok(mut cache) = LAST_HARDWARE_LEDS.lock() {
+            for &(slot, _) in &filtered_updates {
+                if (1..=ONBOARD_KEY_COUNT).contains(&slot) {
+                    cache[slot] = None;
+                }
+            }
+        }
         return false;
     };
     let Ok(device) = open_duckypad_hid() else {
         return false;
     };
     let mut any_ok = false;
-    for (idx, &(slot_num, rgb)) in updates.iter().enumerate() {
+    for (idx, &(slot_num, rgb)) in filtered_updates.iter().enumerate() {
         if !(1..=ONBOARD_KEY_COUNT).contains(&slot_num) {
             continue;
         }
@@ -559,13 +599,7 @@ pub fn set_batch_key_leds_hid(updates: &[(usize, [u8; 3])]) -> bool {
         if device.write(&tx).is_ok() {
             any_ok = true;
             let mut rx = [0u8; 64];
-            if let Err(e) = device.read_timeout(&mut rx, 20) {
-                crate::bridge::device_controller::record_system_event(
-                    "WARN",
-                    "HID",
-                    format!("HID ACK read timeout in set_batch_key_leds_hid(slot {slot_num}): {e}"),
-                );
-            }
+            let _ = device.read_timeout(&mut rx, 4);
         }
     }
     any_ok

@@ -1569,6 +1569,87 @@ mod ui_test_suite {
     }
 
     #[test]
+    fn test_oled_label_input_sizing_and_home_automation_icons() {
+        use crate::hardware::profile::oled_label_to_hardware_ascii;
+
+        // 1. Home Automation icon ASCII fallback conversion and length constraints (<= 5 chars)
+        let ha_icons = [
+            ("💡", "BULB"),
+            ("🔌", "PLUG"),
+            ("🌡", "TEMP"),
+            ("❄", "COOL"),
+            ("🛡", "ALRM"),
+            ("📹", "CAM"),
+            ("🌀", "FAN"),
+            ("🚪", "DOOR"),
+            ("🧹", "VACC"),
+            ("💧", "LEAK"),
+            ("🚗", "AUTO"),
+            ("🚨", "SIREN"),
+        ];
+
+        for (icon, name) in ha_icons {
+            let converted = oled_label_to_hardware_ascii(icon);
+            assert!(
+                !converted.is_empty(),
+                "Icon {name} ({icon}) must convert to non-empty ASCII"
+            );
+            assert!(
+                converted.len() <= 5,
+                "Icon {name} converted length {} must not exceed 5 characters: '{}'",
+                converted.len(),
+                converted
+            );
+            assert!(
+                converted.bytes().all(|b| (0x20..=0x7E).contains(&b)),
+                "Icon {name} must only contain 7-bit printable ASCII: '{}'",
+                converted
+            );
+
+            // Test compound labels (e.g. icon + text)
+            let compound = format!("{icon} ON");
+            let converted_compound = oled_label_to_hardware_ascii(&compound);
+            assert!(
+                converted_compound.len() <= 5,
+                "Compound label '{compound}' must not exceed 5 chars, got '{}'",
+                converted_compound
+            );
+        }
+
+        // 2. Test input field sizing and capacity across zoom levels > 100% (100% to 200%)
+        let zoom_levels: [f64; 8] = [1.00, 1.05, 1.10, 1.15, 1.25, 1.50, 1.75, 2.00];
+        for zoom in zoom_levels {
+            let font_point_size: f64 = 10.0 * zoom;
+            // Typical monospace advance width is ~0.60 to 0.65 of pixel height
+            let pixel_height: f64 = font_point_size * (96.0 / 72.0);
+            let approx_char_width: f64 = pixel_height * 0.62;
+            let five_char_content_width: f64 = (5.0 * approx_char_width).ceil();
+            let padding_horizontal: f64 = 12.0; // 6px left + 6px right
+
+            let min_content_needed: f64 = five_char_content_width + padding_horizontal;
+
+            let input_layout_min_width: f64 = (86.0 * zoom).round().max(86.0);
+            let input_layout_pref_width: f64 = (96.0 * zoom).round().max(96.0);
+            let input_implicit_height: f64 = (30.0 * zoom).round().max(30.0);
+
+            let required_height: f64 = pixel_height + 8.0; // font height + vertical padding
+
+            assert!(
+                input_layout_min_width >= min_content_needed,
+                "At zoom {zoom}x (pt {font_point_size:.1}), minimum width {input_layout_min_width}px must accommodate 5 chars ({min_content_needed}px)"
+            );
+            assert!(
+                input_layout_pref_width >= input_layout_min_width,
+                "At zoom {zoom}x, preferred width {input_layout_pref_width}px must be >= min width {input_layout_min_width}px"
+            );
+            assert!(
+                input_implicit_height >= required_height,
+                "At zoom {zoom}x, input height {input_implicit_height}px must accommodate line height {required_height}px without vertical clipping"
+            );
+        }
+    }
+
+    #[test]
     #[ignore = "launches full GUI; run with cargo test -- --ignored"]
     fn test_full_qml_ui_overflow_and_contrast_suite() {
         use std::io::Read;

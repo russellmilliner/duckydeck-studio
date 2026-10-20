@@ -114,6 +114,7 @@ pub enum Op {
     Swcf,
     Swcc,
     Swcr,
+    SwcFade,
     Str,
     Strln,
     OledCusr,
@@ -203,6 +204,7 @@ impl Op {
             Op::Swcf => 69,
             Op::Swcc => 70,
             Op::Swcr => 71,
+            Op::SwcFade => 89,
             Op::Str => 72,
             Op::Strln => 73,
             Op::OledCusr => 74,
@@ -622,6 +624,20 @@ pub fn builtin_func_lookup(name: &str) -> Option<BuiltinFuncInfo> {
         "SWC_RESET" => BuiltinFuncInfo {
             opcode: Op::Swcr,
             arg_len: 1,
+            has_return_value: false,
+            is_str_func: false,
+            is_keypress_func: false,
+        },
+        "SWC_FADE" => BuiltinFuncInfo {
+            opcode: Op::SwcFade,
+            arg_len: 5,
+            has_return_value: false,
+            is_str_func: false,
+            is_keypress_func: false,
+        },
+        "SWC_FADE_TO" => BuiltinFuncInfo {
+            opcode: Op::SwcFade,
+            arg_len: 5,
             has_return_value: false,
             is_str_func: false,
             is_keypress_func: false,
@@ -3912,6 +3928,14 @@ mod tests {
             false,
             false,
         );
+    }
+
+    #[test]
+    fn test_swc_fade_to_compilation() {
+        let result = compile_duckyscript_to_dsb("SWC_FADE_TO 1 255 128 0 500\n", false, false);
+        assert!(result.is_success, "SWC_FADE_TO should compile successfully: {}", result.error_comment);
+        // Opcode for SwcFade is 89 (0x59)
+        assert!(result.bin_array.contains(&89), "Bytecode should contain opcode 89 (Op::SwcFade)");
     }
 
     #[test]

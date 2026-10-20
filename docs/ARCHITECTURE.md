@@ -319,9 +319,9 @@ DuckyDeck Studio distinguishes between **Standalone Hardware-Portable Capabiliti
 
 ---
 
-## 9.6 Firmware Versioning (`v1.0.0`) & Official Firmware Catalog Downloader (`src/hardware/firmware.rs`)
+## 9.6 Firmware Versioning (`v1.1.0`), DDS Prefix & Official Firmware Catalog Downloader (`src/hardware/firmware.rs`)
 
-- **DuckyDeck Studio Firmware (`v1.0.0`)**: Built from `firmware/duckyPad-Pro/firmware/` (`DPP_FW_1.0.1_bf177326.bin`, downloadable from the [GitHub Releases page](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.0.0)) and identified over USB HID `GET_INFO` (`0x00`) via the `'D', 'D', 'S'` signature at bytes `20..22`. Adds `0°/90°/180°/270°` hardware OLED orientation and `0x80..0x9F` 1-bit monochrome key icons.
+- **DuckyDeck Studio Firmware (`v1.1.0`)**: Built from `firmware/duckyPad-Pro/firmware/` (`DDS_FW_1.1.0_b3291568.bin`, downloadable from the [GitHub Releases page](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.1.0)). Uses the distinct **`DDS_FW_`** prefix to cleanly separate DuckyDeck Studio firmware from official **`DPP_FW_`** builds. Identified over USB HID `GET_INFO` (`0x00`) via the `'D', 'D', 'S'` signature at bytes `20..22`. Adds 12 Home Automation OLED icons, SSD1306 SPI DMA dirty page tracking, smooth RGB LED fade opcode (`SWC_FADE_TO` / opcode `89`), sub-ms USB HID SOF dispatch spin-retry, NVS wear-leveling profile cache, `0°/90°/180°/270°` hardware OLED orientation, and 1-bit monochrome key icons.
 - **Official dekuNukem Firmware Catalog Downloader**: `fetch_official_firmwares_from_site()` in [`src/hardware/firmware.rs`](../src/hardware/firmware.rs) queries the official `dekuNukem/duckyPad-Pro` GitHub repository to list available `DPP_FW_<ver>_<crc32>.bin` releases inside the Firmware Manager window and verifies IEEE CRC32 checksums before staging.
 
 ---
@@ -345,7 +345,7 @@ DuckyDeck Studio embeds a bounded, stoppable/restartable HTTP/1.1 REST API serve
 - Built against `org.kde.Platform//6.11` and `org.kde.Sdk//6.11` with `rust-stable` and `llvm22` SDK extensions.
 - **USB HID & Block Device Discovery:** Uses `--device=all` and `--filesystem=/run/udev:ro` for direct `/dev/hidraw*` and `/dev/disk/by-label` / `/dev/disk/by-id` enumeration.
 - **USB Mass Storage (`udisksctl`) Host Bridging:** Inside Flatpak (`/.flatpak-info` present), [`src/hardware/msc.rs`](../src/hardware/msc.rs) invokes `udisksctl`, `umount`, `sync`, and host `/proc/mounts` checks via `flatpak-spawn --host` (`--talk-name=org.freedesktop.Flatpak` and `--system-talk-name=org.freedesktop.UDisks2`) while reading/writing mounted volumes via `--filesystem=/run/media:rw` and `--filesystem=/media:rw`.
-- **Bundled Custom Firmware Discovery:** [`src/hardware/firmware.rs`](../src/hardware/firmware.rs) scans `/app/share/duckydeck-studio/firmware`, `/app/share/duckydeck-studio/firmware/releases`, and embeds `DPP_FW_1.0.1_bf177326.bin` as a compile-time fallback so the DuckyDeck Studio `v1.0.0` firmware is always available in the Firmware Manager.
+- **Bundled Custom Firmware Discovery:** [`src/hardware/firmware.rs`](../src/hardware/firmware.rs) scans `/app/share/duckydeck-studio/firmware`, `/app/share/duckydeck-studio/firmware/releases`, and embeds `DDS_FW_1.1.0_b3291568.bin` as a compile-time fallback so the DuckyDeck Studio `v1.1.0` firmware is always available in the Firmware Manager.
 
 ### Running Unit, Compiler, Native UI & Flatpak UI Checks
 ```bash

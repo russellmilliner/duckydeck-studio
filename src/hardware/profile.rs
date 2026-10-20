@@ -399,6 +399,18 @@ pub fn oled_icon_char_to_ascii(ch: char, compact: bool) -> Option<&'static str> 
         '💎' => Some("<>"),
         '🎯' => Some(if compact { "o" } else { "(o)" }),
         '∞' => Some("oo"),
+        '💡' => Some(if compact { "o" } else { "(o)" }),
+        '🔌' => Some(if compact { "=" } else { "=|" }),
+        '🌡' => Some(if compact { "T" } else { "(T)" }),
+        '❄' => Some(if compact { "*" } else { "{*}" }),
+        '🛡' => Some(if compact { "V" } else { "[V]" }),
+        '📹' => Some(if compact { "C" } else { "[C]" }),
+        '🌀' => Some(if compact { "@" } else { "(@)" }),
+        '🚪' => Some(if compact { "|" } else { "[|]" }),
+        '🧹' => Some(if compact { "o" } else { "(o)" }),
+        '💧' => Some(if compact { "." } else { "(.)" }),
+        '🚗' => Some(if compact { "=" } else { "[=]" }),
+        '🚨' => Some(if compact { "!" } else { "/!\\" }),
         _ => None,
     }
 }

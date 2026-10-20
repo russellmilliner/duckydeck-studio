@@ -142,7 +142,7 @@ Window {
         visible: false
         transientParent: root
         modality: Qt.WindowModal
-        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
 
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
         Kirigami.Theme.inherit: false
@@ -282,7 +282,7 @@ Window {
         visible: false
         transientParent: root
         modality: Qt.WindowModal
-        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0) | Qt.WindowMaximizeButtonHint
 
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
         Kirigami.Theme.inherit: false
@@ -802,7 +802,7 @@ Window {
         visible: false
         transientParent: root
         modality: Qt.WindowModal
-        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
 
         property int targetProfileNumber: 1
         property string initialProfileName: ""
@@ -910,7 +910,7 @@ Window {
         visible: false
         transientParent: (root && root.visible) ? root : null
         modality: Qt.NonModal
-        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
 
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
         Kirigami.Theme.inherit: false
@@ -1449,7 +1449,7 @@ Window {
         visible: false
         transientParent: root
         modality: Qt.NonModal
-        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
 
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
         Kirigami.Theme.inherit: false
@@ -2348,7 +2348,7 @@ Window {
         visible: false
         transientParent: root
         modality: Qt.NonModal
-        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
 
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
         Kirigami.Theme.inherit: false
@@ -2557,8 +2557,12 @@ Window {
                                     font.pointSize: 10 * root.fontScale
                                     id: keyPropLabel1Field
                                     Layout.fillWidth: true
-                                    Layout.minimumWidth: 80
+                                    Layout.minimumWidth: Math.max(Math.round(92 * root.fontScale), 92)
                                     Layout.preferredWidth: 1
+                                    implicitHeight: Math.max(Math.round(30 * root.fontScale), 30)
+                                    verticalAlignment: TextInput.AlignVCenter
+                                    leftPadding: 8
+                                    rightPadding: 8
                                     maximumLength: 10
                                     font.family: "monospace"
                                     font.bold: true
@@ -2607,8 +2611,12 @@ Window {
                                     font.pointSize: 10 * root.fontScale
                                     id: keyPropLabel2Field
                                     Layout.fillWidth: true
-                                    Layout.minimumWidth: 80
+                                    Layout.minimumWidth: Math.max(Math.round(92 * root.fontScale), 92)
                                     Layout.preferredWidth: 1
+                                    implicitHeight: Math.max(Math.round(30 * root.fontScale), 30)
+                                    verticalAlignment: TextInput.AlignVCenter
+                                    leftPadding: 8
+                                    rightPadding: 8
                                     maximumLength: 10
                                     font.family: "monospace"
                                     selectByMouse: true
@@ -2972,7 +2980,7 @@ Window {
     visible: false
     transientParent: root
     modality: Qt.WindowModal
-    flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
+    flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
 
     Kirigami.Theme.colorSet: Kirigami.Theme.Window
     Kirigami.Theme.inherit: false

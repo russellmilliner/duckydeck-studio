@@ -13,13 +13,15 @@ Window {
     minimumWidth: 500
     minimumHeight: 360
     visible: false
+    transientParent: root
     modality: Qt.WindowModal
-    flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMinMaxButtonsHint
+    flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMinMaxButtonsHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
 
     Kirigami.Theme.colorSet: Kirigami.Theme.Window
     Kirigami.Theme.inherit: false
     color: Kirigami.Theme.backgroundColor
 
+    property var root: null
     property var controller: null
     readonly property bool closableWithEscape: true
     readonly property real fontScale: (controller && controller.uiTextScale > 0

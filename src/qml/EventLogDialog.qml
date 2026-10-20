@@ -831,6 +831,57 @@ Window {
                     }
                 }
 
+                // 1B. Check Input Field (TextField) Internal Clipping & Content Capacity across Zoom Levels
+                var isTextField = (typeStr.indexOf("TextField") !== -1 || typeStr.indexOf("TextArea") !== -1)
+                if (isTextField && item.width > 1 && item.height > 1) {
+                    uiTestSuiteRunner.totalInputFieldsInspected = (uiTestSuiteRunner.totalInputFieldsInspected || 0) + 1
+                    var topPad = item.topPadding !== undefined ? item.topPadding : 0
+                    var botPad = item.bottomPadding !== undefined ? item.bottomPadding : 0
+                    var leftPad = item.leftPadding !== undefined ? item.leftPadding : 0
+                    var rightPad = item.rightPadding !== undefined ? item.rightPadding : 0
+                    var availH = item.height - topPad - botPad
+                    var availW = item.width - leftPad - rightPad
+                    var contentH = item.contentHeight || (item.font ? (item.font.pixelSize || Math.round(item.font.pointSize * 1.33)) : 14)
+
+                    // Vertical clipping: TextField must have enough height for its text line height plus padding
+                    if (item.height < contentH + topPad + botPad - 1.5) {
+                        uiTestSuiteRunner.overflowViolations.push({
+                            theme: passThemeLabel,
+                            window: windowName,
+                            element: describeItem(item),
+                            kind: "input_field_vertical_clipping",
+                            bounds: {
+                                height: Math.round(item.height),
+                                contentHeight: Math.round(contentH),
+                                padding: Math.round(topPad + botPad),
+                                minRequired: Math.round(contentH + topPad + botPad)
+                            }
+                        })
+                    }
+
+                    // Horizontal clipping on 5-character OLED label fields
+                    var isOledLabelField = (item.id === "label1Input" || item.id === "label2Input"
+                        || item.id === "keyPropLabel1Field" || item.id === "keyPropLabel2Field")
+                    if (isOledLabelField) {
+                        var charWidth = item.font ? (item.font.pixelSize || Math.round(item.font.pointSize * 1.33)) * 0.65 : 8
+                        var required5ChWidth = Math.ceil(5 * charWidth)
+                        if (availW < required5ChWidth) {
+                            uiTestSuiteRunner.overflowViolations.push({
+                                theme: passThemeLabel,
+                                window: windowName,
+                                element: describeItem(item),
+                                kind: "oled_label_input_field_horizontal_clipping",
+                                bounds: {
+                                    width: Math.round(item.width),
+                                    availableWidth: Math.round(availW),
+                                    requiredFor5Chars: Math.round(required5ChWidth),
+                                    zoom: uiTestSuiteRunner.currentZoom
+                                }
+                            })
+                        }
+                    }
+                }
+
                 // 2. Check Text / Label Overflow, Minimum 10pt UI Font (or >=6px on PCB/OLED canvas), & WCAG Color Contrast
                 if (isTextNode && hasAlphanumericText(item.text)) {
                     uiTestSuiteRunner.totalTextNodesInspected++
@@ -1368,14 +1419,14 @@ Window {
                     + " fallback=" + deviceController.defaultFallbackProfile
             )
 
-            // 13. DuckyDeck Studio custom firmware (DPP_FW_1.0.1_bf177326.bin) is available in the firmware catalog
+            // 13. DuckyDeck Studio custom firmware (DDS_FW_1.1.0_b3291568.bin) is available in the firmware catalog
             var fwList = []
             try { fwList = JSON.parse(deviceController.listAvailableFirmwaresJson() || "[]") } catch (e) {}
             var studioFw = fwList.find(function(fw) {
                 return fw.is_official === false
                     && fw.supports_monochrome_icons === true
                     && fw.is_downloaded === true
-                    && fw.filename === "DPP_FW_1.0.1_bf177326.bin"
+                    && (fw.filename === "DDS_FW_1.1.0_b3291568.bin" || fw.filename.indexOf("DDS_FW_1.1.0_") === 0)
             })
             recordBehavior(
                 "duckydeck_studio_firmware_available_in_catalog",
@@ -1449,6 +1500,29 @@ Window {
                 "validErrLen=" + validRegexErr.length
                     + " invalidErrLen=" + invalidRegexErr.length
                     + " savedTitleIsRegex=" + (savedRegexRule ? savedRegexRule.titleIsRegex : false)
+            )
+
+            // 16. OLED Label input fields fit 5 uppercase characters and emojis without horizontal or vertical clipping
+            root.selectedSlotNumber = 1
+            root.refreshSelectedSlotFromController()
+            var prevL1 = label1Input.text
+            var prevL2 = label2Input.text
+            label1Input.text = "WWWWW"
+            label2Input.text = "MMMMM"
+            var l1AvailW = label1Input.width - label1Input.leftPadding - label1Input.rightPadding
+            var l2AvailW = label2Input.width - label2Input.leftPadding - label2Input.rightPadding
+            var l1FitOk = label1Input.contentWidth <= l1AvailW + 1
+            var l2FitOk = label2Input.contentWidth <= l2AvailW + 1
+            var l1HeightOk = label1Input.height >= label1Input.contentHeight + label1Input.topPadding + label1Input.bottomPadding - 1.5
+            var l2HeightOk = label2Input.height >= label2Input.contentHeight + label2Input.topPadding + label2Input.bottomPadding - 1.5
+            label1Input.text = "💡"
+            var l1EmojiFitOk = label1Input.contentWidth <= l1AvailW + 1
+            label1Input.text = prevL1
+            label2Input.text = prevL2
+            recordBehavior(
+                "oled_label_input_fields_no_clipping",
+                l1FitOk && l2FitOk && l1HeightOk && l2HeightOk && l1EmojiFitOk,
+                "l1Fit=" + l1FitOk + " l2Fit=" + l2FitOk + " l1H=" + l1HeightOk + " l2H=" + l2HeightOk + " emoji=" + l1EmojiFitOk
             )
 
             // Restore initial profile group for visual window steps
@@ -1943,7 +2017,7 @@ Window {
     visible: false
     transientParent: root
     modality: Qt.NonModal
-    flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMinMaxButtonsHint
+    flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMinMaxButtonsHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
 
     Kirigami.Theme.colorSet: Kirigami.Theme.Window
     Kirigami.Theme.inherit: false

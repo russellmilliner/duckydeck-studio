@@ -159,6 +159,15 @@ Item {
 
     function evalPresetRgb(preset, col, row, phase, c1, c2, baseR, baseG, baseB, originCol, originRow, progress01) {
         if (preset === "pulse") {
+            if (originCol >= 0 && originCol <= 3) {
+                // Keypress burst: smooth breathing pulse across entire pad from base to c1 and back
+                const blend = Math.sin(Math.min(1.0, Math.max(0.0, progress01)) * Math.PI)
+                return [
+                    Math.round(baseR * (1.0 - blend) + c1[0] * blend),
+                    Math.round(baseG * (1.0 - blend) + c1[1] * blend),
+                    Math.round(baseB * (1.0 - blend) + c1[2] * blend)
+                ]
+            }
             const w = 0.5 + 0.5 * Math.sin(phase * Math.PI * 2.0)
             return [
                 Math.round(c2[0] + (c1[0] - c2[0]) * w),
@@ -166,6 +175,17 @@ Item {
                 Math.round(c2[2] + (c1[2] - c2[2]) * w)
             ]
         } else if (preset === "wave_h") {
+            if (originCol >= 0 && originCol <= 3) {
+                // Keypress burst: sweeping wave left to right across all columns
+                const waveCol = progress01 * 5.0 - 0.5
+                const dist = Math.abs(col - waveCol)
+                const band = Math.max(0.0, 1.0 - dist / 1.1)
+                return [
+                    Math.round(baseR * (1.0 - band) + c1[0] * band),
+                    Math.round(baseG * (1.0 - band) + c1[1] * band),
+                    Math.round(baseB * (1.0 - band) + c1[2] * band)
+                ]
+            }
             const w = 0.5 + 0.5 * Math.sin((phase - col * 0.22) * Math.PI * 2.0)
             return [
                 Math.round(c2[0] + (c1[0] - c2[0]) * w),
@@ -173,6 +193,17 @@ Item {
                 Math.round(c2[2] + (c1[2] - c2[2]) * w)
             ]
         } else if (preset === "wave_v") {
+            if (originCol >= 0 && originCol <= 3) {
+                // Keypress burst: sweeping cascade top to bottom down all rows
+                const waveRow = progress01 * 6.0 - 0.5
+                const dist = Math.abs(row - waveRow)
+                const band = Math.max(0.0, 1.0 - dist / 1.1)
+                return [
+                    Math.round(baseR * (1.0 - band) + c1[0] * band),
+                    Math.round(baseG * (1.0 - band) + c1[1] * band),
+                    Math.round(baseB * (1.0 - band) + c1[2] * band)
+                ]
+            }
             const w = 0.5 + 0.5 * Math.sin((phase - row * 0.20) * Math.PI * 2.0)
             return [
                 Math.round(c2[0] + (c1[0] - c2[0]) * w),
@@ -181,8 +212,28 @@ Item {
             ]
         } else if (preset === "spectrum") {
             const hue = (phase + col * 0.08 + row * 0.06) % 1.0
-            return canvasRoot.hsvToRgb(hue, 0.92, 1.0)
+            const rgb = canvasRoot.hsvToRgb(hue, 0.95, 1.0)
+            if (originCol >= 0 && originCol <= 3) {
+                const blend = Math.sin(Math.min(1.0, Math.max(0.0, progress01)) * Math.PI)
+                return [
+                    Math.round(baseR * (1.0 - blend) + rgb[0] * blend),
+                    Math.round(baseG * (1.0 - blend) + rgb[1] * blend),
+                    Math.round(baseB * (1.0 - blend) + rgb[2] * blend)
+                ]
+            }
+            return rgb
         } else if (preset === "scanner") {
+            if (originCol >= 0 && originCol <= 3) {
+                // Keypress burst: ping-pong sweep across columns (0 -> 3 -> 0)
+                const pingPong = progress01 <= 0.5 ? (progress01 * 6.0) : ((1.0 - progress01) * 6.0)
+                const dist = Math.abs(col - pingPong)
+                const intensity = Math.max(0.0, 1.0 - dist * 0.75) * (1.0 - progress01 * 0.4)
+                return [
+                    Math.round(baseR * (1.0 - intensity) + c1[0] * intensity),
+                    Math.round(baseG * (1.0 - intensity) + c1[1] * intensity),
+                    Math.round(baseB * (1.0 - intensity) + c1[2] * intensity)
+                ]
+            }
             const pingPong = 1.5 + 1.5 * Math.sin(phase * Math.PI * 2.0)
             const dist = Math.abs(col - pingPong)
             const intensity = Math.max(0.0, 1.0 - dist * 0.65)
@@ -203,8 +254,25 @@ Item {
             ]
         } else if (preset === "starlight") {
             const decay = Math.max(0.0, 1.0 - progress01)
+            if (originCol >= 0 && originCol <= 3) {
+                // Keypress burst across whole duckyPad:
+                // Pressed key has an immediate bright flare that smoothly decays
+                const isOrigin = (col === originCol && row === originRow)
+                // Deterministic pseudo-random twinkle per key based on coordinates & progress
+                const keySeed = (col * 7 + row * 13 + originCol * 3 + originRow * 5) % 17
+                const twinkle = Math.sin((progress01 * 12.0 + keySeed) * Math.PI)
+                const sparkle = isOrigin
+                    ? decay
+                    : (Math.max(0.0, twinkle) * decay * 0.85)
+                return [
+                    Math.round(baseR * (1.0 - sparkle) + c1[0] * sparkle),
+                    Math.round(baseG * (1.0 - sparkle) + c1[1] * sparkle),
+                    Math.round(baseB * (1.0 - sparkle) + c1[2] * sparkle)
+                ]
+            }
+            // Ambient / idle starlight mode
             const seed = Math.sin((col * 7 + row * 13) * 1.7 + phase * 6.28)
-            const sparkle = progress01 < 1.0 ? decay : Math.max(0.0, (seed - 0.35) / 0.65)
+            const sparkle = Math.max(0.0, (seed - 0.35) / 0.65)
             return [
                 Math.round(baseR * (1.0 - sparkle) + c1[0] * sparkle),
                 Math.round(baseG * (1.0 - sparkle) + c1[1] * sparkle),
@@ -334,12 +402,9 @@ Item {
                     }
                 }
 
-                // 2. Active Keypress Bursts layer
+                // 2. Active Keypress Bursts layer (applies across full duckyPad)
                 for (let b = 0; b < activeBursts.length; ++b) {
                     const burst = activeBursts[b]
-                    if (burst.scope === "key" && burst.slot !== slot && burst.preset !== "ripple") {
-                        continue
-                    }
                     const durMs = Math.max(350, 1400 - (burst.speed || 5) * 95)
                     const prog = Math.min(1.0, Math.max(0.0, (now - burst.startMs) / durMs))
                     const oCol = (burst.slot - 1) % 4
@@ -368,9 +433,15 @@ Item {
             }
 
             if (shouldStreamHw && canvasRoot.controller && canvasRoot.controller.connected) {
-                canvasRoot.hwStreamTickCounter = (canvasRoot.hwStreamTickCounter + 1) % 3
-                if (canvasRoot.hwStreamTickCounter === 0) {
+                const hasBursts = (canvasRoot.activeKeyBursts && canvasRoot.activeKeyBursts.length > 0)
+                if (hasBursts) {
+                    // Stream every tick during reactive key bursts for fluid shockwave animation
                     canvasRoot.controller.pushHardwareLedFrameJson(JSON.stringify(hwFrame))
+                } else {
+                    canvasRoot.hwStreamTickCounter = (canvasRoot.hwStreamTickCounter + 1) % 3
+                    if (canvasRoot.hwStreamTickCounter === 0) {
+                        canvasRoot.controller.pushHardwareLedFrameJson(JSON.stringify(hwFrame))
+                    }
                 }
             }
         }

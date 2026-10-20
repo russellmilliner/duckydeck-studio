@@ -12,9 +12,11 @@ Window {
     minimumWidth: 660
     minimumHeight: 540
     visible: false
+    transientParent: root
     modality: Qt.NonModal
-    flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
+    flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
 
+    property var root: null
     property var controller: null
     property var profileChoices: []
     property var profileNumbers: []

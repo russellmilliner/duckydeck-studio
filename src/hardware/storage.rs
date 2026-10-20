@@ -43,6 +43,7 @@ static CACHED_HID_DEVICE: std::sync::OnceLock<std::sync::Mutex<Option<HidDevice>
     std::sync::OnceLock::new();
 
 pub fn invalidate_cached_hid_device() {
+    crate::actions::web_api::invalidate_hardware_led_cache();
     if let Some(lock) = CACHED_HID_DEVICE.get() {
         if let Ok(mut guard) = lock.lock() {
             *guard = None;
@@ -445,19 +446,24 @@ mod tests {
 
     #[test]
     fn test_firmware_catalog_and_crc32_integrity() {
-        let list = list_available_duckypad_pro_firmwares("1.0.1 (DuckyDeck Studio)");
+        let list = list_available_duckypad_pro_firmwares("1.1.0 (DuckyDeck Studio)");
         assert!(
             !list.is_empty(),
             "Expected at least 1 DuckyDeck Studio firmware release, got {}",
             list.len()
         );
-        // First entry should be v1.0.1 (DuckyDeck Studio Firmware)
+        // First entry should be v1.1.0 (DuckyDeck Studio Firmware)
         let studio_entries: Vec<&FirmwareVersionEntry> =
             list.iter().filter(|e| !e.is_official).collect();
         assert!(!studio_entries.is_empty());
-        assert_eq!(studio_entries[0].version, "1.0.1");
+        assert_eq!(studio_entries[0].version, "1.1.0");
         assert_eq!(studio_entries[0].vendor, "DuckyDeck Studio");
         assert!(studio_entries[0].supports_monochrome_icons);
+        assert!(
+            studio_entries[0].filename.starts_with("DDS_FW_"),
+            "Custom firmware should use DDS_FW_ prefix: {}",
+            studio_entries[0].filename
+        );
         for entry in studio_entries {
             let bytes =
                 std::fs::read(&entry.path).expect("Bundled firmware binary should be readable");

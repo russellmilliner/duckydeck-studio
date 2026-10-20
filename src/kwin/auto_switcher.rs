@@ -149,6 +149,8 @@ pub struct PersistedSwitcherConfig {
     #[serde(default = "default_saved_colors")]
     pub saved_colors: Vec<String>,
     #[serde(default)]
+    pub saved_color_names: std::collections::HashMap<String, String>,
+    #[serde(default)]
     pub rest_api_enabled: bool,
     #[serde(default = "default_rest_api_bind_ip")]
     pub rest_api_bind_ip: String,
@@ -193,6 +195,7 @@ pub struct SwitcherState {
     pub status_bar_text_scale: i32,
     pub event_log_text_scale: i32,
     pub saved_colors: Vec<String>,
+    pub saved_color_names: std::collections::HashMap<String, String>,
     pub rest_api_enabled: bool,
     pub rest_api_bind_ip: String,
     pub rest_api_port: u16,
@@ -264,6 +267,7 @@ impl Default for SwitcherState {
                 status_bar_text_scale: cfg.ui_text_scale.clamp(75, 160),
                 event_log_text_scale: cfg.ui_text_scale.clamp(75, 160),
                 saved_colors,
+                saved_color_names: cfg.saved_color_names,
                 rest_api_enabled: cfg.rest_api_enabled,
                 rest_api_bind_ip: bind_ip,
                 rest_api_port: port,
@@ -325,6 +329,7 @@ impl Default for SwitcherState {
             status_bar_text_scale: 100,
             event_log_text_scale: 100,
             saved_colors: default_saved_colors(),
+            saved_color_names: std::collections::HashMap::new(),
             rest_api_enabled: false,
             rest_api_bind_ip: default_rest_api_bind_ip(),
             rest_api_port: default_rest_api_port(),
@@ -598,6 +603,7 @@ impl SwitcherState {
             status_bar_text_scale: unified_scale,
             event_log_text_scale: unified_scale,
             saved_colors: self.saved_colors.clone(),
+            saved_color_names: self.saved_color_names.clone(),
             rest_api_enabled: self.rest_api_enabled,
             rest_api_bind_ip: self.rest_api_bind_ip.clone(),
             rest_api_port: self.rest_api_port,
@@ -2750,6 +2756,8 @@ function checkOledKeepAbove(win) {{
         if (!isWindowHooked(win)) {{
             hookedWindows.push(win);
             try {{
+                var trackedOledTopY = initialSavedOledRect ? initialSavedOledRect.y : Math.round(win.frameGeometry.y);
+                var isAdjustingOledGeometry = false;
                 if (initialSavedOledRect) {{
                     win.frameGeometry = {{
                         x: initialSavedOledRect.x,
@@ -2757,6 +2765,7 @@ function checkOledKeepAbove(win) {{
                         width: initialSavedOledRect.width,
                         height: initialSavedOledRect.height
                     }};
+                    trackedOledTopY = initialSavedOledRect.y;
                     initialSavedOledRect = null;
                 }}
                 callDBus(
@@ -2781,18 +2790,50 @@ function checkOledKeepAbove(win) {{
                         checkOledKeepAbove(win);
                     }});
                 }}
+                if (win.moveResizedChanged) {{
+                    win.moveResizedChanged.connect(function() {{
+                        if (win.frameGeometry && (win.move || win.resize)) {{
+                            trackedOledTopY = Math.round(win.frameGeometry.y);
+                        }}
+                    }});
+                }}
                 if (win.frameGeometryChanged) {{
                     win.frameGeometryChanged.connect(function() {{
                         if (!win.minimized && win.frameGeometry && win.frameGeometry.width >= 180 && win.frameGeometry.height >= 220) {{
+                            if (isAdjustingOledGeometry) return;
+
+                            var curX = Math.round(win.frameGeometry.x);
+                            var curY = Math.round(win.frameGeometry.y);
+                            var curW = Math.round(win.frameGeometry.width);
+                            var curH = Math.round(win.frameGeometry.height);
+
+                            if (win.move || win.resize) {{
+                                trackedOledTopY = curY;
+                            }} else if (trackedOledTopY !== null && Math.abs(curY - trackedOledTopY) >= 1) {{
+                                isAdjustingOledGeometry = true;
+                                try {{
+                                    win.frameGeometry = {{
+                                        x: curX,
+                                        y: trackedOledTopY,
+                                        width: curW,
+                                        height: curH
+                                    }};
+                                    curY = trackedOledTopY;
+                                }} catch (e) {{}}
+                                isAdjustingOledGeometry = false;
+                            }} else if (trackedOledTopY === null) {{
+                                trackedOledTopY = curY;
+                            }}
+
                             callDBus(
                                 "io.github.duckydeck.Studio",
                                 "/KWinBridge",
                                 "io.github.duckydeck.KWinBridge",
                                 "NotifyOledWidgetGeometry",
-                                Math.round(win.frameGeometry.x),
-                                Math.round(win.frameGeometry.y),
-                                Math.round(win.frameGeometry.width),
-                                Math.round(win.frameGeometry.height)
+                                curX,
+                                curY,
+                                curW,
+                                curH
                             );
                         }}
                     }});

@@ -286,7 +286,7 @@ Window {
         visible: false
         transientParent: root
         modality: Qt.WindowModal
-        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
 
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
         Kirigami.Theme.inherit: false
@@ -523,7 +523,7 @@ Window {
         visible: false
         transientParent: root
         modality: Qt.NonModal
-        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
         width: Math.max(840, minimumWidth)
         height: 680
         minimumWidth: 780
@@ -1313,7 +1313,7 @@ Window {
         minimumWidth: 540
         minimumHeight: 420
         modality: Qt.NonModal
-        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMinMaxButtonsHint
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMinMaxButtonsHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
         color: Kirigami.Theme.backgroundColor
 
         // "inspector" updates label1Input/label2Input directly; "keyProps" updates keyPropertiesWindow.keyPropLabel1Field/keyPropertiesWindow.keyPropLabel2Field
@@ -1328,6 +1328,7 @@ Window {
 
         readonly property var categories: [
             "All",
+            "Home Automation",
             "Media & Audio",
             "Arrows & Nav",
             "Editing & Clipboard",
@@ -1338,6 +1339,28 @@ Window {
         ]
 
         readonly property var iconCatalog: [
+            // Home Automation
+            { icon: "💡", label: "BULB", name: "Light / Lamp / Bulb", cat: "Home Automation" },
+            { icon: "🔌", label: "PLUG", name: "Smart Plug / Socket", cat: "Home Automation" },
+            { icon: "⚡", label: "PWR", name: "Power / Energy / Bolt", cat: "Home Automation" },
+            { icon: "🌡", label: "TEMP", name: "Thermostat / Temperature", cat: "Home Automation" },
+            { icon: "🔥", label: "HEAT", name: "Heater / Warmth", cat: "Home Automation" },
+            { icon: "❄", label: "COOL", name: "AC / Air Conditioner / Cooling", cat: "Home Automation" },
+            { icon: "🌀", label: "FAN", name: "Ceiling Fan / Ventilation", cat: "Home Automation" },
+            { icon: "🔒", label: "LOCK", name: "Lock / Armed", cat: "Home Automation" },
+            { icon: "🔓", label: "UNLCK", name: "Unlock / Disarmed", cat: "Home Automation" },
+            { icon: "🛡", label: "ALRM", name: "Security Alarm / Shield", cat: "Home Automation" },
+            { icon: "📹", label: "CAM", name: "Security Camera / CCTV", cat: "Home Automation" },
+            { icon: "🚪", label: "DOOR", name: "Door / Contact Sensor", cat: "Home Automation" },
+            { icon: "🪟", label: "WNDW", name: "Window / Window Sensor", cat: "Home Automation" },
+            { icon: "🧹", label: "VACC", name: "Robot Vacuum / Cleaner", cat: "Home Automation" },
+            { icon: "💧", label: "LEAK", name: "Water / Flood / Leak Sensor", cat: "Home Automation" },
+            { icon: "🚨", label: "SIREN", name: "Siren / Emergency Strobe", cat: "Home Automation" },
+            { icon: "🏠", label: "HOME", name: "Home / Occupied", cat: "Home Automation" },
+            { icon: "🌙", label: "NIGHT", name: "Night / Goodnight Scene", cat: "Home Automation" },
+            { icon: "☀", label: "DAY", name: "Morning / Daytime Scene", cat: "Home Automation" },
+            { icon: "🚗", label: "EV", name: "EV Charger / Garage Door", cat: "Home Automation" },
+
             // Media & Audio
             { icon: "▶", label: "PLAY", name: "Play", cat: "Media & Audio" },
             { icon: "⏸", label: "PAUSE", name: "Pause", cat: "Media & Audio" },
@@ -1788,7 +1811,11 @@ Window {
 
                 QQC2.TextField {
                     font.pointSize: 10 * root.fontScale
-                    Layout.preferredWidth: 110
+                    Layout.preferredWidth: Math.max(120, Math.round(120 * root.fontScale))
+                    implicitHeight: Math.max(30, Math.round(30 * root.fontScale))
+                    verticalAlignment: TextInput.AlignVCenter
+                    leftPadding: 8
+                    rightPadding: 8
                     maximumLength: 10
                     font.family: "monospace"
                     font.bold: true
@@ -1809,7 +1836,11 @@ Window {
                 QQC2.TextField {
                     font.pointSize: 10 * root.fontScale
                     visible: oledIconPickerDialog.targetSupportsTwoLines
-                    Layout.preferredWidth: 110
+                    Layout.preferredWidth: Math.max(120, Math.round(120 * root.fontScale))
+                    implicitHeight: Math.max(30, Math.round(30 * root.fontScale))
+                    verticalAlignment: TextInput.AlignVCenter
+                    leftPadding: 8
+                    rightPadding: 8
                     maximumLength: 10
                     font.family: "monospace"
                     selectByMouse: true
@@ -1980,7 +2011,7 @@ Window {
     visible: false
     transientParent: root
     modality: Qt.NonModal
-    flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
+    flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
 
     Kirigami.Theme.colorSet: Kirigami.Theme.Window
     Kirigami.Theme.inherit: false

@@ -213,28 +213,53 @@ Window {
             "// --- DuckyDeck Studio RGB Keypress Animation (" + preset + ") ---"
         ]
 
-        if (preset === "pulse" || preset === "starlight") {
-            const steps = [1.0, 0.75, 0.45, 0.2, 0.65, 1.0, 0.35]
+        if (preset === "pulse") {
+            const steps = [1.0, 0.75, 0.45, 0.2, 0.65, 0.95]
             for (let s = 0; s < steps.length; ++s) {
                 const w = steps[s]
                 const r = Math.round(c2[0] + (c1[0] - c2[0]) * w)
                 const g = Math.round(c2[1] + (c1[1] - c2[1]) * w)
                 const b = Math.round(c2[2] + (c1[2] - c2[2]) * w)
-                out.push("SWC_SET " + targetKey + " " + r + " " + g + " " + b)
+                out.push("SWC_FILL " + r + " " + g + " " + b)
                 out.push("DELAY " + stepDelay)
             }
-            out.push("SWC_RESET " + targetKey)
+            out.push("SWC_RESET 255")
+        } else if (preset === "starlight") {
+            // Twinkling multi-star constellations across the entire 20-key pad
+            const starGroups = [
+                [targetKey, ((targetKey + 5) % 20) + 1, ((targetKey + 11) % 20) + 1, ((targetKey + 17) % 20) + 1],
+                [((targetKey + 2) % 20) + 1, ((targetKey + 7) % 20) + 1, ((targetKey + 14) % 20) + 1],
+                [((targetKey + 4) % 20) + 1, ((targetKey + 9) % 20) + 1, ((targetKey + 13) % 20) + 1, ((targetKey + 18) % 20) + 1],
+                [((targetKey + 1) % 20) + 1, ((targetKey + 6) % 20) + 1, ((targetKey + 10) % 20) + 1, ((targetKey + 15) % 20) + 1]
+            ]
+            for (let g = 0; g < starGroups.length; ++g) {
+                const group = starGroups[g]
+                for (let k = 0; k < group.length; ++k) {
+                    out.push("SWC_SET " + group[k] + " " + c1[0] + " " + c1[1] + " " + c1[2])
+                }
+                out.push("DELAY " + stepDelay)
+                if (g > 0) {
+                    const prev = starGroups[g - 1]
+                    for (let k = 0; k < prev.length; ++k) {
+                        out.push("SWC_RESET " + prev[k])
+                    }
+                }
+            }
+            // Reset final group & all keys back to profile base colors
+            out.push("SWC_RESET 255")
         } else if (preset === "ripple") {
-            for (let ring = 0; ring <= 3; ++ring) {
+            const maxRing = 5
+            for (let ring = 0; ring <= maxRing; ++ring) {
+                let anySet = false
                 for (let k = 1; k <= 20; ++k) {
                     const kc = (k - 1) % 4
                     const kr = Math.floor((k - 1) / 4)
                     const d = Math.round(Math.hypot(kc - originCol, kr - originRow))
                     if (d === ring) {
                         out.push("SWC_SET " + k + " " + c1[0] + " " + c1[1] + " " + c1[2])
+                        anySet = true
                     }
                 }
-                out.push("DELAY " + stepDelay)
                 if (ring > 0) {
                     for (let k = 1; k <= 20; ++k) {
                         const kc = (k - 1) % 4
@@ -245,9 +270,13 @@ Window {
                         }
                     }
                 }
+                if (anySet || ring <= 3) {
+                    out.push("DELAY " + stepDelay)
+                }
             }
-            out.push("SWC_RESET 0")
-        } else if (preset === "wave_h" || preset === "scanner") {
+            // 255 resets all keys on duckyPad hardware back to profile colors
+            out.push("SWC_RESET 255")
+        } else if (preset === "wave_h") {
             for (let col = 0; col < 4; ++col) {
                 for (let row = 0; row < 5; ++row) {
                     const k = row * 4 + col + 1
@@ -259,7 +288,22 @@ Window {
                     out.push("SWC_RESET " + k)
                 }
             }
-            out.push("SWC_RESET 0")
+            out.push("SWC_RESET 255")
+        } else if (preset === "scanner") {
+            const scanCols = [0, 1, 2, 3, 2, 1, 0]
+            for (let idx = 0; idx < scanCols.length; ++idx) {
+                const col = scanCols[idx]
+                for (let row = 0; row < 5; ++row) {
+                    const k = row * 4 + col + 1
+                    out.push("SWC_SET " + k + " " + c1[0] + " " + c1[1] + " " + c1[2])
+                }
+                out.push("DELAY " + stepDelay)
+                for (let row = 0; row < 5; ++row) {
+                    const k = row * 4 + col + 1
+                    out.push("SWC_RESET " + k)
+                }
+            }
+            out.push("SWC_RESET 255")
         } else if (preset === "wave_v") {
             for (let row = 0; row < 5; ++row) {
                 for (let col = 0; col < 4; ++col) {
@@ -272,14 +316,14 @@ Window {
                     out.push("SWC_RESET " + k)
                 }
             }
-            out.push("SWC_RESET 0")
+            out.push("SWC_RESET 255")
         } else if (preset === "spectrum") {
-            for (let f = 0; f < 6; ++f) {
-                const rgb = hardwareCanvas.hsvToRgb(f / 6.0, 0.95, 1.0)
-                out.push("SWC_SET " + targetKey + " " + rgb[0] + " " + rgb[1] + " " + rgb[2])
+            for (let f = 0; f < 8; ++f) {
+                const rgb = hardwareCanvas.hsvToRgb(f / 8.0, 0.95, 1.0)
+                out.push("SWC_FILL " + rgb[0] + " " + rgb[1] + " " + rgb[2])
                 out.push("DELAY " + stepDelay)
             }
-            out.push("SWC_RESET " + targetKey)
+            out.push("SWC_RESET 255")
         }
         out.push("// --- End DuckyDeck Studio RGB Animation ---")
         return out.join("\n")
@@ -426,7 +470,7 @@ Window {
         visible: false
         transientParent: root
         modality: Qt.NonModal
-        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint
+        flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
         width: Math.min(820, Screen.desktopAvailableWidth - 80)
         height: Math.min(680, Screen.desktopAvailableHeight - 80)
         minimumWidth: 680
@@ -1189,7 +1233,7 @@ Window {
     visible: false
     transientParent: root
     modality: Qt.WindowModal
-    flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint
+    flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
 
     Kirigami.Theme.colorSet: Kirigami.Theme.Window
     Kirigami.Theme.inherit: false
@@ -1210,7 +1254,60 @@ Window {
     property bool updatingInternally: false
 
     property var savedColorsList: []
+    property var savedColorNamesMap: ({})
     property var usedColorsList: []
+
+    readonly property var standardColorsList: [
+        { name: qsTr("Red"), hex: "#ff0000" },
+        { name: qsTr("Crimson"), hex: "#dc143c" },
+        { name: qsTr("Dark Red"), hex: "#8b0000" },
+        { name: qsTr("Coral"), hex: "#ff7f50" },
+        { name: qsTr("Tomato"), hex: "#ff6347" },
+        { name: qsTr("Orange"), hex: "#ffa500" },
+        { name: qsTr("Dark Orange"), hex: "#ff8c00" },
+        { name: qsTr("Gold"), hex: "#ffd700" },
+        { name: qsTr("Amber / Cyber Yellow"), hex: "#ffbf00" },
+        { name: qsTr("Yellow"), hex: "#ffff00" },
+        { name: qsTr("Chartreuse"), hex: "#7fff00" },
+        { name: qsTr("Lime"), hex: "#00ff00" },
+        { name: qsTr("Spring Green"), hex: "#00ff7f" },
+        { name: qsTr("Neon Mint"), hex: "#00ffaa" },
+        { name: qsTr("Green"), hex: "#008000" },
+        { name: qsTr("Emerald"), hex: "#50c878" },
+        { name: qsTr("Teal"), hex: "#008080" },
+        { name: qsTr("Cyan / Aqua"), hex: "#00ffff" },
+        { name: qsTr("Ducky Cyan"), hex: "#38bdf8" },
+        { name: qsTr("Deep Sky Blue"), hex: "#00aaff" },
+        { name: qsTr("Sky Blue"), hex: "#00bfff" },
+        { name: qsTr("Dodger Blue"), hex: "#1e90ff" },
+        { name: qsTr("Blue"), hex: "#0000ff" },
+        { name: qsTr("Royal Blue"), hex: "#4169e1" },
+        { name: qsTr("Navy Blue"), hex: "#000080" },
+        { name: qsTr("Indigo"), hex: "#4b0082" },
+        { name: qsTr("Purple"), hex: "#800080" },
+        { name: qsTr("Electric Purple"), hex: "#a855f7" },
+        { name: qsTr("Dark Violet"), hex: "#9400d3" },
+        { name: qsTr("Magenta / Fuchsia"), hex: "#ff00ff" },
+        { name: qsTr("Hot Pink"), hex: "#ff69b4" },
+        { name: qsTr("Deep Pink"), hex: "#ff1493" },
+        { name: qsTr("Light Pink"), hex: "#ffb6c1" },
+        { name: qsTr("White"), hex: "#ffffff" },
+        { name: qsTr("Silver"), hex: "#c0c0c0" },
+        { name: qsTr("Gray"), hex: "#808080" },
+        { name: qsTr("Dark Slate"), hex: "#2f4f4f" },
+        { name: qsTr("Black (Off)"), hex: "#000000" }
+    ]
+
+    function findStandardColorName(hexStr) {
+        if (!hexStr) return ""
+        const target = hexStr.toLowerCase().trim()
+        for (let i = 0; i < standardColorsList.length; ++i) {
+            if (standardColorsList[i].hex.toLowerCase() === target) {
+                return standardColorsList[i].name
+            }
+        }
+        return ""
+    }
 
     readonly property color currentColor: Qt.rgba(redVal / 255.0, greenVal / 255.0, blueVal / 255.0, 1.0)
     readonly property string currentHex: formatRgbHex(redVal, greenVal, blueVal)
@@ -1237,6 +1334,12 @@ Window {
             savedColorsList = Array.isArray(sArr) ? sArr : []
         } catch (e) {
             savedColorsList = []
+        }
+        try {
+            const nMap = JSON.parse(deviceController.savedColorNamesJson || "{}")
+            savedColorNamesMap = (nMap && typeof nMap === "object") ? nMap : {}
+        } catch (e) {
+            savedColorNamesMap = {}
         }
         try {
             const uArr = JSON.parse(deviceController.usedColorsJson || "[]")
@@ -1361,6 +1464,14 @@ Window {
                 try {
                     const sArr = JSON.parse(deviceController.savedColorsJson || "[]")
                     duckyColorPickerWindow.savedColorsList = Array.isArray(sArr) ? sArr : []
+                } catch (e) {}
+            }
+        }
+        function onSavedColorNamesJsonChanged() {
+            if (duckyColorPickerWindow.visible) {
+                try {
+                    const nMap = JSON.parse(deviceController.savedColorNamesJson || "{}")
+                    duckyColorPickerWindow.savedColorNamesMap = (nMap && typeof nMap === "object") ? nMap : {}
                 } catch (e) {}
             }
         }
@@ -1733,6 +1844,74 @@ Window {
 
                 Item { Layout.fillHeight: true }
 
+                // Standard Color Name Picker
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    QQC2.Label {
+                        text: qsTr("Color Name:")
+                        font.bold: true
+                        font.pointSize: 10 * root.fontScale
+                        color: Kirigami.Theme.textColor
+                    }
+
+                    QQC2.ComboBox {
+                        id: standardColorPickerCombo
+                        Layout.fillWidth: true
+                        font.pointSize: 10 * root.fontScale
+                        model: duckyColorPickerWindow.standardColorsList
+                        textRole: "name"
+                        currentIndex: {
+                            const cur = duckyColorPickerWindow.currentHex.toLowerCase()
+                            for (let i = 0; i < duckyColorPickerWindow.standardColorsList.length; ++i) {
+                                if (duckyColorPickerWindow.standardColorsList[i].hex.toLowerCase() === cur) {
+                                    return i
+                                }
+                            }
+                            return -1
+                        }
+                        displayText: currentIndex >= 0
+                            ? currentText
+                            : (duckyColorPickerWindow.findStandardColorName(duckyColorPickerWindow.currentHex) || qsTr("Custom (%1)").arg(duckyColorPickerWindow.currentHex))
+
+                        delegate: QQC2.ItemDelegate {
+                            width: standardColorPickerCombo.width
+                            highlighted: standardColorPickerCombo.highlightedIndex === index
+                            contentItem: RowLayout {
+                                spacing: 8
+                                Rectangle {
+                                    width: 14
+                                    height: 14
+                                    radius: 2
+                                    color: modelData.hex
+                                    border.width: 1
+                                    border.color: Qt.alpha(Kirigami.Theme.textColor, 0.3)
+                                }
+                                QQC2.Label {
+                                    text: modelData.name
+                                    font.pointSize: 10 * root.fontScale
+                                    font.bold: modelData.hex.toLowerCase() === duckyColorPickerWindow.currentHex.toLowerCase()
+                                    color: Kirigami.Theme.textColor
+                                    Layout.fillWidth: true
+                                }
+                                QQC2.Label {
+                                    text: modelData.hex
+                                    font.family: "monospace"
+                                    font.pointSize: 9 * root.fontScale
+                                    color: Kirigami.Theme.disabledTextColor
+                                }
+                            }
+                        }
+
+                        onActivated: (index) => {
+                            if (index >= 0 && index < duckyColorPickerWindow.standardColorsList.length) {
+                                duckyColorPickerWindow.setColorFromHex(duckyColorPickerWindow.standardColorsList[index].hex)
+                            }
+                        }
+                    }
+                }
+
                 // Hex field + System Picker
                 RowLayout {
                     Layout.fillWidth: true
@@ -1802,7 +1981,7 @@ Window {
                 }
 
                 QQC2.Label {
-                    text: qsTr("• Left-click to select, right-click to remove")
+                    text: qsTr("• Left-click to select, right-click for options")
                     font.pointSize: 10 * root.fontScale
                     color: Kirigami.Theme.disabledTextColor
                     Layout.fillWidth: true
@@ -1854,6 +2033,9 @@ Window {
                                 id: savedSwatch
                                 required property string modelData
                                 readonly property bool isCurrentMatch: modelData.toLowerCase() === duckyColorPickerWindow.currentHex.toLowerCase()
+                                readonly property string customName: duckyColorPickerWindow.savedColorNamesMap[modelData.toLowerCase()] || ""
+                                readonly property string stdName: duckyColorPickerWindow.findStandardColorName(modelData)
+                                readonly property string labelName: customName.length > 0 ? customName : stdName
                                 width: 30
                                 height: 30
                                 radius: 5
@@ -1874,6 +2056,20 @@ Window {
                                     border.width: 1
                                 }
 
+                                // Custom named indicator dot on top-right corner
+                                Rectangle {
+                                    visible: savedSwatch.customName.length > 0
+                                    width: 6
+                                    height: 6
+                                    radius: 3
+                                    anchors.top: parent.top
+                                    anchors.right: parent.right
+                                    anchors.margins: 2
+                                    color: "#38bdf8"
+                                    border.width: 0.5
+                                    border.color: "#000000"
+                                }
+
                                 MouseArea {
                                     id: savedSwatchMouse
                                     anchors.fill: parent
@@ -1882,8 +2078,9 @@ Window {
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: (mouse) => {
                                         if (mouse.button === Qt.RightButton) {
-                                            deviceController.removePaletteColor(savedSwatch.modelData)
-                                            duckyColorPickerWindow.refreshPaletteLists()
+                                            savedSwatchContextMenu.targetHex = savedSwatch.modelData
+                                            savedSwatchContextMenu.targetName = savedSwatch.customName
+                                            savedSwatchContextMenu.popup()
                                         } else {
                                             duckyColorPickerWindow.setColorFromHex(savedSwatch.modelData)
                                         }
@@ -1897,7 +2094,9 @@ Window {
                                 }
 
                                 QQC2.ToolTip.visible: savedSwatchMouse.containsMouse
-                                QQC2.ToolTip.text: qsTr("%1 • Left-click to select • Double-click to apply • Right-click to remove").arg(savedSwatch.modelData)
+                                QQC2.ToolTip.text: labelName.length > 0
+                                    ? qsTr("%1 (%2) • Left-click to select • Double-click to apply • Right-click for menu").arg(labelName).arg(savedSwatch.modelData)
+                                    : qsTr("%1 • Left-click to select • Double-click to apply • Right-click for menu").arg(savedSwatch.modelData)
                             }
                         }
                     }
@@ -2055,6 +2254,106 @@ Window {
                 text: qsTr("Apply Color")
                 highlighted: true
                 onClicked: duckyColorPickerWindow.applySelectedColor()
+            }
+        }
+    }
+
+    // Context Menu for Saved Color Swatches
+    QQC2.Menu {
+        id: savedSwatchContextMenu
+        property string targetHex: ""
+        property string targetName: ""
+
+        QQC2.MenuItem {
+            enabled: false
+            contentItem: RowLayout {
+                spacing: 8
+                Rectangle {
+                    width: 16
+                    height: 16
+                    radius: 3
+                    color: savedSwatchContextMenu.targetHex.length > 0 ? savedSwatchContextMenu.targetHex : "transparent"
+                    border.width: 1
+                    border.color: Qt.alpha(Kirigami.Theme.textColor, 0.4)
+                }
+                QQC2.Label {
+                    text: savedSwatchContextMenu.targetName.length > 0
+                        ? (savedSwatchContextMenu.targetName + " (" + savedSwatchContextMenu.targetHex + ")")
+                        : savedSwatchContextMenu.targetHex
+                    font.bold: true
+                    color: Kirigami.Theme.textColor
+                }
+            }
+        }
+        QQC2.MenuSeparator {}
+        QQC2.MenuItem {
+            text: qsTr("🏷️ Name / Rename Color...")
+            onTriggered: {
+                colorNameInputDialog.targetHex = savedSwatchContextMenu.targetHex
+                colorNameInputDialog.initialName = savedSwatchContextMenu.targetName
+                colorNameInputDialog.open()
+            }
+        }
+        QQC2.MenuItem {
+            text: qsTr("📋 Copy Hex Code")
+            onTriggered: {
+                root.copyToClipboard(savedSwatchContextMenu.targetHex)
+            }
+        }
+        QQC2.MenuSeparator {}
+        QQC2.MenuItem {
+            text: qsTr("🗑️ Remove from Saved Colors")
+            onTriggered: {
+                deviceController.removePaletteColor(savedSwatchContextMenu.targetHex)
+                duckyColorPickerWindow.refreshPaletteLists()
+            }
+        }
+    }
+
+    // Dialog for Naming Saved Colors
+    QQC2.Dialog {
+        id: colorNameInputDialog
+        property string targetHex: ""
+        property string initialName: ""
+        title: qsTr("Name Saved Color — %1").arg(targetHex)
+        modal: true
+        anchors.centerIn: parent
+        standardButtons: QQC2.Dialog.Ok | QQC2.Dialog.Cancel
+        onOpened: {
+            colorNameField.text = initialName
+            colorNameField.selectAll()
+            colorNameField.forceActiveFocus()
+        }
+        onAccepted: {
+            deviceController.saveSavedColorName(targetHex, colorNameField.text.trim())
+            duckyColorPickerWindow.refreshPaletteLists()
+        }
+        contentItem: ColumnLayout {
+            spacing: 8
+            RowLayout {
+                spacing: 8
+                Rectangle {
+                    width: 24
+                    height: 24
+                    radius: 4
+                    color: colorNameInputDialog.targetHex.length > 0 ? colorNameInputDialog.targetHex : "transparent"
+                    border.width: 1
+                    border.color: Qt.alpha(Kirigami.Theme.textColor, 0.4)
+                }
+                QQC2.Label {
+                    text: colorNameInputDialog.targetHex
+                    font.family: "monospace"
+                    font.bold: true
+                    color: Kirigami.Theme.textColor
+                }
+            }
+            QQC2.TextField {
+                id: colorNameField
+                Layout.fillWidth: true
+                placeholderText: qsTr("Enter a custom name (e.g. Gaming Red, Accent Blue)...")
+                selectByMouse: true
+                maximumLength: 32
+                onAccepted: colorNameInputDialog.accept()
             }
         }
     }

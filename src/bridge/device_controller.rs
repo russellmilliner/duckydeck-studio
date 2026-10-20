@@ -118,6 +118,7 @@ pub mod qobject {
         #[qproperty(QString, event_log_json)]
         #[qproperty(i32, event_log_count)]
         #[qproperty(QString, saved_colors_json)]
+        #[qproperty(QString, saved_color_names_json)]
         #[qproperty(QString, used_colors_json)]
         #[qproperty(bool, rest_api_enabled)]
         #[qproperty(QString, rest_api_bind_ip)]
@@ -566,6 +567,14 @@ pub mod qobject {
         fn remove_palette_color(self: Pin<&mut DeviceController>, hex_color: QString);
 
         #[qinvokable]
+        #[cxx_name = "saveSavedColorName"]
+        fn save_saved_color_name(
+            self: Pin<&mut DeviceController>,
+            hex_color: QString,
+            name: QString,
+        ) -> bool;
+
+        #[qinvokable]
         fn is_demo_showcase_mode(self: &DeviceController) -> bool;
 
         #[qinvokable]
@@ -1009,6 +1018,7 @@ pub struct DeviceControllerRust {
     pub(crate) event_log_json: QString,
     pub(crate) event_log_count: i32,
     pub(crate) saved_colors_json: QString,
+    pub(crate) saved_color_names_json: QString,
     pub(crate) used_colors_json: QString,
     pub(crate) rest_api_enabled: bool,
     pub(crate) rest_api_bind_ip: QString,
@@ -1193,6 +1203,8 @@ impl Default for DeviceControllerRust {
         };
         let saved_colors_json =
             serde_json::to_string(&switcher.saved_colors).unwrap_or_else(|_| "[]".to_string());
+        let saved_color_names_json =
+            serde_json::to_string(&switcher.saved_color_names).unwrap_or_else(|_| "{}".to_string());
         let used_colors_json = Self::collect_used_colors_json(&profiles);
         let autostart = is_kde_autostart_enabled();
         if autostart {
@@ -1336,6 +1348,7 @@ impl Default for DeviceControllerRust {
             event_log_json: QString::from(&init_log_json),
             event_log_count: init_log_count,
             saved_colors_json: QString::from(&saved_colors_json),
+            saved_color_names_json: QString::from(&saved_color_names_json),
             used_colors_json: QString::from(&used_colors_json),
             rest_api_enabled: rest_enabled,
             rest_api_bind_ip: QString::from(&rest_ip),
@@ -6121,20 +6134,25 @@ impl qobject::DeviceController {
     }
 
     pub fn refresh_color_palettes(mut self: Pin<&mut Self>) {
-        let (saved_json, used_json) = {
+        let (saved_json, saved_names_json, used_json) = {
             let rust = self.rust();
-            let saved = rust
+            let (saved, names) = rust
                 .switcher_state
                 .lock()
-                .map(|sw| sw.saved_colors.clone())
+                .map(|sw| (sw.saved_colors.clone(), sw.saved_color_names.clone()))
                 .unwrap_or_default();
             let s_json = serde_json::to_string(&saved).unwrap_or_else(|_| "[]".to_string());
+            let n_json = serde_json::to_string(&names).unwrap_or_else(|_| "{}".to_string());
             let u_json = DeviceControllerRust::collect_used_colors_json(&rust.profiles);
-            (s_json, u_json)
+            (s_json, n_json, u_json)
         };
         if self.saved_colors_json().to_string() != saved_json {
             self.as_mut()
                 .set_saved_colors_json(QString::from(&saved_json));
+        }
+        if self.saved_color_names_json().to_string() != saved_names_json {
+            self.as_mut()
+                .set_saved_color_names_json(QString::from(&saved_names_json));
         }
         if self.used_colors_json().to_string() != used_json {
             self.as_mut()
@@ -6175,9 +6193,48 @@ impl qobject::DeviceController {
         self.as_mut().refresh_color_palettes();
     }
 
+    pub fn save_saved_color_name(
+        mut self: Pin<&mut Self>,
+        hex_color: QString,
+        name: QString,
+    ) -> bool {
+        let raw_hex = hex_color.to_string();
+        let trimmed = raw_hex.trim().to_ascii_lowercase();
+        let target_hex = if trimmed.starts_with('#') {
+            trimmed
+        } else {
+            format!("#{trimmed}")
+        };
+        let new_name = name.to_string().trim().to_string();
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                if new_name.is_empty() {
+                    sw.saved_color_names.remove(&target_hex);
+                } else {
+                    sw.saved_color_names.insert(target_hex, new_name);
+                }
+                if let Err(e) = sw.save_to_disk() {
+                    record_system_event(
+                        "WARN",
+                        "CONFIG",
+                        format!("Failed saving color names to disk: {e}"),
+                    );
+                }
+            }
+        }
+        self.as_mut().refresh_color_palettes();
+        true
+    }
+
     pub fn remove_palette_color(mut self: Pin<&mut Self>, hex_color: QString) {
         let raw = hex_color.to_string();
         let target = raw.trim().to_ascii_lowercase();
+        let target_norm = if target.starts_with('#') {
+            target.clone()
+        } else {
+            format!("#{target}")
+        };
         if target.is_empty() {
             return;
         }
@@ -6186,6 +6243,7 @@ impl qobject::DeviceController {
             if let Ok(mut sw) = rust.switcher_state.lock() {
                 let before = sw.saved_colors.len();
                 sw.saved_colors.retain(|c| !c.eq_ignore_ascii_case(&target));
+                sw.saved_color_names.remove(&target_norm);
                 if sw.saved_colors.len() != before {
                     if let Err(e) = sw.save_to_disk() {
                         record_system_event(
