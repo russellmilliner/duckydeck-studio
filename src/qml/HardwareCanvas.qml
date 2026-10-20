@@ -451,6 +451,28 @@ Item {
     property int draggingSlot: -1
     property int dropTargetSlot: -1
     property bool dragShiftMode: false
+    property bool externalShortcutDragActive: false
+
+    function hitTestSlotAtItemPos(sourceItem, mx, my) {
+        if (!sourceItem) return -1
+        if (!canvasRoot.showExpansion) {
+            const pt = sourceItem.mapToItem(switchMatrix, mx, my)
+            const stride = 72
+            if (pt.x >= 0 && pt.x < switchMatrix.width && pt.y >= 0 && pt.y < switchMatrix.height) {
+                const col = Math.min(3, Math.max(0, Math.floor(pt.x / stride)))
+                const row = Math.min(4, Math.max(0, Math.floor(pt.y / stride)))
+                return row * 4 + col + 1
+            }
+        } else {
+            const pt = sourceItem.mapToItem(expansionGrid, mx, my)
+            if (pt.x >= 0 && pt.x < expansionGrid.width && pt.y >= 0 && pt.y < expansionGrid.height) {
+                const col = Math.min(3, Math.max(0, Math.floor((pt.x / expansionGrid.width) * 4)))
+                const row = Math.min(7, Math.max(0, Math.floor((pt.y / expansionGrid.height) * 8)))
+                return 27 + row * 4 + col
+            }
+        }
+        return -1
+    }
 
     function clearSelection() {
         if (canvasRoot.selectedSlot !== 0) {
@@ -1067,9 +1089,10 @@ Item {
                             readonly property bool isSelected: canvasRoot.selectedSlot === slot
                             readonly property bool isDraggingThis: canvasRoot.draggingSlot === slot
                             readonly property bool isDropTarget: canvasRoot.dropTargetSlot === slot
-                                && canvasRoot.draggingSlot >= 1
-                                && canvasRoot.draggingSlot <= 20
-                                && canvasRoot.draggingSlot !== slot
+                                && (canvasRoot.externalShortcutDragActive
+                                    || (canvasRoot.draggingSlot >= 1
+                                        && canvasRoot.draggingSlot <= 20
+                                        && canvasRoot.draggingSlot !== slot))
                             readonly property color baseLedColor: Qt.rgba(r / 255.0, g / 255.0, b / 255.0, 1.0)
                             readonly property color ledColor: animActive
                                 ? Qt.rgba(animR / 255.0, animG / 255.0, animB / 255.0, 1.0)
@@ -1341,7 +1364,9 @@ Item {
                                         QQC2.Label {
                                             id: dropModeLbl
                                             anchors.centerIn: parent
-                                            text: canvasRoot.dragShiftMode ? qsTr("→ Shift") : qsTr("⇄ Swap")
+                                            text: canvasRoot.externalShortcutDragActive
+                                                ? qsTr("⬇ Assign")
+                                                : (canvasRoot.dragShiftMode ? qsTr("→ Shift") : qsTr("⇄ Swap"))
                                             font.pixelSize: 9
                                             font.bold: true
                                             color: Kirigami.Theme.backgroundColor
@@ -1832,9 +1857,10 @@ Item {
                             readonly property bool isSel: canvasRoot.selectedSlot === slotNum
                             readonly property bool isDraggingThis: canvasRoot.draggingSlot === slotNum
                             readonly property bool isDropTarget: canvasRoot.dropTargetSlot === slotNum
-                                && canvasRoot.draggingSlot >= 27
-                                && canvasRoot.draggingSlot <= 58
-                                && canvasRoot.draggingSlot !== slotNum
+                                && (canvasRoot.externalShortcutDragActive
+                                    || (canvasRoot.draggingSlot >= 27
+                                        && canvasRoot.draggingSlot <= 58
+                                        && canvasRoot.draggingSlot !== slotNum))
                             readonly property string expLabel: canvasRoot.expansionLabels[slotNum] || ""
 
                             Layout.fillWidth: true

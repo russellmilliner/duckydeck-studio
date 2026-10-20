@@ -4034,6 +4034,12 @@ Kirigami.ApplicationWindow {
                                             root.showAppLaunchBuilder = false
                                             root.showWebApiBuilder = false
                                             root.inspectorMode = "shortcuts"
+                                            if (keyEditorShortcutsListView.count === 0 && shortcutAppInputField.text.trim().length > 0 && deviceController) {
+                                                deviceController.searchAppShortcuts(
+                                                    shortcutAppInputField.text.trim(),
+                                                    allowGoogleShortcutsCheck.checked
+                                                )
+                                            }
                                         }
                                     }
 
@@ -4408,17 +4414,30 @@ Kirigami.ApplicationWindow {
                             visible: root.inspectorMode === "shortcuts"
                             Layout.fillWidth: true
                             Layout.fillHeight: root.inspectorMode === "shortcuts"
-                            implicitHeight: visible ? Math.round(320 * root.inspectorScale) : 0
+                            implicitHeight: visible ? Math.round(340 * root.inspectorScale) : 0
                             radius: Kirigami.Units.smallSpacing
                             color: Kirigami.Theme.alternateBackgroundColor
                             border.color: Qt.alpha(Kirigami.Theme.highlightColor, 0.45)
                             border.width: 1
                             clip: true
 
+                            property string keyEditorShortcutFilter: ""
+
+                            function shortcutCategoryColor(category) {
+                                const cat = String(category || "").toLowerCase()
+                                if (cat.includes("debug")) return Qt.rgba(0.96, 0.62, 0.04, 1.0)
+                                if (cat.includes("combat") || cat.includes("action")) return Qt.rgba(0.94, 0.27, 0.27, 1.0)
+                                if (cat.includes("move")) return Qt.rgba(0.13, 0.77, 0.37, 1.0)
+                                if (cat.includes("hotbar") || cat.includes("creative")) return Qt.rgba(0.66, 0.33, 0.97, 1.0)
+                                if (cat.includes("camera") || cat.includes("view") || cat.includes("hud")) return Qt.rgba(0.02, 0.71, 0.83, 1.0)
+                                if (cat.includes("chat") || cat.includes("multi")) return Qt.rgba(0.93, 0.28, 0.60, 1.0)
+                                return root.selectedSlotColor || Kirigami.Theme.highlightColor
+                            }
+
                             ColumnLayout {
                                 anchors.fill: parent
                                 anchors.margins: 10
-                                spacing: 8
+                                spacing: 6
 
                                 RowLayout {
                                     Layout.fillWidth: true
@@ -4429,8 +4448,10 @@ Kirigami.ApplicationWindow {
                                         Layout.fillWidth: true
                                         implicitHeight: Math.round(28 * root.inspectorScale)
                                         font.pointSize: 10 * root.fontScale
-                                        placeholderText: qsTr("Application name or window class (e.g. Dolphin, Chrome, VS Code)...")
-                                        text: (deviceController && deviceController.lastPickedWindowClass) ? deviceController.lastPickedWindowClass : ""
+                                        placeholderText: qsTr("App or game (e.g. Minecraft, Dolphin, Chrome, VS Code)...")
+                                        text: (deviceController && deviceController.lastPickedWindowClass)
+                                            ? deviceController.lastPickedWindowClass
+                                            : ((deviceController && deviceController.activeProfileName) ? deviceController.activeProfileName : "")
                                         onAccepted: searchShortcutsBtn.clicked()
                                     }
 
@@ -4448,7 +4469,7 @@ Kirigami.ApplicationWindow {
 
                                     QQC2.Button {
                                         id: searchShortcutsBtn
-                                        text: qsTr("🔍 Search")
+                                        text: deviceController && deviceController.searchShortcutsBusy ? qsTr("Searching...") : qsTr("🔍 Search")
                                         implicitHeight: Math.round(28 * root.inspectorScale)
                                         font.pointSize: 10 * root.fontScale
                                         highlighted: true
@@ -4468,88 +4489,230 @@ Kirigami.ApplicationWindow {
                                     Layout.fillWidth: true
                                     spacing: 8
 
+                                    QQC2.TextField {
+                                        id: keyEditorShortcutFilterField
+                                        Layout.fillWidth: true
+                                        implicitHeight: Math.round(26 * root.inspectorScale)
+                                        font.pointSize: 9.5 * root.fontScale
+                                        placeholderText: qsTr("Filter shortcuts (e.g. Inventory, F3, Chunk, Save)...")
+                                        text: shortcutsLibraryCard.keyEditorShortcutFilter
+                                        onTextChanged: shortcutsLibraryCard.keyEditorShortcutFilter = text
+                                    }
+
                                     QQC2.CheckBox {
                                         id: allowGoogleShortcutsCheck
-                                        text: qsTr("Allow Google Search (privacy permission)")
+                                        text: qsTr("🌐 Web Search")
                                         font.pointSize: 9.5 * root.fontScale
                                         checked: deviceController ? deviceController.googleSearchShortcutsPermitted : false
                                         onToggled: {
                                             if (deviceController) {
                                                 deviceController.setGoogleSearchPermission(checked)
+                                                if (shortcutAppInputField.text.trim().length > 0) {
+                                                    deviceController.searchAppShortcuts(
+                                                        shortcutAppInputField.text.trim(),
+                                                        checked
+                                                    )
+                                                }
                                             }
                                         }
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Allow online web search for shortcut cheatsheets (privacy permission)")
                                     }
 
-                                    Item { Layout.fillWidth: true }
-
                                     QQC2.Button {
-                                        text: qsTr("🧙 New Profile Wizard...")
-                                        implicitHeight: Math.round(24 * root.inspectorScale)
+                                        text: qsTr("🧙 Profile Wizard...")
+                                        implicitHeight: Math.round(26 * root.inspectorScale)
                                         font.pointSize: 9.5 * root.fontScale
                                         onClicked: profileWizardDialog.openWizard()
                                     }
                                 }
 
-                                // Shortcuts list view
+                                // Menu of Shortcut Keys (Main-Window Keycap Look & Feel + Drag-and-Drop onto HardwareCanvas)
                                 ListView {
                                     id: keyEditorShortcutsListView
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     clip: true
-                                    spacing: 4
+                                    spacing: 6
+                                    boundsBehavior: Flickable.StopAtBounds
                                     model: {
                                         if (!deviceController || !deviceController.discoveredShortcutsJson) return []
                                         try {
                                             const arr = JSON.parse(deviceController.discoveredShortcutsJson)
-                                            return Array.isArray(arr) ? arr : []
+                                            if (!Array.isArray(arr)) return []
+                                            const filter = shortcutsLibraryCard.keyEditorShortcutFilter.trim().toLowerCase()
+                                            if (!filter) return arr
+                                            return arr.filter(s =>
+                                                (s.action && s.action.toLowerCase().includes(filter)) ||
+                                                (s.shortcut && s.shortcut.toLowerCase().includes(filter)) ||
+                                                (s.category && s.category.toLowerCase().includes(filter)) ||
+                                                (s.label_l1 && s.label_l1.toLowerCase().includes(filter)) ||
+                                                (s.label_l2 && s.label_l2.toLowerCase().includes(filter))
+                                            )
                                         } catch (e) {
                                             return []
                                         }
                                     }
 
                                     delegate: Item {
+                                        id: keScDelegate
                                         width: keyEditorShortcutsListView.width
-                                        height: 44
+                                        height: 74
+                                        readonly property color itemLedColor: shortcutsLibraryCard.shortcutCategoryColor(modelData.category)
 
                                         Rectangle {
                                             anchors.fill: parent
-                                            radius: 5
-                                            color: scCardMouse.containsMouse ? Qt.alpha(Kirigami.Theme.highlightColor, 0.14) : Qt.alpha(Kirigami.Theme.backgroundColor, 0.6)
-                                            border.width: 1
-                                            border.color: scCardMouse.containsMouse ? Kirigami.Theme.highlightColor : Qt.alpha(Kirigami.Theme.textColor, 0.15)
+                                            radius: 8
+                                            color: scCardMouse.containsMouse
+                                                ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.12))
+                                                : Kirigami.Theme.backgroundColor
+                                            border.width: scCardMouse.containsMouse ? 1.5 : 1
+                                            border.color: scCardMouse.containsMouse
+                                                ? Kirigami.Theme.highlightColor
+                                                : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
 
                                             RowLayout {
                                                 anchors.fill: parent
-                                                anchors.leftMargin: 8
+                                                anchors.leftMargin: 6
                                                 anchors.rightMargin: 8
-                                                spacing: 6
+                                                spacing: 10
 
-                                                QQC2.Label {
-                                                    text: "⋮⋮"
-                                                    color: Kirigami.Theme.disabledTextColor
+                                                // Authentic Main-Window 66x66 duckyPad Keycap Preview
+                                                Item {
+                                                    Layout.preferredWidth: 64
+                                                    Layout.preferredHeight: 64
+
+                                                    Rectangle {
+                                                        anchors.fill: parent
+                                                        radius: 8
+                                                        color: Kirigami.Theme.backgroundColor
+                                                        border.width: scCardMouse.containsMouse ? 2 : 1
+                                                        border.color: scCardMouse.containsMouse
+                                                            ? Kirigami.Theme.highlightColor
+                                                            : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+
+                                                        QQC2.Label {
+                                                            x: 6
+                                                            y: 1
+                                                            width: 14
+                                                            height: 10
+                                                            text: "⋮⋮"
+                                                            font.pixelSize: 8
+                                                            font.bold: true
+                                                            font.family: "monospace"
+                                                            color: Kirigami.Theme.disabledTextColor
+                                                        }
+
+                                                        Rectangle {
+                                                            x: 21
+                                                            y: 4
+                                                            width: 34
+                                                            height: 4
+                                                            radius: 2
+                                                            color: keScDelegate.itemLedColor
+                                                        }
+
+                                                        Rectangle {
+                                                            anchors.fill: parent
+                                                            anchors.margins: 5
+                                                            anchors.topMargin: 12
+                                                            radius: 6
+                                                            clip: true
+                                                            color: scCardMouse.pressed
+                                                                ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(keScDelegate.itemLedColor.r, keScDelegate.itemLedColor.g, keScDelegate.itemLedColor.b, 0.30))
+                                                                : (scCardMouse.containsMouse
+                                                                    ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.16))
+                                                                    : Kirigami.Theme.alternateBackgroundColor)
+                                                            border.width: 1
+                                                            border.color: scCardMouse.containsMouse
+                                                                ? Kirigami.Theme.highlightColor
+                                                                : Qt.rgba(keScDelegate.itemLedColor.r, keScDelegate.itemLedColor.g, keScDelegate.itemLedColor.b, 0.55)
+
+                                                            Column {
+                                                                anchors.centerIn: parent
+                                                                width: parent.width - 6
+                                                                spacing: 0
+
+                                                                QQC2.Label {
+                                                                    width: parent.width
+                                                                    horizontalAlignment: Text.AlignHCenter
+                                                                    verticalAlignment: Text.AlignVCenter
+                                                                    text: modelData.label_l1 || ""
+                                                                    font.pixelSize: (modelData.label_l2 && modelData.label_l2.length > 0) ? 10 : 11
+                                                                    fontSizeMode: Text.HorizontalFit
+                                                                    minimumPixelSize: 7
+                                                                    elide: Text.ElideRight
+                                                                    font.bold: true
+                                                                    color: Kirigami.Theme.textColor
+                                                                }
+
+                                                                QQC2.Label {
+                                                                    visible: !!(modelData.label_l2 && modelData.label_l2.length > 0)
+                                                                    width: parent.width
+                                                                    horizontalAlignment: Text.AlignHCenter
+                                                                    verticalAlignment: Text.AlignVCenter
+                                                                    text: modelData.label_l2 || ""
+                                                                    font.pixelSize: 9
+                                                                    fontSizeMode: Text.HorizontalFit
+                                                                    minimumPixelSize: 7
+                                                                    elide: Text.ElideRight
+                                                                    font.weight: Font.Medium
+                                                                    color: Kirigami.Theme.disabledTextColor
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 }
 
                                                 ColumnLayout {
                                                     Layout.fillWidth: true
-                                                    spacing: 0
+                                                    spacing: 3
 
                                                     QQC2.Label {
-                                                        text: modelData.action
+                                                        Layout.fillWidth: true
+                                                        text: modelData.action || ""
                                                         font.bold: true
                                                         font.pointSize: 9.5 * root.fontScale
                                                         elide: Text.ElideRight
+                                                        color: Kirigami.Theme.textColor
                                                     }
 
-                                                    QQC2.Label {
-                                                        text: modelData.shortcut + " • " + (modelData.source || modelData.category || "")
-                                                        font.pointSize: 8.5 * root.fontScale
-                                                        color: Kirigami.Theme.highlightColor
+                                                    RowLayout {
+                                                        spacing: 6
+
+                                                        Rectangle {
+                                                            radius: 4
+                                                            color: Qt.alpha(Kirigami.Theme.highlightColor, 0.16)
+                                                            border.width: 1
+                                                            border.color: Qt.alpha(Kirigami.Theme.highlightColor, 0.55)
+                                                            implicitWidth: keScBadgeLbl.implicitWidth + 8
+                                                            implicitHeight: Math.round(17 * root.inspectorScale)
+
+                                                            QQC2.Label {
+                                                                id: keScBadgeLbl
+                                                                anchors.centerIn: parent
+                                                                text: modelData.shortcut || ""
+                                                                font.family: "monospace"
+                                                                font.bold: true
+                                                                font.pointSize: 8.5 * root.fontScale
+                                                                color: Kirigami.Theme.highlightColor
+                                                            }
+                                                        }
+
+                                                        QQC2.Label {
+                                                            text: modelData.category || modelData.source || ""
+                                                            font.pointSize: 8.5 * root.fontScale
+                                                            color: Kirigami.Theme.disabledTextColor
+                                                            elide: Text.ElideRight
+                                                        }
                                                     }
                                                 }
 
                                                 QQC2.Button {
-                                                    text: qsTr("Apply to Key %1").arg(root.selectedSlotNumber)
-                                                    implicitHeight: Math.round(24 * root.inspectorScale)
+                                                    id: keApplyBtn
+                                                    z: 5
+                                                    text: qsTr("Apply → K%1").arg(root.selectedSlotNumber)
+                                                    implicitHeight: Math.round(26 * root.inspectorScale)
                                                     font.pointSize: 9 * root.fontScale
                                                     highlighted: true
                                                     onClicked: {
@@ -4571,31 +4734,89 @@ Kirigami.ApplicationWindow {
                                             }
                                         }
 
-                                        Item {
-                                            id: scDragItem
-                                            Drag.active: scCardMouse.drag.active
-                                            Drag.source: scDragItem
-                                            Drag.hotSpot.x: width / 2
-                                            Drag.hotSpot.y: height / 2
-                                            Drag.mimeData: ({
-                                                "application/x-ducky-shortcut": JSON.stringify(modelData)
-                                            })
-                                            Drag.dragType: Drag.Automatic
-                                        }
-
                                         MouseArea {
                                             id: scCardMouse
-                                            anchors.fill: parent
+                                            anchors.top: parent.top
+                                            anchors.bottom: parent.bottom
+                                            anchors.left: parent.left
+                                            anchors.right: keApplyBtn.left
+                                            anchors.rightMargin: 6
                                             hoverEnabled: true
-                                            cursorShape: Qt.OpenHandCursor
-                                            drag.target: scDragItem
+                                            preventStealing: true
+                                            cursorShape: didDrag ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                                            property real pressX: 0
+                                            property real pressY: 0
+                                            property bool didDrag: false
+
+                                            onPressed: (mouse) => {
+                                                if (mouse.button === Qt.LeftButton) {
+                                                    pressX = mouse.x
+                                                    pressY = mouse.y
+                                                    didDrag = false
+                                                }
+                                            }
+
+                                            onPositionChanged: (mouse) => {
+                                                if (!(mouse.buttons & Qt.LeftButton)) return
+                                                const dx = mouse.x - pressX
+                                                const dy = mouse.y - pressY
+                                                if (!didDrag && Math.hypot(dx, dy) > 5) {
+                                                    didDrag = true
+                                                    root.draggingShortcutItem = modelData
+                                                    hardwareCanvas.externalShortcutDragActive = true
+                                                }
+                                                if (didDrag) {
+                                                    const winPt = scCardMouse.mapToItem(root.contentItem, mouse.x, mouse.y)
+                                                    root.shortcutDragOverlayX = winPt.x - 33
+                                                    root.shortcutDragOverlayY = winPt.y - 33
+                                                    hardwareCanvas.dropTargetSlot = hardwareCanvas.hitTestSlotAtItemPos(scCardMouse, mouse.x, mouse.y)
+                                                }
+                                            }
+
+                                            onReleased: (mouse) => {
+                                                if (didDrag) {
+                                                    const targetSlot = hardwareCanvas.dropTargetSlot
+                                                    const sc = root.draggingShortcutItem
+                                                    didDrag = false
+                                                    root.draggingShortcutItem = null
+                                                    hardwareCanvas.externalShortcutDragActive = false
+                                                    hardwareCanvas.dropTargetSlot = -1
+                                                    if (targetSlot >= 1 && sc && deviceController) {
+                                                        deviceController.assignShortcutToKeySlot(
+                                                            0,
+                                                            targetSlot,
+                                                            sc.action || "",
+                                                            sc.shortcut || "",
+                                                            sc.duckyscript || "",
+                                                            sc.category || ""
+                                                        )
+                                                        hardwareCanvas.syncSlotsFromController()
+                                                        if (targetSlot === root.selectedSlotNumber) {
+                                                            root.refreshSelectedSlotFromController()
+                                                            root.selectedSlotTitle = hardwareCanvas.slotTitleFor(root.selectedSlotNumber)
+                                                        }
+                                                    }
+                                                    return
+                                                }
+                                            }
+
+                                            onCanceled: {
+                                                didDrag = false
+                                                root.draggingShortcutItem = null
+                                                hardwareCanvas.externalShortcutDragActive = false
+                                                hardwareCanvas.dropTargetSlot = -1
+                                            }
+
+                                            QQC2.ToolTip.visible: scCardMouse.containsMouse && !didDrag
+                                            QQC2.ToolTip.delay: 450
+                                            QQC2.ToolTip.text: qsTr("Drag this keycap onto any duckyPad key on the left, or click 'Apply → K%1'").arg(root.selectedSlotNumber)
                                         }
                                     }
 
                                     QQC2.Label {
                                         anchors.centerIn: parent
                                         visible: keyEditorShortcutsListView.count === 0 && !(deviceController && deviceController.searchShortcutsBusy)
-                                        text: qsTr("Enter an application name or pick a window above, then click Search.")
+                                        text: qsTr("Enter an application or game name (e.g. Minecraft) or pick a window above, then click Search.")
                                         color: Kirigami.Theme.disabledTextColor
                                         font.pointSize: 9.5 * root.fontScale
                                     }
@@ -5631,6 +5852,100 @@ Kirigami.ApplicationWindow {
     // =========================================================================
 
     property int showcaseStep: 0
+    property var draggingShortcutItem: null
+    property real shortcutDragOverlayX: 0
+    property real shortcutDragOverlayY: 0
+
+    // Floating Lifted Keycap Overlay during Shortcut Drag-and-Drop in Main Window
+    Item {
+        id: mainFloatingShortcutOverlay
+        parent: root.contentItem
+        visible: root.draggingShortcutItem !== null
+        x: root.shortcutDragOverlayX
+        y: root.shortcutDragOverlayY
+        width: 66
+        height: 66
+        z: 9999
+        scale: 1.08
+        opacity: 0.94
+
+        readonly property color dragLedColor: root.draggingShortcutItem
+            ? shortcutsLibraryCard.shortcutCategoryColor(root.draggingShortcutItem.category)
+            : Kirigami.Theme.highlightColor
+
+        Rectangle {
+            anchors.fill: parent
+            radius: 8
+            color: Kirigami.Theme.backgroundColor
+            border.width: 2
+            border.color: hardwareCanvas.dropTargetSlot >= 1
+                ? Kirigami.Theme.positiveTextColor
+                : Kirigami.Theme.highlightColor
+
+            Rectangle {
+                x: 22
+                y: 4
+                width: 34
+                height: 4
+                radius: 2
+                color: mainFloatingShortcutOverlay.dragLedColor
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: 5
+                anchors.topMargin: 12
+                radius: 6
+                clip: true
+                color: Qt.tint(
+                    Kirigami.Theme.backgroundColor,
+                    Qt.rgba(
+                        mainFloatingShortcutOverlay.dragLedColor.r,
+                        mainFloatingShortcutOverlay.dragLedColor.g,
+                        mainFloatingShortcutOverlay.dragLedColor.b,
+                        0.28
+                    )
+                )
+                border.width: 1
+                border.color: hardwareCanvas.dropTargetSlot >= 1
+                    ? Kirigami.Theme.positiveTextColor
+                    : Kirigami.Theme.highlightColor
+
+                Column {
+                    anchors.centerIn: parent
+                    width: parent.width - 6
+                    spacing: 0
+
+                    QQC2.Label {
+                        width: parent.width
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        text: root.draggingShortcutItem ? (root.draggingShortcutItem.label_l1 || "") : ""
+                        font.pixelSize: 10
+                        fontSizeMode: Text.HorizontalFit
+                        minimumPixelSize: 7
+                        elide: Text.ElideRight
+                        font.bold: true
+                        color: Kirigami.Theme.textColor
+                    }
+
+                    QQC2.Label {
+                        visible: !!(root.draggingShortcutItem && root.draggingShortcutItem.label_l2)
+                        width: parent.width
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        text: root.draggingShortcutItem ? (root.draggingShortcutItem.label_l2 || "") : ""
+                        font.pixelSize: 9
+                        fontSizeMode: Text.HorizontalFit
+                        minimumPixelSize: 7
+                        elide: Text.ElideRight
+                        font.weight: Font.Medium
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                }
+            }
+        }
+    }
 
     function selectShowcaseSlot(slotNum) {
         const title = hardwareCanvas.slotTitleFor(slotNum)
