@@ -22,6 +22,13 @@ pub struct AutoSwitchRule {
     pub target_profile: u8,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HidSwitchOutcome {
+    Switched,
+    NotLoadedOnHardware,
+    DeviceUnavailable,
+}
+
 #[derive(Debug, Clone)]
 pub struct WindowChangeEvent {
     pub resource_class: String,
@@ -29,6 +36,7 @@ pub struct WindowChangeEvent {
     pub caption: String,
     pub matched_profile: Option<u8>,
     pub picked: bool,
+    pub hid_rejected_not_on_device: bool,
 }
 
 fn default_tray_icon_mode() -> String {
@@ -2317,6 +2325,7 @@ impl KWinBridgeService {
         if settle_ms <= 0 && dwell_ms <= 0 {
             let resolved_caption = resolve_full_browser_caption(&effective_class, &caption);
             let mut matched_profile: Option<u8> = None;
+            let mut hid_rejected_not_on_device = false;
 
             if let Ok(mut state) = self.state.lock() {
                 if !state.picker_armed && state.enabled && !state.paused_for_editing {
@@ -2324,8 +2333,14 @@ impl KWinBridgeService {
                         state.match_profile_for_window(&effective_class, &resolved_caption);
 
                     if let Some(target) = matched_profile {
-                        if send_hid_switch_profile(target) {
-                            state.last_switched_profile = target;
+                        match send_hid_switch_profile_checked(target) {
+                            HidSwitchOutcome::Switched => {
+                                state.last_switched_profile = target;
+                            }
+                            HidSwitchOutcome::NotLoadedOnHardware => {
+                                hid_rejected_not_on_device = true;
+                            }
+                            HidSwitchOutcome::DeviceUnavailable => {}
                         }
                     }
                 }
@@ -2337,6 +2352,7 @@ impl KWinBridgeService {
                 caption: resolved_caption,
                 matched_profile,
                 picked: false,
+                hid_rejected_not_on_device,
             }) {
                 crate::bridge::device_controller::record_system_event(
                     "WARN",
@@ -2355,6 +2371,7 @@ impl KWinBridgeService {
                 caption: resolved_caption,
                 matched_profile: None,
                 picked: false,
+                hid_rejected_not_on_device: false,
             }) {
                 crate::bridge::device_controller::record_system_event(
                     "WARN",
@@ -2406,12 +2423,14 @@ pub fn current_epoch_ms() -> u64 {
 }
 
 pub fn send_hid_switch_profile(profile_number: u8) -> bool {
+    send_hid_switch_profile_checked(profile_number) == HidSwitchOutcome::Switched
+}
+
+pub fn send_hid_switch_profile_checked(profile_number: u8) -> HidSwitchOutcome {
     if crate::hardware::storage::MSC_SYNC_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst) {
-        return false;
+        return HidSwitchOutcome::DeviceUnavailable;
     }
     let clamped = profile_number.clamp(1, 64);
-    LAST_SW_PROFILE_TARGET.store(clamped, std::sync::atomic::Ordering::SeqCst);
-    LAST_SW_PROFILE_SWITCH_MS.store(current_epoch_ms(), std::sync::atomic::Ordering::SeqCst);
 
     let _guard = crate::hardware::storage::HID_IO_LOCK.lock().ok();
     crate::hardware::storage::with_cached_duckypad_hid(|device| {
@@ -2425,9 +2444,10 @@ pub fn send_hid_switch_profile(profile_number: u8) -> bool {
             let mut qrx = [0u8; 64];
             if let Ok(n) = crate::hardware::storage::read_hid_report4(device, &mut qrx, 200) {
                 if n >= 12 && qrx[2] == 0 && qrx[6] != 0 && qrx[11] == clamped {
+                    LAST_SW_PROFILE_TARGET.store(clamped, std::sync::atomic::Ordering::SeqCst);
                     LAST_SW_PROFILE_SWITCH_MS
                         .store(current_epoch_ms(), std::sync::atomic::Ordering::SeqCst);
-                    return Ok(true);
+                    return Ok(HidSwitchOutcome::Switched);
                 }
             }
         }
@@ -2447,16 +2467,22 @@ pub fn send_hid_switch_profile(profile_number: u8) -> bool {
                         std::thread::sleep(std::time::Duration::from_millis(75));
                         continue;
                     }
+                    if n >= 3 && rx[2] != 0 {
+                        // HID_RESPONSE_INVALID_ARG (3) / HID_RESPONSE_NO_PROFILE (4) / HID_RESPONSE_ERROR (1):
+                        // Profile does not exist on the duckyPad SD card!
+                        return Ok(HidSwitchOutcome::NotLoadedOnHardware);
+                    }
                 }
+                LAST_SW_PROFILE_TARGET.store(clamped, std::sync::atomic::Ordering::SeqCst);
                 LAST_SW_PROFILE_SWITCH_MS
                     .store(current_epoch_ms(), std::sync::atomic::Ordering::SeqCst);
-                return Ok(true);
+                return Ok(HidSwitchOutcome::Switched);
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         Err("Failed switching profile over HID".to_string())
     })
-    .unwrap_or(false)
+    .unwrap_or(HidSwitchOutcome::DeviceUnavailable)
 }
 
 pub async fn pick_window_via_kwin_dbus() -> std::result::Result<WindowChangeEvent, String> {
@@ -2500,6 +2526,7 @@ pub async fn pick_window_via_kwin_dbus() -> std::result::Result<WindowChangeEven
         caption,
         matched_profile: None,
         picked: true,
+        hid_rejected_not_on_device: false,
     })
 }
 
@@ -2583,6 +2610,7 @@ pub async fn run_kwin_auto_switcher(
                     let resolved_caption =
                         resolve_full_browser_caption(&effective_class, &raw_caption);
                     let mut matched_profile: Option<u8> = None;
+                    let mut hid_rejected_not_on_device = false;
 
                     if let Ok(mut st) = state_bg.lock() {
                         if !st.picker_armed && st.enabled && !st.paused_for_editing {
@@ -2590,8 +2618,14 @@ pub async fn run_kwin_auto_switcher(
                                 st.match_profile_for_window(&effective_class, &resolved_caption);
 
                             if let Some(target) = matched_profile {
-                                if send_hid_switch_profile(target) {
-                                    st.last_switched_profile = target;
+                                match send_hid_switch_profile_checked(target) {
+                                    HidSwitchOutcome::Switched => {
+                                        st.last_switched_profile = target;
+                                    }
+                                    HidSwitchOutcome::NotLoadedOnHardware => {
+                                        hid_rejected_not_on_device = true;
+                                    }
+                                    HidSwitchOutcome::DeviceUnavailable => {}
                                 }
                             }
                         }
@@ -2603,6 +2637,7 @@ pub async fn run_kwin_auto_switcher(
                         caption: resolved_caption,
                         matched_profile,
                         picked: false,
+                        hid_rejected_not_on_device,
                     }) {
                         crate::bridge::device_controller::record_system_event(
                             "WARN",

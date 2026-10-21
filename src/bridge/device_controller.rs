@@ -132,6 +132,7 @@ pub mod qobject {
         #[qproperty(bool, google_search_shortcuts_permitted)]
         #[qproperty(bool, search_shortcuts_busy)]
         #[qproperty(QString, discovered_shortcuts_json)]
+        #[qproperty(QString, auto_switch_error_message)]
         type DeviceController = super::DeviceControllerRust;
 
         #[qinvokable]
@@ -889,6 +890,24 @@ pub mod qobject {
             duckyscript: QString,
             category: QString,
         ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "isGamingHoldScript"]
+        fn is_gaming_hold_script(
+            self: &DeviceController,
+            press_script: QString,
+            release_script: QString,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "convertScriptsForGamingHold"]
+        fn convert_scripts_for_gaming_hold(
+            self: &DeviceController,
+            press_script: QString,
+            release_script: QString,
+            enable_gaming_hold: bool,
+            action_hint: QString,
+        ) -> QString;
     }
 
     impl cxx_qt::Threading for DeviceController {}
@@ -917,26 +936,26 @@ use crate::hardware::storage::{
     fetch_official_firmwares_from_site, find_duckypad_msc_block_device, find_mounted_duckypad_sd,
     flash_slot_led_feedback, get_sd_card_space_info, instantiate_profile_from_template,
     list_available_duckypad_pro_firmwares, load_all_sd_profiles, load_home_assistant_config,
-    load_profiles_for_connected_device, load_web_api_destinations, mark_profiles_sd_synced,
-    merge_host_only_profile_settings, mount_duckypad_sd_only, oled_label_to_hardware_ascii,
-    poll_and_clear_pgv31_trigger, poll_hardware_active_profile, profile_cache_dir_for_serial,
-    query_connected_duckypad_info, read_dpp_config, read_duckypad_pro_profiles_via_msc,
-    read_duckypad_pro_profiles_via_msc_with_progress, reboot_duckypad, run_storage_cmd,
-    save_home_assistant_config, save_profile_as_user_template, save_profile_order_to_sd,
-    scan_installed_desktop_apps, seed_web_api_destinations_from_profiles, set_single_key_led_hid,
-    stage_duckypad_pro_firmware_via_msc_with_progress, sync_profile_web_api_triggers,
-    sync_profiles_to_cache, sync_profiles_to_device_cache, unmount_mounted_duckypad_sd,
-    upsert_web_api_destination, write_duckypad_pro_profiles_via_msc_with_progress,
-    write_profiles_to_sd_root, AppLaunchConfig, DuckyKeySlot, DuckyProfile, DuckypadEvdevListener,
-    GlobalMacroEvdevRecorder, ProfileWebhookConfig, WebApiConfig, DUCKYPAD_VID,
-    HID_CMD_SET_LED_SINGLE, HID_REPORT_ID_OUT, MAX_INPUT_SLOTS, PID_DUCKYPAD_2020,
-    PID_DUCKYPAD_PRO,
+    load_profiles_for_connected_device, load_sd_synced_snapshot, load_web_api_destinations,
+    mark_profiles_sd_synced, merge_host_only_profile_settings, mount_duckypad_sd_only,
+    oled_label_to_hardware_ascii, poll_and_clear_pgv31_trigger, poll_hardware_active_profile,
+    profile_cache_dir_for_serial, query_connected_duckypad_info, read_dpp_config,
+    read_duckypad_pro_profiles_via_msc, read_duckypad_pro_profiles_via_msc_with_progress,
+    reboot_duckypad, run_storage_cmd, save_home_assistant_config, save_profile_as_user_template,
+    save_profile_order_to_sd, scan_installed_desktop_apps, seed_web_api_destinations_from_profiles,
+    set_single_key_led_hid, stage_duckypad_pro_firmware_via_msc_with_progress,
+    sync_profile_web_api_triggers, sync_profiles_to_cache, sync_profiles_to_device_cache,
+    unmount_mounted_duckypad_sd, upsert_web_api_destination,
+    write_duckypad_pro_profiles_via_msc_with_progress, write_profiles_to_sd_root, AppLaunchConfig,
+    DuckyKeySlot, DuckyProfile, DuckypadEvdevListener, GlobalMacroEvdevRecorder,
+    ProfileWebhookConfig, WebApiConfig, DUCKYPAD_VID, HID_CMD_SET_LED_SINGLE, HID_REPORT_ID_OUT,
+    MAX_INPUT_SLOTS, PID_DUCKYPAD_2020, PID_DUCKYPAD_PRO,
 };
 use crate::kwin::auto_switcher::{
     discover_dekunukem_autoswitcher_configs, is_kde_autostart_enabled, is_web_browser_class,
     load_rules_bundle_from_dir, parse_dekunukem_autoswitcher_file, save_rules_bundle_to_dir,
-    set_kde_autostart_enabled, strip_browser_title_suffix, sync_local_desktop_and_icon,
-    AutoSwitchRule, SwitcherState,
+    send_hid_switch_profile_checked, set_kde_autostart_enabled, strip_browser_title_suffix,
+    sync_local_desktop_and_icon, AutoSwitchRule, HidSwitchOutcome, SwitcherState,
 };
 
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -1069,6 +1088,7 @@ pub struct DeviceControllerRust {
     pub(crate) google_search_shortcuts_permitted: bool,
     pub(crate) search_shortcuts_busy: bool,
     pub(crate) discovered_shortcuts_json: QString,
+    pub(crate) auto_switch_error_message: QString,
     pub(crate) copied_key_slot: Option<DuckyKeySlot>,
     pub(crate) firmware_download_url: String,
     pub(crate) sd_root_path: Option<PathBuf>,
@@ -1403,6 +1423,7 @@ impl Default for DeviceControllerRust {
             google_search_shortcuts_permitted: google_shortcuts_permitted,
             search_shortcuts_busy: false,
             discovered_shortcuts_json: QString::from("[]"),
+            auto_switch_error_message: QString::from(""),
             copied_key_slot: None,
             firmware_download_url: String::new(),
             sd_root_path,
@@ -2070,6 +2091,12 @@ impl qobject::DeviceController {
         if self.unsynced_changes_json().to_string() != unsynced_json {
             self.as_mut()
                 .set_unsynced_changes_json(QString::from(&unsynced_json));
+        }
+        if sync_state == "synced"
+            && self.rust().profiles.iter().any(|p| p.number == active_num)
+            && !self.auto_switch_error_message().is_empty()
+        {
+            self.as_mut().set_auto_switch_error_message(QString::from(""));
         }
         self.as_mut().refresh_color_palettes();
         self.as_mut().sync_tray_state();
@@ -4331,27 +4358,12 @@ impl qobject::DeviceController {
 
                         if !is_paused {
                             if let Some(prof) = evt.matched_profile {
-                                let prev_prof = (*qobject.active_profile()).clamp(1, 64) as u8;
-                                if prev_prof != prof {
-                                    record_system_event(
-                                        "INFO",
-                                        "AUTOSWITCH",
-                                        format!(
-                                            "Auto-switched to Profile #{} for window '{}' (\"{}\")",
-                                            prof, evt.resource_class, evt.caption
-                                        ),
-                                    );
-                                    qobject.as_mut().set_active_profile(prof as i32);
-                                    qobject.as_mut().sync_active_profile_state();
-                                    qobject.as_mut().sync_event_log_properties();
-                                    qobject.as_mut().dispatch_profile_change_webhooks_if_changed(
-                                        prev_prof,
-                                        prof,
-                                        "kwin_auto_switch",
-                                    );
-                                } else {
-                                    qobject.as_mut().sync_tray_state();
-                                }
+                                qobject.as_mut().handle_auto_switched_profile(
+                                    prof,
+                                    &evt.resource_class,
+                                    &evt.caption,
+                                    evt.hid_rejected_not_on_device,
+                                );
                             } else {
                                 qobject.as_mut().sync_tray_state();
                             }
@@ -4364,6 +4376,110 @@ impl qobject::DeviceController {
         });
     }
 
+    fn handle_auto_switched_profile(
+        mut self: Pin<&mut Self>,
+        prof: u8,
+        win_class: &str,
+        win_title: &str,
+        hid_rejected_not_on_device: bool,
+    ) {
+        let win_label = if !win_class.is_empty() {
+            win_class.to_string()
+        } else {
+            win_title.to_string()
+        };
+
+        let existing_profile_name = self
+            .rust()
+            .profiles
+            .iter()
+            .find(|p| p.number == prof)
+            .map(|p| p.name.clone());
+
+        let Some(prof_name) = existing_profile_name else {
+            let err_short = format!("⚠️ Profile #{} not found (window: {})", prof, win_label);
+            let err_status = format!(
+                "⚠️ Auto-Switch Error: Profile #{} not found for window '{}' — update rule or reload SD",
+                prof, win_label
+            );
+            if self.auto_switch_error_message().to_string() != err_short {
+                self.as_mut()
+                    .set_auto_switch_error_message(QString::from(&err_short));
+                self.as_mut().set_status_message(QString::from(&err_status));
+                record_system_event("ERROR", "AUTOSWITCH", err_status);
+                self.as_mut().sync_event_log_properties();
+            }
+            self.as_mut().sync_tray_state();
+            return;
+        };
+
+        let serial = self.serial_number().to_string();
+        let sd_root = self.rust().sd_root_path.clone();
+        let not_in_synced_snapshot =
+            if let Some(snap) = load_sd_synced_snapshot(&serial, sd_root.as_deref()) {
+                !snap
+                    .iter()
+                    .any(|sp| sp.number == prof || sp.name.eq_ignore_ascii_case(&prof_name))
+            } else {
+                false
+            };
+
+        let is_unsynced = hid_rejected_not_on_device || not_in_synced_snapshot;
+        let prev_prof = (*self.active_profile()).clamp(1, 64) as u8;
+
+        if is_unsynced {
+            let err_short = format!(
+                "⚠️ P{} ('{}') not synced to duckyPad — Sync SD to activate",
+                prof, prof_name
+            );
+            let err_status = format!(
+                "⚠️ Auto-Switch Error: Profile #{} ('{}') is not yet synced to duckyPad — click Sync SD to push to hardware",
+                prof, prof_name
+            );
+            let err_changed = self.auto_switch_error_message().to_string() != err_short;
+            if prev_prof != prof {
+                self.as_mut().set_active_profile(prof as i32);
+                self.as_mut().sync_active_profile_state();
+            }
+            if err_changed {
+                self.as_mut()
+                    .set_auto_switch_error_message(QString::from(&err_short));
+                self.as_mut().set_status_message(QString::from(&err_status));
+                record_system_event("ERROR", "AUTOSWITCH", err_status);
+                self.as_mut().sync_event_log_properties();
+            } else {
+                self.as_mut().sync_tray_state();
+            }
+            return;
+        }
+
+        if !self.auto_switch_error_message().is_empty() {
+            self.as_mut()
+                .set_auto_switch_error_message(QString::from(""));
+        }
+
+        if prev_prof != prof {
+            record_system_event(
+                "INFO",
+                "AUTOSWITCH",
+                format!(
+                    "Auto-switched to Profile #{} ('{}') for window '{}' (\"{}\")",
+                    prof, prof_name, win_class, win_title
+                ),
+            );
+            self.as_mut().set_active_profile(prof as i32);
+            self.as_mut().sync_active_profile_state();
+            self.as_mut().sync_event_log_properties();
+            self.as_mut().dispatch_profile_change_webhooks_if_changed(
+                prev_prof,
+                prof,
+                "kwin_auto_switch",
+            );
+        } else {
+            self.as_mut().sync_tray_state();
+        }
+    }
+
     fn apply_auto_switch_for_current_window(mut self: Pin<&mut Self>) {
         let active_class = self.active_window_class().to_string();
         let active_title = self.active_window_title().to_string();
@@ -4372,14 +4488,21 @@ impl qobject::DeviceController {
         }
 
         let mut matched_now: Option<u8> = None;
+        let mut hid_rejected = false;
         {
             let rust = self.as_mut().rust_mut().get_mut();
             if let Ok(mut sw) = rust.switcher_state.lock() {
                 if sw.enabled && !sw.paused_for_editing {
                     matched_now = sw.match_profile_for_window(&active_class, &active_title);
                     if let Some(target) = matched_now {
-                        if crate::kwin::auto_switcher::send_hid_switch_profile(target) {
-                            sw.last_switched_profile = target;
+                        match send_hid_switch_profile_checked(target) {
+                            HidSwitchOutcome::Switched => {
+                                sw.last_switched_profile = target;
+                            }
+                            HidSwitchOutcome::NotLoadedOnHardware => {
+                                hid_rejected = true;
+                            }
+                            HidSwitchOutcome::DeviceUnavailable => {}
                         }
                     }
                 }
@@ -4387,25 +4510,12 @@ impl qobject::DeviceController {
         }
 
         if let Some(prof) = matched_now {
-            let prev_prof = (*self.active_profile()).clamp(1, 64) as u8;
-            if prev_prof != prof {
-                record_system_event(
-                    "INFO",
-                    "AUTOSWITCH",
-                    format!(
-                        "Auto-switched to Profile #{} for window '{}' (\"{}\")",
-                        prof, active_class, active_title
-                    ),
-                );
-                self.as_mut().set_active_profile(prof as i32);
-                self.as_mut().sync_active_profile_state();
-                self.as_mut().sync_event_log_properties();
-                self.as_mut().dispatch_profile_change_webhooks_if_changed(
-                    prev_prof,
-                    prof,
-                    "kwin_auto_switch",
-                );
-            }
+            self.as_mut().handle_auto_switched_profile(
+                prof,
+                &active_class,
+                &active_title,
+                hid_rejected,
+            );
         }
     }
 
@@ -7979,6 +8089,51 @@ impl qobject::DeviceController {
         }
     }
 
+    pub fn is_gaming_hold_script(
+        &self,
+        press_script: QString,
+        release_script: QString,
+    ) -> bool {
+        crate::ai::web_shortcuts::is_gaming_hold_script(
+            &press_script.to_string(),
+            &release_script.to_string(),
+        )
+    }
+
+    pub fn convert_scripts_for_gaming_hold(
+        &self,
+        press_script: QString,
+        release_script: QString,
+        enable_gaming_hold: bool,
+        action_hint: QString,
+    ) -> QString {
+        let press_str = press_script.to_string();
+        let rel_str = release_script.to_string();
+        let hint_str = action_hint.to_string();
+        if let Some((new_press, new_rel)) =
+            crate::ai::web_shortcuts::convert_scripts_for_gaming_hold(
+                &press_str,
+                &rel_str,
+                enable_gaming_hold,
+                &hint_str,
+            )
+        {
+            let out = json!({
+                "converted": true,
+                "press": new_press,
+                "release": new_rel,
+            });
+            QString::from(&out.to_string())
+        } else {
+            let out = json!({
+                "converted": false,
+                "press": press_str,
+                "release": rel_str,
+            });
+            QString::from(&out.to_string())
+        }
+    }
+
     pub fn assign_shortcut_to_key_slot(
         mut self: Pin<&mut Self>,
         profile_num: i32,
@@ -7986,11 +8141,12 @@ impl qobject::DeviceController {
         action: QString,
         shortcut: QString,
         duckyscript: QString,
-        _category: QString,
+        category: QString,
     ) -> bool {
         let act_str = action.to_string();
         let sc_str = shortcut.to_string();
         let ds_str = duckyscript.to_string();
+        let cat_str = category.to_string();
         let target_prof = if profile_num > 0 {
             profile_num as u8
         } else {
@@ -8000,10 +8156,32 @@ impl qobject::DeviceController {
 
         let (l1, l2) = crate::ai::web_shortcuts::make_smart_labels(&act_str, &sc_str);
 
-        let script = if ds_str.trim().is_empty() {
-            crate::ai::web_shortcuts::shortcut_to_duckyscript(&sc_str, &act_str)
+        let want_gaming_hold = cat_str.ends_with(":gaming_hold")
+            || cat_str.eq_ignore_ascii_case("Movement")
+            || cat_str.eq_ignore_ascii_case("Combat")
+            || act_str.to_ascii_lowercase().contains("(hold)")
+            || (ds_str.contains("KEYDOWN ") && !ds_str.contains("KEYUP "));
+
+        let (press_script, release_script) = if want_gaming_hold {
+            if !sc_str.trim().is_empty() {
+                crate::ai::web_shortcuts::shortcut_to_gaming_hold_scripts(&sc_str, &act_str)
+            } else if let Some(pair) = crate::ai::web_shortcuts::convert_scripts_for_gaming_hold(
+                &ds_str,
+                "",
+                true,
+                &act_str,
+            ) {
+                pair
+            } else {
+                (ds_str, String::new())
+            }
+        } else if ds_str.trim().is_empty() {
+            (
+                crate::ai::web_shortcuts::shortcut_to_duckyscript(&sc_str, &act_str),
+                String::new(),
+            )
         } else {
-            ds_str
+            (ds_str, String::new())
         };
 
         let updated = {
@@ -8012,7 +8190,8 @@ impl qobject::DeviceController {
                 let key_slot = prof.ensure_slot(slot_idx);
                 key_slot.label_line1 = l1.clone();
                 key_slot.label_line2 = l2.clone();
-                key_slot.on_press_script = script;
+                key_slot.on_press_script = press_script;
+                key_slot.on_release_script = release_script;
 
                 if let Some(ref sd_root) = rust.sd_root_path {
                     let _ = prof.save_to_sd_root(sd_root);
@@ -8036,8 +8215,11 @@ impl qobject::DeviceController {
                 }
             }
             self.as_mut().set_status_message(QString::from(&format!(
-                "Assigned shortcut '{}' ({}) to Key {}",
-                act_str, sc_str, slot_idx
+                "Assigned shortcut '{}' ({}){} to Key {}",
+                act_str,
+                sc_str,
+                if want_gaming_hold { " [🎮 Gaming Hold]" } else { "" },
+                slot_idx
             )));
         }
         updated
@@ -8053,6 +8235,10 @@ impl qobject::DeviceController {
             label2: String,
             #[serde(default)]
             script: String,
+            #[serde(default)]
+            release_script: String,
+            #[serde(default)]
+            gaming_hold: bool,
             #[serde(default)]
             action: String,
             #[serde(default)]
@@ -8167,6 +8353,7 @@ impl qobject::DeviceController {
             let mut l1 = slot_item.label1;
             let mut l2 = slot_item.label2;
             let mut script = slot_item.script;
+            let mut release_script = slot_item.release_script;
 
             if (l1.is_empty() || l2.is_empty()) && (!slot_item.action.is_empty() || !slot_item.shortcut.is_empty()) {
                 let (gen_l1, gen_l2) = crate::ai::web_shortcuts::make_smart_labels(&slot_item.action, &slot_item.shortcut);
@@ -8174,7 +8361,26 @@ impl qobject::DeviceController {
                 if l2.is_empty() { l2 = gen_l2; }
             }
 
-            if script.trim().is_empty() && !slot_item.shortcut.is_empty() {
+            if slot_item.gaming_hold {
+                if !slot_item.shortcut.trim().is_empty() {
+                    let (p_ds, r_ds) = crate::ai::web_shortcuts::shortcut_to_gaming_hold_scripts(
+                        &slot_item.shortcut,
+                        &slot_item.action,
+                    );
+                    script = p_ds;
+                    release_script = r_ds;
+                } else if let Some((p_ds, r_ds)) =
+                    crate::ai::web_shortcuts::convert_scripts_for_gaming_hold(
+                        &script,
+                        &release_script,
+                        true,
+                        &slot_item.action,
+                    )
+                {
+                    script = p_ds;
+                    release_script = r_ds;
+                }
+            } else if script.trim().is_empty() && !slot_item.shortcut.is_empty() {
                 script = crate::ai::web_shortcuts::shortcut_to_duckyscript(&slot_item.shortcut, &slot_item.action);
             }
 
@@ -8182,6 +8388,7 @@ impl qobject::DeviceController {
             target_slot.label_line1 = l1.chars().take(5).collect();
             target_slot.label_line2 = l2.chars().take(5).collect();
             target_slot.on_press_script = script;
+            target_slot.on_release_script = release_script;
         }
 
         // Save to SD root if mounted

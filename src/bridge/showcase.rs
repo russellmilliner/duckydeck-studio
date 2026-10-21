@@ -1241,6 +1241,7 @@ pub fn create_showcase_instance() -> DeviceControllerRust {
             google_search_shortcuts_permitted: true,
             search_shortcuts_busy: false,
             discovered_shortcuts_json: QString::from("[]"),
+            auto_switch_error_message: QString::from(""),
             copied_key_slot: None,
             firmware_download_url: String::new(),
             sd_root_path: None,

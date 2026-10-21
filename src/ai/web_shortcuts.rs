@@ -7,6 +7,10 @@ pub struct AppShortcut {
     pub action: String,
     pub shortcut: String,
     pub duckyscript: String,
+    #[serde(default)]
+    pub release_script: String,
+    #[serde(default)]
+    pub gaming_hold: bool,
     pub category: String,
     pub source: String,
     pub label_l1: String,
@@ -180,6 +184,18 @@ pub fn make_smart_labels(action: &str, shortcut: &str) -> (String, String) {
         "Cmd /".to_string()
     } else if act_lower.contains("open chat") || act_lower == "chat" {
         "Chat".to_string()
+    } else if act_lower.contains("move forward") || act_lower == "forward" {
+        "Fwd".to_string()
+    } else if act_lower.contains("move backward") || act_lower == "backward" || act_lower == "back" {
+        "Back".to_string()
+    } else if act_lower.contains("strafe left") || act_lower == "move left" {
+        "Left".to_string()
+    } else if act_lower.contains("strafe right") || act_lower == "move right" {
+        "Right".to_string()
+    } else if act_lower.contains("attack") || act_lower.contains("mine") || act_lower.contains("break") {
+        "Atk".to_string()
+    } else if act_lower.contains("use / place") || act_lower.contains("place block") {
+        "Place".to_string()
     } else if act_lower.contains("pick block") {
         "Pick".to_string()
     } else if act_lower.contains("sprint") {
@@ -388,15 +404,14 @@ fn map_single_token_to_dsvm(raw_part: &str) -> Option<String> {
     Some(mapped)
 }
 
-/// Converts a shortcut string (e.g. "Ctrl+Shift+P", "F3+G", "E") to valid DuckyScript 3
-pub fn shortcut_to_duckyscript(shortcut: &str, action_hint: &str) -> String {
+/// Extracts DSVM v2 key tokens from a shortcut string (e.g. "Ctrl+Shift+P", "W", "Left-click")
+pub fn parse_shortcut_tokens(shortcut: &str) -> Vec<String> {
     let primary = shortcut
         .split(['\t', ';', ','])
         .map(str::trim)
         .find(|s| !s.is_empty() && !s.eq_ignore_ascii_case("none"))
         .unwrap_or(shortcut.trim());
 
-    // Split by '+' while preserving '+' if the shortcut ends with '+' or '++' (e.g. "Ctrl++")
     let mut raw_tokens: Vec<String> = Vec::new();
     let mut rest = primary;
     while !rest.is_empty() {
@@ -406,12 +421,10 @@ pub fn shortcut_to_duckyscript(shortcut: &str, action_hint: &str) -> String {
                 raw_tokens.push(before.to_string());
                 rest = rest[pos + 1..].trim();
             } else {
-                // Token itself is '+'
                 raw_tokens.push("+".to_string());
                 rest = rest[pos + 1..].trim();
             }
         } else {
-            // Check for chorded sequences like "Ctrl+K S" -> split by space if not "Numpad X"
             let trimmed = rest.trim();
             if !trimmed.to_ascii_lowercase().starts_with("numpad")
                 && !trimmed.to_ascii_lowercase().starts_with("page ")
@@ -430,10 +443,256 @@ pub fn shortcut_to_duckyscript(shortcut: &str, action_hint: &str) -> String {
         }
     }
 
-    let mapped_tokens: Vec<String> = raw_tokens
+    raw_tokens
         .iter()
         .filter_map(|t| map_single_token_to_dsvm(t))
+        .collect()
+}
+
+/// Converts a shortcut string (e.g. "W", "Space", "Shift", "Left-click") into a Gaming Hold
+/// pair `(on_press_script, on_release_script)` using `KEYDOWN` on press and `KEYUP` on release
+/// so the key stays continuously held while the physical duckyPad button is held down.
+pub fn shortcut_to_gaming_hold_scripts(shortcut: &str, action_hint: &str) -> (String, String) {
+    let mapped_tokens = parse_shortcut_tokens(shortcut);
+    let display_title: String = action_hint
+        .chars()
+        .filter(|c| c.is_ascii_graphic() || *c == ' ')
+        .take(24)
         .collect();
+    let safe_title = if display_title.trim().is_empty() {
+        "Gaming Key".to_string()
+    } else {
+        display_title.trim().to_string()
+    };
+
+    if mapped_tokens.is_empty() {
+        return ("DEFAULTDELAY 0\n".to_string(), String::new());
+    }
+
+    let mut press_lines = vec![
+        format!("// Gaming Hold (On Press): {safe_title}"),
+        "DEFAULTDELAY 0".to_string(),
+    ];
+    for k in &mapped_tokens {
+        press_lines.push(format!("KEYDOWN {k}"));
+    }
+
+    let mut release_lines = vec![
+        format!("// Gaming Hold (On Release): {safe_title}"),
+        "DEFAULTDELAY 0".to_string(),
+    ];
+    for k in mapped_tokens.iter().rev() {
+        release_lines.push(format!("KEYUP {k}"));
+    }
+
+    (
+        format!("{}\n", press_lines.join("\n")),
+        format!("{}\n", release_lines.join("\n")),
+    )
+}
+
+/// Returns true if the given On Press / On Release script pair is configured for Gaming Hold Mode
+/// (`KEYDOWN` in On Press without `KEYUP`, paired with `KEYUP` in On Release).
+pub fn is_gaming_hold_script(press_script: &str, release_script: &str) -> bool {
+    let mut has_press_keydown = false;
+    let mut has_press_keyup = false;
+    for line in press_script.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("KEYDOWN ") {
+            has_press_keydown = true;
+        } else if trimmed.starts_with("KEYUP ") {
+            has_press_keyup = true;
+        }
+    }
+    let has_release_keyup = release_script
+        .lines()
+        .any(|l| l.trim().starts_with("KEYUP "));
+    has_press_keydown && !has_press_keyup && has_release_keyup
+}
+
+/// Extracts held/tapped key tokens from an existing DuckyScript (supporting bare keys like `w`,
+/// combo lines like `CONTROL w`, `KEYDOWN w`, or `STRING w`) and converts between Gaming Hold Mode
+/// (`KEYDOWN` on press + `KEYUP` on release) and normal tap mode.
+pub fn convert_scripts_for_gaming_hold(
+    press_script: &str,
+    release_script: &str,
+    enable_gaming_hold: bool,
+    action_hint: &str,
+) -> Option<(String, String)> {
+    let mut keys: Vec<String> = Vec::new();
+    let mut preserved_led_lines: Vec<String> = Vec::new();
+    let mut title_from_comment: Option<String> = None;
+
+    let push_unique = |vec: &mut Vec<String>, k: String| {
+        if !k.is_empty() && !vec.contains(&k) {
+            vec.push(k);
+        }
+    };
+
+    for raw_line in press_script.lines() {
+        let t = raw_line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        if let Some(rest) = t.strip_prefix("//") {
+            let r = rest.trim();
+            if let Some(after) = r
+                .strip_prefix("Macro for:")
+                .or_else(|| r.strip_prefix("Gaming Hold (On Press):"))
+                .or_else(|| r.strip_prefix("Gaming Hold (Press):"))
+            {
+                let clean = after.trim();
+                if !clean.is_empty() {
+                    title_from_comment = Some(clean.to_string());
+                }
+            }
+            continue;
+        }
+        let first_word = t.split_whitespace().next().unwrap_or("");
+        match first_word {
+            "REM" | "DEFAULTDELAY" | "DEFAULTCHARDELAY" | "CHARJITTER" | "DELAY"
+            | "OLED_CLEAR" | "OLED_CPRINT" | "OLED_PRINT" | "OLED_CURSOR" | "OLED_UPDATE"
+            | "OLED_RESTORE" | "OLED_LINE" | "OLED_RECT" | "OLED_CIRCLE" | "KEYUP" => {
+                continue;
+            }
+            "SWCC" | "SWCF" | "SWCR" | "SWC_FADE" => {
+                preserved_led_lines.push(t.to_string());
+            }
+            "KEYDOWN" => {
+                let arg = t.strip_prefix("KEYDOWN").unwrap_or("").trim();
+                if let Some(mapped) = map_single_token_to_dsvm(arg) {
+                    push_unique(&mut keys, mapped);
+                } else if !arg.is_empty() {
+                    push_unique(&mut keys, arg.to_string());
+                }
+            }
+            "STRING" | "STRINGLN" => {
+                let arg = t.strip_prefix(first_word).unwrap_or("").trim();
+                if arg.len() == 1 {
+                    if let Some(mapped) = map_single_token_to_dsvm(arg) {
+                        push_unique(&mut keys, mapped);
+                    }
+                }
+            }
+            _ => {
+                let parts: Vec<&str> = t.split_whitespace().collect();
+                if !parts.is_empty() && parts.len() <= 6 {
+                    let mut mapped_parts = Vec::new();
+                    let mut all_valid = true;
+                    for p in parts {
+                        if let Some(m) = map_single_token_to_dsvm(p) {
+                            mapped_parts.push(m);
+                        } else {
+                            all_valid = false;
+                            break;
+                        }
+                    }
+                    if all_valid {
+                        for m in mapped_parts {
+                            push_unique(&mut keys, m);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if keys.is_empty() {
+        for raw_line in release_script.lines() {
+            let t = raw_line.trim();
+            if let Some(arg) = t.strip_prefix("KEYUP") {
+                let a = arg.trim();
+                if let Some(mapped) = map_single_token_to_dsvm(a) {
+                    push_unique(&mut keys, mapped);
+                } else if !a.is_empty() {
+                    push_unique(&mut keys, a.to_string());
+                }
+            }
+        }
+    }
+
+    if keys.is_empty() {
+        return None;
+    }
+
+    let safe_title = title_from_comment
+        .or_else(|| {
+            let clean: String = action_hint
+                .chars()
+                .filter(|c| c.is_ascii_graphic() || *c == ' ')
+                .take(24)
+                .collect();
+            if clean.trim().is_empty() {
+                None
+            } else {
+                Some(clean.trim().to_string())
+            }
+        })
+        .unwrap_or_else(|| keys.join("+"));
+
+    if enable_gaming_hold {
+        let mut press_lines = vec![
+            format!("// Gaming Hold (On Press): {safe_title}"),
+            "DEFAULTDELAY 0".to_string(),
+        ];
+        press_lines.extend(preserved_led_lines);
+        for k in &keys {
+            press_lines.push(format!("KEYDOWN {k}"));
+        }
+
+        let mut release_lines = vec![
+            format!("// Gaming Hold (On Release): {safe_title}"),
+            "DEFAULTDELAY 0".to_string(),
+        ];
+        for k in keys.iter().rev() {
+            release_lines.push(format!("KEYUP {k}"));
+        }
+
+        Some((
+            format!("{}\n", press_lines.join("\n")),
+            format!("{}\n", release_lines.join("\n")),
+        ))
+    } else {
+        let mut press_lines = vec![
+            format!("// Macro for: {safe_title}"),
+            "DEFAULTDELAY 20".to_string(),
+        ];
+        press_lines.extend(preserved_led_lines);
+        if keys.len() == 1 {
+            let tok = &keys[0];
+            if crate::vm::compiler::hid_keyname_lookup(tok).is_some() {
+                press_lines.push(tok.clone());
+            } else {
+                press_lines.push(format!("KEYDOWN {tok}"));
+                press_lines.push("DELAY 25".to_string());
+                press_lines.push(format!("KEYUP {tok}"));
+            }
+        } else {
+            let first = &keys[0];
+            if crate::vm::compiler::hid_keyname_lookup(first).is_some()
+                && keys.len() <= 6
+                && keys
+                    .iter()
+                    .all(|k| crate::vm::compiler::hid_keyname_lookup(k).is_some() || k.len() == 1)
+            {
+                press_lines.push(keys.join(" "));
+            } else {
+                for k in &keys {
+                    press_lines.push(format!("KEYDOWN {k}"));
+                }
+                press_lines.push("DELAY 25".to_string());
+                for k in keys.iter().rev() {
+                    press_lines.push(format!("KEYUP {k}"));
+                }
+            }
+        }
+        Some((format!("{}\n", press_lines.join("\n")), String::new()))
+    }
+}
+
+/// Converts a shortcut string (e.g. "Ctrl+Shift+P", "F3+G", "E") to valid DuckyScript 3
+pub fn shortcut_to_duckyscript(shortcut: &str, action_hint: &str) -> String {
+    let mapped_tokens = parse_shortcut_tokens(shortcut);
 
     let body = if mapped_tokens.is_empty() {
         "DELAY 50".to_string()
@@ -494,6 +753,24 @@ pub fn get_curated_shortcuts(app: &str) -> Vec<AppShortcut> {
             action: act.to_string(),
             shortcut: sc.to_string(),
             duckyscript: ds,
+            release_script: String::new(),
+            gaming_hold: false,
+            category: cat.to_string(),
+            source: "App Catalog".to_string(),
+            label_l1: l1,
+            label_l2: l2,
+        });
+    };
+
+    let add_hold = |list: &mut Vec<AppShortcut>, act: &str, sc: &str, cat: &str| {
+        let (l1, l2) = make_smart_labels(act, sc);
+        let (press_ds, release_ds) = shortcut_to_gaming_hold_scripts(sc, act);
+        list.push(AppShortcut {
+            action: act.to_string(),
+            shortcut: sc.to_string(),
+            duckyscript: press_ds,
+            release_script: release_ds,
+            gaming_hold: true,
             category: cat.to_string(),
             source: "App Catalog".to_string(),
             label_l1: l1,
@@ -508,6 +785,16 @@ pub fn get_curated_shortcuts(app: &str) -> Vec<AppShortcut> {
         || lower.contains("modrinth")
         || lower.contains("mojang")
     {
+        // Gaming Hold Movement & Combat (KEYDOWN on press + KEYUP on release so keys stay held!)
+        add_hold(&mut list, "Move Forward (Hold)", "W", "Movement");
+        add_hold(&mut list, "Strafe Left (Hold)", "A", "Movement");
+        add_hold(&mut list, "Move Backward (Hold)", "S", "Movement");
+        add_hold(&mut list, "Strafe Right (Hold)", "D", "Movement");
+        add_hold(&mut list, "Jump / Fly (Hold)", "Space", "Movement");
+        add_hold(&mut list, "Sneak / Crouch (Hold)", "Shift", "Movement");
+        add_hold(&mut list, "Sprint (Hold)", "Ctrl", "Movement");
+        add_hold(&mut list, "Attack / Mine (Hold)", "Left-click", "Combat");
+        add_hold(&mut list, "Use / Place Block (Hold)", "Right-click", "Combat");
         // Gameplay, Inventory & Camera
         add(&mut list, "Open Inventory", "E", "Inventory");
         add(&mut list, "Drop Single Item", "Q", "Inventory");
@@ -520,12 +807,9 @@ pub fn get_curated_shortcuts(app: &str) -> Vec<AppShortcut> {
         add(&mut list, "Toggle Fullscreen", "F11", "View");
         add(&mut list, "Open Chat", "T", "Multiplayer");
         add(&mut list, "Open Command (/ )", "/", "Multiplayer");
-        add(&mut list, "Player List", "Tab", "Multiplayer");
+        add_hold(&mut list, "Player List (Hold)", "Tab", "Multiplayer");
         add(&mut list, "Advancements", "L", "Gameplay");
         add(&mut list, "Social Interactions", "P", "Multiplayer");
-        add(&mut list, "Sprint", "Ctrl", "Movement");
-        add(&mut list, "Sneak / Crouch", "Shift", "Movement");
-        add(&mut list, "Jump / Fly", "Space", "Movement");
         add(&mut list, "Save Creative Hotbar 1", "C+1", "Creative");
         add(&mut list, "Load Creative Hotbar 1", "X+1", "Creative");
         // F3 Debug Combos (huge value on a macro pad!)
@@ -714,6 +998,8 @@ pub fn get_default_os_shortcuts() -> Vec<AppShortcut> {
             action: act.to_string(),
             shortcut: sc.to_string(),
             duckyscript: ds,
+            release_script: String::new(),
+            gaming_hold: false,
             category: cat.to_string(),
             source: "Standard OS".to_string(),
             label_l1: l1,
@@ -997,6 +1283,8 @@ pub fn parse_google_html_shortcuts(html: &str) -> Vec<AppShortcut> {
                         action: act,
                         shortcut: norm_sc,
                         duckyscript: ds,
+                        release_script: String::new(),
+                        gaming_hold: false,
                         category: "Web Search".to_string(),
                         source: "Web Search".to_string(),
                         label_l1: l1,
@@ -1040,6 +1328,8 @@ pub fn parse_google_html_shortcuts(html: &str) -> Vec<AppShortcut> {
                     action: act.to_string(),
                     shortcut: sc,
                     duckyscript: ds,
+                    release_script: String::new(),
+                    gaming_hold: false,
                     category: "Web Search".to_string(),
                     source: "Web Search".to_string(),
                     label_l1: l1,
@@ -1065,6 +1355,8 @@ pub fn parse_google_html_shortcuts(html: &str) -> Vec<AppShortcut> {
                     action: act.to_string(),
                     shortcut: sc,
                     duckyscript: ds,
+                    release_script: String::new(),
+                    gaming_hold: false,
                     category: "Web Search".to_string(),
                     source: "Web Search".to_string(),
                     label_l1: l1,
@@ -1108,6 +1400,8 @@ pub fn search_app_shortcuts(app: &str, allow_google: bool) -> Vec<AppShortcut> {
                     action: act,
                     shortcut: sc,
                     duckyscript: ds,
+                    release_script: String::new(),
+                    gaming_hold: false,
                     category: "KDE Plasma".to_string(),
                     source: "Local KDE".to_string(),
                     label_l1: l1,
@@ -1209,8 +1503,37 @@ mod tests {
                     compiled.error_comment,
                     item.duckyscript
                 );
+                if !item.release_script.trim().is_empty() {
+                    let rel_compiled = crate::vm::compiler::compile_duckyscript_to_dsb(
+                        &item.release_script,
+                        false,
+                        false,
+                    );
+                    assert!(
+                        rel_compiled.is_success,
+                        "Shortcut release '{}' ({}) for {} failed DSVM compile: {}",
+                        item.action,
+                        item.shortcut,
+                        app,
+                        rel_compiled.error_comment
+                    );
+                }
             }
         }
+
+        // Verify gaming hold conversion roundtrip
+        let (hold_press, hold_rel) = convert_scripts_for_gaming_hold("w", "", true, "Move Forward")
+            .expect("should convert bare key 'w' to gaming hold");
+        assert!(is_gaming_hold_script(&hold_press, &hold_rel));
+        assert!(hold_press.contains("KEYDOWN w"));
+        assert!(!hold_press.contains("KEYUP"));
+        assert!(hold_rel.contains("KEYUP w"));
+
+        let (tap_press, tap_rel) =
+            convert_scripts_for_gaming_hold(&hold_press, &hold_rel, false, "Move Forward")
+                .expect("should convert gaming hold back to tap");
+        assert!(!is_gaming_hold_script(&tap_press, &tap_rel));
+        assert!(tap_rel.is_empty());
     }
 
     #[test]

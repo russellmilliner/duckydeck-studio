@@ -48,10 +48,11 @@ Window {
     property bool dimUnusedKeys: true
     property int oledRotation: 0
 
-    // Step 3: Assigned Shortcuts Map: slotNumber (1..20) -> { slot, label1, label2, script, action, shortcut, category }
+    // Step 3: Assigned Shortcuts Map: slotNumber (1..20) -> { slot, label1, label2, script, release_script, gaming_hold, action, shortcut, category }
     property var keyAssignments: ({})
     property int selectedMatrixSlot: 1
     property string shortcutSearchFilter: ""
+    property bool gamingHoldModeDefault: false
 
     // Drag & Drop State (both matrix-to-matrix swap and shortcut-menu-to-matrix assign)
     property int draggingMatrixSlot: -1
@@ -91,6 +92,7 @@ Window {
         keyAssignments = {}
         selectedMatrixSlot = 1
         shortcutSearchFilter = ""
+        gamingHoldModeDefault = false
         draggingMatrixSlot = -1
         draggingShortcutItem = null
         dropTargetSlot = -1
@@ -226,17 +228,30 @@ Window {
     function assignShortcutToSlot(slotNum, shortcutItem) {
         if (slotNum < 1 || slotNum > 20 || !shortcutItem) return
         const newMap = Object.assign({}, keyAssignments)
+        const useHold = !!(shortcutItem.gaming_hold || wizardDialog.gamingHoldModeDefault)
         newMap[String(slotNum)] = {
             slot: slotNum,
             label1: shortcutItem.label_l1 || "",
             label2: shortcutItem.label_l2 || "",
             script: shortcutItem.duckyscript || "",
+            release_script: shortcutItem.release_script || "",
+            gaming_hold: useHold,
             action: shortcutItem.action || "",
             shortcut: shortcutItem.shortcut || "",
             category: shortcutItem.category || ""
         }
         keyAssignments = newMap
         selectedMatrixSlot = slotNum
+    }
+
+    function toggleSlotGamingHold(slotNum) {
+        const key = String(slotNum)
+        if (!keyAssignments[key]) return
+        const newMap = Object.assign({}, keyAssignments)
+        const cur = Object.assign({}, newMap[key])
+        cur.gaming_hold = !cur.gaming_hold
+        newMap[key] = cur
+        keyAssignments = newMap
     }
 
     function swapMatrixSlots(slotA, slotB) {
@@ -274,6 +289,8 @@ Window {
                             label1: item.label_l1 || "",
                             label2: item.label_l2 || "",
                             script: item.duckyscript || "",
+                            release_script: item.release_script || "",
+                            gaming_hold: !!(item.gaming_hold || wizardDialog.gamingHoldModeDefault),
                             action: item.action || "",
                             shortcut: item.shortcut || "",
                             category: item.category || ""
@@ -299,6 +316,8 @@ Window {
                     label1: s.label1,
                     label2: s.label2,
                     script: s.script,
+                    release_script: s.release_script || "",
+                    gaming_hold: !!s.gaming_hold,
                     action: s.action,
                     shortcut: s.shortcut
                 })
@@ -1152,7 +1171,7 @@ Window {
                                                         anchors.centerIn: parent
                                                         width: parent.width - 2
                                                         horizontalAlignment: Text.AlignHCenter
-                                                        text: wizKeycapItem.scText
+                                                        text: (wizKeycapItem.assigned && wizKeycapItem.assigned.gaming_hold ? "🎮" : "") + wizKeycapItem.scText
                                                         font.pixelSize: 7
                                                         font.family: "monospace"
                                                         font.bold: true
@@ -1337,7 +1356,7 @@ Window {
                             }
                         }
 
-                        // Filter Bar
+                        // Filter Bar + Gaming Hold Mode Toggle
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 8
@@ -1347,9 +1366,20 @@ Window {
                                 Layout.fillWidth: true
                                 implicitHeight: Math.round(28 * fontScale)
                                 font.pointSize: 10 * fontScale
-                                placeholderText: qsTr("Filter %1 shortcuts (e.g. Inventory, Debug, F3, Chunk, Save)...").arg(wizardDialog.discoveredShortcutsList.length)
+                                placeholderText: qsTr("Filter %1 shortcuts (e.g. Forward, Inventory, F3, Chunk)...").arg(wizardDialog.discoveredShortcutsList.length)
                                 text: wizardDialog.shortcutSearchFilter
                                 onTextChanged: wizardDialog.shortcutSearchFilter = text
+                            }
+
+                            QQC2.CheckBox {
+                                id: wizGamingHoldCheck
+                                text: qsTr("🎮 Gaming Hold Mode")
+                                font.pointSize: 9.5 * fontScale
+                                font.bold: checked
+                                checked: wizardDialog.gamingHoldModeDefault
+                                onToggled: wizardDialog.gamingHoldModeDefault = checked
+                                QQC2.ToolTip.visible: hovered
+                                QQC2.ToolTip.text: qsTr("Hold keys continuously while the physical duckyPad button is held down (KEYDOWN on press + KEYUP on release) — ideal for gaming movement/actions")
                             }
 
                             QQC2.Label {
@@ -1547,8 +1577,9 @@ Window {
                                                         QQC2.Label {
                                                             id: catBadgeText
                                                             anchors.centerIn: parent
-                                                            text: modelData.category || modelData.source || "General"
+                                                            text: (modelData.gaming_hold || wizardDialog.gamingHoldModeDefault ? "🎮 Hold • " : "") + (modelData.category || modelData.source || "General")
                                                             font.pointSize: 8.5 * fontScale
+                                                            font.bold: !!(modelData.gaming_hold || wizardDialog.gamingHoldModeDefault)
                                                             color: Kirigami.Theme.textColor
                                                         }
                                                     }

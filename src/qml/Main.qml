@@ -834,6 +834,11 @@ Kirigami.ApplicationWindow {
             root.compileErrorLine = 0
             root.compileErrorMsg = ""
         }
+        if (typeof gamingHoldModeCheck !== "undefined" && gamingHoldModeCheck) {
+            const curPress = root.editingReleaseScript ? root.pressScriptBuffer : scriptEditor.text
+            const curRel = root.editingReleaseScript ? scriptEditor.text : root.releaseScriptBuffer
+            gamingHoldModeCheck.checked = deviceController.isGamingHoldScript(curPress || "", curRel || "")
+        }
     }
 
     property bool selectingProfileFromClick: false
@@ -3688,17 +3693,21 @@ Kirigami.ApplicationWindow {
                                 }
                             }
 
-                            // Key Hold Behavior Bar: Compact No Repeat on Key Held Down (Run Once) + Allow Abort
+                            // Key Hold Behavior Bar: Gaming Mode (Hold Key) + No Repeat on Key Held Down (Run Once) + Allow Abort
                             Rectangle {
                                 Layout.fillWidth: true
                                 implicitHeight: holdFlagsRow.implicitHeight + 6
                                 radius: 5
-                                color: disableRepeatCheck.checked
-                                    ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.12)
-                                    : Kirigami.Theme.alternateBackgroundColor
-                                border.color: disableRepeatCheck.checked
-                                    ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.55)
-                                    : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                                color: gamingHoldModeCheck.checked
+                                    ? Qt.alpha(Kirigami.Theme.highlightColor, 0.14)
+                                    : (disableRepeatCheck.checked
+                                        ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.12)
+                                        : Kirigami.Theme.alternateBackgroundColor)
+                                border.color: gamingHoldModeCheck.checked
+                                    ? Qt.alpha(Kirigami.Theme.highlightColor, 0.65)
+                                    : (disableRepeatCheck.checked
+                                        ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.55)
+                                        : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast))
                                 border.width: 1
 
                                 RowLayout {
@@ -3708,7 +3717,48 @@ Kirigami.ApplicationWindow {
                                     anchors.rightMargin: 6
                                     anchors.topMargin: 3
                                     anchors.bottomMargin: 3
-                                    spacing: 6
+                                    spacing: 8
+
+                                    HighContrastCheckBox {
+                                        id: gamingHoldModeCheck
+                                        visible: inspectorCard.isMechanicalKey
+                                        text: qsTr("🎮 Gaming Mode (Hold Key)")
+                                        font.bold: checked
+                                        font.pointSize: 10 * root.fontScale
+                                        onToggled: {
+                                            if (!deviceController) return
+                                            const curPress = root.editingReleaseScript ? root.pressScriptBuffer : scriptEditor.text
+                                            const curRel = root.editingReleaseScript ? scriptEditor.text : root.releaseScriptBuffer
+                                            const hint = label1Input.text.trim() || label2Input.text.trim() || ("Key " + root.selectedSlotNumber)
+                                            try {
+                                                const raw = deviceController.convertScriptsForGamingHold(
+                                                    curPress || "",
+                                                    curRel || "",
+                                                    checked,
+                                                    hint
+                                                )
+                                                const res = JSON.parse(raw)
+                                                if (res && res.converted) {
+                                                    root.loadingSlotData = true
+                                                    root.pressScriptBuffer = res.press || ""
+                                                    root.releaseScriptBuffer = res.release || ""
+                                                    scriptEditor.text = root.editingReleaseScript
+                                                        ? root.releaseScriptBuffer
+                                                        : root.pressScriptBuffer
+                                                    if (checked) {
+                                                        disableRepeatCheck.checked = false
+                                                    }
+                                                    root.loadingSlotData = false
+                                                    root.updateCompilerStatus()
+                                                    liveSlotAutoSaveTimer.restart()
+                                                }
+                                            } catch (e) {
+                                                console.warn("Failed converting script for Gaming Hold Mode:", e)
+                                            }
+                                        }
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("🎮 Gaming Hold Mode: Sends KEYDOWN when pressed and KEYUP when released so movement/action keys (like W/A/S/D/Space/Shift in Minecraft) stay continuously held down while you hold the physical duckyPad key.")
+                                    }
 
                                     HighContrastCheckBox {
                                         id: disableRepeatCheck
@@ -4422,6 +4472,7 @@ Kirigami.ApplicationWindow {
                             clip: true
 
                             property string keyEditorShortcutFilter: ""
+                            property bool forceGamingHoldMode: false
 
                             function shortcutCategoryColor(category) {
                                 const cat = String(category || "").toLowerCase()
@@ -4497,6 +4548,17 @@ Kirigami.ApplicationWindow {
                                         placeholderText: qsTr("Filter shortcuts (e.g. Inventory, F3, Chunk, Save)...")
                                         text: shortcutsLibraryCard.keyEditorShortcutFilter
                                         onTextChanged: shortcutsLibraryCard.keyEditorShortcutFilter = text
+                                    }
+
+                                    QQC2.CheckBox {
+                                        id: keGamingHoldCheck
+                                        text: qsTr("🎮 Gaming Hold")
+                                        font.pointSize: 9.5 * root.fontScale
+                                        font.bold: checked
+                                        checked: shortcutsLibraryCard.forceGamingHoldMode
+                                        onToggled: shortcutsLibraryCard.forceGamingHoldMode = checked
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Assign shortcuts in Gaming Hold Mode (KEYDOWN on press + KEYUP on release) so keys stay held while pressed")
                                     }
 
                                     QQC2.CheckBox {
@@ -4700,9 +4762,12 @@ Kirigami.ApplicationWindow {
                                                         }
 
                                                         QQC2.Label {
-                                                            text: modelData.category || modelData.source || ""
+                                                            text: (modelData.gaming_hold || shortcutsLibraryCard.forceGamingHoldMode ? "🎮 Hold • " : "") + (modelData.category || modelData.source || "")
                                                             font.pointSize: 8.5 * root.fontScale
-                                                            color: Kirigami.Theme.disabledTextColor
+                                                            font.bold: !!(modelData.gaming_hold || shortcutsLibraryCard.forceGamingHoldMode)
+                                                            color: (modelData.gaming_hold || shortcutsLibraryCard.forceGamingHoldMode)
+                                                                ? Kirigami.Theme.positiveTextColor
+                                                                : Kirigami.Theme.disabledTextColor
                                                             elide: Text.ElideRight
                                                         }
                                                     }
@@ -4717,13 +4782,15 @@ Kirigami.ApplicationWindow {
                                                     highlighted: true
                                                     onClicked: {
                                                         if (deviceController && root.hasSelectedSlot) {
+                                                            const useHold = !!(modelData.gaming_hold || shortcutsLibraryCard.forceGamingHoldMode)
+                                                            const catArg = (modelData.category || "") + (useHold ? ":gaming_hold" : "")
                                                             deviceController.assignShortcutToKeySlot(
                                                                 0,
                                                                 root.selectedSlotNumber,
                                                                 modelData.action || "",
                                                                 modelData.shortcut || "",
                                                                 modelData.duckyscript || "",
-                                                                modelData.category || ""
+                                                                catArg
                                                             )
                                                             root.refreshSelectedSlotFromController()
                                                             hardwareCanvas.syncSlotsFromController()
@@ -4782,13 +4849,15 @@ Kirigami.ApplicationWindow {
                                                     hardwareCanvas.externalShortcutDragActive = false
                                                     hardwareCanvas.dropTargetSlot = -1
                                                     if (targetSlot >= 1 && sc && deviceController) {
+                                                        const useHold = !!(sc.gaming_hold || shortcutsLibraryCard.forceGamingHoldMode)
+                                                        const catArg = (sc.category || "") + (useHold ? ":gaming_hold" : "")
                                                         deviceController.assignShortcutToKeySlot(
                                                             0,
                                                             targetSlot,
                                                             sc.action || "",
                                                             sc.shortcut || "",
                                                             sc.duckyscript || "",
-                                                            sc.category || ""
+                                                            catArg
                                                         )
                                                         hardwareCanvas.syncSlotsFromController()
                                                         if (targetSlot === root.selectedSlotNumber) {
@@ -5578,15 +5647,20 @@ Kirigami.ApplicationWindow {
                 // Live Status Message (Click to open Event Log Viewer)
                 Rectangle {
                     id: statusLogLineBox
+                    readonly property bool hasAutoSwitchErr: deviceController.autoSwitchErrorMessage.length > 0
                     Layout.fillWidth: true
                     implicitHeight: Math.round(26 * root.statusBarScale)
                     radius: 4
-                    color: statusLogLineMouse.containsMouse
-                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.14)
-                        : "transparent"
-                    border.color: statusLogLineMouse.containsMouse
-                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.45)
-                        : "transparent"
+                    color: statusLogLineBox.hasAutoSwitchErr
+                        ? Qt.alpha(Kirigami.Theme.negativeTextColor, statusLogLineMouse.containsMouse ? 0.24 : 0.16)
+                        : (statusLogLineMouse.containsMouse
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.14)
+                            : "transparent")
+                    border.color: statusLogLineBox.hasAutoSwitchErr
+                        ? Kirigami.Theme.negativeTextColor
+                        : (statusLogLineMouse.containsMouse
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.45)
+                            : "transparent")
                     border.width: 1
 
                     QQC2.Label {
@@ -5594,10 +5668,15 @@ Kirigami.ApplicationWindow {
                         anchors.leftMargin: 6
                         anchors.rightMargin: 6
                         verticalAlignment: Text.AlignVCenter
-                        text: deviceController.statusMessage
+                        text: statusLogLineBox.hasAutoSwitchErr
+                            ? deviceController.autoSwitchErrorMessage
+                            : deviceController.statusMessage
                         font.pointSize: 11 * root.fontScale
-                        color: Kirigami.Theme.textColor
-                        opacity: statusLogLineMouse.containsMouse ? 1.0 : 0.92
+                        font.bold: statusLogLineBox.hasAutoSwitchErr
+                        color: statusLogLineBox.hasAutoSwitchErr
+                            ? Kirigami.Theme.negativeTextColor
+                            : Kirigami.Theme.textColor
+                        opacity: (statusLogLineMouse.containsMouse || statusLogLineBox.hasAutoSwitchErr) ? 1.0 : 0.92
                         elide: Text.ElideRight
                     }
 
@@ -5610,9 +5689,11 @@ Kirigami.ApplicationWindow {
                     }
 
                     QQC2.ToolTip.visible: statusLogLineMouse.containsMouse
-                    QQC2.ToolTip.text: deviceController.statusMessage.length > 0
-                        ? (deviceController.statusMessage + "\n" + qsTr("Click to open the Event Log Viewer"))
-                        : qsTr("Click to open the Event Log Viewer")
+                    QQC2.ToolTip.text: (statusLogLineBox.hasAutoSwitchErr
+                        ? (deviceController.autoSwitchErrorMessage + "\n" + deviceController.statusMessage + "\n")
+                        : (deviceController.statusMessage.length > 0
+                            ? (deviceController.statusMessage + "\n")
+                            : "")) + qsTr("Click to open the Event Log Viewer")
                 }
             }
 

@@ -28,6 +28,9 @@ Window {
     property bool keyEditorOpen: false
     readonly property bool autoSwitchDisabled: (controller && !controller.autoSwitchEnabled)
     readonly property bool autoSwitchPaused: autoSwitchDisabled || (keyEditorOpen && controller && controller.autoSwitchEnabled)
+    readonly property string autoSwitchError: controller ? String(controller.autoSwitchErrorMessage || "") : ""
+    readonly property bool hasAutoSwitchError: autoSwitchError.length > 0
+    onAutoSwitchErrorChanged: Qt.callLater(updateTitleExpansion)
     readonly property real windowOpacity: Math.max(0.20, Math.min(1.0, (100 - transparencyPercent) / 100.0))
     readonly property int transparencyMax: 80
     readonly property int transparencyWheelStep: 5
@@ -453,9 +456,11 @@ Window {
         radius: oledWidgetWindow.framelessMode ? 10 : 0
         color: "#0b0f19"
         border.width: oledWidgetWindow.framelessMode ? 1.5 : 1
-        border.color: oledWidgetWindow.autoSwitchPaused
-            ? "#f59e0b"
-            : (oledWidgetWindow.alwaysOnTop ? "#38bdf8" : "#334155")
+        border.color: oledWidgetWindow.hasAutoSwitchError
+            ? "#ef4444"
+            : (oledWidgetWindow.autoSwitchPaused
+                ? "#f59e0b"
+                : (oledWidgetWindow.alwaysOnTop ? "#38bdf8" : "#334155"))
         opacity: oledWidgetWindow.windowOpacity
         layer.enabled: oledWidgetWindow.windowOpacity < 0.999
 
@@ -1200,14 +1205,21 @@ Window {
             anchors.rightMargin: oledWidgetWindow.outerPad
             height: oledWidgetWindow.currentTitleBarHeight
             radius: 6
-            color: oledWidgetWindow.autoSwitchPaused
-                ? Qt.tint("#111827", Qt.rgba(0.96, 0.62, 0.04, 0.16))
-                : "#111827"
-            border.color: oledWidgetWindow.autoSwitchPaused ? "#f59e0b" : "#1e293b"
+            color: oledWidgetWindow.hasAutoSwitchError
+                ? Qt.tint("#111827", Qt.rgba(0.94, 0.27, 0.27, 0.22))
+                : (oledWidgetWindow.autoSwitchPaused
+                    ? Qt.tint("#111827", Qt.rgba(0.96, 0.62, 0.04, 0.16))
+                    : "#111827")
+            border.color: oledWidgetWindow.hasAutoSwitchError
+                ? "#ef4444"
+                : (oledWidgetWindow.autoSwitchPaused ? "#f59e0b" : "#1e293b")
             border.width: 1
             clip: true
 
             readonly property string titleText: {
+                if (oledWidgetWindow.hasAutoSwitchError) {
+                    return oledWidgetWindow.autoSwitchError
+                }
                 if (oledWidgetWindow.autoSwitchPaused) {
                     const winName = oledWidgetWindow.lastExternalWindowTitle.length > 0
                         ? oledWidgetWindow.lastExternalWindowTitle
@@ -1243,12 +1255,14 @@ Window {
                 anchors.leftMargin: 8
                 anchors.rightMargin: 8
                 text: windowTitleBar.titleText
-                color: oledWidgetWindow.autoSwitchPaused
-                    ? "#f59e0b"
-                    : (oledWidgetWindow.lastExternalWindowTitle.length > 0 ? "#e2e8f0" : "#64748b")
-                font.bold: oledWidgetWindow.autoSwitchPaused || oledWidgetWindow.lastExternalWindowTitle.length > 0
+                color: oledWidgetWindow.hasAutoSwitchError
+                    ? "#fca5a5"
+                    : (oledWidgetWindow.autoSwitchPaused
+                        ? "#f59e0b"
+                        : (oledWidgetWindow.lastExternalWindowTitle.length > 0 ? "#e2e8f0" : "#64748b"))
+                font.bold: oledWidgetWindow.hasAutoSwitchError || oledWidgetWindow.autoSwitchPaused || oledWidgetWindow.lastExternalWindowTitle.length > 0
                 font.pixelSize: oledWidgetWindow.windowTitleFontPx
-                font.italic: !oledWidgetWindow.autoSwitchPaused && oledWidgetWindow.lastExternalWindowTitle.length === 0
+                font.italic: !oledWidgetWindow.hasAutoSwitchError && !oledWidgetWindow.autoSwitchPaused && oledWidgetWindow.lastExternalWindowTitle.length === 0
                 wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
@@ -1557,7 +1571,9 @@ Window {
                 anchors.centerIn: parent
                 radius: 8
                 color: "#000000"
-                border.color: oledWidgetWindow.autoSwitchPaused ? "#f59e0b" : "#38bdf8"
+                border.color: oledWidgetWindow.hasAutoSwitchError
+                    ? "#ef4444"
+                    : (oledWidgetWindow.autoSwitchPaused ? "#f59e0b" : "#38bdf8")
                 border.width: 2
                 clip: true
 
@@ -1577,7 +1593,10 @@ Window {
                     readonly property int gridCols: isLandscapeRot ? 5 : 4
                     readonly property int gridRows: isLandscapeRot ? 4 : 5
                     readonly property int bannerHeight: Math.max(14, Math.round(height * 0.105))
-                    readonly property int gridAreaHeight: Math.max(80, height - bannerHeight - 2)
+                    readonly property int errorStripHeight: oledWidgetWindow.hasAutoSwitchError
+                        ? Math.max(14, Math.round(height * 0.095))
+                        : 0
+                    readonly property int gridAreaHeight: Math.max(60, height - bannerHeight - errorStripHeight - 2)
                     readonly property real cellWidth: width / gridCols
                     readonly property real cellHeight: gridAreaHeight / gridRows
 
@@ -1588,7 +1607,7 @@ Window {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         height: oledScreenContent.bannerHeight
-                        color: "#38bdf8"
+                        color: oledWidgetWindow.hasAutoSwitchError ? "#ef4444" : "#38bdf8"
 
                         Text {
                             anchors.fill: parent
@@ -1598,7 +1617,7 @@ Window {
                             verticalAlignment: Text.AlignVCenter
                             text: "P" + oledWidgetWindow.activeProfile + ": " + oledWidgetWindow.activeProfileName
                                 + (oledWidgetWindow.profileOledRotation !== 0 ? " [" + oledWidgetWindow.profileOledRotation + "°]" : "")
-                            color: "#020617"
+                            color: oledWidgetWindow.hasAutoSwitchError ? "#ffffff" : "#020617"
                             font.family: "sans-serif"
                             font.bold: true
                             font.pixelSize: Math.max(10, Math.round(parent.height * 0.62))
@@ -1606,9 +1625,34 @@ Window {
                         }
                     }
 
+                    // Auto-Switch Error Banner Strip (visible directly inside OLED screen even if bottom title bar is hidden)
+                    Rectangle {
+                        id: oledErrorStrip
+                        visible: oledWidgetWindow.hasAutoSwitchError
+                        anchors.top: oledBanner.bottom
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        height: oledScreenContent.errorStripHeight
+                        color: "#7f1d1d"
+
+                        Text {
+                            anchors.fill: parent
+                            anchors.leftMargin: 4
+                            anchors.rightMargin: 4
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            text: oledWidgetWindow.autoSwitchError
+                            color: "#fecaca"
+                            font.family: "sans-serif"
+                            font.bold: true
+                            font.pixelSize: Math.max(8, Math.round(parent.height * 0.60))
+                            elide: Text.ElideRight
+                        }
+                    }
+
                     // Key Grid with Centered Upright Button Text (supports 0°/90°/180°/270° and longer Desktop Widget labels wl1/wl2)
                     Item {
-                        anchors.top: oledBanner.bottom
+                        anchors.top: oledWidgetWindow.hasAutoSwitchError ? oledErrorStrip.bottom : oledBanner.bottom
                         anchors.topMargin: 2
                         anchors.bottom: parent.bottom
                         anchors.left: parent.left
