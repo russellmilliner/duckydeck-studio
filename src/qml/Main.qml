@@ -218,10 +218,79 @@ Kirigami.ApplicationWindow {
     }
     property string selectedSlotTitle: "Key 1 (Front View)"
     property color selectedSlotColor: "#00aaff"
+    // 0 = 1x Single Click (On Press), 1 = 2x Double Click, 2 = 3x Triple Click, 3 = On Release
+    property int editingClickPhase: 0
     property bool editingReleaseScript: false
     property string pressScriptBuffer: ""
+    property string singleClickScriptBuffer: ""
+    property string doubleClickScriptBuffer: ""
+    property string tripleClickScriptBuffer: ""
     property string releaseScriptBuffer: ""
     property bool loadingSlotData: false
+
+    function splitPressBufferToPhaseBuffers(rawPress) {
+        const raw = rawPress || ""
+        if (deviceController) {
+            try {
+                const sp = JSON.parse(deviceController.splitMultiClickScriptJson(raw))
+                root.singleClickScriptBuffer = sp.single || ""
+                root.doubleClickScriptBuffer = sp.double || ""
+                root.tripleClickScriptBuffer = sp.triple || ""
+                return
+            } catch (e) {}
+        }
+        root.singleClickScriptBuffer = raw
+        root.doubleClickScriptBuffer = ""
+        root.tripleClickScriptBuffer = ""
+    }
+
+    function scriptForCurrentPhase() {
+        if (root.editingClickPhase === 3 || root.editingReleaseScript) return root.releaseScriptBuffer
+        if (root.editingClickPhase === 1) return root.doubleClickScriptBuffer
+        if (root.editingClickPhase === 2) return root.tripleClickScriptBuffer
+        return root.singleClickScriptBuffer
+    }
+
+    function syncActiveEditorToPhaseBuffers() {
+        if (root.editingClickPhase === 3 || root.editingReleaseScript) {
+            root.releaseScriptBuffer = scriptEditor.text
+        } else if (root.editingClickPhase === 1) {
+            root.doubleClickScriptBuffer = scriptEditor.text
+        } else if (root.editingClickPhase === 2) {
+            root.tripleClickScriptBuffer = scriptEditor.text
+        } else {
+            root.singleClickScriptBuffer = scriptEditor.text
+        }
+        if (deviceController) {
+            root.pressScriptBuffer = deviceController.composeMultiClickScript(
+                root.singleClickScriptBuffer,
+                root.doubleClickScriptBuffer,
+                root.tripleClickScriptBuffer
+            )
+        } else {
+            root.pressScriptBuffer = root.singleClickScriptBuffer
+        }
+        if ((root.doubleClickScriptBuffer.trim().length > 0 || root.tripleClickScriptBuffer.trim().length > 0)
+            && typeof disableRepeatCheck !== "undefined" && disableRepeatCheck) {
+            disableRepeatCheck.checked = true
+        }
+    }
+
+    function switchEditingClickPhase(newPhase) {
+        if (root.editingClickPhase === newPhase && root.editingReleaseScript === (newPhase === 3)) return
+        root.syncActiveEditorToPhaseBuffers()
+        root.editingClickPhase = newPhase
+        root.editingReleaseScript = (newPhase === 3)
+        root.loadingSlotData = true
+        scriptEditor.text = root.scriptForCurrentPhase()
+        root.showWebApiBuilder = false
+        root.showAppLaunchBuilder = false
+        root.inspectorMode = "code"
+        root.loadWebApiBuilderFromScript(scriptEditor.text)
+        root.loadAppLaunchBuilderFromScript(scriptEditor.text)
+        root.loadingSlotData = false
+        root.updateCompilerStatus()
+    }
 
     // Snapshot of slot state when first selected so Revert can undo auto-saved edits
     property int slotSnapshotSlotNumber: 0
@@ -835,7 +904,9 @@ Kirigami.ApplicationWindow {
             root.compileErrorMsg = ""
         }
         if (typeof gamingHoldModeCheck !== "undefined" && gamingHoldModeCheck) {
-            const curPress = root.editingReleaseScript ? root.pressScriptBuffer : scriptEditor.text
+            const curPress = (root.editingClickPhase === 0 && !root.editingReleaseScript)
+                ? scriptEditor.text
+                : root.singleClickScriptBuffer
             const curRel = root.editingReleaseScript ? scriptEditor.text : root.releaseScriptBuffer
             gamingHoldModeCheck.checked = deviceController.isGamingHoldScript(curPress || "", curRel || "")
         }
@@ -978,8 +1049,9 @@ Kirigami.ApplicationWindow {
         allowAbortCheck.checked = root.slotSnapshotAbort
         disableRepeatCheck.checked = root.slotSnapshotNoRepeat
         root.pressScriptBuffer = root.slotSnapshotPressScript
+        root.splitPressBufferToPhaseBuffers(root.pressScriptBuffer)
         root.releaseScriptBuffer = root.slotSnapshotReleaseScript
-        scriptEditor.text = root.editingReleaseScript ? root.releaseScriptBuffer : root.pressScriptBuffer
+        scriptEditor.text = root.scriptForCurrentPhase()
         root.showWebApiBuilder = false
         root.showAppLaunchBuilder = false
         root.inspectorMode = "code"
@@ -1001,6 +1073,9 @@ Kirigami.ApplicationWindow {
         allowAbortCheck.checked = false
         disableRepeatCheck.checked = false
         root.pressScriptBuffer = ""
+        root.singleClickScriptBuffer = ""
+        root.doubleClickScriptBuffer = ""
+        root.tripleClickScriptBuffer = ""
         root.releaseScriptBuffer = ""
         scriptEditor.text = ""
         root.showWebApiBuilder = false
@@ -1032,6 +1107,10 @@ Kirigami.ApplicationWindow {
         root.selectedSlotNumber = slotNumber
         root.selectedSlotTitle = slotTitle
         root.selectedSlotColor = slotColor
+        if (slotNumber > 20 && (root.editingClickPhase === 1 || root.editingClickPhase === 2)) {
+            root.editingClickPhase = 0
+            root.editingReleaseScript = false
+        }
 
         try {
             const metaJson = deviceController.getSlotMetaJson(slotNumber)
@@ -1052,8 +1131,9 @@ Kirigami.ApplicationWindow {
         }
 
         root.pressScriptBuffer = deviceController.getSlotScript(slotNumber, false)
+        root.splitPressBufferToPhaseBuffers(root.pressScriptBuffer)
         root.releaseScriptBuffer = deviceController.getSlotScript(slotNumber, true)
-        scriptEditor.text = root.editingReleaseScript ? root.releaseScriptBuffer : root.pressScriptBuffer
+        scriptEditor.text = root.scriptForCurrentPhase()
         root.showWebApiBuilder = false
         root.showAppLaunchBuilder = false
         root.inspectorMode = "code"
@@ -1128,11 +1208,7 @@ Kirigami.ApplicationWindow {
         if (!root.hasSelectedSlot) {
             return
         }
-        if (root.editingReleaseScript) {
-            root.releaseScriptBuffer = scriptEditor.text
-        } else {
-            root.pressScriptBuffer = scriptEditor.text
-        }
+        root.syncActiveEditorToPhaseBuffers()
 
         deviceController.saveSlotConfig(
             root.selectedSlotNumber,
@@ -1154,8 +1230,9 @@ Kirigami.ApplicationWindow {
         if (!root.hasSelectedSlot || root.loadingSlotData || !root.compileOk) {
             return
         }
-        const currentPress = root.editingReleaseScript ? root.pressScriptBuffer : scriptEditor.text
-        const currentRelease = root.editingReleaseScript ? scriptEditor.text : root.releaseScriptBuffer
+        root.syncActiveEditorToPhaseBuffers()
+        const currentPress = root.pressScriptBuffer
+        const currentRelease = root.releaseScriptBuffer
         const currentL1 = label1Input.text.trim()
         const currentL2 = label2Input.text.trim()
         const currentWL1 = widgetLabel1Input.text.trim()
@@ -1343,11 +1420,7 @@ Kirigami.ApplicationWindow {
         onGeneratedScriptPreviewChanged: {
             if (deviceController.generatedScriptPreview.length > 0) {
                 scriptEditor.text = deviceController.generatedScriptPreview
-                if (root.editingReleaseScript) {
-                    root.releaseScriptBuffer = scriptEditor.text
-                } else {
-                    root.pressScriptBuffer = scriptEditor.text
-                }
+                root.syncActiveEditorToPhaseBuffers()
             }
         }
         onStatusMessageChanged: {
@@ -3525,11 +3598,11 @@ Kirigami.ApplicationWindow {
                                     anchors.fill: parent
                                     spacing: 2
 
-                                    // On Press Tab
+                                    // 1x Single Click (On Press) Tab
                                     Rectangle {
-                                        readonly property bool isActiveTab: !root.editingReleaseScript
+                                        readonly property bool isActiveTab: root.editingClickPhase === 0 && !root.editingReleaseScript
                                         Layout.preferredHeight: Math.round(30 * root.inspectorScale)
-                                        implicitWidth: onPressTabLbl.implicitWidth + 24
+                                        implicitWidth: onPressTabLbl.implicitWidth + 18
                                         topLeftRadius: 6
                                         topRightRadius: 6
                                         bottomLeftRadius: 0
@@ -3544,7 +3617,6 @@ Kirigami.ApplicationWindow {
                                             : Qt.alpha(Kirigami.Theme.textColor, 0.18)
                                         border.width: 1
 
-                                        // Active tab top indicator bar
                                         Rectangle {
                                             visible: parent.isActiveTab
                                             anchors.top: parent.top
@@ -3556,7 +3628,6 @@ Kirigami.ApplicationWindow {
                                             color: Kirigami.Theme.highlightColor
                                         }
 
-                                        // Mask bottom border when active so tab connects to panel below
                                         Rectangle {
                                             visible: parent.isActiveTab
                                             anchors.bottom: parent.bottom
@@ -3571,9 +3642,9 @@ Kirigami.ApplicationWindow {
                                         QQC2.Label {
                                             id: onPressTabLbl
                                             anchors.centerIn: parent
-                                            text: root.pressScriptBuffer.trim().length > 0
-                                                ? qsTr("⬇ On Press ●")
-                                                : qsTr("⬇ On Press")
+                                            text: root.singleClickScriptBuffer.trim().length > 0
+                                                ? qsTr("⬇ 1× Press ●")
+                                                : qsTr("⬇ 1× Press")
                                             font.pointSize: 10 * root.fontScale
                                             font.bold: parent.isActiveTab
                                             color: parent.isActiveTab
@@ -3586,32 +3657,156 @@ Kirigami.ApplicationWindow {
                                             anchors.fill: parent
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
-                                                if (root.editingReleaseScript) {
-                                                    root.releaseScriptBuffer = scriptEditor.text
-                                                    root.editingReleaseScript = false
-                                                    root.loadingSlotData = true
-                                                    scriptEditor.text = root.pressScriptBuffer
-                                                    root.showWebApiBuilder = false
-                                                    root.showAppLaunchBuilder = false
-                                                    root.inspectorMode = "code"
-                                                    root.loadWebApiBuilderFromScript(scriptEditor.text)
-                                                    root.loadAppLaunchBuilderFromScript(scriptEditor.text)
-                                                    root.loadingSlotData = false
-                                                    root.updateCompilerStatus()
-                                                }
-                                            }
+                                            onClicked: root.switchEditingClickPhase(0)
                                         }
 
                                         QQC2.ToolTip.visible: onPressTabMouse.containsMouse
-                                        QQC2.ToolTip.text: qsTr("Edit script executed when pressed down")
+                                        QQC2.ToolTip.text: qsTr("Edit script executed on 1× Single Click (On Press)")
+                                    }
+
+                                    // 2x Double Click Tab (Mechanical Keys 1..20)
+                                    Rectangle {
+                                        visible: inspectorCard.isMechanicalKey
+                                        readonly property bool isActiveTab: root.editingClickPhase === 1
+                                        Layout.preferredHeight: Math.round(30 * root.inspectorScale)
+                                        implicitWidth: doubleClickTabLbl.implicitWidth + 18
+                                        topLeftRadius: 6
+                                        topRightRadius: 6
+                                        bottomLeftRadius: 0
+                                        bottomRightRadius: 0
+                                        color: isActiveTab
+                                            ? Kirigami.Theme.backgroundColor
+                                            : (doubleClickTabMouse.containsMouse
+                                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.10)
+                                                : Kirigami.Theme.alternateBackgroundColor)
+                                        border.color: isActiveTab
+                                            ? Kirigami.Theme.highlightColor
+                                            : Qt.alpha(Kirigami.Theme.textColor, 0.18)
+                                        border.width: 1
+
+                                        Rectangle {
+                                            visible: parent.isActiveTab
+                                            anchors.top: parent.top
+                                            anchors.left: parent.left
+                                            anchors.right: parent.right
+                                            height: 3
+                                            topLeftRadius: 6
+                                            topRightRadius: 6
+                                            color: Kirigami.Theme.highlightColor
+                                        }
+
+                                        Rectangle {
+                                            visible: parent.isActiveTab
+                                            anchors.bottom: parent.bottom
+                                            anchors.left: parent.left
+                                            anchors.right: parent.right
+                                            anchors.leftMargin: 1
+                                            anchors.rightMargin: 1
+                                            height: 2
+                                            color: Kirigami.Theme.backgroundColor
+                                        }
+
+                                        QQC2.Label {
+                                            id: doubleClickTabLbl
+                                            anchors.centerIn: parent
+                                            text: root.doubleClickScriptBuffer.trim().length > 0
+                                                ? qsTr("⚡ 2× Double ●")
+                                                : qsTr("⚡ 2× Double")
+                                            font.pointSize: 10 * root.fontScale
+                                            font.bold: parent.isActiveTab || root.doubleClickScriptBuffer.trim().length > 0
+                                            color: parent.isActiveTab
+                                                ? root.highContrastHighlightText
+                                                : (root.doubleClickScriptBuffer.trim().length > 0
+                                                    ? root.highContrastPositiveText
+                                                    : Kirigami.Theme.textColor)
+                                        }
+
+                                        MouseArea {
+                                            id: doubleClickTabMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.switchEditingClickPhase(1)
+                                        }
+
+                                        QQC2.ToolTip.visible: doubleClickTabMouse.containsMouse
+                                        QQC2.ToolTip.text: qsTr("Assign an action or DuckyScript 3 executed when this key is double-clicked within %1 ms").arg(deviceController ? deviceController.multiClickIntervalMs : 250)
+                                    }
+
+                                    // 3x Triple Click Tab (Mechanical Keys 1..20)
+                                    Rectangle {
+                                        visible: inspectorCard.isMechanicalKey
+                                        readonly property bool isActiveTab: root.editingClickPhase === 2
+                                        Layout.preferredHeight: Math.round(30 * root.inspectorScale)
+                                        implicitWidth: tripleClickTabLbl.implicitWidth + 18
+                                        topLeftRadius: 6
+                                        topRightRadius: 6
+                                        bottomLeftRadius: 0
+                                        bottomRightRadius: 0
+                                        color: isActiveTab
+                                            ? Kirigami.Theme.backgroundColor
+                                            : (tripleClickTabMouse.containsMouse
+                                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.10)
+                                                : Kirigami.Theme.alternateBackgroundColor)
+                                        border.color: isActiveTab
+                                            ? Kirigami.Theme.highlightColor
+                                            : Qt.alpha(Kirigami.Theme.textColor, 0.18)
+                                        border.width: 1
+
+                                        Rectangle {
+                                            visible: parent.isActiveTab
+                                            anchors.top: parent.top
+                                            anchors.left: parent.left
+                                            anchors.right: parent.right
+                                            height: 3
+                                            topLeftRadius: 6
+                                            topRightRadius: 6
+                                            color: Kirigami.Theme.highlightColor
+                                        }
+
+                                        Rectangle {
+                                            visible: parent.isActiveTab
+                                            anchors.bottom: parent.bottom
+                                            anchors.left: parent.left
+                                            anchors.right: parent.right
+                                            anchors.leftMargin: 1
+                                            anchors.rightMargin: 1
+                                            height: 2
+                                            color: Kirigami.Theme.backgroundColor
+                                        }
+
+                                        QQC2.Label {
+                                            id: tripleClickTabLbl
+                                            anchors.centerIn: parent
+                                            text: root.tripleClickScriptBuffer.trim().length > 0
+                                                ? qsTr("⚡⚡ 3× Triple ●")
+                                                : qsTr("⚡⚡ 3× Triple")
+                                            font.pointSize: 10 * root.fontScale
+                                            font.bold: parent.isActiveTab || root.tripleClickScriptBuffer.trim().length > 0
+                                            color: parent.isActiveTab
+                                                ? root.highContrastHighlightText
+                                                : (root.tripleClickScriptBuffer.trim().length > 0
+                                                    ? root.highContrastOrangeText
+                                                    : Kirigami.Theme.textColor)
+                                        }
+
+                                        MouseArea {
+                                            id: tripleClickTabMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.switchEditingClickPhase(2)
+                                        }
+
+                                        QQC2.ToolTip.visible: tripleClickTabMouse.containsMouse
+                                        QQC2.ToolTip.text: qsTr("Assign an action or DuckyScript 3 executed when this key is triple-clicked (%1 ms between clicks)").arg(deviceController ? deviceController.multiClickIntervalMs : 250)
                                     }
 
                                     // On Release Tab
                                     Rectangle {
-                                        readonly property bool isActiveTab: root.editingReleaseScript
+                                        readonly property bool isActiveTab: root.editingClickPhase === 3 || root.editingReleaseScript
                                         Layout.preferredHeight: Math.round(30 * root.inspectorScale)
-                                        implicitWidth: onReleaseTabLbl.implicitWidth + 24
+                                        implicitWidth: onReleaseTabLbl.implicitWidth + 18
                                         topLeftRadius: 6
                                         topRightRadius: 6
                                         bottomLeftRadius: 0
@@ -3626,7 +3821,6 @@ Kirigami.ApplicationWindow {
                                             : Qt.alpha(Kirigami.Theme.textColor, 0.18)
                                         border.width: 1
 
-                                        // Active tab top indicator bar
                                         Rectangle {
                                             visible: parent.isActiveTab
                                             anchors.top: parent.top
@@ -3638,7 +3832,6 @@ Kirigami.ApplicationWindow {
                                             color: Kirigami.Theme.highlightColor
                                         }
 
-                                        // Mask bottom border when active
                                         Rectangle {
                                             visible: parent.isActiveTab
                                             anchors.bottom: parent.bottom
@@ -3668,21 +3861,7 @@ Kirigami.ApplicationWindow {
                                             anchors.fill: parent
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
-                                                if (!root.editingReleaseScript) {
-                                                    root.pressScriptBuffer = scriptEditor.text
-                                                    root.editingReleaseScript = true
-                                                    root.loadingSlotData = true
-                                                    scriptEditor.text = root.releaseScriptBuffer
-                                                    root.showWebApiBuilder = false
-                                                    root.showAppLaunchBuilder = false
-                                                    root.inspectorMode = "code"
-                                                    root.loadWebApiBuilderFromScript(scriptEditor.text)
-                                                    root.loadAppLaunchBuilderFromScript(scriptEditor.text)
-                                                    root.loadingSlotData = false
-                                                    root.updateCompilerStatus()
-                                                }
-                                            }
+                                            onClicked: root.switchEditingClickPhase(3)
                                         }
 
                                         QQC2.ToolTip.visible: onReleaseTabMouse.containsMouse
@@ -3690,6 +3869,46 @@ Kirigami.ApplicationWindow {
                                     }
 
                                     Item { Layout.fillWidth: true }
+
+                                    // Quick Double/Triple Click Timing control when on mechanical keys
+                                    RowLayout {
+                                        visible: inspectorCard.isMechanicalKey
+                                            && (root.editingClickPhase === 1
+                                                || root.editingClickPhase === 2
+                                                || root.doubleClickScriptBuffer.trim().length > 0
+                                                || root.tripleClickScriptBuffer.trim().length > 0)
+                                        spacing: 4
+
+                                        QQC2.Label {
+                                            text: qsTr("⏱ Gap:")
+                                            font.pointSize: 9.5 * root.fontScale
+                                            font.bold: true
+                                            color: Kirigami.Theme.disabledTextColor
+                                        }
+
+                                        QQC2.SpinBox {
+                                            id: inlineMultiClickIntervalSpin
+                                            from: 80
+                                            to: 1000
+                                            stepSize: 10
+                                            value: deviceController ? deviceController.multiClickIntervalMs : 250
+                                            editable: true
+                                            implicitHeight: Math.round(24 * root.inspectorScale)
+                                            implicitWidth: Math.round(92 * root.inspectorScale)
+                                            font.pointSize: 9.5 * root.fontScale
+                                            textFromValue: function(value) { return value + " ms" }
+                                            valueFromText: function(text) { return parseInt(text, 10) || 250 }
+                                            onValueModified: {
+                                                if (deviceController) {
+                                                    deviceController.applyMultiClickIntervalMs(value)
+                                                    root.syncActiveEditorToPhaseBuffers()
+                                                    liveSlotAutoSaveTimer.restart()
+                                                }
+                                            }
+                                            QQC2.ToolTip.visible: hovered
+                                            QQC2.ToolTip.text: qsTr("Global timing window (ms) between clicks for Double & Triple Click detection (also configurable in Settings)")
+                                        }
+                                    }
                                 }
                             }
 
@@ -3727,8 +3946,9 @@ Kirigami.ApplicationWindow {
                                         font.pointSize: 10 * root.fontScale
                                         onToggled: {
                                             if (!deviceController) return
-                                            const curPress = root.editingReleaseScript ? root.pressScriptBuffer : scriptEditor.text
-                                            const curRel = root.editingReleaseScript ? scriptEditor.text : root.releaseScriptBuffer
+                                            root.syncActiveEditorToPhaseBuffers()
+                                            const curPress = root.singleClickScriptBuffer
+                                            const curRel = root.releaseScriptBuffer
                                             const hint = label1Input.text.trim() || label2Input.text.trim() || ("Key " + root.selectedSlotNumber)
                                             try {
                                                 const raw = deviceController.convertScriptsForGamingHold(
@@ -3740,11 +3960,14 @@ Kirigami.ApplicationWindow {
                                                 const res = JSON.parse(raw)
                                                 if (res && res.converted) {
                                                     root.loadingSlotData = true
-                                                    root.pressScriptBuffer = res.press || ""
+                                                    root.singleClickScriptBuffer = res.press || ""
                                                     root.releaseScriptBuffer = res.release || ""
-                                                    scriptEditor.text = root.editingReleaseScript
-                                                        ? root.releaseScriptBuffer
-                                                        : root.pressScriptBuffer
+                                                    root.pressScriptBuffer = deviceController.composeMultiClickScript(
+                                                        root.singleClickScriptBuffer,
+                                                        root.doubleClickScriptBuffer,
+                                                        root.tripleClickScriptBuffer
+                                                    )
+                                                    scriptEditor.text = root.scriptForCurrentPhase()
                                                     if (checked) {
                                                         disableRepeatCheck.checked = false
                                                     }
@@ -4776,14 +4999,21 @@ Kirigami.ApplicationWindow {
                                                 QQC2.Button {
                                                     id: keApplyBtn
                                                     z: 5
-                                                    text: qsTr("Apply → K%1").arg(root.selectedSlotNumber)
+                                                    text: root.editingClickPhase === 1
+                                                        ? qsTr("Apply 2× → K%1").arg(root.selectedSlotNumber)
+                                                        : (root.editingClickPhase === 2
+                                                            ? qsTr("Apply 3× → K%1").arg(root.selectedSlotNumber)
+                                                            : qsTr("Apply → K%1").arg(root.selectedSlotNumber))
                                                     implicitHeight: Math.round(26 * root.inspectorScale)
                                                     font.pointSize: 9 * root.fontScale
                                                     highlighted: true
                                                     onClicked: {
                                                         if (deviceController && root.hasSelectedSlot) {
                                                             const useHold = !!(modelData.gaming_hold || shortcutsLibraryCard.forceGamingHoldMode)
-                                                            const catArg = (modelData.category || "") + (useHold ? ":gaming_hold" : "")
+                                                            const clickSuffix = root.editingClickPhase === 1
+                                                                ? ":double_click"
+                                                                : (root.editingClickPhase === 2 ? ":triple_click" : "")
+                                                            const catArg = (modelData.category || "") + (useHold ? ":gaming_hold" : "") + clickSuffix
                                                             deviceController.assignShortcutToKeySlot(
                                                                 0,
                                                                 root.selectedSlotNumber,
@@ -4850,7 +5080,10 @@ Kirigami.ApplicationWindow {
                                                     hardwareCanvas.dropTargetSlot = -1
                                                     if (targetSlot >= 1 && sc && deviceController) {
                                                         const useHold = !!(sc.gaming_hold || shortcutsLibraryCard.forceGamingHoldMode)
-                                                        const catArg = (sc.category || "") + (useHold ? ":gaming_hold" : "")
+                                                        const clickSuffix = root.editingClickPhase === 1
+                                                            ? ":double_click"
+                                                            : (root.editingClickPhase === 2 ? ":triple_click" : "")
+                                                        const catArg = (sc.category || "") + (useHold ? ":gaming_hold" : "") + clickSuffix
                                                         deviceController.assignShortcutToKeySlot(
                                                             0,
                                                             targetSlot,
@@ -4972,7 +5205,11 @@ Kirigami.ApplicationWindow {
                                             QQC2.Label {
                                                 text: root.editingReleaseScript
                                                     ? ("key" + root.selectedSlotNumber + "-release.txt")
-                                                    : ("key" + root.selectedSlotNumber + ".txt")
+                                                    : (root.editingClickPhase === 1
+                                                        ? ("key" + root.selectedSlotNumber + ".txt [2× Double]")
+                                                        : (root.editingClickPhase === 2
+                                                            ? ("key" + root.selectedSlotNumber + ".txt [3× Triple]")
+                                                            : ("key" + root.selectedSlotNumber + ".txt")))
                                                 font.family: "monospace"
                                                 font.bold: true
                                                 font.pointSize: 10 * root.fontScale
@@ -5118,11 +5355,7 @@ Kirigami.ApplicationWindow {
                                     wrapMode: TextEdit.NoWrap
                                     onTextChanged: {
                                         if (!root.loadingSlotData) {
-                                            if (root.editingReleaseScript) {
-                                                root.releaseScriptBuffer = text
-                                            } else {
-                                                root.pressScriptBuffer = text
-                                            }
+                                            root.syncActiveEditorToPhaseBuffers()
                                             root.updateCompilerStatus()
                                             if (activeFocus && !root.insertingCompletion) {
                                                 root.updateAutocompleteSuggestions(false)

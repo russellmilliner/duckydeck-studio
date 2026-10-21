@@ -63,6 +63,10 @@ pub fn default_window_dwell_ms() -> i32 {
     150
 }
 
+pub fn default_multi_click_interval_ms() -> i32 {
+    250
+}
+
 pub fn default_saved_colors() -> Vec<String> {
     vec![
         "#00aaff".to_string(),
@@ -184,6 +188,8 @@ pub struct PersistedSwitcherConfig {
     pub autoswitch_rule_editor_expanded: bool,
     #[serde(default)]
     pub google_search_shortcuts_permitted: bool,
+    #[serde(default = "default_multi_click_interval_ms")]
+    pub multi_click_interval_ms: i32,
 }
 
 #[derive(Clone)]
@@ -219,6 +225,7 @@ pub struct SwitcherState {
     pub autoswitch_enable_section_expanded: bool,
     pub autoswitch_rule_editor_expanded: bool,
     pub google_search_shortcuts_permitted: bool,
+    pub multi_click_interval_ms: i32,
     pub last_switched_profile: u8,
     pub picker_armed: bool,
     pub loaded_from_disk: bool,
@@ -292,6 +299,7 @@ impl Default for SwitcherState {
                 autoswitch_enable_section_expanded: cfg.autoswitch_enable_section_expanded,
                 autoswitch_rule_editor_expanded: cfg.autoswitch_rule_editor_expanded,
                 google_search_shortcuts_permitted: cfg.google_search_shortcuts_permitted,
+                multi_click_interval_ms: cfg.multi_click_interval_ms.clamp(80, 1000),
                 last_switched_profile: 0,
                 picker_armed: false,
                 loaded_from_disk: true,
@@ -355,6 +363,7 @@ impl Default for SwitcherState {
             autoswitch_enable_section_expanded: true,
             autoswitch_rule_editor_expanded: true,
             google_search_shortcuts_permitted: false,
+            multi_click_interval_ms: default_multi_click_interval_ms(),
             last_switched_profile: 0,
             picker_armed: false,
             loaded_from_disk: false,
@@ -630,6 +639,7 @@ impl SwitcherState {
             autoswitch_enable_section_expanded: self.autoswitch_enable_section_expanded,
             autoswitch_rule_editor_expanded: self.autoswitch_rule_editor_expanded,
             google_search_shortcuts_permitted: self.google_search_shortcuts_permitted,
+            multi_click_interval_ms: self.multi_click_interval_ms.clamp(80, 1000),
         };
         let json = serde_json::to_string_pretty(&payload)
             .map_err(|e| format!("Failed serializing KWin rules: {e}"))?;

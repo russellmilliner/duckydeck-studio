@@ -48,11 +48,13 @@ Window {
     property bool dimUnusedKeys: true
     property int oledRotation: 0
 
-    // Step 3: Assigned Shortcuts Map: slotNumber (1..20) -> { slot, label1, label2, script, release_script, gaming_hold, action, shortcut, category }
+    // Step 3: Assigned Shortcuts Map: slotNumber (1..20) -> { slot, label1, label2, script, double_script, triple_script, release_script, gaming_hold, action, shortcut, double_action, double_shortcut, triple_action, triple_shortcut, category }
     property var keyAssignments: ({})
     property int selectedMatrixSlot: 1
     property string shortcutSearchFilter: ""
     property bool gamingHoldModeDefault: false
+    property int targetClickPhase: 1
+    property bool syncAfterCreation: true
 
     // Drag & Drop State (both matrix-to-matrix swap and shortcut-menu-to-matrix assign)
     property int draggingMatrixSlot: -1
@@ -93,6 +95,8 @@ Window {
         selectedMatrixSlot = 1
         shortcutSearchFilter = ""
         gamingHoldModeDefault = false
+        targetClickPhase = 1
+        syncAfterCreation = true
         draggingMatrixSlot = -1
         draggingShortcutItem = null
         dropTargetSlot = -1
@@ -228,18 +232,51 @@ Window {
     function assignShortcutToSlot(slotNum, shortcutItem) {
         if (slotNum < 1 || slotNum > 20 || !shortcutItem) return
         const newMap = Object.assign({}, keyAssignments)
-        const useHold = !!(shortcutItem.gaming_hold || wizardDialog.gamingHoldModeDefault)
-        newMap[String(slotNum)] = {
+        const existing = newMap[String(slotNum)] ? Object.assign({}, newMap[String(slotNum)]) : {
             slot: slotNum,
-            label1: shortcutItem.label_l1 || "",
-            label2: shortcutItem.label_l2 || "",
-            script: shortcutItem.duckyscript || "",
-            release_script: shortcutItem.release_script || "",
-            gaming_hold: useHold,
-            action: shortcutItem.action || "",
-            shortcut: shortcutItem.shortcut || "",
-            category: shortcutItem.category || ""
+            label1: "",
+            label2: "",
+            script: "",
+            double_script: "",
+            triple_script: "",
+            release_script: "",
+            gaming_hold: false,
+            action: "",
+            shortcut: "",
+            double_action: "",
+            double_shortcut: "",
+            triple_action: "",
+            triple_shortcut: "",
+            category: ""
         }
+        if (wizardDialog.targetClickPhase === 2) {
+            existing.double_script = shortcutItem.duckyscript || ""
+            existing.double_action = shortcutItem.action || ""
+            existing.double_shortcut = shortcutItem.shortcut || ""
+            if (!existing.label1) existing.label1 = shortcutItem.label_l1 || ""
+            if (!existing.label2) existing.label2 = "2x" + (shortcutItem.label_l1 || "").slice(0, 3)
+            if (!existing.category) existing.category = shortcutItem.category || ""
+            existing.gaming_hold = false
+        } else if (wizardDialog.targetClickPhase === 3) {
+            existing.triple_script = shortcutItem.duckyscript || ""
+            existing.triple_action = shortcutItem.action || ""
+            existing.triple_shortcut = shortcutItem.shortcut || ""
+            if (!existing.label1) existing.label1 = shortcutItem.label_l1 || ""
+            if (!existing.label2) existing.label2 = "3x" + (shortcutItem.label_l1 || "").slice(0, 3)
+            if (!existing.category) existing.category = shortcutItem.category || ""
+            existing.gaming_hold = false
+        } else {
+            const useHold = !!(shortcutItem.gaming_hold || wizardDialog.gamingHoldModeDefault)
+            existing.label1 = shortcutItem.label_l1 || ""
+            existing.label2 = shortcutItem.label_l2 || ""
+            existing.script = shortcutItem.duckyscript || ""
+            existing.release_script = shortcutItem.release_script || ""
+            existing.gaming_hold = useHold
+            existing.action = shortcutItem.action || ""
+            existing.shortcut = shortcutItem.shortcut || ""
+            existing.category = shortcutItem.category || ""
+        }
+        newMap[String(slotNum)] = existing
         keyAssignments = newMap
         selectedMatrixSlot = slotNum
     }
@@ -303,7 +340,7 @@ Window {
         keyAssignments = newMap
     }
 
-    function finishAndCreateProfile() {
+    function finishAndCreateProfile(syncImmediately) {
         if (!controller) return
 
         const finalName = profileName.trim() || targetAppName.trim() || ("Profile " + targetSlotNumber)
@@ -313,13 +350,19 @@ Window {
             if (s) {
                 slotsArray.push({
                     slot: s.slot,
-                    label1: s.label1,
-                    label2: s.label2,
-                    script: s.script,
+                    label1: s.label1 || "",
+                    label2: s.label2 || "",
+                    script: s.script || "",
+                    double_script: s.double_script || "",
+                    triple_script: s.triple_script || "",
                     release_script: s.release_script || "",
                     gaming_hold: !!s.gaming_hold,
-                    action: s.action,
-                    shortcut: s.shortcut
+                    action: s.action || "",
+                    shortcut: s.shortcut || "",
+                    double_action: s.double_action || "",
+                    double_shortcut: s.double_shortcut || "",
+                    triple_action: s.triple_action || "",
+                    triple_shortcut: s.triple_shortcut || ""
                 })
             }
         }
@@ -348,7 +391,17 @@ Window {
         const jsonStr = JSON.stringify(payload)
         const ok = controller.createWizardProfile(jsonStr)
         if (ok) {
+            const doSync = (syncImmediately !== undefined) ? !!syncImmediately : wizardDialog.syncAfterCreation
             wizardDialog.close()
+            if (doSync) {
+                Qt.callLater(function() {
+                    if (root && typeof root.triggerSyncToDeviceSd === "function") {
+                        root.triggerSyncToDeviceSd()
+                    } else if (controller) {
+                        controller.syncProfilesToDeviceSd()
+                    }
+                })
+            }
         }
     }
 
@@ -1155,7 +1208,11 @@ Window {
 
                                                 // Subtle footer shortcut pill when assigned
                                                 Rectangle {
-                                                    visible: !!wizKeycapItem.assigned && wizKeycapItem.scText.length > 0 && !wizKeycapItem.isDropTarget
+                                                    visible: !!wizKeycapItem.assigned
+                                                        && (wizKeycapItem.scText.length > 0
+                                                            || !!(wizKeycapItem.assigned.double_shortcut)
+                                                            || !!(wizKeycapItem.assigned.triple_shortcut))
+                                                        && !wizKeycapItem.isDropTarget
                                                     anchors.bottom: parent.bottom
                                                     anchors.bottomMargin: 2
                                                     anchors.horizontalCenter: parent.horizontalCenter
@@ -1171,7 +1228,10 @@ Window {
                                                         anchors.centerIn: parent
                                                         width: parent.width - 2
                                                         horizontalAlignment: Text.AlignHCenter
-                                                        text: (wizKeycapItem.assigned && wizKeycapItem.assigned.gaming_hold ? "🎮" : "") + wizKeycapItem.scText
+                                                        text: (wizKeycapItem.assigned && wizKeycapItem.assigned.gaming_hold ? "🎮" : "")
+                                                            + (wizKeycapItem.scText || (wizKeycapItem.assigned ? (wizKeycapItem.assigned.double_shortcut || wizKeycapItem.assigned.triple_shortcut || "") : ""))
+                                                            + (wizKeycapItem.assigned && wizKeycapItem.assigned.double_shortcut ? " 2×" : "")
+                                                            + (wizKeycapItem.assigned && wizKeycapItem.assigned.triple_shortcut ? " 3×" : "")
                                                         font.pixelSize: 7
                                                         font.family: "monospace"
                                                         font.bold: true
@@ -1356,10 +1416,10 @@ Window {
                             }
                         }
 
-                        // Filter Bar + Gaming Hold Mode Toggle
+                        // Filter Bar + Target Click Phase (1x / 2x / 3x) + Gaming Hold Mode Toggle
                         RowLayout {
                             Layout.fillWidth: true
-                            spacing: 8
+                            spacing: 6
 
                             QQC2.TextField {
                                 id: searchBox
@@ -1371,9 +1431,44 @@ Window {
                                 onTextChanged: wizardDialog.shortcutSearchFilter = text
                             }
 
+                            RowLayout {
+                                spacing: 2
+
+                                QQC2.Button {
+                                    text: qsTr("1× Click")
+                                    implicitHeight: Math.round(26 * fontScale)
+                                    font.pointSize: 9 * fontScale
+                                    highlighted: wizardDialog.targetClickPhase === 1
+                                    onClicked: wizardDialog.targetClickPhase = 1
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: qsTr("Assign dragged/clicked shortcuts to 1× Single Click (On Press)")
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("⚡ 2× Double")
+                                    implicitHeight: Math.round(26 * fontScale)
+                                    font.pointSize: 9 * fontScale
+                                    highlighted: wizardDialog.targetClickPhase === 2
+                                    onClicked: wizardDialog.targetClickPhase = 2
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: qsTr("Assign dragged/clicked shortcuts to 2× Double Click")
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("⚡⚡ 3× Triple")
+                                    implicitHeight: Math.round(26 * fontScale)
+                                    font.pointSize: 9 * fontScale
+                                    highlighted: wizardDialog.targetClickPhase === 3
+                                    onClicked: wizardDialog.targetClickPhase = 3
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: qsTr("Assign dragged/clicked shortcuts to 3× Triple Click")
+                                }
+                            }
+
                             QQC2.CheckBox {
                                 id: wizGamingHoldCheck
-                                text: qsTr("🎮 Gaming Hold Mode")
+                                visible: wizardDialog.targetClickPhase === 1
+                                text: qsTr("🎮 Hold")
                                 font.pointSize: 9.5 * fontScale
                                 font.bold: checked
                                 checked: wizardDialog.gamingHoldModeDefault
@@ -1590,13 +1685,17 @@ Window {
                                             QQC2.Button {
                                                 id: quickAssignBtn
                                                 z: 5
-                                                text: qsTr("Assign → K%1").arg(wizardDialog.selectedMatrixSlot)
+                                                text: wizardDialog.targetClickPhase === 2
+                                                    ? qsTr("Assign 2× → K%1").arg(wizardDialog.selectedMatrixSlot)
+                                                    : (wizardDialog.targetClickPhase === 3
+                                                        ? qsTr("Assign 3× → K%1").arg(wizardDialog.selectedMatrixSlot)
+                                                        : qsTr("Assign → K%1").arg(wizardDialog.selectedMatrixSlot))
                                                 implicitHeight: Math.round(28 * fontScale)
                                                 font.pointSize: 9.5 * fontScale
                                                 highlighted: true
                                                 onClicked: {
                                                     wizardDialog.assignShortcutToSlot(wizardDialog.selectedMatrixSlot, modelData)
-                                                    if (wizardDialog.selectedMatrixSlot < 20) {
+                                                    if (wizardDialog.targetClickPhase === 1 && wizardDialog.selectedMatrixSlot < 20) {
                                                         wizardDialog.selectedMatrixSlot++
                                                     }
                                                 }
@@ -1699,7 +1798,7 @@ Window {
             }
         }
 
-        // Bottom Navigation Bar
+        // Bottom Navigation Bar + Final Sync to duckyPad Offer
         RowLayout {
             Layout.fillWidth: true
             spacing: 10
@@ -1709,6 +1808,15 @@ Window {
                 implicitHeight: Math.round(30 * fontScale)
                 font.pointSize: 10 * fontScale
                 onClicked: wizardDialog.close()
+            }
+
+            QQC2.CheckBox {
+                visible: wizardDialog.currentStep === 3
+                text: qsTr("⬆ Sync profile to duckyPad SD card immediately after creation")
+                font.pointSize: 10 * fontScale
+                font.bold: checked
+                checked: wizardDialog.syncAfterCreation
+                onToggled: wizardDialog.syncAfterCreation = checked
             }
 
             Item { Layout.fillWidth: true }
@@ -1731,12 +1839,23 @@ Window {
             }
 
             QQC2.Button {
-                text: qsTr("✓ Create Profile & Finish")
+                text: qsTr("Create Only (Sync Later)")
                 implicitHeight: Math.round(30 * fontScale)
                 font.pointSize: 10 * fontScale
                 visible: wizardDialog.currentStep === 3
+                onClicked: wizardDialog.finishAndCreateProfile(false)
+            }
+
+            QQC2.Button {
+                text: wizardDialog.syncAfterCreation
+                    ? qsTr("⬆ Create & Sync to duckyPad")
+                    : qsTr("✓ Create Profile")
+                implicitHeight: Math.round(30 * fontScale)
+                font.pointSize: 10 * fontScale
+                font.bold: true
+                visible: wizardDialog.currentStep === 3
                 highlighted: true
-                onClicked: wizardDialog.finishAndCreateProfile()
+                onClicked: wizardDialog.finishAndCreateProfile(wizardDialog.syncAfterCreation)
             }
         }
     }

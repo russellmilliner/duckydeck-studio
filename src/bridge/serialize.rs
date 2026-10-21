@@ -150,8 +150,16 @@ pub fn serialize_profile_slots(profile: &DuckyProfile) -> String {
             };
             let rgb = slot.custom_rgb.unwrap_or(default_rgb);
             let has_rel = !slot.on_release_script.trim().is_empty();
-            let has_loop =
-                slot.on_press_script.contains("WHILE") || slot.on_press_script.contains("LOOP");
+            let (s1, s2, s3) =
+                crate::ai::web_shortcuts::split_multi_click_script(&slot.on_press_script);
+            let has_double_click = !s2.trim().is_empty();
+            let has_triple_click = !s3.trim().is_empty();
+            let has_loop = s1.contains("WHILE")
+                || s1.contains("LOOP")
+                || s2.contains("WHILE")
+                || s2.contains("LOOP")
+                || s3.contains("WHILE")
+                || s3.contains("LOOP");
             let has_web_api = has_web_api_config(&slot.on_press_script)
                 || has_web_api_config(&slot.on_release_script);
             let has_app_launch = has_app_launch_config(&slot.on_press_script)
@@ -168,6 +176,8 @@ pub fn serialize_profile_slots(profile: &DuckyProfile) -> String {
                 "b": rgb[2],
                 "hasCustomRgb": slot.custom_rgb.is_some(),
                 "hasRel": has_rel,
+                "hasDoubleClick": has_double_click,
+                "hasTripleClick": has_triple_click,
                 "hasLoop": has_loop,
                 "hasWebApi": has_web_api,
                 "hasAppLaunch": has_app_launch,
@@ -192,6 +202,8 @@ pub fn serialize_profile_slots(profile: &DuckyProfile) -> String {
                 "b": rgb[2],
                 "hasCustomRgb": false,
                 "hasRel": false,
+                "hasDoubleClick": false,
+                "hasTripleClick": false,
                 "hasLoop": false,
                 "hasWebApi": false,
                 "hasAppLaunch": false,

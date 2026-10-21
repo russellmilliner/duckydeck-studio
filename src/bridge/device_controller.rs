@@ -133,6 +133,7 @@ pub mod qobject {
         #[qproperty(bool, search_shortcuts_busy)]
         #[qproperty(QString, discovered_shortcuts_json)]
         #[qproperty(QString, auto_switch_error_message)]
+        #[qproperty(i32, multi_click_interval_ms)]
         type DeviceController = super::DeviceControllerRust;
 
         #[qinvokable]
@@ -908,6 +909,29 @@ pub mod qobject {
             enable_gaming_hold: bool,
             action_hint: QString,
         ) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "applyMultiClickIntervalMs"]
+        fn apply_multi_click_interval_ms(
+            self: Pin<&mut DeviceController>,
+            interval_ms: i32,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "splitMultiClickScriptJson"]
+        fn split_multi_click_script_json(
+            self: &DeviceController,
+            on_press_script: QString,
+        ) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "composeMultiClickScript"]
+        fn compose_multi_click_script_qstr(
+            self: &DeviceController,
+            single_script: QString,
+            double_script: QString,
+            triple_script: QString,
+        ) -> QString;
     }
 
     impl cxx_qt::Threading for DeviceController {}
@@ -1089,6 +1113,7 @@ pub struct DeviceControllerRust {
     pub(crate) search_shortcuts_busy: bool,
     pub(crate) discovered_shortcuts_json: QString,
     pub(crate) auto_switch_error_message: QString,
+    pub(crate) multi_click_interval_ms: i32,
     pub(crate) copied_key_slot: Option<DuckyKeySlot>,
     pub(crate) firmware_download_url: String,
     pub(crate) sd_root_path: Option<PathBuf>,
@@ -1244,6 +1269,7 @@ impl Default for DeviceControllerRust {
         let app_theme = switcher.app_theme_mode.clone();
         let close_tray = switcher.close_to_tray;
         let google_shortcuts_permitted = switcher.google_search_shortcuts_permitted;
+        let multi_click_ms = switcher.multi_click_interval_ms.clamp(80, 1000);
         let text_scale = switcher.ui_text_scale.clamp(75, 160);
         qobject::duckydeck_apply_ui_font_scale(text_scale);
         let sidebar_scale = text_scale;
@@ -1424,6 +1450,7 @@ impl Default for DeviceControllerRust {
             search_shortcuts_busy: false,
             discovered_shortcuts_json: QString::from("[]"),
             auto_switch_error_message: QString::from(""),
+            multi_click_interval_ms: multi_click_ms,
             copied_key_slot: None,
             firmware_download_url: String::new(),
             sd_root_path,
@@ -8134,6 +8161,86 @@ impl qobject::DeviceController {
         }
     }
 
+    pub fn apply_multi_click_interval_ms(mut self: Pin<&mut Self>, interval_ms: i32) -> bool {
+        let clamped = interval_ms.clamp(80, 1000);
+        self.as_mut().set_multi_click_interval_ms(clamped);
+        let mut updated_slots = 0usize;
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                sw.multi_click_interval_ms = clamped;
+                let _ = sw.save_to_disk();
+            }
+            for prof in &mut rust.profiles {
+                let mut prof_changed = false;
+                for slot in prof.slots.values_mut() {
+                    if let Some(new_script) =
+                        crate::ai::web_shortcuts::update_multi_click_interval_in_script(
+                            &slot.on_press_script,
+                            clamped as u32,
+                        )
+                    {
+                        slot.on_press_script = new_script;
+                        prof_changed = true;
+                        updated_slots += 1;
+                    }
+                }
+                if prof_changed {
+                    if let Some(ref sd_root) = rust.sd_root_path {
+                        let _ = prof.save_to_sd_root(sd_root);
+                    }
+                }
+            }
+            if updated_slots > 0 {
+                let sn = rust.serial_number.to_string();
+                sync_profiles_to_device_cache(&sn, &rust.profiles);
+            }
+        }
+        if updated_slots > 0 {
+            self.as_mut().sync_active_profile_state();
+            self.as_mut().set_status_message(QString::from(&format!(
+                "Double/Triple click window set to {} ms (updated {} multi-click key(s))",
+                clamped, updated_slots
+            )));
+        } else {
+            self.as_mut().set_status_message(QString::from(&format!(
+                "Double/Triple click window set to {} ms",
+                clamped
+            )));
+        }
+        true
+    }
+
+    pub fn split_multi_click_script_json(&self, on_press_script: QString) -> QString {
+        let raw = on_press_script.to_string();
+        let (s1, s2, s3) = crate::ai::web_shortcuts::split_multi_click_script(&raw);
+        let out = json!({
+            "single": s1,
+            "double": s2,
+            "triple": s3,
+            "hasDoubleClick": !s2.trim().is_empty(),
+            "hasTripleClick": !s3.trim().is_empty(),
+            "hasMultiClick": !s2.trim().is_empty() || !s3.trim().is_empty(),
+        });
+        QString::from(&out.to_string())
+    }
+
+    pub fn compose_multi_click_script_qstr(
+        &self,
+        single_script: QString,
+        double_script: QString,
+        triple_script: QString,
+    ) -> QString {
+        let interval = (*self.multi_click_interval_ms()).clamp(80, 1000) as u32;
+        let composed = crate::ai::web_shortcuts::compose_multi_click_script(
+            &single_script.to_string(),
+            &double_script.to_string(),
+            &triple_script.to_string(),
+            interval,
+        );
+        QString::from(&composed)
+    }
+
     pub fn assign_shortcut_to_key_slot(
         mut self: Pin<&mut Self>,
         profile_num: i32,
@@ -8153,14 +8260,24 @@ impl qobject::DeviceController {
             *self.active_profile() as u8
         };
         let slot_idx = slot.clamp(1, MAX_INPUT_SLOTS as i32) as usize;
+        let interval_ms = (*self.multi_click_interval_ms()).clamp(80, 1000) as u32;
+
+        let target_click_phase = if cat_str.contains(":triple_click") {
+            3u8
+        } else if cat_str.contains(":double_click") {
+            2u8
+        } else {
+            1u8
+        };
 
         let (l1, l2) = crate::ai::web_shortcuts::make_smart_labels(&act_str, &sc_str);
 
-        let want_gaming_hold = cat_str.ends_with(":gaming_hold")
-            || cat_str.eq_ignore_ascii_case("Movement")
-            || cat_str.eq_ignore_ascii_case("Combat")
-            || act_str.to_ascii_lowercase().contains("(hold)")
-            || (ds_str.contains("KEYDOWN ") && !ds_str.contains("KEYUP "));
+        let want_gaming_hold = target_click_phase == 1
+            && (cat_str.contains(":gaming_hold")
+                || cat_str.eq_ignore_ascii_case("Movement")
+                || cat_str.eq_ignore_ascii_case("Combat")
+                || act_str.to_ascii_lowercase().contains("(hold)")
+                || (ds_str.contains("KEYDOWN ") && !ds_str.contains("KEYUP ")));
 
         let (press_script, release_script) = if want_gaming_hold {
             if !sc_str.trim().is_empty() {
@@ -8188,10 +8305,43 @@ impl qobject::DeviceController {
             let rust = self.as_mut().rust_mut().get_mut();
             if let Some(prof) = rust.profiles.iter_mut().find(|p| p.number == target_prof) {
                 let key_slot = prof.ensure_slot(slot_idx);
-                key_slot.label_line1 = l1.clone();
-                key_slot.label_line2 = l2.clone();
-                key_slot.on_press_script = press_script;
-                key_slot.on_release_script = release_script;
+                let (mut s1, mut s2, mut s3) =
+                    crate::ai::web_shortcuts::split_multi_click_script(&key_slot.on_press_script);
+                match target_click_phase {
+                    2 => {
+                        s2 = press_script;
+                        if key_slot.label_line1.trim().is_empty() {
+                            key_slot.label_line1 = l1.clone();
+                        }
+                        if key_slot.label_line2.trim().is_empty() {
+                            key_slot.label_line2 = format!("2x{}", l1.chars().take(3).collect::<String>());
+                        }
+                    }
+                    3 => {
+                        s3 = press_script;
+                        if key_slot.label_line1.trim().is_empty() {
+                            key_slot.label_line1 = l1.clone();
+                        }
+                        if key_slot.label_line2.trim().is_empty() {
+                            key_slot.label_line2 = format!("3x{}", l1.chars().take(3).collect::<String>());
+                        }
+                    }
+                    _ => {
+                        s1 = press_script;
+                        key_slot.label_line1 = l1.clone();
+                        key_slot.label_line2 = l2.clone();
+                        key_slot.on_release_script = release_script;
+                    }
+                }
+                key_slot.on_press_script = crate::ai::web_shortcuts::compose_multi_click_script(
+                    &s1,
+                    &s2,
+                    &s3,
+                    interval_ms,
+                );
+                if !s2.trim().is_empty() || !s3.trim().is_empty() {
+                    key_slot.disable_autorepeat = true;
+                }
 
                 if let Some(ref sd_root) = rust.sd_root_path {
                     let _ = prof.save_to_sd_root(sd_root);
@@ -8214,11 +8364,17 @@ impl qobject::DeviceController {
                         .set_active_profile_slots_json(QString::from(&slots_json));
                 }
             }
+            let click_badge = match target_click_phase {
+                2 => " [2× Double Click]",
+                3 => " [3× Triple Click]",
+                _ if want_gaming_hold => " [🎮 Gaming Hold]",
+                _ => "",
+            };
             self.as_mut().set_status_message(QString::from(&format!(
                 "Assigned shortcut '{}' ({}){} to Key {}",
                 act_str,
                 sc_str,
-                if want_gaming_hold { " [🎮 Gaming Hold]" } else { "" },
+                click_badge,
                 slot_idx
             )));
         }
@@ -8236,6 +8392,10 @@ impl qobject::DeviceController {
             #[serde(default)]
             script: String,
             #[serde(default)]
+            double_script: String,
+            #[serde(default)]
+            triple_script: String,
+            #[serde(default)]
             release_script: String,
             #[serde(default)]
             gaming_hold: bool,
@@ -8243,6 +8403,14 @@ impl qobject::DeviceController {
             action: String,
             #[serde(default)]
             shortcut: String,
+            #[serde(default)]
+            double_action: String,
+            #[serde(default)]
+            double_shortcut: String,
+            #[serde(default)]
+            triple_action: String,
+            #[serde(default)]
+            triple_shortcut: String,
         }
 
         #[derive(serde::Deserialize)]
@@ -8347,12 +8515,15 @@ impl qobject::DeviceController {
         }
 
         // Apply slots
+        let interval_ms = (*self.multi_click_interval_ms()).clamp(80, 1000) as u32;
         for slot_item in input.slots {
             let s_idx = slot_item.slot.clamp(1, MAX_INPUT_SLOTS);
 
             let mut l1 = slot_item.label1;
             let mut l2 = slot_item.label2;
             let mut script = slot_item.script;
+            let mut double_script = slot_item.double_script;
+            let mut triple_script = slot_item.triple_script;
             let mut release_script = slot_item.release_script;
 
             if (l1.is_empty() || l2.is_empty()) && (!slot_item.action.is_empty() || !slot_item.shortcut.is_empty()) {
@@ -8361,7 +8532,7 @@ impl qobject::DeviceController {
                 if l2.is_empty() { l2 = gen_l2; }
             }
 
-            if slot_item.gaming_hold {
+            if slot_item.gaming_hold && double_script.trim().is_empty() && triple_script.trim().is_empty() {
                 if !slot_item.shortcut.trim().is_empty() {
                     let (p_ds, r_ds) = crate::ai::web_shortcuts::shortcut_to_gaming_hold_scripts(
                         &slot_item.shortcut,
@@ -8384,11 +8555,34 @@ impl qobject::DeviceController {
                 script = crate::ai::web_shortcuts::shortcut_to_duckyscript(&slot_item.shortcut, &slot_item.action);
             }
 
+            if double_script.trim().is_empty() && !slot_item.double_shortcut.trim().is_empty() {
+                double_script = crate::ai::web_shortcuts::shortcut_to_duckyscript(
+                    &slot_item.double_shortcut,
+                    &slot_item.double_action,
+                );
+            }
+            if triple_script.trim().is_empty() && !slot_item.triple_shortcut.trim().is_empty() {
+                triple_script = crate::ai::web_shortcuts::shortcut_to_duckyscript(
+                    &slot_item.triple_shortcut,
+                    &slot_item.triple_action,
+                );
+            }
+
+            let composed_press = crate::ai::web_shortcuts::compose_multi_click_script(
+                &script,
+                &double_script,
+                &triple_script,
+                interval_ms,
+            );
+
             let target_slot = prof.ensure_slot(s_idx);
             target_slot.label_line1 = l1.chars().take(5).collect();
             target_slot.label_line2 = l2.chars().take(5).collect();
-            target_slot.on_press_script = script;
+            target_slot.on_press_script = composed_press;
             target_slot.on_release_script = release_script;
+            if !double_script.trim().is_empty() || !triple_script.trim().is_empty() {
+                target_slot.disable_autorepeat = true;
+            }
         }
 
         // Save to SD root if mounted

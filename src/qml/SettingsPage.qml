@@ -3097,6 +3097,150 @@ Window {
                         highContrastWarningText: settingsDialog.highContrastWarningText
                     }
 
+                // Section 2: Double & Triple Click Timings
+                Rectangle {
+                    Kirigami.Theme.colorSet: Kirigami.Theme.View
+                    Kirigami.Theme.inherit: false
+                    Layout.fillWidth: true
+                    implicitHeight: multiClickCol.implicitHeight + 20
+                    radius: 8
+                    color: Kirigami.Theme.alternateBackgroundColor
+                    border.color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                    border.width: 1
+
+                    ColumnLayout {
+                        id: multiClickCol
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        spacing: 8
+
+                        QQC2.Label {
+                            text: qsTr("DOUBLE & TRIPLE CLICK TIMING")
+                            font.bold: true
+                            font.pointSize: 10 * root.fontScale
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            font.pointSize: 9.5 * root.fontScale
+                            color: Kirigami.Theme.textColor
+                            text: qsTr("Maximum time allowed between clicks when detecting 2× Double Click or 3× Triple Click actions on duckyPad keys. Changing this updates all existing multi-click keys across your profiles.")
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+
+                            QQC2.Label {
+                                text: qsTr("Click Gap Window:")
+                                font.bold: true
+                                font.pointSize: 10 * root.fontScale
+                                color: Kirigami.Theme.textColor
+                            }
+
+                            QQC2.Slider {
+                                id: settingsMultiClickSlider
+                                Layout.fillWidth: true
+                                from: 80
+                                to: 1000
+                                stepSize: 10
+                                value: deviceController ? deviceController.multiClickIntervalMs : 250
+                                onMoved: {
+                                    if (deviceController) {
+                                        deviceController.applyMultiClickIntervalMs(Math.round(value))
+                                        if (root && root.hasSelectedSlot) {
+                                            root.refreshSelectedSlotFromController()
+                                        }
+                                    }
+                                }
+                            }
+
+                            QQC2.SpinBox {
+                                id: settingsMultiClickSpin
+                                from: 80
+                                to: 1000
+                                stepSize: 10
+                                editable: true
+                                value: deviceController ? deviceController.multiClickIntervalMs : 250
+                                font.pointSize: 10 * root.fontScale
+                                textFromValue: function(value) { return value + " ms" }
+                                valueFromText: function(text) { return parseInt(text, 10) || 250 }
+                                onValueModified: {
+                                    if (deviceController) {
+                                        deviceController.applyMultiClickIntervalMs(value)
+                                        if (root && root.hasSelectedSlot) {
+                                            root.refreshSelectedSlotFromController()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 6
+
+                            QQC2.Label {
+                                text: qsTr("Presets:")
+                                font.pointSize: 9.5 * root.fontScale
+                                color: Kirigami.Theme.disabledTextColor
+                            }
+
+                            QQC2.Button {
+                                font.pointSize: 9.5 * root.fontScale
+                                text: qsTr("⚡ Fast (180 ms)")
+                                highlighted: deviceController && deviceController.multiClickIntervalMs === 180
+                                onClicked: {
+                                    if (deviceController) {
+                                        deviceController.applyMultiClickIntervalMs(180)
+                                        if (root && root.hasSelectedSlot) root.refreshSelectedSlotFromController()
+                                    }
+                                }
+                            }
+
+                            QQC2.Button {
+                                font.pointSize: 9.5 * root.fontScale
+                                text: qsTr("✓ Default (250 ms)")
+                                highlighted: deviceController && deviceController.multiClickIntervalMs === 250
+                                onClicked: {
+                                    if (deviceController) {
+                                        deviceController.applyMultiClickIntervalMs(250)
+                                        if (root && root.hasSelectedSlot) root.refreshSelectedSlotFromController()
+                                    }
+                                }
+                            }
+
+                            QQC2.Button {
+                                font.pointSize: 9.5 * root.fontScale
+                                text: qsTr("Relaxed (350 ms)")
+                                highlighted: deviceController && deviceController.multiClickIntervalMs === 350
+                                onClicked: {
+                                    if (deviceController) {
+                                        deviceController.applyMultiClickIntervalMs(350)
+                                        if (root && root.hasSelectedSlot) root.refreshSelectedSlotFromController()
+                                    }
+                                }
+                            }
+
+                            QQC2.Button {
+                                font.pointSize: 9.5 * root.fontScale
+                                text: qsTr("Slow (500 ms)")
+                                highlighted: deviceController && deviceController.multiClickIntervalMs === 500
+                                onClicked: {
+                                    if (deviceController) {
+                                        deviceController.applyMultiClickIntervalMs(500)
+                                        if (root && root.hasSelectedSlot) root.refreshSelectedSlotFromController()
+                                    }
+                                }
+                            }
+
+                            Item { Layout.fillWidth: true }
+                        }
+                    }
+                }
+
                 // Section 3: Appearance & System Integration
                 Rectangle {
                     Kirigami.Theme.colorSet: Kirigami.Theme.View

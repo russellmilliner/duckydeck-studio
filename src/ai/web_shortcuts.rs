@@ -690,6 +690,158 @@ pub fn convert_scripts_for_gaming_hold(
     }
 }
 
+pub const MULTICLICK_HEADER_PREFIX: &str = "// === [DUCKYDECK_MULTICLICK_V1";
+pub const SINGLE_CLICK_BEGIN: &str = "// --- [SINGLE_CLICK_BEGIN] ---";
+pub const SINGLE_CLICK_END: &str = "// --- [SINGLE_CLICK_END] ---";
+pub const DOUBLE_CLICK_BEGIN: &str = "// --- [DOUBLE_CLICK_BEGIN] ---";
+pub const DOUBLE_CLICK_END: &str = "// --- [DOUBLE_CLICK_END] ---";
+pub const TRIPLE_CLICK_BEGIN: &str = "// --- [TRIPLE_CLICK_BEGIN] ---";
+pub const TRIPLE_CLICK_END: &str = "// --- [TRIPLE_CLICK_END] ---";
+
+/// Splits an `on_press_script` into `(single_click_script, double_click_script, triple_click_script)`.
+/// If the script does not contain DuckyDeck Multi-Click markers, returns `(on_press_script, "", "")`.
+pub fn split_multi_click_script(on_press_script: &str) -> (String, String, String) {
+    if !on_press_script.contains(SINGLE_CLICK_BEGIN)
+        && !on_press_script.contains(DOUBLE_CLICK_BEGIN)
+        && !on_press_script.contains(TRIPLE_CLICK_BEGIN)
+    {
+        return (on_press_script.to_string(), String::new(), String::new());
+    }
+
+    let extract_section = |begin_marker: &str, end_marker: &str| -> String {
+        let mut inside = false;
+        let mut lines = Vec::new();
+        for line in on_press_script.lines() {
+            let trimmed = line.trim();
+            if trimmed == begin_marker {
+                inside = true;
+                continue;
+            }
+            if trimmed == end_marker {
+                break;
+            }
+            if inside {
+                lines.push(line);
+            }
+        }
+        if lines.is_empty() {
+            String::new()
+        } else {
+            format!("{}\n", lines.join("\n"))
+        }
+    };
+
+    let single = extract_section(SINGLE_CLICK_BEGIN, SINGLE_CLICK_END);
+    let double = extract_section(DOUBLE_CLICK_BEGIN, DOUBLE_CLICK_END);
+    let triple = extract_section(TRIPLE_CLICK_BEGIN, TRIPLE_CLICK_END);
+    (single, double, triple)
+}
+
+/// Composes `(single_click_script, double_click_script, triple_click_script)` into a single
+/// hardware-native DuckyScript 3 `on_press_script` using `$_SW_BITFIELD`, `$_THIS_KEYID`,
+/// `$_TIME_MS`, and `BCLR`. If both `double_click_script` and `triple_click_script` are empty,
+/// returns `single_click_script` unmodified.
+pub fn compose_multi_click_script(
+    single_script: &str,
+    double_script: &str,
+    triple_script: &str,
+    interval_ms: u32,
+) -> String {
+    let has_double = !double_script.trim().is_empty();
+    let has_triple = !triple_script.trim().is_empty();
+    if !has_double && !has_triple {
+        return single_script.to_string();
+    }
+
+    let gap = interval_ms.clamp(80, 1000);
+    let mut out = Vec::new();
+    out.push(format!("{MULTICLICK_HEADER_PREFIX} interval_ms={gap}] ==="));
+    out.push("$_DONT_REPEAT = 1".to_string());
+    out.push("VAR $mc_mask = 1 << ($_THIS_KEYID - 1)".to_string());
+    out.push("VAR $mc_clicks = 1".to_string());
+    out.push("VAR $mc_t0 = $_TIME_MS".to_string());
+    out.push(format!(
+        "WHILE (($_SW_BITFIELD & $mc_mask) != 0) && (($_TIME_MS - $mc_t0) < {gap})"
+    ));
+    out.push("    DELAY 5".to_string());
+    out.push("END_WHILE".to_string());
+    out.push("IF ($_SW_BITFIELD & $mc_mask) == 0 THEN".to_string());
+    out.push("    $mc_t0 = $_TIME_MS".to_string());
+    out.push(format!(
+        "    WHILE (($_SW_BITFIELD & $mc_mask) == 0) && (($_TIME_MS - $mc_t0) < {gap})"
+    ));
+    out.push("        DELAY 5".to_string());
+    out.push("    END_WHILE".to_string());
+    out.push("    IF ($_SW_BITFIELD & $mc_mask) != 0 THEN".to_string());
+    out.push("        $mc_clicks = 2".to_string());
+    out.push("    END_IF".to_string());
+    out.push("END_IF".to_string());
+
+    if has_triple {
+        out.push("IF $mc_clicks == 2 THEN".to_string());
+        out.push("    $mc_t0 = $_TIME_MS".to_string());
+        out.push(format!(
+            "    WHILE (($_SW_BITFIELD & $mc_mask) != 0) && (($_TIME_MS - $mc_t0) < {gap})"
+        ));
+        out.push("        DELAY 5".to_string());
+        out.push("    END_WHILE".to_string());
+        out.push("    IF ($_SW_BITFIELD & $mc_mask) == 0 THEN".to_string());
+        out.push("        $mc_t0 = $_TIME_MS".to_string());
+        out.push(format!(
+            "        WHILE (($_SW_BITFIELD & $mc_mask) == 0) && (($_TIME_MS - $mc_t0) < {gap})"
+        ));
+        out.push("            DELAY 5".to_string());
+        out.push("        END_WHILE".to_string());
+        out.push("        IF ($_SW_BITFIELD & $mc_mask) != 0 THEN".to_string());
+        out.push("            $mc_clicks = 3".to_string());
+        out.push("        END_IF".to_string());
+        out.push("    END_IF".to_string());
+        out.push("END_IF".to_string());
+    }
+
+    out.push("BCLR".to_string());
+    out.push("IF $mc_clicks == 3 THEN".to_string());
+    out.push(TRIPLE_CLICK_BEGIN.to_string());
+    if !triple_script.trim().is_empty() {
+        out.push(triple_script.trim_end().to_string());
+    }
+    out.push(TRIPLE_CLICK_END.to_string());
+    out.push("ELSE IF $mc_clicks == 2 THEN".to_string());
+    out.push(DOUBLE_CLICK_BEGIN.to_string());
+    if !double_script.trim().is_empty() {
+        out.push(double_script.trim_end().to_string());
+    }
+    out.push(DOUBLE_CLICK_END.to_string());
+    out.push("ELSE".to_string());
+    out.push(SINGLE_CLICK_BEGIN.to_string());
+    if !single_script.trim().is_empty() {
+        out.push(single_script.trim_end().to_string());
+    }
+    out.push(SINGLE_CLICK_END.to_string());
+    out.push("END_IF".to_string());
+
+    format!("{}\n", out.join("\n"))
+}
+
+/// If `on_press_script` contains a DuckyDeck Multi-Click wrapper, re-composes it with the
+/// updated `interval_ms` timing and returns `Some(updated_script)`.
+pub fn update_multi_click_interval_in_script(
+    on_press_script: &str,
+    interval_ms: u32,
+) -> Option<String> {
+    if !on_press_script.contains(SINGLE_CLICK_BEGIN)
+        && !on_press_script.contains(DOUBLE_CLICK_BEGIN)
+        && !on_press_script.contains(TRIPLE_CLICK_BEGIN)
+    {
+        return None;
+    }
+    let (s1, s2, s3) = split_multi_click_script(on_press_script);
+    if s2.trim().is_empty() && s3.trim().is_empty() {
+        return None;
+    }
+    Some(compose_multi_click_script(&s1, &s2, &s3, interval_ms))
+}
+
 /// Converts a shortcut string (e.g. "Ctrl+Shift+P", "F3+G", "E") to valid DuckyScript 3
 pub fn shortcut_to_duckyscript(shortcut: &str, action_hint: &str) -> String {
     let mapped_tokens = parse_shortcut_tokens(shortcut);
@@ -1534,6 +1686,30 @@ mod tests {
                 .expect("should convert gaming hold back to tap");
         assert!(!is_gaming_hold_script(&tap_press, &tap_rel));
         assert!(tap_rel.is_empty());
+
+        // Verify Multi-Click (Single / Double / Triple Click) composition, roundtrip split, and DSVM compilation
+        let composed_mc = compose_multi_click_script(
+            &shortcut_to_duckyscript("E", "Open Inventory"),
+            &shortcut_to_duckyscript("F5", "Toggle Perspective"),
+            &shortcut_to_duckyscript("F3+G", "Show Chunk Borders"),
+            250,
+        );
+        let mc_compiled = crate::vm::compiler::compile_duckyscript_to_dsb(&composed_mc, false, false);
+        assert!(
+            mc_compiled.is_success,
+            "Multi-click script failed DSVM compile: {} | script:\n{}",
+            mc_compiled.error_comment,
+            composed_mc
+        );
+        let (s1, s2, s3) = split_multi_click_script(&composed_mc);
+        assert!(s1.contains("Open Inventory"));
+        assert!(s2.contains("Toggle Perspective"));
+        assert!(s3.contains("Show Chunk Borders"));
+
+        let updated_mc = update_multi_click_interval_in_script(&composed_mc, 320)
+            .expect("should update interval to 320ms");
+        assert!(updated_mc.contains("interval_ms=320"));
+        assert!(updated_mc.contains("< 320"));
     }
 
     #[test]
