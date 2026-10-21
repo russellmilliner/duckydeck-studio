@@ -1,9 +1,15 @@
 #pragma once
 
+#if !defined(_WIN32)
 #include <KColorScheme>
 #include <KColorSchemeManager>
 #include <KIconLoader>
 #include <KSharedConfig>
+#include <csignal>
+#include <unistd.h>
+#else
+#include "kirigami_compat.h"
+#endif
 #include <QAbstractItemModel>
 #include <QAction>
 #include <QActionGroup>
@@ -49,9 +55,7 @@
 #include <QWindow>
 #include <algorithm>
 #include <cstdint>
-#include <csignal>
 #include <cstdlib>
-#include <unistd.h>
 
 namespace duckydeck {
 
@@ -1055,7 +1059,7 @@ inline int load_saved_ui_text_scale() {
     if (qEnvironmentVariable("DUCKYDECK_UI_TEST_SUITE") == QStringLiteral("1")) {
         path = QDir::tempPath()
             + QStringLiteral("/duckydeck-ui-test-suite-%1/kwin_rules.json")
-                  .arg(static_cast<qlonglong>(::getpid()));
+                  .arg(static_cast<qlonglong>(QCoreApplication::applicationPid()));
     } else {
         QString base = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation).trimmed();
         if (base.isEmpty()) {
@@ -1366,6 +1370,39 @@ inline void duckydeck_apply_app_theme(const QString& themeMode) {
     }
     s_lastAppliedTheme = themeMode;
 
+#if defined(_WIN32)
+    const bool isLight = (themeMode == QStringLiteral("light"));
+    duckydeck::KirigamiTheme::setLightMode(isLight);
+    QPalette pal;
+    if (isLight) {
+        pal.setColor(QPalette::Window, QColor(0xef, 0xf0, 0xf1));
+        pal.setColor(QPalette::WindowText, QColor(0x23, 0x26, 0x29));
+        pal.setColor(QPalette::Base, QColor(0xff, 0xff, 0xff));
+        pal.setColor(QPalette::AlternateBase, QColor(0xf7, 0xf7, 0xf7));
+        pal.setColor(QPalette::ToolTipBase, QColor(0xf7, 0xf7, 0xf7));
+        pal.setColor(QPalette::ToolTipText, QColor(0x23, 0x26, 0x29));
+        pal.setColor(QPalette::Text, QColor(0x23, 0x26, 0x29));
+        pal.setColor(QPalette::Button, QColor(0xef, 0xf0, 0xf1));
+        pal.setColor(QPalette::ButtonText, QColor(0x23, 0x26, 0x29));
+        pal.setColor(QPalette::BrightText, QColor(0xff, 0xff, 0xff));
+        pal.setColor(QPalette::Highlight, QColor(0x3d, 0xae, 0xe9));
+        pal.setColor(QPalette::HighlightedText, QColor(0xff, 0xff, 0xff));
+    } else {
+        pal.setColor(QPalette::Window, QColor(0x20, 0x23, 0x26));
+        pal.setColor(QPalette::WindowText, QColor(0xfc, 0xfc, 0xfc));
+        pal.setColor(QPalette::Base, QColor(0x1b, 0x1e, 0x20));
+        pal.setColor(QPalette::AlternateBase, QColor(0x23, 0x26, 0x29));
+        pal.setColor(QPalette::ToolTipBase, QColor(0x23, 0x26, 0x29));
+        pal.setColor(QPalette::ToolTipText, QColor(0xfc, 0xfc, 0xfc));
+        pal.setColor(QPalette::Text, QColor(0xfc, 0xfc, 0xfc));
+        pal.setColor(QPalette::Button, QColor(0x29, 0x2c, 0x30));
+        pal.setColor(QPalette::ButtonText, QColor(0xfc, 0xfc, 0xfc));
+        pal.setColor(QPalette::BrightText, QColor(0xff, 0xff, 0xff));
+        pal.setColor(QPalette::Highlight, QColor(0x3d, 0xae, 0xe9));
+        pal.setColor(QPalette::HighlightedText, QColor(0xff, 0xff, 0xff));
+    }
+    QApplication::setPalette(pal);
+#else
     KColorSchemeManager* mgr = KColorSchemeManager::instance();
     if (!mgr) {
         return;
@@ -1410,6 +1447,7 @@ inline void duckydeck_apply_app_theme(const QString& themeMode) {
             KIconLoader::emitChange(KIconLoader::Desktop);
         }
     }
+#endif
 }
 
 inline void duckydeck_apply_ui_font_scale(int32_t scalePercent) {
@@ -1473,6 +1511,7 @@ inline bool duckydeck_send_key_to_active_window(
     return pressEv.isAccepted();
 }
 
+#if !defined(_WIN32)
 inline void terminate_existing_pids(const QList<pid_t>& pids) {
     for (pid_t pid : pids) {
         if (pid > 1 && ::kill(pid, 0) == 0) {
@@ -1499,6 +1538,7 @@ inline void terminate_existing_pids(const QList<pid_t>& pids) {
     }
     QThread::msleep(60);
 }
+#endif
 
 inline QtMessageHandler& prev_qt_msg_handler() {
     static QtMessageHandler h = nullptr;
@@ -1524,7 +1564,11 @@ inline int duckydeck_run_app(bool start_minimized) {
     }
     QLoggingCategory::setFilterRules(QStringLiteral("union.*=false\nqt.core.qobject.connect=false"));
     if (!std::getenv("QT_QUICK_CONTROLS_STYLE")) {
+#if defined(_WIN32)
+        qputenv("QT_QUICK_CONTROLS_STYLE", "Fusion");
+#else
         qputenv("QT_QUICK_CONTROLS_STYLE", "org.kde.breeze");
+#endif
     }
     if (std::getenv("DUCKYDECK_DEMO_SHOWCASE") && std::string(std::getenv("DUCKYDECK_DEMO_SHOWCASE")) == "1") {
         qputenv("QT_QPA_PLATFORM", "xcb");
@@ -1563,6 +1607,7 @@ inline int duckydeck_run_app(bool start_minimized) {
 
     const bool isUiTestSuite = qEnvironmentVariable("DUCKYDECK_UI_TEST_SUITE") == QStringLiteral("1");
 
+#if !defined(_WIN32)
     // Single-instance check: offer to close previous running instance and start new one
     const QString existingPidsRaw = qEnvironmentVariable("DUCKYDECK_EXISTING_PIDS").trimmed();
     if (!isUiTestSuite && !existingPidsRaw.isEmpty()) {
@@ -1572,7 +1617,7 @@ inline int duckydeck_run_app(bool start_minimized) {
         for (const QString& part : parts) {
             bool ok = false;
             const int pidVal = part.trimmed().toInt(&ok);
-            if (ok && pidVal > 1 && pidVal != static_cast<int>(::getpid()) && ::kill(static_cast<pid_t>(pidVal), 0) == 0) {
+            if (ok && pidVal > 1 && pidVal != static_cast<int>(QCoreApplication::applicationPid()) && ::kill(static_cast<pid_t>(pidVal), 0) == 0) {
                 alivePids.append(static_cast<pid_t>(pidVal));
                 aliveStrs.append(QString::number(pidVal));
             }
@@ -1616,16 +1661,20 @@ inline int duckydeck_run_app(bool start_minimized) {
             terminate_existing_pids(alivePids);
         }
     }
+#endif
 
     const QString pidFilePath = qEnvironmentVariable("DUCKYDECK_PID_FILE").trimmed();
     if (!isUiTestSuite && !pidFilePath.isEmpty()) {
         QFile pidFile(pidFilePath);
         if (pidFile.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-            pidFile.write(QByteArray::number(static_cast<qlonglong>(::getpid())) + "\n");
+            pidFile.write(QByteArray::number(static_cast<qlonglong>(QCoreApplication::applicationPid())) + "\n");
             pidFile.close();
         }
     }
 
+#if defined(_WIN32)
+    duckydeck::register_windows_kirigami_compat();
+#endif
     QQmlApplicationEngine engine;
     engine.load(QUrl(QStringLiteral("qrc:/qt/qml/io/github/duckydeck/src/qml/Main.qml")));
 

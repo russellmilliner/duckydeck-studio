@@ -27,12 +27,8 @@ cxx = "1.0.130"
 cxx-qt = "0.7.2"
 cxx-qt-lib = { version = "0.7.2", features = ["qt_gui", "qt_qml"] }
 
-# USB HID Communication (uses Linux hidraw directly)
-hidapi = { version = "2.6.3", default-features = false, features = ["linux-static-hidraw"] }
-
-# Async Runtime, Wayland KWin DBus & AI HTTP Client
+# Async Runtime & AI HTTP Client
 tokio = { version = "1.41", features = ["rt-multi-thread", "macros", "sync", "time"] }
-zbus = { version = "5.1", default-features = false, features = ["tokio"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
 
 # Serialization & Config Parsing (for SD card profiles & KDE shortcut scraping)
@@ -40,6 +36,16 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = "0.4"
 regex = "1"
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+# USB HID Communication (uses Linux hidraw directly)
+hidapi = { version = "2.6.3", default-features = false, features = ["linux-static-hidraw"] }
+# Wayland KWin DBus
+zbus = { version = "5.1", default-features = false, features = ["tokio"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# USB HID Communication (uses Windows native hid.dll / setupapi.dll)
+hidapi = { version = "2.6.3", default-features = false }
 
 [build-dependencies]
 # Compiles the #[cxx_qt::bridge] macros and embeds QML files into the binary

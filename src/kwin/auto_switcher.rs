@@ -1,10 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
+#[cfg(not(target_os = "windows"))]
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
+#[cfg(not(target_os = "windows"))]
 use zbus::{interface, Result as ZbusResult};
+#[cfg(target_os = "windows")]
+pub type ZbusResult<T> = std::result::Result<T, String>;
 
 use crate::hardware::storage::{
     DuckyProfile, HID_CMD_GOTO_PROFILE_BY_NUM, HID_CMD_QUERY_INFO, HID_REPORT_ID_OUT,
@@ -2270,14 +2274,8 @@ pub struct KWinBridgeService {
     settle_notify: Arc<tokio::sync::Notify>,
 }
 
-#[interface(name = "io.github.duckydeck.KWinBridge")]
 impl KWinBridgeService {
-    fn notify_active_window(
-        &mut self,
-        resource_class: String,
-        resource_name: String,
-        caption: String,
-    ) {
+    pub(crate) fn handle_active_window(&mut self, resource_class: String, resource_name: String, caption: String) {
         let mut effective_class = resource_class.trim().to_string();
         if effective_class.is_empty() {
             effective_class = resource_name.trim().to_string();
@@ -2393,6 +2391,19 @@ impl KWinBridgeService {
 
         self.settle_notify.notify_one();
     }
+}
+
+#[cfg(not(target_os = "windows"))]
+#[interface(name = "io.github.duckydeck.KWinBridge")]
+impl KWinBridgeService {
+    fn notify_active_window(
+        &mut self,
+        resource_class: String,
+        resource_name: String,
+        caption: String,
+    ) {
+        self.handle_active_window(resource_class, resource_name, caption);
+    }
 
     fn notify_main_window_minimized(&mut self) {
         crate::bridge::device_controller::qobject::duckydeck_hide_main_window();
@@ -2495,6 +2506,160 @@ pub fn send_hid_switch_profile_checked(profile_number: u8) -> HidSwitchOutcome {
     .unwrap_or(HidSwitchOutcome::DeviceUnavailable)
 }
 
+#[cfg(target_os = "windows")]
+mod win32_window {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    use std::path::Path;
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
+    pub struct POINT {
+        pub x: i32,
+        pub y: i32,
+    }
+
+    #[link(name = "user32")]
+    extern "system" {
+        pub fn GetForegroundWindow() -> isize;
+        pub fn GetWindowTextW(hWnd: isize, lpString: *mut u16, nMaxCount: i32) -> i32;
+        pub fn GetClassNameW(hWnd: isize, lpClassName: *mut u16, nMaxCount: i32) -> i32;
+        pub fn GetWindowThreadProcessId(hWnd: isize, lpdwProcessId: *mut u32) -> u32;
+        pub fn GetCursorPos(lpPoint: *mut POINT) -> i32;
+        pub fn WindowFromPoint(Point: POINT) -> isize;
+        pub fn GetAncestor(hwnd: isize, gaFlags: u32) -> isize;
+        pub fn GetAsyncKeyState(vKey: i32) -> i16;
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        pub fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> isize;
+        pub fn QueryFullProcessImageNameW(
+            hProcess: isize,
+            dwFlags: u32,
+            lpExeName: *mut u16,
+            lpdwSize: *mut u32,
+        ) -> i32;
+        pub fn CloseHandle(hObject: isize) -> i32;
+    }
+
+    pub const GA_ROOT: u32 = 2;
+    pub const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    pub const VK_LBUTTON: i32 = 0x01;
+    pub const VK_ESCAPE: i32 = 0x1B;
+
+    pub fn inspect_hwnd(hwnd: isize) -> Option<(String, String, String)> {
+        if hwnd == 0 {
+            return None;
+        }
+        // SAFETY: Win32 window queries use stack buffers with explicit max lengths.
+        unsafe {
+            let root = {
+                let r = GetAncestor(hwnd, GA_ROOT);
+                if r != 0 { r } else { hwnd }
+            };
+            let mut pid: u32 = 0;
+            GetWindowThreadProcessId(root, &mut pid);
+            if pid == std::process::id() {
+                return None;
+            }
+
+            let mut title_buf = [0u16; 512];
+            let title_len = GetWindowTextW(root, title_buf.as_mut_ptr(), title_buf.len() as i32);
+            let caption = if title_len > 0 {
+                OsString::from_wide(&title_buf[..title_len as usize])
+                    .to_string_lossy()
+                    .to_string()
+            } else {
+                String::new()
+            };
+
+            let mut class_buf = [0u16; 256];
+            let class_len = GetClassNameW(root, class_buf.as_mut_ptr(), class_buf.len() as i32);
+            let win_class = if class_len > 0 {
+                OsString::from_wide(&class_buf[..class_len as usize])
+                    .to_string_lossy()
+                    .to_string()
+            } else {
+                String::new()
+            };
+
+            let mut exe_stem = String::new();
+            if pid != 0 {
+                let hproc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+                if hproc != 0 {
+                    let mut path_buf = [0u16; 1024];
+                    let mut sz = path_buf.len() as u32;
+                    if QueryFullProcessImageNameW(hproc, 0, path_buf.as_mut_ptr(), &mut sz) != 0
+                        && sz > 0
+                    {
+                        let full = OsString::from_wide(&path_buf[..sz as usize])
+                            .to_string_lossy()
+                            .to_string();
+                        if let Some(stem) = Path::new(&full).file_stem().and_then(|s| s.to_str()) {
+                            exe_stem = stem.to_string();
+                        }
+                    }
+                    CloseHandle(hproc);
+                }
+            }
+
+            let resource_class = if !exe_stem.is_empty() {
+                exe_stem.clone()
+            } else {
+                win_class.clone()
+            };
+            let resource_name = if !win_class.is_empty() {
+                win_class
+            } else {
+                resource_class.clone()
+            };
+            if resource_class.is_empty() && caption.is_empty() {
+                return None;
+            }
+            Some((resource_class, resource_name, caption))
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub async fn pick_window_via_kwin_dbus() -> std::result::Result<WindowChangeEvent, String> {
+    // Wait up to 15 seconds for user to click any window (or press Escape to cancel)
+    for _ in 0..300 {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        // SAFETY: GetAsyncKeyState and GetCursorPos/WindowFromPoint are thread-safe Win32 queries.
+        let picked = unsafe {
+            if (win32_window::GetAsyncKeyState(win32_window::VK_ESCAPE) as u16 & 0x8000) != 0 {
+                return Err("Window picker canceled".to_string());
+            }
+            if (win32_window::GetAsyncKeyState(win32_window::VK_LBUTTON) as u16 & 0x8000) != 0 {
+                let mut pt = win32_window::POINT::default();
+                let hwnd = if win32_window::GetCursorPos(&mut pt) != 0 {
+                    win32_window::WindowFromPoint(pt)
+                } else {
+                    win32_window::GetForegroundWindow()
+                };
+                win32_window::inspect_hwnd(hwnd)
+            } else {
+                None
+            }
+        };
+        if let Some((resource_class, resource_name, raw_caption)) = picked {
+            let caption = resolve_full_browser_caption(&resource_class, &raw_caption);
+            return Ok(WindowChangeEvent {
+                resource_class,
+                resource_name,
+                caption,
+                matched_profile: None,
+                picked: true,
+                hid_rejected_not_on_device: false,
+            });
+        }
+    }
+    Err("Window picker timed out".to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
 pub async fn pick_window_via_kwin_dbus() -> std::result::Result<WindowChangeEvent, String> {
     let conn = zbus::Connection::session()
         .await
@@ -2660,6 +2825,30 @@ pub async fn run_kwin_auto_switcher(
         });
     }
 
+    #[cfg(target_os = "windows")]
+    {
+        let mut service = KWinBridgeService {
+            state,
+            ui_event_tx,
+            pending,
+            settle_notify,
+        };
+        loop {
+            // Poll active foreground window on Windows every 100ms
+            // SAFETY: GetForegroundWindow is a safe Win32 query.
+            let win_info = unsafe {
+                let hwnd = win32_window::GetForegroundWindow();
+                win32_window::inspect_hwnd(hwnd)
+            };
+            if let Some((cls, rname, cap)) = win_info {
+                service.handle_active_window(cls, rname, cap);
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
     let pending_check = Arc::clone(&pending);
     let service = KWinBridgeService {
         state,
@@ -2754,8 +2943,10 @@ pub async fn run_kwin_auto_switcher(
 
     std::future::pending::<()>().await;
     Ok(())
+    }
 }
 
+#[cfg(not(target_os = "windows"))]
 fn write_kwin6_hook_script() -> std::io::Result<String> {
     let initial_rect_js = match load_saved_oled_geometry_tuple() {
         Some((gx, gy, gw, gh)) => {
@@ -3164,6 +3355,7 @@ if (workspace.windowActivated) {
     Ok(file_path)
 }
 
+#[cfg(not(target_os = "windows"))]
 fn load_saved_oled_geometry_tuple() -> Option<(i32, i32, i32, i32)> {
     let path = crate::paths::config_dir().join("oled_widget_geometry.json");
     let raw = fs::read_to_string(path).ok()?;
@@ -3182,10 +3374,17 @@ fn load_saved_oled_geometry_tuple() -> Option<(i32, i32, i32, i32)> {
     Some((x, y, w, h))
 }
 
+#[cfg(not(target_os = "windows"))]
 static KWIN_SCRIPT_LOCK: std::sync::LazyLock<tokio::sync::Mutex<()>> =
     std::sync::LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 pub fn apply_kwin_oled_keep_above(keep_above: bool, restore_geometry: bool) {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = (keep_above, restore_geometry);
+        return;
+    }
+    #[cfg(not(target_os = "windows"))]
     std::thread::spawn(move || {
         let geom_opt = if restore_geometry {
             load_saved_oled_geometry_tuple()

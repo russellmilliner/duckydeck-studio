@@ -34,6 +34,7 @@ use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -116,6 +117,12 @@ fn find_existing_duckydeck_instances() -> Vec<u32> {
     found.into_iter().collect()
 }
 
+#[cfg(target_os = "windows")]
+fn send_ipc_command_to_running_instance(_cmd: &str) -> Result<Vec<u32>, String> {
+    Err("No running DuckyDeck Studio instance found.".to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
 fn send_ipc_command_to_running_instance(cmd: &str) -> Result<Vec<u32>, String> {
     let pids = find_existing_duckydeck_instances();
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -1446,8 +1453,9 @@ fn main() {
                 .env("DUCKYDECK_DAEMONIZED", "1")
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .process_group(0);
+                .stderr(Stdio::null());
+            #[cfg(unix)]
+            cmd.process_group(0);
 
             if let Ok(child) = cmd.spawn() {
                 let existing_csv = env::var("DUCKYDECK_EXISTING_PIDS").unwrap_or_default();

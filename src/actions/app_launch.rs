@@ -225,39 +225,42 @@ impl DuckypadEvdevListener {
     }
 
     pub fn refresh_nodes(&mut self) {
-        use std::os::unix::fs::OpenOptionsExt;
         self.last_scan = std::time::Instant::now();
         self.files.retain(|(p, _)| p.exists());
 
-        let Ok(entries) = fs::read_dir("/sys/class/input") else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let fname = entry.file_name();
-            let Some(name_str) = fname.to_str() else {
-                continue;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            let Ok(entries) = fs::read_dir("/sys/class/input") else {
+                return;
             };
-            if !name_str.starts_with("event") {
-                continue;
-            }
-            let dev_path = Path::new("/dev/input").join(name_str);
-            if self.files.iter().any(|(p, _)| p == &dev_path) {
-                continue;
-            }
-            if let Ok(uevent) = fs::read_to_string(entry.path().join("device/uevent")) {
-                let upper = uevent.to_ascii_uppercase();
-                // Match USB VID 0483 and PID D11D / D11C
-                if upper.contains("483/D11D")
-                    || upper.contains("483/D11C")
-                    || upper.contains("0483:D11D")
-                    || upper.contains("0483:D11C")
-                {
-                    if let Ok(file) = fs::OpenOptions::new()
-                        .read(true)
-                        .custom_flags(0o4000) // O_NONBLOCK
-                        .open(&dev_path)
+            for entry in entries.flatten() {
+                let fname = entry.file_name();
+                let Some(name_str) = fname.to_str() else {
+                    continue;
+                };
+                if !name_str.starts_with("event") {
+                    continue;
+                }
+                let dev_path = Path::new("/dev/input").join(name_str);
+                if self.files.iter().any(|(p, _)| p == &dev_path) {
+                    continue;
+                }
+                if let Ok(uevent) = fs::read_to_string(entry.path().join("device/uevent")) {
+                    let upper = uevent.to_ascii_uppercase();
+                    // Match USB VID 0483 and PID D11D / D11C
+                    if upper.contains("483/D11D")
+                        || upper.contains("483/D11C")
+                        || upper.contains("0483:D11D")
+                        || upper.contains("0483:D11C")
                     {
-                        self.files.push((dev_path, file));
+                        if let Ok(file) = fs::OpenOptions::new()
+                            .read(true)
+                            .custom_flags(0o4000) // O_NONBLOCK
+                            .open(&dev_path)
+                        {
+                            self.files.push((dev_path, file));
+                        }
                     }
                 }
             }
@@ -628,30 +631,33 @@ impl GlobalMacroEvdevRecorder {
     }
 
     pub fn open_all_input_nodes(&mut self) {
-        use std::io::Read;
-        use std::os::unix::fs::OpenOptionsExt;
         self.files.clear();
-        let Ok(entries) = fs::read_dir("/sys/class/input") else {
-            return;
-        };
-        let mut buf = [0u8; 240];
-        for entry in entries.flatten() {
-            let fname = entry.file_name();
-            let Some(name_str) = fname.to_str() else {
-                continue;
+        #[cfg(unix)]
+        {
+            use std::io::Read;
+            use std::os::unix::fs::OpenOptionsExt;
+            let Ok(entries) = fs::read_dir("/sys/class/input") else {
+                return;
             };
-            if !name_str.starts_with("event") {
-                continue;
-            }
-            let dev_path = Path::new("/dev/input").join(name_str);
-            if let Ok(mut file) = fs::OpenOptions::new()
-                .read(true)
-                .custom_flags(0o4000) // O_NONBLOCK
-                .open(&dev_path)
-            {
-                // Drain any pending buffered bytes
-                while file.read(&mut buf).is_ok() {}
-                self.files.push((dev_path, file));
+            let mut buf = [0u8; 240];
+            for entry in entries.flatten() {
+                let fname = entry.file_name();
+                let Some(name_str) = fname.to_str() else {
+                    continue;
+                };
+                if !name_str.starts_with("event") {
+                    continue;
+                }
+                let dev_path = Path::new("/dev/input").join(name_str);
+                if let Ok(mut file) = fs::OpenOptions::new()
+                    .read(true)
+                    .custom_flags(0o4000) // O_NONBLOCK
+                    .open(&dev_path)
+                {
+                    // Drain any pending buffered bytes
+                    while file.read(&mut buf).is_ok() {}
+                    self.files.push((dev_path, file));
+                }
             }
         }
     }

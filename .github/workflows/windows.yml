@@ -1,0 +1,78 @@
+name: Windows Build
+
+on:
+  push:
+    branches: [master, main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build & Package Windows (x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt 6 (MSVC x64)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          modules: "qtimageformats qtshadertools"
+
+      - name: Install Rust (stable, MSVC)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build duckydeck-studio.exe
+        env:
+          QT_VERSION_MAJOR: "6"
+        run: cargo build --release
+
+      - name: Read version
+        id: version
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Stage Windows bundle with windeployqt
+        shell: pwsh
+        run: |
+          $stage = "target/windows-dist/bundle"
+          New-Item -ItemType Directory -Force -Path "$stage/docs", "$stage/firmware/releases" | Out-Null
+          Copy-Item target/release/duckydeck-studio.exe "$stage/"
+          Copy-Item README.md "$stage/"
+          Copy-Item docs/user-guide.html "$stage/docs/"
+          Copy-Item docs/architecture.html "$stage/docs/"
+          Copy-Item firmware/releases/*.bin "$stage/firmware/releases/"
+          windeployqt --release --qmldir src/qml "$stage/duckydeck-studio.exe"
+
+      - name: Smoke test (--version)
+        shell: pwsh
+        run: |
+          & "target/windows-dist/bundle/duckydeck-studio.exe" --version
+
+      - name: Build Inno Setup Installer & Portable Zip
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc "/DAppVersion=$v" packaging\windows\DuckyDeckStudio.iss
+          Compress-Archive -Path "target/windows-dist/bundle/*" -DestinationPath "target/release/duckydeck-studio-v$v-windows-x86_64-portable.zip" -Force
+          Get-ChildItem target/release -Filter "*$v*" -File | ForEach-Object {
+            $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$h  $($_.Name)" | Out-File -Encoding ascii -FilePath "$($_.FullName).sha256"
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: duckydeck-studio-windows-x86_64
+          path: |
+            target/release/DuckyDeck-Studio-Setup-*.exe*
+            target/release/duckydeck-studio-*-windows-x86_64-portable.zip*

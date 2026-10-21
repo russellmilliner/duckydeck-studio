@@ -1,5 +1,8 @@
 use std::env;
-use std::fs::{self, DirBuilder};
+use std::fs::DirBuilder;
+#[cfg(unix)]
+use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
@@ -10,10 +13,12 @@ pub fn is_flatpak() -> bool {
 }
 
 pub fn home_dir() -> Option<PathBuf> {
-    if let Some(val) = env::var_os("HOME") {
-        let p = PathBuf::from(&val);
-        if !p.as_os_str().is_empty() && p.is_absolute() {
-            return Some(p);
+    for key in ["HOME", "USERPROFILE"] {
+        if let Some(val) = env::var_os(key) {
+            let p = PathBuf::from(&val);
+            if !p.as_os_str().is_empty() && p.is_absolute() {
+                return Some(p);
+            }
         }
     }
     None
@@ -26,6 +31,13 @@ fn home_or_cwd() -> PathBuf {
 }
 
 pub fn xdg_config_home() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    if let Some(appdata) = env::var_os("APPDATA") {
+        let p = PathBuf::from(appdata);
+        if p.is_absolute() {
+            return p;
+        }
+    }
     if let Ok(val) = env::var("XDG_CONFIG_HOME") {
         let trimmed = val.trim();
         if !trimmed.is_empty() && trimmed.starts_with('/') && !trimmed.contains(':') {
@@ -36,6 +48,13 @@ pub fn xdg_config_home() -> PathBuf {
 }
 
 pub fn xdg_data_home() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    if let Some(appdata) = env::var_os("LOCALAPPDATA").or_else(|| env::var_os("APPDATA")) {
+        let p = PathBuf::from(appdata);
+        if p.is_absolute() {
+            return p;
+        }
+    }
     if let Ok(val) = env::var("XDG_DATA_HOME") {
         let trimmed = val.trim();
         if !trimmed.is_empty()
@@ -51,6 +70,13 @@ pub fn xdg_data_home() -> PathBuf {
 }
 
 pub fn xdg_cache_home() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    if let Some(localappdata) = env::var_os("LOCALAPPDATA") {
+        let p = PathBuf::from(localappdata);
+        if p.is_absolute() {
+            return p.join("Temp");
+        }
+    }
     if let Ok(val) = env::var("XDG_CACHE_HOME") {
         let trimmed = val.trim();
         if !trimmed.is_empty() && trimmed.starts_with('/') && !trimmed.contains(':') {
@@ -65,6 +91,11 @@ pub fn config_dir() -> PathBuf {
 }
 
 pub fn host_config_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        return config_dir();
+    }
+    #[cfg(not(target_os = "windows"))]
     home_or_cwd().join(".config").join(APP_DIR_NAME)
 }
 
@@ -73,6 +104,11 @@ pub fn data_dir() -> PathBuf {
 }
 
 pub fn host_data_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        return data_dir();
+    }
+    #[cfg(not(target_os = "windows"))]
     home_or_cwd()
         .join(".local")
         .join("share")
@@ -80,6 +116,10 @@ pub fn host_data_dir() -> PathBuf {
 }
 
 pub fn dekunukem_config_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    if let Some(appdata) = env::var_os("APPDATA") {
+        return PathBuf::from(appdata).join("dekuNukem").join("duckypad_config");
+    }
     home_or_cwd()
         .join(".local")
         .join("share")
@@ -87,6 +127,12 @@ pub fn dekunukem_config_dir() -> PathBuf {
 }
 
 pub fn dekunukem_autoswitcher_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    if let Some(appdata) = env::var_os("APPDATA") {
+        return PathBuf::from(appdata)
+            .join("dekuNukem")
+            .join("duckypad_autoswitcher");
+    }
     home_or_cwd()
         .join(".local")
         .join("share")
@@ -99,8 +145,11 @@ pub fn cache_dir() -> PathBuf {
 
 fn ensure_dir_0700(dir: &Path) -> bool {
     let mut builder = DirBuilder::new();
-    builder.recursive(true).mode(0o700);
+    builder.recursive(true);
+    #[cfg(unix)]
+    builder.mode(0o700);
     if builder.create(dir).is_ok() {
+        #[cfg(unix)]
         let _ = fs::set_permissions(dir, fs::Permissions::from_mode(0o700)); // ignore: best-effort mode enforcement after DirBuilder::mode(0o700)
         true
     } else {

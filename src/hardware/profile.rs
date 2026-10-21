@@ -923,6 +923,15 @@ pub(crate) fn write_file_if_changed_and_sync(path: &Path, contents: &[u8]) -> io
 }
 
 pub fn find_mounted_duckypad_sd() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        for letter in b'D'..=b'Z' {
+            let drive = PathBuf::from(format!("{}:\\", letter as char));
+            if drive.is_dir() && is_duckypad_sd_root(&drive) {
+                return Some(drive);
+            }
+        }
+    }
     if let Ok(mounts) = fs::read_to_string("/proc/mounts") {
         for line in mounts.lines() {
             let mut parts = line.split_whitespace();
@@ -1360,24 +1369,54 @@ pub fn query_filesystem_space(path: &Path) -> Option<(u64, u64, u64)> {
     if !path.exists() {
         return None;
     }
-    let out = std::process::Command::new("df")
-        .args(["-B1", "--output=size,used,avail"])
-        .arg(path)
-        .output()
-        .ok()?;
-    if !out.status.success() {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn GetDiskFreeSpaceExW(
+                lpDirectoryName: *const u16,
+                lpFreeBytesAvailableToCaller: *mut u64,
+                lpTotalNumberOfBytes: *mut u64,
+                lpTotalNumberOfFreeBytes: *mut u64,
+            ) -> i32;
+        }
+        let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
+        wide.push(0);
+        let mut avail: u64 = 0;
+        let mut total: u64 = 0;
+        let mut free: u64 = 0;
+        // SAFETY: `wide` is null-terminated UTF-16 and output pointers are valid stack u64s.
+        let ok = unsafe {
+            GetDiskFreeSpaceExW(wide.as_ptr(), &mut avail, &mut total, &mut free)
+        };
+        if ok != 0 && total > 0 {
+            let used = total.saturating_sub(free);
+            return Some((total, used, avail));
+        }
         return None;
     }
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let data_line = stdout.lines().nth(1)?.trim();
-    let mut parts = data_line.split_whitespace();
-    let total = parts.next()?.parse::<u64>().ok()?;
-    let used = parts.next()?.parse::<u64>().ok()?;
-    let avail = parts.next()?.parse::<u64>().ok()?;
-    if total == 0 {
-        return None;
+    #[cfg(not(target_os = "windows"))]
+    {
+        let out = std::process::Command::new("df")
+            .args(["-B1", "--output=size,used,avail"])
+            .arg(path)
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let data_line = stdout.lines().nth(1)?.trim();
+        let mut parts = data_line.split_whitespace();
+        let total = parts.next()?.parse::<u64>().ok()?;
+        let used = parts.next()?.parse::<u64>().ok()?;
+        let avail = parts.next()?.parse::<u64>().ok()?;
+        if total == 0 {
+            return None;
+        }
+        Some((total, used, avail))
     }
-    Some((total, used, avail))
 }
 
 pub fn compute_dir_fat32_used_bytes(dir: &Path) -> u64 {

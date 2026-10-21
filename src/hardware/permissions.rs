@@ -1,8 +1,12 @@
+#[cfg(not(target_os = "windows"))]
 use std::fs::{self, OpenOptions};
 use std::path::Path;
 
+#[cfg(not(target_os = "windows"))]
 const VENDOR_ID: &str = "00000483";
+#[cfg(not(target_os = "windows"))]
 const PID_PRO: &str = "0000D11D";
+#[cfg(not(target_os = "windows"))]
 const PID_ORIG: &str = "0000D11C";
 
 #[derive(Debug, PartialEq, Eq)]
@@ -13,29 +17,40 @@ pub enum DeviceAccessState {
 }
 
 pub fn check_duckypad_udev_state() -> DeviceAccessState {
-    let Ok(entries) = fs::read_dir("/sys/class/hidraw") else {
+    #[cfg(target_os = "windows")]
+    {
+        if crate::hardware::storage::open_duckypad_hid().is_ok() {
+            return DeviceAccessState::ConnectedAndAccessible;
+        }
         return DeviceAccessState::NotConnected;
-    };
+    }
 
-    for entry in entries.flatten() {
-        let uevent_path = entry.path().join("device/uevent");
-        if let Ok(uevent) = fs::read_to_string(&uevent_path) {
-            let is_duckypad = uevent.contains(&format!("HID_ID=0003:{VENDOR_ID}:{PID_PRO}"))
-                || uevent.contains(&format!("HID_ID=0003:{VENDOR_ID}:{PID_ORIG}"));
+    #[cfg(not(target_os = "windows"))]
+    {
+        let Ok(entries) = fs::read_dir("/sys/class/hidraw") else {
+            return DeviceAccessState::NotConnected;
+        };
 
-            if is_duckypad {
-                let dev_node = Path::new("/dev").join(entry.file_name());
-                match OpenOptions::new().read(true).write(true).open(&dev_node) {
-                    Ok(_) => return DeviceAccessState::ConnectedAndAccessible,
-                    Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-                        return DeviceAccessState::UdevRuleMissing;
+        for entry in entries.flatten() {
+            let uevent_path = entry.path().join("device/uevent");
+            if let Ok(uevent) = fs::read_to_string(&uevent_path) {
+                let is_duckypad = uevent.contains(&format!("HID_ID=0003:{VENDOR_ID}:{PID_PRO}"))
+                    || uevent.contains(&format!("HID_ID=0003:{VENDOR_ID}:{PID_ORIG}"));
+
+                if is_duckypad {
+                    let dev_node = Path::new("/dev").join(entry.file_name());
+                    match OpenOptions::new().read(true).write(true).open(&dev_node) {
+                        Ok(_) => return DeviceAccessState::ConnectedAndAccessible,
+                        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                            return DeviceAccessState::UdevRuleMissing;
+                        }
+                        Err(_) => continue,
                     }
-                    Err(_) => continue,
                 }
             }
         }
+        DeviceAccessState::NotConnected
     }
-    DeviceAccessState::NotConnected
 }
 
 /// Launches a native KDE Polkit password dialog on the host to install 70-duckypad.rules

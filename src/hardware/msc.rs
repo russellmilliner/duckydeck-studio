@@ -83,6 +83,7 @@ fn find_mount_block_device(mount_point: &Path) -> Option<PathBuf> {
     None
 }
 
+#[cfg(not(target_os = "windows"))]
 fn is_mount_point_mounted(mount_point: &Path, dev_path: Option<&Path>) -> bool {
     let Some(mounts) = read_mounts_table() else {
         return false;
@@ -236,6 +237,14 @@ pub(crate) fn unmount_duckypad_sd_cleanly(
     mount_root: &Path,
     known_dev: Option<&Path>,
 ) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = (mount_root, known_dev);
+        std::thread::sleep(std::time::Duration::from_millis(1200));
+        return Ok(());
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
     let block_dev = known_dev
         .map(|p| p.to_path_buf())
         .or_else(|| find_mount_block_device(mount_root));
@@ -318,6 +327,7 @@ pub(crate) fn unmount_duckypad_sd_cleanly(
             "Volume {} is still busy and could not be unmounted cleanly",
             mount_root.display()
         ))
+    }
     }
 }
 
