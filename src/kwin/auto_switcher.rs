@@ -1221,7 +1221,7 @@ fn write_cached_site_svg(slug: &str, svg_content: &str) -> String {
             );
         }
     }
-    format!("file://{}", path.to_string_lossy())
+    crate::paths::path_to_file_uri(&path)
 }
 
 pub use crate::bridge::showcase::known_site_svg;
@@ -1290,7 +1290,7 @@ fn resolve_favicon_for_url(raw_url: &str) -> Option<String> {
     for ext in ["png", "ico", "svg", "jpg", "webp"] {
         let existing = dir.join(format!("{stem}.{ext}"));
         if existing.is_file() {
-            return Some(format!("file://{}", existing.to_string_lossy()));
+            return Some(crate::paths::path_to_file_uri(&existing));
         }
     }
 
@@ -1398,7 +1398,7 @@ fn resolve_favicon_for_url(raw_url: &str) -> Option<String> {
                 None
             });
             if let Some(out_path) = fetched_path {
-                return Some(format!("file://{}", out_path.to_string_lossy()));
+                return Some(crate::paths::path_to_file_uri(&out_path));
             }
             if let Err(e) = fs::write(&failed_marker, b"1") {
                 crate::bridge::device_controller::record_system_event(
@@ -2523,6 +2523,11 @@ pub fn send_hid_switch_profile_checked(profile_number: u8) -> HidSwitchOutcome {
 }
 
 #[cfg(target_os = "windows")]
+pub fn is_windows_pid_duckydeck(pid: u32) -> bool {
+    win32_window::is_pid_duckydeck(pid)
+}
+
+#[cfg(target_os = "windows")]
 mod win32_window {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
@@ -2538,6 +2543,21 @@ mod win32_window {
     #[link(name = "user32")]
     extern "system" {
         pub fn GetForegroundWindow() -> isize;
+        pub fn FindWindowExW(
+            hWndParent: isize,
+            hWndChildAfter: isize,
+            lpszClass: *const u16,
+            lpszWindow: *const u16,
+        ) -> isize;
+        pub fn SetWindowPos(
+            hWnd: isize,
+            hWndInsertAfter: isize,
+            X: i32,
+            Y: i32,
+            cx: i32,
+            cy: i32,
+            uFlags: u32,
+        ) -> i32;
         pub fn GetWindowTextW(hWnd: isize, lpString: *mut u16, nMaxCount: i32) -> i32;
         pub fn GetClassNameW(hWnd: isize, lpClassName: *mut u16, nMaxCount: i32) -> i32;
         pub fn GetWindowThreadProcessId(hWnd: isize, lpdwProcessId: *mut u32) -> u32;
@@ -2664,6 +2684,87 @@ mod win32_window {
             }
         }
         Ok(exe_path)
+    }
+
+    pub fn apply_oled_topmost_and_geometry(
+        keep_above: bool,
+        geom: Option<(i32, i32, i32, i32)>,
+    ) {
+        const HWND_TOPMOST: isize = -1;
+        const HWND_NOTOPMOST: isize = -2;
+        const SWP_NOSIZE: u32 = 0x0001;
+        const SWP_NOMOVE: u32 = 0x0002;
+        const SWP_NOACTIVATE: u32 = 0x0010;
+
+        let self_pid = std::process::id();
+        // SAFETY: FindWindowExW / GetWindowThreadProcessId / GetWindowTextW / SetWindowPos are standard Win32 user32 calls.
+        unsafe {
+            let mut hwnd: isize = 0;
+            loop {
+                hwnd = FindWindowExW(0, hwnd, std::ptr::null(), std::ptr::null());
+                if hwnd == 0 {
+                    break;
+                }
+                let mut pid: u32 = 0;
+                GetWindowThreadProcessId(hwnd, &mut pid);
+                if pid != self_pid {
+                    continue;
+                }
+                let mut title_buf = [0u16; 256];
+                let len = GetWindowTextW(hwnd, title_buf.as_mut_ptr(), title_buf.len() as i32);
+                if len <= 0 {
+                    continue;
+                }
+                let title = OsString::from_wide(&title_buf[..len as usize])
+                    .to_string_lossy()
+                    .to_string();
+                if title.starts_with("duckyPad OLED") {
+                    let insert_after = if keep_above {
+                        HWND_TOPMOST
+                    } else {
+                        HWND_NOTOPMOST
+                    };
+                    if let Some((gx, gy, gw, gh)) = geom {
+                        SetWindowPos(hwnd, insert_after, gx, gy, gw, gh, SWP_NOACTIVATE);
+                    } else {
+                        SetWindowPos(
+                            hwnd,
+                            insert_after,
+                            0,
+                            0,
+                            0,
+                            0,
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn is_pid_duckydeck(pid: u32) -> bool {
+        if pid <= 1 {
+            return false;
+        }
+        // SAFETY: OpenProcess / QueryFullProcessImageNameW / CloseHandle use a stack buffer.
+        unsafe {
+            let hproc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if hproc == 0 {
+                return false;
+            }
+            let mut path_buf = [0u16; 1024];
+            let mut sz = path_buf.len() as u32;
+            let ok = QueryFullProcessImageNameW(hproc, 0, path_buf.as_mut_ptr(), &mut sz) != 0
+                && sz > 0;
+            CloseHandle(hproc);
+            if !ok {
+                return false;
+            }
+            let full = OsString::from_wide(&path_buf[..sz as usize])
+                .to_string_lossy()
+                .to_ascii_lowercase();
+            full.contains("duckydeck-studio")
+        }
     }
 
     pub fn inspect_hwnd(hwnd: isize) -> Option<(String, String, String)> {
@@ -2953,7 +3054,20 @@ pub async fn run_kwin_auto_switcher(
         };
         let mut last_fg: Option<(String, String, String)> = None;
         let mut last_pt: Option<(i32, i32)> = None;
+        let ipc_file = crate::paths::runtime_dir().join("duckydeck-ipc.cmd");
         loop {
+            if ipc_file.is_file() {
+                if let Ok(raw_cmd) = fs::read_to_string(&ipc_file) {
+                    let _ = fs::remove_file(&ipc_file);
+                    let trimmed = raw_cmd.trim();
+                    if !trimmed.is_empty() {
+                        let qcmd = cxx_qt_lib::QString::from(trimmed);
+                        crate::bridge::device_controller::qobject::duckydeck_dispatch_ipc_command(
+                            &qcmd,
+                        );
+                    }
+                }
+            }
             // Poll active foreground window AND cursor hover window on Windows every 50ms
             // SAFETY: GetForegroundWindow, GetCursorPos, and WindowFromPoint are thread-safe Win32 queries.
             let (fg_info, cursor_moved_info) = unsafe {
@@ -3489,7 +3603,6 @@ if (workspace.windowActivated) {
     Ok(file_path)
 }
 
-#[cfg(not(target_os = "windows"))]
 fn load_saved_oled_geometry_tuple() -> Option<(i32, i32, i32, i32)> {
     let path = crate::paths::config_dir().join("oled_widget_geometry.json");
     let raw = fs::read_to_string(path).ok()?;
@@ -3515,7 +3628,12 @@ static KWIN_SCRIPT_LOCK: std::sync::LazyLock<tokio::sync::Mutex<()>> =
 pub fn apply_kwin_oled_keep_above(keep_above: bool, restore_geometry: bool) {
     #[cfg(target_os = "windows")]
     {
-        let _ = (keep_above, restore_geometry);
+        let geom_opt = if restore_geometry {
+            load_saved_oled_geometry_tuple()
+        } else {
+            None
+        };
+        win32_window::apply_oled_topmost_and_geometry(keep_above, geom_opt);
         return;
     }
     #[cfg(not(target_os = "windows"))]

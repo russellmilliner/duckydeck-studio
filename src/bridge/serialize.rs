@@ -308,11 +308,11 @@ pub fn export_profile_impl(
     destination_path: QString,
 ) -> bool {
     let raw_str = destination_path.to_string();
-    let trimmed = raw_str.trim().trim_start_matches("file://");
+    let trimmed = crate::paths::clean_file_uri_to_path_str(&raw_str);
     if trimmed.is_empty() {
         return false;
     }
-    let dest = PathBuf::from(trimmed);
+    let dest = PathBuf::from(&trimmed);
     let active_num = profile_number.clamp(1, 64) as u8;
 
     let (maybe_profile, matching_rules) = {
@@ -463,11 +463,11 @@ pub fn import_profile_from_path_impl(
     source_path: QString,
 ) -> bool {
     let raw_str = source_path.to_string();
-    let trimmed = raw_str.trim().trim_start_matches("file://");
+    let trimmed = crate::paths::clean_file_uri_to_path_str(&raw_str);
     if trimmed.is_empty() {
         return false;
     }
-    let src = PathBuf::from(trimmed);
+    let src = PathBuf::from(&trimmed);
     if !src.exists() {
         controller
             .as_mut()
@@ -702,11 +702,11 @@ pub fn save_profile_group_impl(
     group_name: QString,
 ) -> bool {
     let raw_str = destination_path.to_string();
-    let trimmed = raw_str.trim().trim_start_matches("file://");
+    let trimmed = crate::paths::clean_file_uri_to_path_str(&raw_str);
     if trimmed.is_empty() {
         return false;
     }
-    let dest = PathBuf::from(trimmed);
+    let dest = PathBuf::from(&trimmed);
     let raw_group = group_name.to_string().trim().to_string();
 
     let (profiles_clone, rules_clone, active_prof, default_fb) = {
@@ -822,11 +822,11 @@ pub fn load_profile_group_impl(
     source_path: QString,
 ) -> bool {
     let raw_str = source_path.to_string();
-    let trimmed = raw_str.trim().trim_start_matches("file://");
+    let trimmed = crate::paths::clean_file_uri_to_path_str(&raw_str);
     if trimmed.is_empty() {
         return false;
     }
-    let src = PathBuf::from(trimmed);
+    let src = PathBuf::from(&trimmed);
     if !src.exists() {
         controller
             .as_mut()

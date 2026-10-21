@@ -166,6 +166,21 @@ pub fn find_duckypad_msc_block_device(disk_label: &str, allow_whole_disk: bool) 
 pub(crate) fn wait_and_mount_duckypad_msc(
     disk_label: &str,
 ) -> Result<(PathBuf, Option<PathBuf>), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = disk_label;
+        for _ in 0..48 {
+            if let Some(mounted) = find_mounted_duckypad_sd() {
+                std::thread::sleep(std::time::Duration::from_millis(350));
+                return Ok((mounted, None));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+        return Err("Timed out waiting for Windows to assign a drive letter to the duckyPad microSD card in USB Mass Storage mode".to_string());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
     let mut last_udisks_err = String::new();
     let mut settled_dev_once = false;
 
@@ -230,6 +245,7 @@ pub(crate) fn wait_and_mount_duckypad_msc(
         Err(format!(
             "Timed out mounting duckyPad microSD in USB Mass Storage mode: {last_udisks_err}"
         ))
+    }
     }
 }
 

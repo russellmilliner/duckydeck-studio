@@ -3751,12 +3751,12 @@ impl qobject::DeviceController {
 
     pub fn load_sd_directory(mut self: Pin<&mut Self>, path: QString) -> bool {
         let raw_path = path.to_string();
-        let cleaned = raw_path.strip_prefix("file://").unwrap_or(&raw_path).trim();
+        let cleaned = crate::paths::clean_file_uri_to_path_str(&raw_path);
         if cleaned.is_empty() {
             return false;
         }
 
-        let sd_root = PathBuf::from(cleaned);
+        let sd_root = PathBuf::from(&cleaned);
         if !sd_root.is_dir() {
             let msg = format!("Directory does not exist: {}", sd_root.display());
             self.as_mut().set_status_message(QString::from(&msg));
@@ -5625,14 +5625,7 @@ impl qobject::DeviceController {
     pub fn open_firmware_update_page(self: Pin<&mut Self>) {
         let url = self.firmware_update_url().to_string();
         if !url.is_empty() {
-            let res = if Path::new("/.flatpak-info").exists() {
-                std::process::Command::new("flatpak-spawn")
-                    .args(["--host", "xdg-open", &url])
-                    .spawn()
-            } else {
-                std::process::Command::new("xdg-open").arg(&url).spawn()
-            };
-            if let Err(e) = res {
+            if let Err(e) = crate::paths::open_url_or_path_in_os(&url) {
                 record_system_event(
                     "WARN",
                     "SYSTEM",
@@ -5647,14 +5640,7 @@ impl qobject::DeviceController {
         let fallback = self.firmware_update_url().to_string();
         let target = if !dl.is_empty() { dl } else { fallback };
         if !target.is_empty() {
-            let res = if Path::new("/.flatpak-info").exists() {
-                std::process::Command::new("flatpak-spawn")
-                    .args(["--host", "xdg-open", &target])
-                    .spawn()
-            } else {
-                std::process::Command::new("xdg-open").arg(&target).spawn()
-            };
-            if let Err(e) = res {
+            if let Err(e) = crate::paths::open_url_or_path_in_os(&target) {
                 record_system_event(
                     "WARN",
                     "SYSTEM",
@@ -6577,29 +6563,13 @@ impl qobject::DeviceController {
         });
 
         if !is_ui_test_suite_env() {
-            let res = if in_flatpak {
-                std::process::Command::new("flatpak-spawn")
-                    .arg("--host")
-                    .arg("xdg-open")
-                    .arg(&target_path)
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn()
-            } else {
-                std::process::Command::new("xdg-open")
-                    .arg(&target_path)
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn()
-            };
-            if let Err(e) = res {
+            let target_str = target_path.to_string_lossy();
+            if let Err(e) = crate::paths::open_url_or_path_in_os(&target_str) {
                 record_system_event(
                     "WARN",
                     "SYSTEM",
                     format!(
-                        "Failed launching xdg-open for {}: {e}",
+                        "Failed opening user guide {}: {e}",
                         target_path.display()
                     ),
                 );
@@ -6804,7 +6774,7 @@ impl qobject::DeviceController {
             return false;
         }
         let raw_path = firmware_path.to_string();
-        let clean_path = raw_path.trim().trim_start_matches("file://").to_string();
+        let clean_path = crate::paths::clean_file_uri_to_path_str(&raw_path);
         if clean_path.is_empty() {
             let msg = "No firmware binary selected";
             self.as_mut().set_status_message(QString::from(msg));

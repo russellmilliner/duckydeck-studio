@@ -589,16 +589,33 @@ pub fn execute_app_launch(cfg: &AppLaunchConfig) -> AppLaunchExecutionResult {
             vec!["sh".to_string(), "-c".to_string(), full_cmd_display.clone()]
         }
     } else if cfg!(target_os = "windows")
-        && raw_cmd.to_ascii_lowercase().ends_with(".lnk")
-        && raw_args.is_empty()
+        && (raw_cmd.eq_ignore_ascii_case("xdg-open")
+            || (raw_cmd.to_ascii_lowercase().ends_with(".lnk") && raw_args.is_empty()))
     {
+        let target_arg = if raw_cmd.eq_ignore_ascii_case("xdg-open") {
+            raw_args.to_string()
+        } else {
+            raw_cmd.to_string()
+        };
         vec![
             "cmd.exe".to_string(),
             "/C".to_string(),
             "start".to_string(),
             String::new(),
-            raw_cmd.to_string(),
+            target_arg,
         ]
+    } else if cfg!(target_os = "windows") && raw_cmd.eq_ignore_ascii_case("dolphin") {
+        let mut v = vec!["explorer.exe".to_string()];
+        if !raw_args.is_empty() {
+            v.extend(split_shell_words(raw_args));
+        }
+        v
+    } else if cfg!(target_os = "windows") && raw_cmd.eq_ignore_ascii_case("konsole") {
+        if let Some((term_bin, _)) = find_terminal_emulator() {
+            vec![term_bin]
+        } else {
+            vec!["cmd.exe".to_string()]
+        }
     } else {
         let mut t = split_shell_words(raw_cmd);
         if !raw_args.is_empty() {

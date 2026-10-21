@@ -215,11 +215,11 @@ pub fn export_event_log_impl(
     destination_path: QString,
 ) -> bool {
     let raw_str = destination_path.to_string();
-    let trimmed = raw_str.trim().trim_start_matches("file://");
+    let trimmed = crate::paths::clean_file_uri_to_path_str(&raw_str);
     if trimmed.is_empty() {
         return false;
     }
-    let mut dest = PathBuf::from(trimmed);
+    let mut dest = PathBuf::from(&trimmed);
     if dest.extension().is_none() {
         dest.set_extension("log");
     }

@@ -584,7 +584,10 @@ Window {
             onAccepted: {
                 let p = selectedFile.toString()
                 if (p.startsWith("file://")) {
-                    p = p.substring(7)
+                    p = decodeURIComponent(p.substring(7))
+                    if (/^\/[A-Za-z]:/.test(p)) {
+                        p = p.substring(1)
+                    }
                 }
                 firmwareUpdateDialog.customFirmwarePath = p
             }

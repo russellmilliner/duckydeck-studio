@@ -231,3 +231,61 @@ pub fn sanitize_xdg_env() {
         }
     }
 }
+
+/// Strip `file://` prefix from a QML FileDialog URI and normalize Windows `/C:/...` drive paths.
+pub fn clean_file_uri_to_path_str(raw: &str) -> String {
+    let trimmed = raw.trim();
+    let without_scheme = trimmed.strip_prefix("file://").unwrap_or(trimmed).trim();
+    let bytes = without_scheme.as_bytes();
+    if bytes.len() >= 3
+        && bytes[0] == b'/'
+        && bytes[1].is_ascii_alphabetic()
+        && bytes[2] == b':'
+    {
+        without_scheme[1..].to_string()
+    } else {
+        without_scheme.to_string()
+    }
+}
+
+/// Convert a local filesystem path into a valid `file://` URI for QML `Image` / `Icon`.
+pub fn path_to_file_uri(path: &Path) -> String {
+    let s = path.to_string_lossy().replace('\\', "/");
+    if s.starts_with('/') {
+        format!("file://{s}")
+    } else {
+        format!("file:///{s}")
+    }
+}
+
+/// Open a URL or local file path in the user's default OS handler.
+pub fn open_url_or_path_in_os(target: &str) -> std::io::Result<std::process::Child> {
+    use std::process::{Command, Stdio};
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("cmd.exe")
+            .args(["/C", "start", "", target])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if is_flatpak() {
+            Command::new("flatpak-spawn")
+                .args(["--host", "xdg-open", target])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+        } else {
+            Command::new("xdg-open")
+                .arg(target)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+        }
+    }
+}

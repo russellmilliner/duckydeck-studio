@@ -250,9 +250,12 @@ Window {
             let filePath = selectedFile.toString()
             if (filePath.indexOf("file://") === 0) {
                 filePath = decodeURIComponent(filePath.substring(7))
+                if (/^\/[A-Za-z]:/.test(filePath)) {
+                    filePath = filePath.substring(1)
+                }
             }
             if (filePath.length > 0) {
-                const parts = filePath.split("/")
+                const parts = filePath.split(/[\/\\]/)
                 const baseName = parts.length > 0 ? parts[parts.length - 1] : filePath
                 root.appLaunchDesktopId = ""
                 root.appLaunchAppName = baseName
@@ -2368,33 +2371,35 @@ Window {
                     }
 
                     QQC2.Button {
-                        text: qsTr("📁 Dolphin")
+                        text: Qt.platform.os === "windows" ? qsTr("📁 Explorer") : qsTr("📁 Dolphin")
                         implicitHeight: 26
                         font.pointSize: 10 * root.fontScale
                         onClicked: {
-                            root.appLaunchAppName = "Dolphin"
-                            root.appLaunchDesktopId = "org.kde.dolphin.desktop"
-                            appLaunchCommandField.text = "dolphin"
+                            const isWin = (Qt.platform.os === "windows")
+                            root.appLaunchAppName = isWin ? "Explorer" : "Dolphin"
+                            root.appLaunchDesktopId = isWin ? "" : "org.kde.dolphin.desktop"
+                            appLaunchCommandField.text = isWin ? "explorer.exe" : "dolphin"
                             appLaunchArgsField.text = ""
                             appLaunchTerminalCheck.checked = false
                             appLaunchEnabledCheck.checked = true
-                            appLaunchOledField.text = "Run: Dolphin"
+                            appLaunchOledField.text = isWin ? "Run: Explorer" : "Run: Dolphin"
                             appLaunchConfigWindow.syncAppLaunchBuilderToScript()
                         }
                     }
 
                     QQC2.Button {
-                        text: qsTr("🖥 Konsole")
+                        text: Qt.platform.os === "windows" ? qsTr("🖥 Terminal") : qsTr("🖥 Konsole")
                         implicitHeight: 26
                         font.pointSize: 10 * root.fontScale
                         onClicked: {
-                            root.appLaunchAppName = "Konsole"
-                            root.appLaunchDesktopId = "org.kde.konsole.desktop"
-                            appLaunchCommandField.text = "konsole"
+                            const isWin = (Qt.platform.os === "windows")
+                            root.appLaunchAppName = isWin ? "Terminal" : "Konsole"
+                            root.appLaunchDesktopId = isWin ? "" : "org.kde.konsole.desktop"
+                            appLaunchCommandField.text = isWin ? "powershell.exe" : "konsole"
                             appLaunchArgsField.text = ""
                             appLaunchTerminalCheck.checked = false
                             appLaunchEnabledCheck.checked = true
-                            appLaunchOledField.text = "Run: Konsole"
+                            appLaunchOledField.text = isWin ? "Run: Terminal" : "Run: Konsole"
                             appLaunchConfigWindow.syncAppLaunchBuilderToScript()
                         }
                     }
@@ -2404,9 +2409,10 @@ Window {
                         implicitHeight: 26
                         font.pointSize: 10 * root.fontScale
                         onClicked: {
+                            const isWin = (Qt.platform.os === "windows")
                             root.appLaunchAppName = "Web Browser"
                             root.appLaunchDesktopId = ""
-                            appLaunchCommandField.text = "xdg-open"
+                            appLaunchCommandField.text = isWin ? "explorer.exe" : "xdg-open"
                             appLaunchArgsField.text = "https://duckypad.com"
                             appLaunchTerminalCheck.checked = false
                             appLaunchEnabledCheck.checked = true

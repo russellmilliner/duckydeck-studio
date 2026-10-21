@@ -68,6 +68,12 @@ fn is_running_duckydeck_pid(pid: u32, self_pid: u32) -> bool {
     if pid <= 1 || pid == self_pid {
         return false;
     }
+    #[cfg(target_os = "windows")]
+    {
+        return crate::kwin::auto_switcher::is_windows_pid_duckydeck(pid);
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
     let proc_dir = PathBuf::from(format!("/proc/{pid}"));
     if !proc_dir.exists() {
         return false;
@@ -87,6 +93,7 @@ fn is_running_duckydeck_pid(pid: u32, self_pid: u32) -> bool {
         }
     }
     false
+    }
 }
 
 fn find_existing_duckydeck_instances() -> Vec<u32> {
@@ -118,8 +125,21 @@ fn find_existing_duckydeck_instances() -> Vec<u32> {
 }
 
 #[cfg(target_os = "windows")]
-fn send_ipc_command_to_running_instance(_cmd: &str) -> Result<Vec<u32>, String> {
-    Err("No running DuckyDeck Studio instance found.".to_string())
+fn send_ipc_command_to_running_instance(cmd: &str) -> Result<Vec<u32>, String> {
+    let pids = find_existing_duckydeck_instances();
+    if pids.is_empty() {
+        return Err("No running DuckyDeck Studio instance found.".to_string());
+    }
+    let ipc_file = runtime_dir_path().join("duckydeck-ipc.cmd");
+    fs::write(&ipc_file, cmd)
+        .map_err(|e| format!("Failed writing Windows IPC command file {}: {e}", ipc_file.display()))?;
+    for _ in 0..20 {
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        if !ipc_file.exists() {
+            return Ok(pids);
+        }
+    }
+    Ok(pids)
 }
 
 #[cfg(not(target_os = "windows"))]

@@ -867,11 +867,7 @@ pub fn stage_duckypad_pro_firmware_via_msc_with_progress<F>(
 where
     F: FnMut(i32, &str, &str),
 {
-    let clean_str = fw_source_path
-        .to_string_lossy()
-        .trim()
-        .trim_start_matches("file://")
-        .to_string();
+    let clean_str = crate::paths::clean_file_uri_to_path_str(&fw_source_path.to_string_lossy());
     let src_path = PathBuf::from(&clean_str);
     if !src_path.is_file() {
         return Err(format!(
