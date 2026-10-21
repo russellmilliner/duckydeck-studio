@@ -1153,7 +1153,7 @@ Window {
                                                         width: parent.width - 2
                                                         horizontalAlignment: Text.AlignHCenter
                                                         text: wizKeycapItem.scText
-                                                        font.pixelSize: 6.5
+                                                        font.pixelSize: 7
                                                         font.family: "monospace"
                                                         font.bold: true
                                                         elide: Text.ElideRight
@@ -1176,7 +1176,7 @@ Window {
                                                         id: wizDropLbl
                                                         anchors.centerIn: parent
                                                         text: wizardDialog.draggingShortcutItem !== null ? qsTr("⬇ Assign") : qsTr("⇄ Swap")
-                                                        font.pixelSize: 8.5
+                                                        font.pixelSize: 9
                                                         font.bold: true
                                                         color: Kirigami.Theme.backgroundColor
                                                     }
