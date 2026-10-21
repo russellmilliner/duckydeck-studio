@@ -69,6 +69,7 @@ pub(crate) fn expand_tilde_str(input: &str) -> String {
     trimmed.to_string()
 }
 
+#[cfg(not(target_os = "windows"))]
 fn clean_desktop_exec(raw_exec: &str, desktop_id: &str) -> (String, String) {
     let tokens = split_shell_words(raw_exec);
     let mut filtered: Vec<String> = Vec::new();
@@ -105,7 +106,101 @@ fn clean_desktop_exec(raw_exec: &str, desktop_id: &str) -> (String, String) {
     (cmd, args)
 }
 
+#[cfg(target_os = "windows")]
+fn scan_windows_start_menu_dir(
+    dir: &Path,
+    category: &str,
+    depth: usize,
+    seen_names: &mut std::collections::HashSet<String>,
+    apps: &mut Vec<InstalledDesktopApp>,
+) {
+    if depth > 3 {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            let folder_name = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(category);
+            scan_windows_start_menu_dir(&path, folder_name, depth + 1, seen_names, apps);
+            continue;
+        }
+        let Some(ext) = path.extension().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if !ext.eq_ignore_ascii_case("lnk") && !ext.eq_ignore_ascii_case("exe") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let lower_stem = stem.to_ascii_lowercase();
+        if lower_stem.contains("uninstall")
+            || lower_stem.starts_with("unins0")
+            || lower_stem.contains("readme")
+            || lower_stem.contains("release notes")
+        {
+            continue;
+        }
+        if !seen_names.insert(lower_stem.clone()) {
+            continue;
+        }
+        let full_path = path.to_string_lossy().to_string();
+        let (exec_command, exec_args) = if ext.eq_ignore_ascii_case("lnk") {
+            (
+                "cmd.exe".to_string(),
+                format!("/C start \"\" \"{}\"", full_path),
+            )
+        } else {
+            (full_path.clone(), String::new())
+        };
+        apps.push(InstalledDesktopApp {
+            name: stem.to_string(),
+            desktop_id: format!("{}.lnk", lower_stem.replace(' ', "-")),
+            exec_command,
+            exec_args,
+            icon: "application-x-executable".to_string(),
+            comment: full_path,
+            categories: category.to_string(),
+            terminal: false,
+        });
+    }
+}
+
 pub fn scan_installed_desktop_apps() -> Vec<InstalledDesktopApp> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut seen_names = std::collections::HashSet::new();
+        let mut apps = Vec::new();
+        for env_key in ["ProgramData", "APPDATA"] {
+            if let Some(base) = std::env::var_os(env_key) {
+                let start_menu = PathBuf::from(base)
+                    .join("Microsoft")
+                    .join("Windows")
+                    .join("Start Menu")
+                    .join("Programs");
+                if start_menu.is_dir() {
+                    scan_windows_start_menu_dir(
+                        &start_menu,
+                        "Windows Apps",
+                        0,
+                        &mut seen_names,
+                        &mut apps,
+                    );
+                }
+            }
+        }
+        apps.sort_by_key(|a| a.name.to_ascii_lowercase());
+        apps
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
     let mut search_dirs: Vec<PathBuf> = Vec::new();
     let data_home = crate::paths::xdg_data_home();
     search_dirs.push(data_home.join("applications"));
@@ -259,9 +354,37 @@ pub fn scan_installed_desktop_apps() -> Vec<InstalledDesktopApp> {
 
     apps.sort_by_key(|a| a.name.to_ascii_lowercase());
     apps
+    }
 }
 
 pub(crate) fn find_terminal_emulator() -> Option<(String, Vec<String>)> {
+    #[cfg(target_os = "windows")]
+    {
+        let path_var = std::env::var("PATH").unwrap_or_default();
+        let win_candidates: &[(&str, &[&str])] = &[
+            ("wt.exe", &["new-tab", "--"]),
+            ("pwsh.exe", &["-NoExit", "-Command"]),
+            ("powershell.exe", &["-NoExit", "-Command"]),
+            ("cmd.exe", &["/K"]),
+        ];
+        for &(bin, flags) in win_candidates {
+            for dir in path_var.split(';') {
+                if dir.is_empty() {
+                    continue;
+                }
+                if Path::new(dir).join(bin).is_file() {
+                    return Some((
+                        bin.to_string(),
+                        flags.iter().map(|s| (*s).to_string()).collect(),
+                    ));
+                }
+            }
+        }
+        Some(("cmd.exe".to_string(), vec!["/K".to_string()]))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
     let candidates: &[(&str, &[&str])] = &[
         ("konsole", &["-e"]),
         ("xdg-terminal-exec", &[]),
@@ -290,4 +413,5 @@ pub(crate) fn find_terminal_emulator() -> Option<(String, Vec<String>)> {
         }
     }
     None
+    }
 }

@@ -1648,19 +1648,27 @@ pub fn autostart_desktop_path() -> PathBuf {
 }
 
 pub fn is_kde_autostart_enabled() -> bool {
-    let path = autostart_desktop_path();
-    let Ok(content) = fs::read_to_string(&path) else {
-        return false;
-    };
-    for line in content.lines() {
-        let t = line.trim();
-        if t.eq_ignore_ascii_case("Hidden=true")
-            || t.eq_ignore_ascii_case("X-GNOME-Autostart-enabled=false")
-        {
-            return false;
-        }
+    #[cfg(target_os = "windows")]
+    {
+        return win32_window::is_registry_autostart_enabled();
     }
-    true
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let path = autostart_desktop_path();
+        let Ok(content) = fs::read_to_string(&path) else {
+            return false;
+        };
+        for line in content.lines() {
+            let t = line.trim();
+            if t.eq_ignore_ascii_case("Hidden=true")
+                || t.eq_ignore_ascii_case("X-GNOME-Autostart-enabled=false")
+            {
+                return false;
+            }
+        }
+        true
+    }
 }
 
 pub fn sync_local_desktop_and_icon(use_light_on_dark_icon: bool) {
@@ -1732,6 +1740,13 @@ pub fn sync_local_desktop_and_icon(use_light_on_dark_icon: bool) {
 }
 
 pub fn set_kde_autostart_enabled(enabled: bool) -> Result<PathBuf, String> {
+    #[cfg(target_os = "windows")]
+    {
+        return win32_window::set_registry_autostart_enabled(enabled);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
     let path = autostart_desktop_path();
     if enabled {
         sync_local_desktop_and_icon(true);
@@ -1781,6 +1796,7 @@ pub fn set_kde_autostart_enabled(enabled: bool) -> Result<PathBuf, String> {
                 .map_err(|e| format!("Failed removing {}: {e}", path.display()))?;
         }
         Ok(path)
+    }
     }
 }
 
@@ -2543,10 +2559,112 @@ mod win32_window {
         pub fn CloseHandle(hObject: isize) -> i32;
     }
 
+    #[link(name = "advapi32")]
+    extern "system" {
+        pub fn RegOpenKeyExW(
+            hKey: isize,
+            lpSubKey: *const u16,
+            ulOptions: u32,
+            samDesired: u32,
+            phkResult: *mut isize,
+        ) -> i32;
+        pub fn RegQueryValueExW(
+            hKey: isize,
+            lpValueName: *const u16,
+            lpReserved: *const u32,
+            lpType: *mut u32,
+            lpData: *mut u8,
+            lpcbData: *mut u32,
+        ) -> i32;
+        pub fn RegSetValueExW(
+            hKey: isize,
+            lpValueName: *const u16,
+            Reserved: u32,
+            dwType: u32,
+            lpData: *const u8,
+            cbData: u32,
+        ) -> i32;
+        pub fn RegDeleteValueW(hKey: isize, lpValueName: *const u16) -> i32;
+        pub fn RegCloseKey(hKey: isize) -> i32;
+    }
+
     pub const GA_ROOT: u32 = 2;
     pub const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
     pub const VK_LBUTTON: i32 = 0x01;
     pub const VK_ESCAPE: i32 = 0x1B;
+    const HKEY_CURRENT_USER: isize = -2147483647isize; // 0x80000001
+    const KEY_READ: u32 = 0x20019;
+    const KEY_SET_VALUE: u32 = 0x0002;
+    const REG_SZ: u32 = 1;
+
+    fn wide_null(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    pub fn is_registry_autostart_enabled() -> bool {
+        let subkey = wide_null("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+        let val_name = wide_null("DuckyDeckStudio");
+        // SAFETY: RegOpenKeyExW / RegQueryValueExW / RegCloseKey use valid null-terminated UTF-16 buffers.
+        unsafe {
+            let mut hkey: isize = 0;
+            if RegOpenKeyExW(HKEY_CURRENT_USER, subkey.as_ptr(), 0, KEY_READ, &mut hkey) != 0 {
+                return false;
+            }
+            let mut data_len: u32 = 0;
+            let status = RegQueryValueExW(
+                hkey,
+                val_name.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut data_len,
+            );
+            RegCloseKey(hkey);
+            status == 0 && data_len > 2
+        }
+    }
+
+    pub fn set_registry_autostart_enabled(enabled: bool) -> Result<std::path::PathBuf, String> {
+        let subkey = wide_null("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+        let val_name = wide_null("DuckyDeckStudio");
+        let exe_path = std::env::current_exe()
+            .unwrap_or_else(|_| std::path::PathBuf::from("duckydeck-studio.exe"));
+        // SAFETY: Registry calls operate on HKCU\...\Run with valid UTF-16 buffers.
+        unsafe {
+            let mut hkey: isize = 0;
+            let open_rc = RegOpenKeyExW(
+                HKEY_CURRENT_USER,
+                subkey.as_ptr(),
+                0,
+                KEY_SET_VALUE,
+                &mut hkey,
+            );
+            if open_rc != 0 {
+                return Err(format!("Failed opening HKCU Run key (code {open_rc})"));
+            }
+            if enabled {
+                let cmd = format!("\"{}\" --minimized", exe_path.to_string_lossy());
+                let cmd_wide = wide_null(&cmd);
+                let byte_len = (cmd_wide.len() * 2) as u32;
+                let set_rc = RegSetValueExW(
+                    hkey,
+                    val_name.as_ptr(),
+                    0,
+                    REG_SZ,
+                    cmd_wide.as_ptr() as *const u8,
+                    byte_len,
+                );
+                RegCloseKey(hkey);
+                if set_rc != 0 {
+                    return Err(format!("Failed setting Run registry value (code {set_rc})"));
+                }
+            } else {
+                let _ = RegDeleteValueW(hkey, val_name.as_ptr());
+                RegCloseKey(hkey);
+            }
+        }
+        Ok(exe_path)
+    }
 
     pub fn inspect_hwnd(hwnd: isize) -> Option<(String, String, String)> {
         if hwnd == 0 {
@@ -2833,17 +2951,33 @@ pub async fn run_kwin_auto_switcher(
             pending,
             settle_notify,
         };
+        let mut last_fg: Option<(String, String, String)> = None;
+        let mut last_pt: Option<(i32, i32)> = None;
         loop {
-            // Poll active foreground window on Windows every 100ms
-            // SAFETY: GetForegroundWindow is a safe Win32 query.
-            let win_info = unsafe {
-                let hwnd = win32_window::GetForegroundWindow();
-                win32_window::inspect_hwnd(hwnd)
+            // Poll active foreground window AND cursor hover window on Windows every 50ms
+            // SAFETY: GetForegroundWindow, GetCursorPos, and WindowFromPoint are thread-safe Win32 queries.
+            let (fg_info, cursor_moved_info) = unsafe {
+                let fg = win32_window::inspect_hwnd(win32_window::GetForegroundWindow());
+                let mut pt = win32_window::POINT::default();
+                let mut hover = None;
+                if win32_window::GetCursorPos(&mut pt) != 0 {
+                    let cur_xy = (pt.x, pt.y);
+                    if last_pt != Some(cur_xy) {
+                        last_pt = Some(cur_xy);
+                        hover = win32_window::inspect_hwnd(win32_window::WindowFromPoint(pt));
+                    }
+                }
+                (fg, hover)
             };
-            if let Some((cls, rname, cap)) = win_info {
+            if let Some((cls, rname, cap)) = cursor_moved_info {
                 service.handle_active_window(cls, rname, cap);
+            } else if fg_info != last_fg {
+                last_fg = fg_info.clone();
+                if let Some((cls, rname, cap)) = fg_info {
+                    service.handle_active_window(cls, rname, cap);
+                }
             }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
     }
 

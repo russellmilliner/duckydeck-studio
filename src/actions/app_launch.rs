@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
+#[cfg(not(target_os = "windows"))]
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -203,9 +204,153 @@ pub fn apply_app_launch_config_to_script(
     out
 }
 
+#[cfg(target_os = "windows")]
+mod win32_input {
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
+    pub struct POINT {
+        pub x: i32,
+        pub y: i32,
+    }
+
+    #[link(name = "user32")]
+    extern "system" {
+        pub fn GetAsyncKeyState(vKey: i32) -> i16;
+        pub fn GetCursorPos(lpPoint: *mut POINT) -> i32;
+    }
+
+    pub fn vk_to_duckyscript_key(vk: u8) -> Option<&'static str> {
+        match vk {
+            0x01 => Some("LMOUSE"),
+            0x02 => Some("RMOUSE"),
+            0x04 => Some("MMOUSE"),
+            0x05 => Some("BMOUSE"),
+            0x06 => Some("FMOUSE"),
+            0x08 => Some("BACKSPACE"),
+            0x09 => Some("TAB"),
+            0x0D => Some("ENTER"),
+            0x13 => Some("PAUSE"),
+            0x14 => Some("CAPSLOCK"),
+            0x1B => Some("ESC"),
+            0x20 => Some("SPACE"),
+            0x21 => Some("PAGEUP"),
+            0x22 => Some("PAGEDOWN"),
+            0x23 => Some("END"),
+            0x24 => Some("HOME"),
+            0x25 => Some("LEFT"),
+            0x26 => Some("UP"),
+            0x27 => Some("RIGHT"),
+            0x28 => Some("DOWN"),
+            0x2C => Some("PRINTSCREEN"),
+            0x2D => Some("INSERT"),
+            0x2E => Some("DELETE"),
+            0x30 => Some("0"),
+            0x31 => Some("1"),
+            0x32 => Some("2"),
+            0x33 => Some("3"),
+            0x34 => Some("4"),
+            0x35 => Some("5"),
+            0x36 => Some("6"),
+            0x37 => Some("7"),
+            0x38 => Some("8"),
+            0x39 => Some("9"),
+            0x41 => Some("a"),
+            0x42 => Some("b"),
+            0x43 => Some("c"),
+            0x44 => Some("d"),
+            0x45 => Some("e"),
+            0x46 => Some("f"),
+            0x47 => Some("g"),
+            0x48 => Some("h"),
+            0x49 => Some("i"),
+            0x4A => Some("j"),
+            0x4B => Some("k"),
+            0x4C => Some("l"),
+            0x4D => Some("m"),
+            0x4E => Some("n"),
+            0x4F => Some("o"),
+            0x50 => Some("p"),
+            0x51 => Some("q"),
+            0x52 => Some("r"),
+            0x53 => Some("s"),
+            0x54 => Some("t"),
+            0x55 => Some("u"),
+            0x56 => Some("v"),
+            0x57 => Some("w"),
+            0x58 => Some("x"),
+            0x59 => Some("y"),
+            0x5A => Some("z"),
+            0x5B => Some("WINDOWS"),
+            0x5C => Some("RWINDOWS"),
+            0x5D => Some("MENU"),
+            0x60 => Some("KP_0"),
+            0x61 => Some("KP_1"),
+            0x62 => Some("KP_2"),
+            0x63 => Some("KP_3"),
+            0x64 => Some("KP_4"),
+            0x65 => Some("KP_5"),
+            0x66 => Some("KP_6"),
+            0x67 => Some("KP_7"),
+            0x68 => Some("KP_8"),
+            0x69 => Some("KP_9"),
+            0x6A => Some("KP_ASTERISK"),
+            0x6B => Some("KP_PLUS"),
+            0x6D => Some("KP_MINUS"),
+            0x6E => Some("KP_DOT"),
+            0x6F => Some("KP_SLASH"),
+            0x70 => Some("F1"),
+            0x71 => Some("F2"),
+            0x72 => Some("F3"),
+            0x73 => Some("F4"),
+            0x74 => Some("F5"),
+            0x75 => Some("F6"),
+            0x76 => Some("F7"),
+            0x77 => Some("F8"),
+            0x78 => Some("F9"),
+            0x79 => Some("F10"),
+            0x7A => Some("F11"),
+            0x7B => Some("F12"),
+            0x7C => Some("F13"),
+            0x7D => Some("F14"),
+            0x7E => Some("F15"),
+            0x7F => Some("F16"),
+            0x80 => Some("F17"),
+            0x81 => Some("F18"),
+            0x82 => Some("F19"),
+            0x83 => Some("F20"),
+            0x84 => Some("F21"),
+            0x85 => Some("F22"),
+            0x86 => Some("F23"),
+            0x87 => Some("F24"),
+            0x90 => Some("NUMLOCK"),
+            0x91 => Some("SCROLLLOCK"),
+            0xA0 => Some("SHIFT"),
+            0xA1 => Some("RSHIFT"),
+            0xA2 => Some("CTRL"),
+            0xA3 => Some("RCTRL"),
+            0xA4 => Some("ALT"),
+            0xA5 => Some("RALT"),
+            0xBA => Some(";"),
+            0xBB => Some("="),
+            0xBC => Some(","),
+            0xBD => Some("-"),
+            0xBE => Some("."),
+            0xBF => Some("/"),
+            0xC0 => Some("`"),
+            0xDB => Some("["),
+            0xDC => Some("\\"),
+            0xDD => Some("]"),
+            0xDE => Some("'"),
+            _ => None,
+        }
+    }
+}
+
 pub struct DuckypadEvdevListener {
     files: Vec<(PathBuf, fs::File)>,
     last_scan: std::time::Instant,
+    #[cfg(target_os = "windows")]
+    prev_fkeys: u16,
 }
 
 impl Default for DuckypadEvdevListener {
@@ -219,6 +364,8 @@ impl DuckypadEvdevListener {
         let mut s = Self {
             files: Vec::new(),
             last_scan: std::time::Instant::now() - std::time::Duration::from_secs(10),
+            #[cfg(target_os = "windows")]
+            prev_fkeys: 0,
         };
         s.refresh_nodes();
         s
@@ -227,6 +374,18 @@ impl DuckypadEvdevListener {
     pub fn refresh_nodes(&mut self) {
         self.last_scan = std::time::Instant::now();
         self.files.retain(|(p, _)| p.exists());
+
+        #[cfg(target_os = "windows")]
+        {
+            // Drain any stale GetAsyncKeyState LSB transition bits for F13..F24 on startup
+            for i in 0..12 {
+                // SAFETY: GetAsyncKeyState is a safe Win32 query.
+                let state = unsafe { win32_input::GetAsyncKeyState(0x7C + i) as u16 };
+                if (state & 0x8000) != 0 {
+                    self.prev_fkeys |= 1u16 << i;
+                }
+            }
+        }
 
         #[cfg(unix)]
         {
@@ -268,6 +427,44 @@ impl DuckypadEvdevListener {
     }
 
     pub fn poll_fkey_triggers(&mut self) -> Vec<String> {
+        #[cfg(target_os = "windows")]
+        {
+            let mut triggered = Vec::new();
+            let mut held_count: u32 = 0;
+            for i in 0..12 {
+                // SAFETY: GetAsyncKeyState is a safe Win32 query.
+                let state = unsafe { win32_input::GetAsyncKeyState(0x7C + i) as u16 };
+                let is_down = (state & 0x8000) != 0;
+                let was_pressed_since_last = (state & 0x0001) != 0;
+                let was_down = (self.prev_fkeys & (1u16 << i)) != 0;
+                if is_down {
+                    held_count += 1;
+                }
+                if (is_down && !was_down) || (!is_down && !was_down && was_pressed_since_last) {
+                    let now_ms = crate::kwin::auto_switcher::current_epoch_ms();
+                    crate::hardware::storage::LAST_EVDEV_KEY_ACTIVITY_MS
+                        .store(now_ms, std::sync::atomic::Ordering::SeqCst);
+                    crate::hardware::storage::LAST_EVDEV_KEYDOWN_MS
+                        .store(now_ms, std::sync::atomic::Ordering::SeqCst);
+                    triggered.push(format!("F{}", 13 + i));
+                } else if !is_down && was_down {
+                    let now_ms = crate::kwin::auto_switcher::current_epoch_ms();
+                    crate::hardware::storage::LAST_EVDEV_KEY_ACTIVITY_MS
+                        .store(now_ms, std::sync::atomic::Ordering::SeqCst);
+                }
+                if is_down {
+                    self.prev_fkeys |= 1u16 << i;
+                } else {
+                    self.prev_fkeys &= !(1u16 << i);
+                }
+            }
+            crate::hardware::storage::EVDEV_KEYS_HELD_COUNT
+                .store(held_count, std::sync::atomic::Ordering::SeqCst);
+            return triggered;
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
         use std::io::Read;
         if self.last_scan.elapsed() >= std::time::Duration::from_secs(3) {
             self.refresh_nodes();
@@ -328,6 +525,7 @@ impl DuckypadEvdevListener {
             self.files.remove(idx);
         }
         triggered
+        }
     }
 }
 
@@ -378,7 +576,29 @@ pub fn execute_app_launch(cfg: &AppLaunchConfig) -> AppLaunchExecutionResult {
         || full_cmd_display.contains('$');
 
     let mut tokens: Vec<String> = if needs_shell {
-        vec!["sh".to_string(), "-c".to_string(), full_cmd_display.clone()]
+        #[cfg(target_os = "windows")]
+        {
+            vec![
+                "cmd.exe".to_string(),
+                "/C".to_string(),
+                full_cmd_display.clone(),
+            ]
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            vec!["sh".to_string(), "-c".to_string(), full_cmd_display.clone()]
+        }
+    } else if cfg!(target_os = "windows")
+        && raw_cmd.to_ascii_lowercase().ends_with(".lnk")
+        && raw_args.is_empty()
+    {
+        vec![
+            "cmd.exe".to_string(),
+            "/C".to_string(),
+            "start".to_string(),
+            String::new(),
+            raw_cmd.to_string(),
+        ]
     } else {
         let mut t = split_shell_words(raw_cmd);
         if !raw_args.is_empty() {
@@ -615,6 +835,10 @@ pub fn evdev_code_to_duckyscript_key(code: u16) -> Option<&'static str> {
 
 pub struct GlobalMacroEvdevRecorder {
     files: Vec<(PathBuf, fs::File)>,
+    #[cfg(target_os = "windows")]
+    prev_keys: [bool; 256],
+    #[cfg(target_os = "windows")]
+    last_cursor: Option<(i32, i32)>,
 }
 
 impl Default for GlobalMacroEvdevRecorder {
@@ -625,13 +849,32 @@ impl Default for GlobalMacroEvdevRecorder {
 
 impl GlobalMacroEvdevRecorder {
     pub fn new() -> Self {
-        let mut s = Self { files: Vec::new() };
+        let mut s = Self {
+            files: Vec::new(),
+            #[cfg(target_os = "windows")]
+            prev_keys: [false; 256],
+            #[cfg(target_os = "windows")]
+            last_cursor: None,
+        };
         s.open_all_input_nodes();
         s
     }
 
     pub fn open_all_input_nodes(&mut self) {
         self.files.clear();
+        #[cfg(target_os = "windows")]
+        {
+            for vk in 1..256usize {
+                // SAFETY: GetAsyncKeyState is a safe Win32 query.
+                let state = unsafe { win32_input::GetAsyncKeyState(vk as i32) as u16 };
+                self.prev_keys[vk] = (state & 0x8000) != 0;
+            }
+            let mut pt = win32_input::POINT::default();
+            // SAFETY: GetCursorPos writes to a valid stack struct.
+            if unsafe { win32_input::GetCursorPos(&mut pt) } != 0 {
+                self.last_cursor = Some((pt.x, pt.y));
+            }
+        }
         #[cfg(unix)]
         {
             use std::io::Read;
@@ -663,10 +906,86 @@ impl GlobalMacroEvdevRecorder {
     }
 
     pub fn device_count(&self) -> usize {
-        self.files.len()
+        #[cfg(target_os = "windows")]
+        {
+            2
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            self.files.len()
+        }
     }
 
     pub fn poll_events(&mut self) -> Vec<RecordedMacroInputEvent> {
+        #[cfg(target_os = "windows")]
+        {
+            let mut out = Vec::new();
+            let mut accum_dx: i32 = 0;
+            let mut accum_dy: i32 = 0;
+
+            let mut pt = win32_input::POINT::default();
+            // SAFETY: GetCursorPos writes to a valid stack struct.
+            if unsafe { win32_input::GetCursorPos(&mut pt) } != 0 {
+                if let Some((lx, ly)) = self.last_cursor {
+                    accum_dx = pt.x - lx;
+                    accum_dy = pt.y - ly;
+                }
+                self.last_cursor = Some((pt.x, pt.y));
+            }
+
+            for vk in 1..256usize {
+                let Some(duck_key) = win32_input::vk_to_duckyscript_key(vk as u8) else {
+                    continue;
+                };
+                // SAFETY: GetAsyncKeyState is a safe Win32 query.
+                let state = unsafe { win32_input::GetAsyncKeyState(vk as i32) as u16 };
+                let is_down = (state & 0x8000) != 0;
+                let was_down = self.prev_keys[vk];
+                if is_down != was_down {
+                    self.prev_keys[vk] = is_down;
+                    if accum_dx != 0 || accum_dy != 0 {
+                        out.push(RecordedMacroInputEvent {
+                            kind: "mouse_move".to_string(),
+                            key: String::new(),
+                            dx: accum_dx,
+                            dy: accum_dy,
+                        });
+                        accum_dx = 0;
+                        accum_dy = 0;
+                    }
+                    let is_mouse_btn = (0x01..=0x06).contains(&vk);
+                    out.push(RecordedMacroInputEvent {
+                        kind: if is_mouse_btn {
+                            if is_down {
+                                "mouse_down".to_string()
+                            } else {
+                                "mouse_up".to_string()
+                            }
+                        } else if is_down {
+                            "key_down".to_string()
+                        } else {
+                            "key_up".to_string()
+                        },
+                        key: duck_key.to_string(),
+                        dx: 0,
+                        dy: 0,
+                    });
+                }
+            }
+
+            if accum_dx != 0 || accum_dy != 0 {
+                out.push(RecordedMacroInputEvent {
+                    kind: "mouse_move".to_string(),
+                    key: String::new(),
+                    dx: accum_dx,
+                    dy: accum_dy,
+                });
+            }
+            return out;
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
         use std::io::Read;
         let mut out = Vec::new();
         let mut buf = [0u8; 24];
@@ -752,5 +1071,6 @@ impl GlobalMacroEvdevRecorder {
         }
 
         out
+        }
     }
 }

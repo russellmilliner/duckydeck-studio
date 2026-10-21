@@ -163,6 +163,7 @@ fn main() {
             "kernel32",
             "user32",
             "shell32",
+            "advapi32",
         ] {
             println!("cargo:rustc-link-arg=-l{lib}");
         }
