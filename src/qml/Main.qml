@@ -869,6 +869,14 @@ Kirigami.ApplicationWindow {
     readonly property var keyPropertiesWindow: settingsDialog.keyPropertiesWindow
     readonly property var showcaseRunnerTimer: eventLogDialog.showcaseRunnerTimer
     readonly property var uiTestSuiteRunner: eventLogDialog.uiTestSuiteRunner
+    readonly property alias mainHardwareCanvas: hardwareCanvas
+    readonly property alias mainScriptEditor: scriptEditor
+    readonly property alias mainScriptScrollView: scriptScrollView
+    readonly property alias mainProfileSidebarList: profileSidebarList
+    readonly property alias mainInspectorCard: inspectorCard
+    readonly property alias mainLiveSlotAutoSaveTimer: liveSlotAutoSaveTimer
+    readonly property alias mainLabel1Input: label1Input
+    readonly property alias mainLabel2Input: label2Input
 
     function refreshEventLogModel() { eventLogDialog.refreshEventLogModel() }
     function refreshUnsyncedSummaryModel() { sdSyncDialog.refreshUnsyncedSummaryModel() }
@@ -1565,8 +1573,8 @@ Kirigami.ApplicationWindow {
         fontScale: root.fontScale
         isLightTheme: root.isLightTheme
         highContrastPositiveText: root.highContrastPositiveText
-        hardwareCanvas: hardwareCanvas
-        scriptEditor: scriptEditor
+        hardwareCanvas: root.mainHardwareCanvas
+        scriptEditor: root.mainScriptEditor
         profilePropertiesWindow: settingsDialog.profilePropertiesWindow
         keyPropertiesWindow: settingsDialog.keyPropertiesWindow
     }
@@ -1780,8 +1788,8 @@ Kirigami.ApplicationWindow {
         saveProfileGroupFileDialog: saveProfileGroupFileDialog
         duckyColorPickerWindow: duckyColorPickerWindow
         autoSwitchDrawer: autoSwitchDrawer
-        profileSidebarList: profileSidebarList
-        hardwareCanvas: hardwareCanvas
+        profileSidebarList: root.mainProfileSidebarList
+        hardwareCanvas: root.mainHardwareCanvas
         appLaunchConfigWindow: appLaunchConfigWindow
         webApiKeyConfigWindow: webApiKeyConfigWindow
         oledDesktopWidget: oledDesktopWidget
@@ -2081,11 +2089,13 @@ Kirigami.ApplicationWindow {
         autoSwitchDrawer: autoSwitchDrawer
         aiModal: aiModal
         oledDesktopWidget: oledDesktopWidget
-        hardwareCanvas: hardwareCanvas
+        hardwareCanvas: root.mainHardwareCanvas
         profilesBoxScrollBar: mainProfilesBoxScrollBar
-        scriptScrollView: scriptScrollView
+        scriptScrollView: root.mainScriptScrollView
         scriptEditorVerticalScrollBar: mainScriptEditorVerticalScrollBar
-        scriptEditor: scriptEditor
+        scriptEditor: root.mainScriptEditor
+        label1Input: root.mainLabel1Input
+        label2Input: root.mainLabel2Input
     }
 
 
@@ -2096,8 +2106,8 @@ Kirigami.ApplicationWindow {
         controller: deviceController
         fontScale: root.fontScale
         effectiveThemeMode: root.effectiveThemeMode
-        hardwareCanvas: hardwareCanvas
-        inspectorCard: inspectorCard
+        hardwareCanvas: root.mainHardwareCanvas
+        inspectorCard: root.mainInspectorCard
     }
 
     ProfileWizardDialog {
@@ -3419,6 +3429,8 @@ Kirigami.ApplicationWindow {
                                             Layout.minimumWidth: Math.max(Math.round(86 * root.inspectorScale), Math.ceil(oledLabelMetrics.advanceWidth("WWWWW") + 22))
                                             implicitHeight: Math.max(Math.round(30 * root.inspectorScale), Math.ceil(oledLabelMetrics.height + 8))
                                             verticalAlignment: TextInput.AlignVCenter
+                                            topPadding: 4
+                                            bottomPadding: 4
                                             leftPadding: 6
                                             rightPadding: 6
                                             maximumLength: 10
@@ -3461,6 +3473,8 @@ Kirigami.ApplicationWindow {
                                             Layout.minimumWidth: Math.max(Math.round(86 * root.inspectorScale), Math.ceil(oledLabelMetrics.advanceWidth("WWWWW") + 22))
                                             implicitHeight: Math.max(Math.round(30 * root.inspectorScale), Math.ceil(oledLabelMetrics.height + 8))
                                             verticalAlignment: TextInput.AlignVCenter
+                                            topPadding: 4
+                                            bottomPadding: 4
                                             leftPadding: 6
                                             rightPadding: 6
                                             maximumLength: 10
@@ -6137,11 +6151,11 @@ Kirigami.ApplicationWindow {
         fontScale: root.fontScale
         highContrastPositiveText: root.highContrastPositiveText
         highContrastWarningText: root.highContrastWarningText
-        hardwareCanvas: hardwareCanvas
-        liveSlotAutoSaveTimer: liveSlotAutoSaveTimer
-        label1Input: label1Input
-        label2Input: label2Input
-        scriptEditor: scriptEditor
+        hardwareCanvas: root.mainHardwareCanvas
+        liveSlotAutoSaveTimer: root.mainLiveSlotAutoSaveTimer
+        label1Input: root.mainLabel1Input
+        label2Input: root.mainLabel2Input
+        scriptEditor: root.mainScriptEditor
         keyPropertiesWindow: settingsDialog.keyPropertiesWindow
     }
 
@@ -6156,8 +6170,8 @@ Kirigami.ApplicationWindow {
         fontScale: root.fontScale
         highContrastHighlightText: root.highContrastHighlightText
         highContrastWarningText: root.highContrastWarningText
-        hardwareCanvas: hardwareCanvas
-        scriptEditor: scriptEditor
+        hardwareCanvas: root.mainHardwareCanvas
+        scriptEditor: root.mainScriptEditor
         keyPropertiesWindow: settingsDialog.keyPropertiesWindow
     }
 

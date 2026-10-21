@@ -471,8 +471,8 @@ Window {
         transientParent: root
         modality: Qt.NonModal
         flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMaximizeButtonHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
-        width: Math.min(820, Screen.desktopAvailableWidth - 80)
-        height: Math.min(680, Screen.desktopAvailableHeight - 80)
+        width: Math.min(820, Screen.desktopAvailableWidth >= 800 ? Screen.desktopAvailableWidth - 80 : 820)
+        height: Math.min(680, Screen.desktopAvailableHeight >= 600 ? Screen.desktopAvailableHeight - 80 : 680)
         minimumWidth: 680
         minimumHeight: 500
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
@@ -1226,8 +1226,8 @@ Window {
     title: pickerMode === "key"
         ? qsTr("Set Key %1 Color — DuckyDeck Studio").arg(targetSlotNumber)
         : qsTr("Set Default Color (BG_COLOR) — Profile #%1 (%2)").arg(targetProfileNumber).arg(targetProfileName)
-    width: Math.min(720, Screen.desktopAvailableWidth > 0 ? Screen.desktopAvailableWidth - 60 : 720)
-    height: Math.min(780, Screen.desktopAvailableHeight > 0 ? Screen.desktopAvailableHeight - 60 : 780)
+    width: Math.min(720, Screen.desktopAvailableWidth >= 800 ? Screen.desktopAvailableWidth - 60 : 720)
+    height: Math.min(780, Screen.desktopAvailableHeight >= 600 ? Screen.desktopAvailableHeight - 60 : 780)
     minimumWidth: 640
     minimumHeight: 680
     visible: false

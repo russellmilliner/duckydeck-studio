@@ -2,7 +2,7 @@
 set -euo pipefail
 
 QT_ROOT="${DUCKYDECK_WIN_QT_ROOT:-$HOME/.local/share/llu-wintoolchain/qt6/6.8.3}"
-WIN_QT="$QT_ROOT/mingw_64"
+WIN_QT="${DUCKYDECK_WIN_QT_DIR:-$QT_ROOT/llvm-mingw_64}"
 HOST_QT="$QT_ROOT/gcc_64"
 
 if [[ "${1:-}" == "-query" ]]; then

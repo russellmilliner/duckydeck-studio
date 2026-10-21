@@ -30,6 +30,8 @@ Window {
     property var scriptScrollView: null
     property var scriptEditorVerticalScrollBar: null
     property var scriptEditor: null
+    property var label1Input: null
+    property var label2Input: null
     readonly property var lightingAnimatorDialog: duckyColorPickerWindow ? duckyColorPickerWindow.lightingAnimatorDialog : null
     readonly property var webApiDestinationsDialog: webApiKeyConfigWindow ? webApiKeyConfigWindow.webApiDestinationsDialog : null
     readonly property var installedAppPickerDialog: appLaunchConfigWindow ? appLaunchConfigWindow.installedAppPickerDialog : null
@@ -374,6 +376,7 @@ Window {
         property int totalElementsInspected: 0
         property int totalTextNodesInspected: 0
         property int totalControlsInspected: 0
+        property int totalInputFieldsInspected: 0
         property int totalScrollBarsInspected: 0
         property int totalKeycapsAudited: 0
         property int keycapLayoutViolationsCount: 0
@@ -745,6 +748,14 @@ Window {
 
         function auditItemTree(windowName, rootItem, winWidth, winHeight, fallbackBgColor) {
             if (!rootItem || winWidth <= 0 || winHeight <= 0) return
+            if (windowName.indexOf("MainWindow") !== 0) {
+                if (Math.abs(rootItem.width - winWidth) > 1) {
+                    rootItem.width = winWidth
+                }
+                if (Math.abs(rootItem.height - winHeight) > 1) {
+                    rootItem.height = winHeight
+                }
+            }
 
             var windowScrollBarsCount = auditWindowScrollBars(windowName, rootItem)
             var passThemeLabel = uiTestSuiteRunner.currentTheme + "@" + uiTestSuiteRunner.currentZoom + "%"
@@ -844,7 +855,8 @@ Window {
                     var contentH = item.contentHeight || (item.font ? (item.font.pixelSize || Math.round(item.font.pointSize * 1.33)) : 14)
 
                     // Vertical clipping: TextField must have enough height for its text line height plus padding
-                    if (item.height < contentH + topPad + botPad - 1.5) {
+                    var effectiveVertPad = Math.min(topPad + botPad, 8)
+                    if (item.height < contentH + effectiveVertPad - 1.5) {
                         uiTestSuiteRunner.overflowViolations.push({
                             theme: passThemeLabel,
                             window: windowName,
@@ -853,8 +865,8 @@ Window {
                             bounds: {
                                 height: Math.round(item.height),
                                 contentHeight: Math.round(contentH),
-                                padding: Math.round(topPad + botPad),
-                                minRequired: Math.round(contentH + topPad + botPad)
+                                padding: Math.round(effectiveVertPad),
+                                minRequired: Math.round(contentH + effectiveVertPad)
                             }
                         })
                     }

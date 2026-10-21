@@ -145,6 +145,10 @@ fn main() {
     println!("cargo:rerun-if-changed=src/qml/RestApiSettings.qml");
     println!("cargo:rerun-if-changed=src/qml/ProfileWizardDialog.qml");
     if is_windows {
+        println!("cargo:rustc-link-arg=-Wl,--stack,16777216");
+        let is_gnullvm = std::env::var("TARGET")
+            .map(|t| t.contains("gnullvm"))
+            .unwrap_or(false);
         for lib in [
             "Qt6Widgets",
             "Qt6QuickControls2",
@@ -155,17 +159,27 @@ fn main() {
             "Qt6Gui",
             "Qt6Network",
             "Qt6Core",
-            "stdc++",
-            "mingw32",
-            "gcc_s",
-            "gcc",
-            "msvcrt",
-            "kernel32",
-            "user32",
-            "shell32",
-            "advapi32",
         ] {
             println!("cargo:rustc-link-arg=-l{lib}");
+        }
+        if is_gnullvm {
+            for lib in ["c++", "unwind", "kernel32", "user32", "shell32", "advapi32"] {
+                println!("cargo:rustc-link-arg=-l{lib}");
+            }
+        } else {
+            for lib in [
+                "stdc++",
+                "mingw32",
+                "gcc_s",
+                "gcc",
+                "msvcrt",
+                "kernel32",
+                "user32",
+                "shell32",
+                "advapi32",
+            ] {
+                println!("cargo:rustc-link-arg=-l{lib}");
+            }
         }
     } else {
         println!("cargo:rustc-link-lib=KF6ColorScheme");

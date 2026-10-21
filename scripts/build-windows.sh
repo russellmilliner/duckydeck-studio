@@ -7,7 +7,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-TARGET="x86_64-pc-windows-gnu"
+TARGET="x86_64-pc-windows-gnullvm"
 VERSION="$(grep -E '^version\s*=' "$REPO_ROOT/Cargo.toml" | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')"
 
 TOOLCHAIN_ENV="${LLU_WIN_TOOLCHAIN_ENV:-$HOME/.local/share/llu-wintoolchain/env.sh}"
@@ -19,13 +19,14 @@ fi
 QT_BASE_DIR="${DUCKYDECK_WIN_QT_BASE:-$HOME/.local/share/llu-wintoolchain/qt6}"
 QT_VER="6.8.3"
 export DUCKYDECK_WIN_QT_ROOT="$QT_BASE_DIR/$QT_VER"
-WIN_QT="$DUCKYDECK_WIN_QT_ROOT/mingw_64"
+WIN_QT="$DUCKYDECK_WIN_QT_ROOT/llvm-mingw_64"
+export DUCKYDECK_WIN_QT_DIR="$WIN_QT"
 HOST_QT="$DUCKYDECK_WIN_QT_ROOT/gcc_64"
 
 if [[ ! -d "$WIN_QT/lib" ]]; then
-    echo "==> Installing Windows Qt $QT_VER (win64_mingw) via aqtinstall..."
+    echo "==> Installing Windows Qt $QT_VER (win64_llvm_mingw) via aqtinstall..."
     mkdir -p "$QT_BASE_DIR"
-    uvx --from aqtinstall aqt install-qt windows desktop "$QT_VER" win64_mingw -O "$QT_BASE_DIR" -m qtimageformats qtshadertools
+    uvx --from aqtinstall aqt install-qt windows desktop "$QT_VER" win64_llvm_mingw -O "$QT_BASE_DIR" -m qtimageformats qtshadertools
 fi
 if [[ ! -d "$HOST_QT/libexec" ]]; then
     echo "==> Installing Linux host Qt $QT_VER tools via aqtinstall..."
@@ -104,18 +105,20 @@ for dll in "${QT_DLLS[@]}"; do
     fi
 done
 
-# Copy MinGW C++ runtime DLLs (prefer system mingw-w64 to match linker ABI, fallback to Qt mingw_64)
-for rtdll in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
-    if [[ -f "/usr/x86_64-w64-mingw32/bin/$rtdll" ]]; then
-        cp "/usr/x86_64-w64-mingw32/bin/$rtdll" "$STAGE_DIR/"
-    elif [[ -f "$WIN_QT/bin/$rtdll" ]]; then
+# Copy LLVM-MinGW C++ runtime DLLs (UCRT)
+for rtdll in libc++.dll libunwind.dll libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+    if [[ -f "$WIN_QT/bin/$rtdll" ]]; then
         cp "$WIN_QT/bin/$rtdll" "$STAGE_DIR/"
+    elif [[ -f "$HOME/.local/share/llu-wintoolchain/llvm-mingw/x86_64-w64-mingw32/bin/$rtdll" ]]; then
+        cp "$HOME/.local/share/llu-wintoolchain/llvm-mingw/x86_64-w64-mingw32/bin/$rtdll" "$STAGE_DIR/"
     fi
 done
 
 # Copy Qt 6 plugins
 mkdir -p "$STAGE_DIR/platforms" "$STAGE_DIR/styles" "$STAGE_DIR/iconengines" "$STAGE_DIR/imageformats" "$STAGE_DIR/tls"
-cp "$WIN_QT/plugins/platforms/qwindows.dll" "$STAGE_DIR/platforms/"
+for platp in qwindows.dll qoffscreen.dll qminimal.dll; do
+    [[ -f "$WIN_QT/plugins/platforms/$platp" ]] && cp "$WIN_QT/plugins/platforms/$platp" "$STAGE_DIR/platforms/"
+done
 [[ -f "$WIN_QT/plugins/styles/qmodernwindowsstyle.dll" ]] && cp "$WIN_QT/plugins/styles/qmodernwindowsstyle.dll" "$STAGE_DIR/styles/"
 [[ -f "$WIN_QT/plugins/iconengines/qsvgicon.dll" ]] && cp "$WIN_QT/plugins/iconengines/qsvgicon.dll" "$STAGE_DIR/iconengines/"
 for imgp in qsvg.dll qico.dll qjpeg.dll qgif.dll; do

@@ -152,7 +152,7 @@ Window {
             Math.ceil(unsyncedTitleMetrics.width + 180),
             Math.ceil(unsyncedBannerTitle.implicitWidth + 72)
         )
-        height: Math.min(680, Screen.desktopAvailableHeight > 0 ? Screen.desktopAvailableHeight - 80 : 680)
+        height: Math.min(680, Screen.desktopAvailableHeight >= 600 ? Screen.desktopAvailableHeight - 80 : 680)
         minimumWidth: Math.max(
             700,
             Math.ceil(unsyncedFooterRow.implicitWidth + 56),
@@ -186,7 +186,7 @@ Window {
             if (unsyncedChangesDialog.width < unsyncedChangesDialog.minimumWidth) {
                 unsyncedChangesDialog.width = unsyncedChangesDialog.minimumWidth
             }
-            const targetH = Math.min(680, Screen.desktopAvailableHeight > 0 ? Screen.desktopAvailableHeight - 80 : 680)
+            const targetH = Math.min(680, Screen.desktopAvailableHeight >= 600 ? Screen.desktopAvailableHeight - 80 : 680)
             if (unsyncedChangesDialog.height < targetH) {
                 unsyncedChangesDialog.height = targetH
             }
@@ -464,9 +464,9 @@ Window {
                     icon.name: "document-save"
                     text: qsTr("⬆ Sync Changes to duckyPad SD Now")
                     enabled: !deviceController.sdSyncBusy
-                        && (deviceController.profileSyncState !== "synced" || inspectorCard.hasRevertibleChanges)
+                        && (deviceController.profileSyncState !== "synced" || (inspectorCard && inspectorCard.hasRevertibleChanges))
                         && (deviceController.connected || deviceController.sdMountPath.length > 0)
-                    highlighted: deviceController.profileSyncState !== "synced" || inspectorCard.hasRevertibleChanges
+                    highlighted: deviceController.profileSyncState !== "synced" || (inspectorCard && inspectorCard.hasRevertibleChanges)
                     onClicked: {
                         unsyncedChangesDialog.close()
                         root.triggerSyncToDeviceSd()
@@ -1203,7 +1203,7 @@ Window {
             Math.ceil(firstRunFooterRow.implicitWidth + 64),
             Math.ceil(firstRunTitleMetrics.width + 180)
         )
-        height: Math.min(640, Screen.desktopAvailableHeight > 0 ? Screen.desktopAvailableHeight - 80 : 640)
+        height: Math.min(640, Screen.desktopAvailableHeight >= 600 ? Screen.desktopAvailableHeight - 80 : 640)
         minimumWidth: Math.max(
             740,
             Math.ceil(firstRunFooterRow.implicitWidth + 56),
@@ -1813,9 +1813,9 @@ Window {
                 icon.name: "document-save"
                 text: qsTr("⬆ Sync to duckyPad SD")
                 enabled: !deviceController.sdSyncBusy
-                    && (deviceController.profileSyncState !== "synced" || inspectorCard.hasRevertibleChanges)
+                    && (deviceController.profileSyncState !== "synced" || (inspectorCard && inspectorCard.hasRevertibleChanges))
                     && (deviceController.connected || deviceController.sdMountPath.length > 0)
-                highlighted: deviceController.profileSyncState !== "synced" || inspectorCard.hasRevertibleChanges
+                highlighted: deviceController.profileSyncState !== "synced" || (inspectorCard && inspectorCard.hasRevertibleChanges)
                 onClicked: {
                     root.flushPendingSlotEditsIfModified()
                     deviceController.syncProfilesToDeviceSd()

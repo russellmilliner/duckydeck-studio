@@ -1599,49 +1599,118 @@ mod ui_test_suite {
 
     #[test]
     fn test_oled_label_input_sizing_and_home_automation_icons() {
-        use crate::hardware::profile::oled_label_to_hardware_ascii;
+        use crate::hardware::profile::{oled_icon_char_to_ascii, oled_label_to_hardware_ascii};
+        use std::collections::HashSet;
 
-        // 1. Home Automation icon ASCII fallback conversion and length constraints (<= 5 chars)
-        let ha_icons = [
-            ("💡", "BULB"),
-            ("🔌", "PLUG"),
-            ("🌡", "TEMP"),
-            ("❄", "COOL"),
-            ("🛡", "ALRM"),
-            ("📹", "CAM"),
-            ("🌀", "FAN"),
-            ("🚪", "DOOR"),
-            ("🧹", "VACC"),
-            ("💧", "LEAK"),
-            ("🚗", "AUTO"),
-            ("🚨", "SIREN"),
-        ];
+        // 1. Verify entire AppLaunchBuilder.qml iconCatalog has zero duplicates, covers all app categories,
+        //    and every icon maps cleanly to <= 5 chars of 7-bit printable ASCII.
+        let qml_src = include_str!("qml/AppLaunchBuilder.qml");
+        let mut seen_icons = HashSet::new();
+        let mut seen_cats = HashSet::new();
+        let mut icon_count = 0usize;
 
-        for (icon, name) in ha_icons {
-            let converted = oled_label_to_hardware_ascii(icon);
-            assert!(
-                !converted.is_empty(),
-                "Icon {name} ({icon}) must convert to non-empty ASCII"
-            );
-            assert!(
-                converted.len() <= 5,
-                "Icon {name} converted length {} must not exceed 5 characters: '{}'",
-                converted.len(),
-                converted
-            );
-            assert!(
-                converted.bytes().all(|b| (0x20..=0x7E).contains(&b)),
-                "Icon {name} must only contain 7-bit printable ASCII: '{}'",
-                converted
-            );
+        for line in qml_src.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("{ icon: \"") && trimmed.contains("cat: \"") {
+                let extract_field = |key: &str| -> String {
+                    let prefix = format!("{key}: \"");
+                    let start = trimmed.find(&prefix).expect("missing field") + prefix.len();
+                    let rest = &trimmed[start..];
+                    let end = rest.find('"').expect("unterminated string");
+                    rest[..end].to_string()
+                };
+                let icon = extract_field("icon");
+                let label = extract_field("label");
+                let name = extract_field("name");
+                let cat = extract_field("cat");
 
-            // Test compound labels (e.g. icon + text)
-            let compound = format!("{icon} ON");
-            let converted_compound = oled_label_to_hardware_ascii(&compound);
+                assert!(
+                    seen_icons.insert(icon.clone()),
+                    "Duplicate icon '{}' found in iconCatalog (entry: {} / {})",
+                    icon,
+                    name,
+                    cat
+                );
+                let chars: Vec<char> = icon.chars().collect();
+                assert_eq!(
+                    chars.len(),
+                    1,
+                    "Icon '{}' ({}) must be a single Unicode codepoint",
+                    icon,
+                    name
+                );
+                let ch = chars[0];
+                assert!(
+                    (ch as u32) > 127,
+                    "Icon '{}' ({}) must be a non-ASCII graphical symbol",
+                    icon,
+                    name
+                );
+                assert!(
+                    oled_icon_char_to_ascii(ch, false).is_some()
+                        && oled_icon_char_to_ascii(ch, true).is_some(),
+                    "Icon '{}' (U+{:04X}, {}) is missing an explicit mapping in oled_icon_char_to_ascii",
+                    icon,
+                    ch as u32,
+                    name
+                );
+                assert!(
+                    !label.is_empty()
+                        && label.len() <= 5
+                        && label.bytes().all(|b| (0x20..=0x7E).contains(&b)),
+                    "Icon '{}' label '{}' must be 1..=5 printable ASCII chars",
+                    icon,
+                    label
+                );
+                assert!(!name.is_empty(), "Icon '{}' name must not be empty", icon);
+
+                let converted = oled_label_to_hardware_ascii(&icon);
+                assert!(
+                    !converted.is_empty()
+                        && converted.len() <= 5
+                        && converted.bytes().all(|b| (0x20..=0x7E).contains(&b)),
+                    "Icon '{}' ({}) converted ASCII '{}' must be 1..=5 printable ASCII chars",
+                    icon,
+                    name,
+                    converted
+                );
+
+                let compound = format!("{icon} ON");
+                let converted_compound = oled_label_to_hardware_ascii(&compound);
+                assert!(
+                    converted_compound.len() <= 5,
+                    "Compound label '{compound}' must not exceed 5 chars, got '{}'",
+                    converted_compound
+                );
+
+                seen_cats.insert(cat);
+                icon_count += 1;
+            }
+        }
+
+        assert!(
+            icon_count >= 160,
+            "Expected at least 160 unique icons in iconCatalog, found {icon_count}"
+        );
+        for required_cat in [
+            "Web Browsers",
+            "Word & Docs",
+            "Excel & Sheets",
+            "PowerPoint & Slides",
+            "Photoshop & Creative",
+            "FreeCAD & Fusion 360",
+            "Editing & Clipboard",
+            "Arrows & Nav",
+            "Media & Audio",
+            "Coding & Terminal",
+            "Home Automation",
+            "Window & System",
+            "Streaming & Apps",
+            "Symbols & Shapes",
+        ] {
             assert!(
-                converted_compound.len() <= 5,
-                "Compound label '{compound}' must not exceed 5 chars, got '{}'",
-                converted_compound
+                seen_cats.contains(required_cat),
+                "Missing required icon category '{required_cat}' in iconCatalog"
             );
         }
 
@@ -1726,9 +1795,12 @@ mod ui_test_suite {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        if std::env::var_os("WAYLAND_DISPLAY").is_none() && std::env::var_os("DISPLAY").is_none() {
+        if std::env::var_os("QT_QPA_PLATFORM").is_none() {
             cmd.env("QT_QPA_PLATFORM", "offscreen");
         }
+        cmd.env("QT_SCALE_FACTOR", "1")
+            .env("QT_AUTO_SCREEN_SCALE_FACTOR", "0")
+            .env("QT_SCREEN_SCALE_FACTORS", "1");
 
         let mut child = cmd
             .spawn()

@@ -7,8 +7,8 @@ import org.kde.kirigami as Kirigami
 Window {
     id: drawerRoot
     title: qsTr("Auto-Switcher Rules")
-    width: Math.min(840, Screen.desktopAvailableWidth - 80)
-    height: Math.min(780, Screen.desktopAvailableHeight - 80)
+    width: Math.min(840, Screen.desktopAvailableWidth >= 800 ? Screen.desktopAvailableWidth - 80 : 840)
+    height: Math.min(780, Screen.desktopAvailableHeight >= 600 ? Screen.desktopAvailableHeight - 80 : 780)
     minimumWidth: 660
     minimumHeight: 540
     visible: false
@@ -1180,7 +1180,7 @@ Window {
                                         placeholderText: titleRegexCheck.checked
                                             ? qsTr("Regular expression (e.g. YouTube|Twitch, ^Gmail.*Inbox, /pattern/)")
                                             : qsTr("Optional substring or regex (e.g. YouTube, Gmail, YouTube|Twitch)")
-                                        font.family: titleRegexCheck.checked ? "monospace" : undefined
+                                        font.family: titleRegexCheck.checked ? "monospace" : Kirigami.Theme.defaultFont.family
                                         font.pointSize: 10 * drawerRoot.fontScale
                                         selectByMouse: true
                                         QQC2.ToolTip.visible: drawerRoot.titleRegexError.length > 0
@@ -1699,7 +1699,7 @@ Window {
                                                         text: titleIsRegex
                                                             ? qsTr("regex: /%1/").arg(titleContains)
                                                             : qsTr("title: \"%1\"").arg(titleContains)
-                                                        font.family: titleIsRegex ? "monospace" : undefined
+                                                        font.family: titleIsRegex ? "monospace" : ""
                                                         font.pointSize: 10 * drawerRoot.fontScale
                                                         elide: Text.ElideRight
                                                         color: Kirigami.Theme.disabledTextColor

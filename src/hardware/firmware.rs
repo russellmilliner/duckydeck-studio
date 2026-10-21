@@ -187,12 +187,58 @@ pub fn official_firmware_manifest_path() -> PathBuf {
     official_firmware_cache_dir().join("manifest.json")
 }
 
+pub fn default_official_remote_firmwares() -> Vec<CachedRemoteFirmwareItem> {
+    vec![
+        CachedRemoteFirmwareItem {
+            version: "3.3.2".to_string(),
+            filename: "DPP_FW_3.3.2_f377ce53.bin".to_string(),
+            crc32: "f377ce53".to_string(),
+            size_bytes: 864944,
+            download_url: "https://raw.githubusercontent.com/dekuNukem/duckyPad-Pro/6beed37d2cbd0dab592c1bb9acde01fd583f1174/firmware/DPP_FW_3.3.2_f377ce53.bin".to_string(),
+            release_date: "2026-01-28".to_string(),
+            notes: "Official dekuNukem release (new fw and docs)".to_string(),
+        },
+        CachedRemoteFirmwareItem {
+            version: "3.3.3".to_string(),
+            filename: "DPP_FW_3.3.3_d788ea98.bin".to_string(),
+            crc32: "d788ea98".to_string(),
+            size_bytes: 864944,
+            download_url: "https://raw.githubusercontent.com/dekuNukem/duckyPad-Pro/3b2590819bfae469078359d8f75d6b87c4990ca2/firmware/DPP_FW_3.3.3_d788ea98.bin".to_string(),
+            release_date: "2026-02-09".to_string(),
+            notes: "Official dekuNukem release (preparing for public release)".to_string(),
+        },
+        CachedRemoteFirmwareItem {
+            version: "3.3.4".to_string(),
+            filename: "DPP_FW_3.3.4_bc407dad.bin".to_string(),
+            crc32: "bc407dad".to_string(),
+            size_bytes: 864528,
+            download_url: "https://raw.githubusercontent.com/dekuNukem/duckyPad-Pro/2d341b33e9b0a619d9f77abc28b027d41db5b706/firmware/DPP_FW_3.3.4_bc407dad.bin".to_string(),
+            release_date: "2026-03-11".to_string(),
+            notes: "Official dekuNukem release (inverted default PWM level to reduce power consumption)".to_string(),
+        },
+        CachedRemoteFirmwareItem {
+            version: "3.3.5".to_string(),
+            filename: "DPP_FW_3.3.5_7e717835.bin".to_string(),
+            crc32: "7e717835".to_string(),
+            size_bytes: 864560,
+            download_url: "https://raw.githubusercontent.com/dekuNukem/duckyPad-Pro/717a075702e91426a86987da3daf1308e8c50673/firmware/DPP_FW_3.3.5_7e717835.bin".to_string(),
+            release_date: "2026-03-15".to_string(),
+            notes: "Official dekuNukem release (Increased Anykey-to-Abort check frequency)".to_string(),
+        },
+    ]
+}
+
 pub fn load_cached_remote_firmwares() -> Vec<CachedRemoteFirmwareItem> {
     let path = official_firmware_manifest_path();
     let Ok(raw) = fs::read_to_string(&path) else {
-        return Vec::new();
+        return default_official_remote_firmwares();
     };
-    serde_json::from_str::<Vec<CachedRemoteFirmwareItem>>(&raw).unwrap_or_default()
+    let parsed = serde_json::from_str::<Vec<CachedRemoteFirmwareItem>>(&raw).unwrap_or_default();
+    if parsed.is_empty() {
+        default_official_remote_firmwares()
+    } else {
+        parsed
+    }
 }
 
 pub fn save_cached_remote_firmwares(items: &[CachedRemoteFirmwareItem]) {
@@ -327,6 +373,8 @@ pub fn list_available_duckypad_pro_firmwares(current_version: &str) -> Vec<Firmw
     }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(bin_dir) = exe.parent() {
+            candidate_dirs.push((bin_dir.join("firmware"), true));
+            candidate_dirs.push((bin_dir.join("firmware/releases"), true));
             candidate_dirs.push((bin_dir.join("../share/duckydeck-studio/firmware"), true));
             candidate_dirs.push((
                 bin_dir.join("../share/duckydeck-studio/firmware/releases"),

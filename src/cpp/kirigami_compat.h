@@ -149,7 +149,7 @@ public:
     }
 
     QColor disabledTextColor() const {
-        return isLightModeRef() ? QColor(0x7f, 0x8c, 0x8d) : QColor(0xa1, 0xa9, 0xb1);
+        return isLightModeRef() ? QColor(0x52, 0x57, 0x5c) : QColor(0xa1, 0xa9, 0xb1);
     }
 
     QColor highlightColor() const {

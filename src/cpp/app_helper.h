@@ -897,7 +897,11 @@ private:
             }
         });
 
+#if defined(_WIN32)
+        m_autostartAction = m_menu->addAction(QStringLiteral("Start on Windows Login (Autostart)"));
+#else
         m_autostartAction = m_menu->addAction(QStringLiteral("Start on KDE Login (Autostart)"));
+#endif
         m_autostartAction->setCheckable(true);
         QObject::connect(m_autostartAction, &QAction::triggered, [this](bool) {
             if (m_controller) {
@@ -909,6 +913,53 @@ private:
             }
         });
 
+#if defined(_WIN32)
+        m_menu->addSeparator();
+        QActionGroup* group = new QActionGroup(m_menu);
+        group->setExclusive(true);
+
+        m_iconAutoAction = m_menu->addAction(QStringLiteral("Tray Icon: Auto Theme"));
+        m_iconAutoAction->setCheckable(true);
+        group->addAction(m_iconAutoAction);
+        QObject::connect(m_iconAutoAction, &QAction::triggered, [this]() {
+            if (m_controller) {
+                QMetaObject::invokeMethod(
+                    m_controller,
+                    "applyTrayIconMode",
+                    Qt::QueuedConnection,
+                    Q_ARG(QString, QStringLiteral("auto"))
+                );
+            }
+        });
+
+        m_iconDarkAction = m_menu->addAction(QStringLiteral("Tray Icon: Dark Mode (Light-on-Dark)"));
+        m_iconDarkAction->setCheckable(true);
+        group->addAction(m_iconDarkAction);
+        QObject::connect(m_iconDarkAction, &QAction::triggered, [this]() {
+            if (m_controller) {
+                QMetaObject::invokeMethod(
+                    m_controller,
+                    "applyTrayIconMode",
+                    Qt::QueuedConnection,
+                    Q_ARG(QString, QStringLiteral("dark"))
+                );
+            }
+        });
+
+        m_iconLightAction = m_menu->addAction(QStringLiteral("Tray Icon: Light Mode (Dark-on-Light)"));
+        m_iconLightAction->setCheckable(true);
+        group->addAction(m_iconLightAction);
+        QObject::connect(m_iconLightAction, &QAction::triggered, [this]() {
+            if (m_controller) {
+                QMetaObject::invokeMethod(
+                    m_controller,
+                    "applyTrayIconMode",
+                    Qt::QueuedConnection,
+                    Q_ARG(QString, QStringLiteral("light"))
+                );
+            }
+        });
+#else
         QMenu* iconMenu = m_menu->addMenu(QStringLiteral("Taskbar Icon Theme"));
         QActionGroup* group = new QActionGroup(iconMenu);
         group->setExclusive(true);
@@ -954,6 +1005,7 @@ private:
                 );
             }
         });
+#endif
 
         m_menu->addSeparator();
 
@@ -1364,45 +1416,75 @@ inline void duckydeck_apply_app_theme(const QString& themeMode) {
     if (!QCoreApplication::instance()) {
         return;
     }
+#if defined(_WIN32)
+    const bool isLight = (themeMode == QStringLiteral("light"));
+    duckydeck::KirigamiTheme::setLightMode(isLight);
+    QPalette pal;
+    const QColor winBg = isLight ? QColor(0xef, 0xf0, 0xf1) : QColor(0x20, 0x23, 0x26);
+    const QColor winText = isLight ? QColor(0x23, 0x26, 0x29) : QColor(0xfc, 0xfc, 0xfc);
+    const QColor baseBg = isLight ? QColor(0xff, 0xff, 0xff) : QColor(0x1b, 0x1e, 0x20);
+    const QColor altBg = isLight ? QColor(0xf7, 0xf7, 0xf7) : QColor(0x23, 0x26, 0x29);
+    const QColor btnBg = isLight ? QColor(0xef, 0xf0, 0xf1) : QColor(0x29, 0x2c, 0x30);
+    const QColor disText = isLight ? QColor(0x52, 0x57, 0x5c) : QColor(0xa1, 0xa9, 0xb1);
+    const QColor hiBg(0x3d, 0xae, 0xe9);
+    const QColor hiText(0xff, 0xff, 0xff);
+    for (QPalette::ColorGroup cg : {QPalette::Active, QPalette::Inactive, QPalette::Disabled}) {
+        const QColor fg = (cg == QPalette::Disabled) ? disText : winText;
+        pal.setColor(cg, QPalette::Window, winBg);
+        pal.setColor(cg, QPalette::WindowText, fg);
+        pal.setColor(cg, QPalette::Base, baseBg);
+        pal.setColor(cg, QPalette::AlternateBase, altBg);
+        pal.setColor(cg, QPalette::ToolTipBase, altBg);
+        pal.setColor(cg, QPalette::ToolTipText, fg);
+        pal.setColor(cg, QPalette::Text, fg);
+        pal.setColor(cg, QPalette::Button, btnBg);
+        pal.setColor(cg, QPalette::ButtonText, fg);
+        pal.setColor(cg, QPalette::BrightText, hiText);
+        pal.setColor(cg, QPalette::Highlight, hiBg);
+        pal.setColor(cg, QPalette::HighlightedText, hiText);
+        pal.setColor(cg, QPalette::PlaceholderText, disText);
+    }
+    QGuiApplication::setPalette(pal);
+    QApplication::setPalette(pal);
+    auto applyQuickColorGroup = [&](QObject* cg, const QColor& fg) {
+        if (!cg) return;
+        cg->setProperty("window", winBg);
+        cg->setProperty("windowText", fg);
+        cg->setProperty("base", baseBg);
+        cg->setProperty("alternateBase", altBg);
+        cg->setProperty("toolTipBase", altBg);
+        cg->setProperty("toolTipText", fg);
+        cg->setProperty("text", fg);
+        cg->setProperty("button", btnBg);
+        cg->setProperty("buttonText", fg);
+        cg->setProperty("brightText", hiText);
+        cg->setProperty("highlight", hiBg);
+        cg->setProperty("highlightedText", hiText);
+        cg->setProperty("placeholderText", disText);
+    };
+    auto applyQuickPalette = [&](QObject* owner) {
+        if (!owner) return;
+        QObject* qp = owner->property("palette").value<QObject*>();
+        if (!qp) return;
+        applyQuickColorGroup(qp, winText);
+        applyQuickColorGroup(qp->property("active").value<QObject*>(), winText);
+        applyQuickColorGroup(qp->property("inactive").value<QObject*>(), winText);
+        applyQuickColorGroup(qp->property("disabled").value<QObject*>(), disText);
+    };
+    const auto allWins = QGuiApplication::allWindows();
+    for (QWindow* w : allWins) {
+        if (!w) continue;
+        applyQuickPalette(w);
+        if (QQuickWindow* qw = qobject_cast<QQuickWindow*>(w)) {
+            applyQuickPalette(qw->contentItem());
+        }
+    }
+#else
     static QString s_lastAppliedTheme;
     if (s_lastAppliedTheme == themeMode) {
         return;
     }
     s_lastAppliedTheme = themeMode;
-
-#if defined(_WIN32)
-    const bool isLight = (themeMode == QStringLiteral("light"));
-    duckydeck::KirigamiTheme::setLightMode(isLight);
-    QPalette pal;
-    if (isLight) {
-        pal.setColor(QPalette::Window, QColor(0xef, 0xf0, 0xf1));
-        pal.setColor(QPalette::WindowText, QColor(0x23, 0x26, 0x29));
-        pal.setColor(QPalette::Base, QColor(0xff, 0xff, 0xff));
-        pal.setColor(QPalette::AlternateBase, QColor(0xf7, 0xf7, 0xf7));
-        pal.setColor(QPalette::ToolTipBase, QColor(0xf7, 0xf7, 0xf7));
-        pal.setColor(QPalette::ToolTipText, QColor(0x23, 0x26, 0x29));
-        pal.setColor(QPalette::Text, QColor(0x23, 0x26, 0x29));
-        pal.setColor(QPalette::Button, QColor(0xef, 0xf0, 0xf1));
-        pal.setColor(QPalette::ButtonText, QColor(0x23, 0x26, 0x29));
-        pal.setColor(QPalette::BrightText, QColor(0xff, 0xff, 0xff));
-        pal.setColor(QPalette::Highlight, QColor(0x3d, 0xae, 0xe9));
-        pal.setColor(QPalette::HighlightedText, QColor(0xff, 0xff, 0xff));
-    } else {
-        pal.setColor(QPalette::Window, QColor(0x20, 0x23, 0x26));
-        pal.setColor(QPalette::WindowText, QColor(0xfc, 0xfc, 0xfc));
-        pal.setColor(QPalette::Base, QColor(0x1b, 0x1e, 0x20));
-        pal.setColor(QPalette::AlternateBase, QColor(0x23, 0x26, 0x29));
-        pal.setColor(QPalette::ToolTipBase, QColor(0x23, 0x26, 0x29));
-        pal.setColor(QPalette::ToolTipText, QColor(0xfc, 0xfc, 0xfc));
-        pal.setColor(QPalette::Text, QColor(0xfc, 0xfc, 0xfc));
-        pal.setColor(QPalette::Button, QColor(0x29, 0x2c, 0x30));
-        pal.setColor(QPalette::ButtonText, QColor(0xfc, 0xfc, 0xfc));
-        pal.setColor(QPalette::BrightText, QColor(0xff, 0xff, 0xff));
-        pal.setColor(QPalette::Highlight, QColor(0x3d, 0xae, 0xe9));
-        pal.setColor(QPalette::HighlightedText, QColor(0xff, 0xff, 0xff));
-    }
-    QApplication::setPalette(pal);
-#else
     KColorSchemeManager* mgr = KColorSchemeManager::instance();
     if (!mgr) {
         return;
@@ -1575,6 +1657,25 @@ inline int duckydeck_run_app(bool start_minimized) {
         qputenv("QT_SCALE_FACTOR", "1");
         qputenv("QT_AUTO_SCREEN_SCALE_FACTOR", "0");
     }
+    const bool isUiTestSuite = qEnvironmentVariable("DUCKYDECK_UI_TEST_SUITE") == QStringLiteral("1");
+    if (isUiTestSuite) {
+        qputenv("DUCKYDECK_UI_TEST_SUITE", "1");
+        const QString reportPath = qEnvironmentVariable("DUCKYDECK_UI_TEST_REPORT");
+        if (!reportPath.isEmpty()) {
+            qputenv("DUCKYDECK_UI_TEST_REPORT", reportPath.toUtf8());
+        }
+        if (qEnvironmentVariable("QT_QPA_PLATFORM").isEmpty()) {
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+        }
+#if defined(_WIN32)
+        if (qEnvironmentVariable("QT_QPA_FONTDIR").isEmpty()) {
+            qputenv("QT_QPA_FONTDIR", "C:\\Windows\\Fonts");
+        }
+#endif
+        qputenv("QT_SCALE_FACTOR", "1");
+        qputenv("QT_AUTO_SCREEN_SCALE_FACTOR", "0");
+        qputenv("QT_SCREEN_SCALE_FACTORS", "1");
+    }
     if (start_minimized) {
         qputenv("DUCKYDECK_START_MINIMIZED", "1");
     }
@@ -1604,8 +1705,6 @@ inline int duckydeck_run_app(bool start_minimized) {
         QStringLiteral(":/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-dark.svg")
     );
     QGuiApplication::setWindowIcon(initialIcon);
-
-    const bool isUiTestSuite = qEnvironmentVariable("DUCKYDECK_UI_TEST_SUITE") == QStringLiteral("1");
 
 #if !defined(_WIN32)
     // Single-instance check: offer to close previous running instance and start new one
@@ -1681,6 +1780,9 @@ inline int duckydeck_run_app(bool start_minimized) {
     if (engine.rootObjects().isEmpty()) {
         return 1;
     }
+#if defined(_WIN32)
+    duckydeck_apply_app_theme(duckydeck::load_saved_app_theme_mode());
+#endif
 
     QWindow* win = qobject_cast<QWindow*>(engine.rootObjects().first());
     if (win) {

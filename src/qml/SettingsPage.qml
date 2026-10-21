@@ -2969,9 +2969,9 @@ Window {
 
     readonly property bool closableWithEscape: true
     title: qsTr("Settings — DuckyDeck Studio")
-    readonly property int availScreenHeight: (root.screen && root.screen.desktopAvailableHeight > 0)
+    readonly property int availScreenHeight: (root.screen && root.screen.desktopAvailableHeight >= 600)
         ? root.screen.desktopAvailableHeight
-        : (Screen.desktopAvailableHeight > 0 ? Screen.desktopAvailableHeight : 960)
+        : (Screen.desktopAvailableHeight >= 600 ? Screen.desktopAvailableHeight : 960)
     readonly property int targetFullHeight: Math.max(720, settingsContentCol.implicitHeight + 132)
     width: 780
     height: Math.min(availScreenHeight - 48, targetFullHeight)
@@ -3124,7 +3124,7 @@ Window {
                         QQC2.Label {
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
-                            font.pointSize: 9.5 * root.fontScale
+                            font.pointSize: 10 * root.fontScale
                             color: Kirigami.Theme.textColor
                             text: qsTr("Maximum time allowed between clicks when detecting 2× Double Click or 3× Triple Click actions on duckyPad keys. Changing this updates all existing multi-click keys across your profiles.")
                         }
@@ -3184,12 +3184,12 @@ Window {
 
                             QQC2.Label {
                                 text: qsTr("Presets:")
-                                font.pointSize: 9.5 * root.fontScale
+                                font.pointSize: 10 * root.fontScale
                                 color: Kirigami.Theme.disabledTextColor
                             }
 
                             QQC2.Button {
-                                font.pointSize: 9.5 * root.fontScale
+                                font.pointSize: 10 * root.fontScale
                                 text: qsTr("⚡ Fast (180 ms)")
                                 highlighted: deviceController && deviceController.multiClickIntervalMs === 180
                                 onClicked: {
@@ -3201,7 +3201,7 @@ Window {
                             }
 
                             QQC2.Button {
-                                font.pointSize: 9.5 * root.fontScale
+                                font.pointSize: 10 * root.fontScale
                                 text: qsTr("✓ Default (250 ms)")
                                 highlighted: deviceController && deviceController.multiClickIntervalMs === 250
                                 onClicked: {
@@ -3213,7 +3213,7 @@ Window {
                             }
 
                             QQC2.Button {
-                                font.pointSize: 9.5 * root.fontScale
+                                font.pointSize: 10 * root.fontScale
                                 text: qsTr("Relaxed (350 ms)")
                                 highlighted: deviceController && deviceController.multiClickIntervalMs === 350
                                 onClicked: {
@@ -3225,7 +3225,7 @@ Window {
                             }
 
                             QQC2.Button {
-                                font.pointSize: 9.5 * root.fontScale
+                                font.pointSize: 10 * root.fontScale
                                 text: qsTr("Slow (500 ms)")
                                 highlighted: deviceController && deviceController.multiClickIntervalMs === 500
                                 onClicked: {
