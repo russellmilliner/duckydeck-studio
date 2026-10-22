@@ -37,7 +37,7 @@ flatpak build \
   "$WORK_DIR/build-dir" \
   sh -c "
     set -euo pipefail
-    rm -rf \"\$CARGO_TARGET_DIR\"/release/build/duckydeck-studio-* \"\$CARGO_TARGET_DIR\"/release/.fingerprint/duckydeck-studio-*
+    rm -rf \"\$CARGO_TARGET_DIR\"/release/build/duckydeck-studio-* \"\$CARGO_TARGET_DIR\"/release/.fingerprint/duckydeck-studio-* \"\$CARGO_TARGET_DIR\"/release/build/cxx-qt-* \"\$CARGO_TARGET_DIR\"/release/.fingerprint/cxx-qt-*
     cargo build --release --manifest-path '$REPO_ROOT/Cargo.toml'
     install -Dm755 \"\$CARGO_TARGET_DIR/release/duckydeck-studio\" -t /app/bin/
     install -Dm644 '$REPO_ROOT/data/io.github.duckydeck.Studio.desktop' -t /app/share/applications/
@@ -51,7 +51,10 @@ flatpak build \
     install -Dm644 '$REPO_ROOT/docs/oled-icons.html' -t /app/share/duckydeck-studio/docs/
     install -Dm644 '$REPO_ROOT/docs/rest-api.html' -t /app/share/duckydeck-studio/docs/
     install -Dm644 '$REPO_ROOT/docs/architecture.html' -t /app/share/duckydeck-studio/docs/
-    install -Dm644 '$REPO_ROOT/firmware/releases/DDS_FW_1.1.1_eed0141e.bin' -t /app/share/duckydeck-studio/firmware/
+    install -Dm644 '$REPO_ROOT/firmware/releases/DDS_FW_1.1.2_0f85dab1.bin' -t /app/share/duckydeck-studio/firmware/
+    install -Dm644 '$REPO_ROOT/firmware/releases/DDS_FW_1.1.2_0f85dab1.bin' -t /app/share/duckydeck-studio/firmware/releases/
+    install -Dm644 '$REPO_ROOT/firmware/releases/DDS20_FW_1.1.2_3bd4beef.dfu' -t /app/share/duckydeck-studio/firmware/
+    install -Dm644 '$REPO_ROOT/firmware/releases/DDS20_FW_1.1.2_3bd4beef.dfu' -t /app/share/duckydeck-studio/firmware/releases/
     install -Dm644 '$REPO_ROOT/firmware/releases/DDS_FW_1.1.1_eed0141e.bin' -t /app/share/duckydeck-studio/firmware/releases/
     install -Dm644 '$REPO_ROOT/firmware/releases/DDS_FW_1.1.0_b3291568.bin' -t /app/share/duckydeck-studio/firmware/releases/
     install -Dm644 '$REPO_ROOT/firmware/releases/DDS_FW_1.0.1_bf177326.bin' -t /app/share/duckydeck-studio/firmware/releases/

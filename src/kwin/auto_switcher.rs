@@ -470,9 +470,6 @@ pub fn load_rules_bundle_from_dir(
     let path = dir.join(SD_RULES_FILENAME);
     let raw = fs::read_to_string(&path).ok()?;
     let bundle: SdPersistedRulesBundle = serde_json::from_str(&raw).ok()?;
-    if bundle.rules.is_empty() {
-        return None;
-    }
     let max_prof = profiles.len().max(1) as u8;
     let resolved_fb = if !bundle.default_profile_name.trim().is_empty() {
         profiles
@@ -510,6 +507,88 @@ pub fn load_rules_bundle_from_dir(
         });
     }
     Some((bundle.enabled, Some(resolved_fb), rules))
+}
+
+pub fn save_device_rules_for_serial(
+    serial: &str,
+    enabled: bool,
+    default_profile: Option<u8>,
+    rules: &[AutoSwitchRule],
+    profiles: &[DuckyProfile],
+    sd_root: Option<&Path>,
+) {
+    let clean = crate::hardware::storage::normalize_duckypad_serial(serial);
+    if !clean.is_empty() {
+        let dev_dir = crate::hardware::profile::profile_cache_dir_for_serial(&clean);
+        let _ = save_rules_bundle_to_dir(&dev_dir, enabled, default_profile, rules, profiles);
+    }
+    if let Some(sd) = sd_root {
+        if sd.is_dir() {
+            let _ = save_rules_bundle_to_dir(sd, enabled, default_profile, rules, profiles);
+        }
+    }
+}
+
+pub fn load_device_rules_for_serial(
+    serial: &str,
+    profiles: &[DuckyProfile],
+    sd_root: Option<&Path>,
+) -> (bool, Option<u8>, Vec<AutoSwitchRule>) {
+    let clean = crate::hardware::storage::normalize_duckypad_serial(serial);
+    if !clean.is_empty() {
+        for dev_dir in [
+            crate::hardware::profile::profile_cache_dir_for_serial(&clean),
+            crate::paths::host_data_dir()
+                .join("device_profiles")
+                .join(&clean),
+        ] {
+            if let Some(loaded) = load_rules_bundle_from_dir(&dev_dir, profiles) {
+                return loaded;
+            }
+        }
+    }
+    if let Some(sd) = sd_root {
+        if let Some(loaded) = load_rules_bundle_from_dir(sd, profiles) {
+            if !clean.is_empty() {
+                save_device_rules_for_serial(
+                    &clean,
+                    loaded.0,
+                    loaded.1,
+                    &loaded.2,
+                    profiles,
+                    Some(sd),
+                );
+            }
+            return loaded;
+        }
+    }
+    if clean.is_empty() || !crate::hardware::profile::has_other_cached_devices(&clean) {
+        if let Some(cfg) = SwitcherState::load_config_from_disk() {
+            let fb = Some(cfg.default_profile.unwrap_or(1).max(1));
+            if !clean.is_empty() {
+                save_device_rules_for_serial(
+                    &clean,
+                    cfg.enabled,
+                    fb,
+                    &cfg.rules,
+                    profiles,
+                    sd_root,
+                );
+            }
+            return (cfg.enabled, fb, cfg.rules);
+        }
+        if let Some(loaded) =
+            load_rules_bundle_from_dir(&crate::hardware::profile::profile_cache_dir(), profiles)
+        {
+            return loaded;
+        }
+    }
+    let aligned = build_auto_aligned_rules(profiles);
+    let default_prof = profiles.first().map(|p| p.number).or(Some(1));
+    if !clean.is_empty() {
+        save_device_rules_for_serial(&clean, true, default_prof, &aligned, profiles, sd_root);
+    }
+    (true, default_prof, aligned)
 }
 
 pub fn sync_host_companion_configs_if_needed() {
@@ -2217,46 +2296,274 @@ impl SwitcherState {
     }
 
     pub fn match_profile_for_window(&self, resource_class: &str, caption: &str) -> Option<u8> {
-        let lower_class = resource_class.trim().to_lowercase();
-        if lower_class.is_empty() || lower_class == "none" {
-            return self.default_profile;
+        match_profile_with_rules(&self.rules, self.default_profile, resource_class, caption)
+    }
+}
+
+pub fn match_profile_with_rules(
+    rules: &[AutoSwitchRule],
+    default_profile: Option<u8>,
+    resource_class: &str,
+    caption: &str,
+) -> Option<u8> {
+    let lower_class = resource_class.trim().to_lowercase();
+    if lower_class.is_empty() || lower_class == "none" {
+        return default_profile;
+    }
+    let resolved_caption = resolve_full_browser_caption(resource_class, caption);
+    let caption_lower = resolved_caption.to_lowercase();
+
+    let mut best_match: Option<(usize, u8)> = None;
+
+    for rule in rules {
+        if !rule.enabled {
+            continue;
         }
-        let resolved_caption = resolve_full_browser_caption(resource_class, caption);
-        let caption_lower = resolved_caption.to_lowercase();
+        if !rule_matches_window_class(&rule.resource_class, &lower_class) {
+            continue;
+        }
 
-        let mut best_match: Option<(usize, u8)> = None;
+        let title_specificity = match rule.title_contains.as_ref().map(|s| s.trim()) {
+            Some(sub) if !sub.is_empty() => match rule_matches_window_title(
+                sub,
+                rule.title_is_regex,
+                &resolved_caption,
+                &caption_lower,
+            ) {
+                Some(spec) => spec,
+                None => continue,
+            },
+            _ => 0,
+        };
 
-        for rule in &self.rules {
-            if !rule.enabled {
+        if best_match.is_none_or(|(best_len, _)| title_specificity > best_len) {
+            best_match = Some((title_specificity, rule.target_profile));
+        }
+    }
+
+    if let Some((_, target)) = best_match {
+        return Some(target);
+    }
+
+    default_profile
+}
+
+#[derive(Debug, Clone)]
+pub struct SecondaryDeviceRuntime {
+    pub serial: String,
+    pub pid: u16,
+    pub hw_model: u8,
+    pub model_name: String,
+    pub firmware_version: String,
+    pub disk_label: String,
+    pub usb_connected: bool,
+    pub active_profile: u8,
+    pub profiles: Vec<DuckyProfile>,
+    pub rules_enabled: bool,
+    pub default_profile: Option<u8>,
+    pub rules: Vec<AutoSwitchRule>,
+}
+
+static SECONDARY_DEVICES_STATE: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, SecondaryDeviceRuntime>>,
+> = std::sync::OnceLock::new();
+
+pub fn get_secondary_devices_snapshot() -> Vec<SecondaryDeviceRuntime> {
+    let mutex = SECONDARY_DEVICES_STATE
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let Ok(guard) = mutex.lock() else {
+        return Vec::new();
+    };
+    let mut list: Vec<SecondaryDeviceRuntime> = guard.values().cloned().collect();
+    list.sort_by(|a, b| a.serial.cmp(&b.serial));
+    list
+}
+
+pub fn update_secondary_device_runtime(runtime: SecondaryDeviceRuntime) {
+    let clean = crate::hardware::storage::normalize_duckypad_serial(&runtime.serial);
+    if clean.is_empty() {
+        return;
+    }
+    let mutex = SECONDARY_DEVICES_STATE
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    if let Ok(mut guard) = mutex.lock() {
+        guard.insert(clean, runtime);
+    }
+}
+
+pub fn update_secondary_device_active_profile(serial: &str, active_profile: u8) -> bool {
+    let clean = crate::hardware::storage::normalize_duckypad_serial(serial);
+    if clean.is_empty() {
+        return false;
+    }
+    let mutex = SECONDARY_DEVICES_STATE
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    if let Ok(mut guard) = mutex.lock() {
+        if let Some(entry) = guard.get_mut(&clean) {
+            if entry.active_profile != active_profile {
+                entry.active_profile = active_profile;
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub fn set_secondary_device_profile_rotation(serial: &str, degrees: u16) -> bool {
+    let clean = crate::hardware::storage::normalize_duckypad_serial(serial);
+    if clean.is_empty() {
+        return false;
+    }
+    let mutex = SECONDARY_DEVICES_STATE
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    if let Ok(mut guard) = mutex.lock() {
+        if let Some(entry) = guard.get_mut(&clean) {
+            let active_num = entry.active_profile;
+            if let Some(prof) = entry.profiles.iter_mut().find(|p| p.number == active_num) {
+                prof.set_oled_rotation_degrees(degrees as i32);
+                let profiles_clone = entry.profiles.clone();
+                crate::hardware::profile::sync_profiles_to_device_cache(&clean, &profiles_clone);
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub fn sync_secondary_connected_devices(
+    connected: &[crate::hardware::storage::ConnectedDuckyPadInfo],
+    selected_serial: Option<&str>,
+) {
+    let mutex = SECONDARY_DEVICES_STATE
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let Ok(mut guard) = mutex.lock() else {
+        return;
+    };
+    let selected_norm = selected_serial
+        .map(crate::hardware::storage::normalize_duckypad_serial)
+        .filter(|s| !s.is_empty());
+
+    for entry in guard.values_mut() {
+        entry.usb_connected = false;
+    }
+
+    for dev in connected {
+        let sn = crate::hardware::storage::normalize_duckypad_serial(&dev.serial);
+        if sn.is_empty() {
+            continue;
+        }
+        if let Some(ref sel) = selected_norm {
+            if crate::hardware::storage::serial_matches_target(&sn, sel) {
+                if let Some(existing) = guard.get_mut(&sn) {
+                    existing.usb_connected = true;
+                    existing.pid = dev.pid;
+                    existing.hw_model = dev.hw_model;
+                    existing.model_name = dev.model_name().to_string();
+                    existing.firmware_version = dev.fw_version.clone();
+                    existing.disk_label = dev.disk_label.clone();
+                }
                 continue;
             }
-            if !rule_matches_window_class(&rule.resource_class, &lower_class) {
+        }
+
+        if let Some(existing) = guard.get_mut(&sn) {
+            existing.usb_connected = true;
+            existing.pid = dev.pid;
+            existing.hw_model = dev.hw_model;
+            existing.model_name = dev.model_name().to_string();
+            existing.firmware_version = dev.fw_version.clone();
+            existing.disk_label = dev.disk_label.clone();
+            if dev.active_profile > 0 {
+                existing.active_profile = dev.active_profile;
+            }
+            continue;
+        }
+
+        let profiles = crate::hardware::profile::load_profiles_for_connected_device(dev.pid, &sn)
+            .unwrap_or_else(|| {
+                crate::hardware::profile::create_default_profiles_for_device(dev.pid, &sn)
+            });
+        let sd_root = crate::hardware::storage::find_mounted_duckypad_sd_for_device(
+            Some(&sn),
+            if dev.disk_label.is_empty() {
+                None
+            } else {
+                Some(&dev.disk_label)
+            },
+            Some(dev.hw_model),
+        );
+        let (rules_enabled, default_profile, rules) =
+            load_device_rules_for_serial(&sn, &profiles, sd_root.as_deref());
+        let active_prof = if dev.active_profile > 0 {
+            dev.active_profile
+        } else {
+            profiles.first().map(|p| p.number).unwrap_or(1)
+        };
+        guard.insert(
+            sn.clone(),
+            SecondaryDeviceRuntime {
+                serial: sn,
+                pid: dev.pid,
+                hw_model: dev.hw_model,
+                model_name: dev.model_name().to_string(),
+                firmware_version: dev.fw_version.clone(),
+                disk_label: dev.disk_label.clone(),
+                usb_connected: true,
+                active_profile: active_prof,
+                profiles,
+                rules_enabled,
+                default_profile,
+                rules,
+            },
+        );
+    }
+}
+
+pub fn dispatch_window_switch_to_secondary_devices(
+    effective_class: &str,
+    resolved_caption: &str,
+    paused_for_editing: bool,
+) {
+    if paused_for_editing {
+        return;
+    }
+    let selected_norm = crate::hardware::storage::get_selected_duckypad_serial();
+    let targets_to_switch: Vec<(String, u8)> = {
+        let mutex = SECONDARY_DEVICES_STATE
+            .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+        let Ok(guard) = mutex.lock() else {
+            return;
+        };
+        let mut out = Vec::new();
+        for dev in guard.values() {
+            if !dev.usb_connected || !dev.rules_enabled {
                 continue;
             }
-
-            let title_specificity = match rule.title_contains.as_ref().map(|s| s.trim()) {
-                Some(sub) if !sub.is_empty() => match rule_matches_window_title(
-                    sub,
-                    rule.title_is_regex,
-                    &resolved_caption,
-                    &caption_lower,
-                ) {
-                    Some(spec) => spec,
-                    None => continue,
-                },
-                _ => 0,
-            };
-
-            if best_match.is_none_or(|(best_len, _)| title_specificity > best_len) {
-                best_match = Some((title_specificity, rule.target_profile));
+            if let Some(ref sel) = selected_norm {
+                if crate::hardware::storage::serial_matches_target(&dev.serial, sel) {
+                    continue;
+                }
+            }
+            if let Some(target) = match_profile_with_rules(
+                &dev.rules,
+                dev.default_profile,
+                effective_class,
+                resolved_caption,
+            ) {
+                if dev.profiles.iter().any(|p| p.number == target) && dev.active_profile != target {
+                    out.push((dev.serial.clone(), target));
+                }
             }
         }
+        out
+    };
 
-        if let Some((_, target)) = best_match {
-            return Some(target);
+    for (serial, target) in targets_to_switch {
+        if send_hid_switch_profile_checked_for_serial(Some(&serial), target)
+            == HidSwitchOutcome::Switched
+        {
+            update_secondary_device_active_profile(&serial, target);
         }
-
-        self.default_profile
     }
 }
 
@@ -2355,8 +2662,10 @@ impl KWinBridgeService {
             let resolved_caption = resolve_full_browser_caption(&effective_class, &caption);
             let mut matched_profile: Option<u8> = None;
             let mut hid_rejected_not_on_device = false;
+            let mut paused = false;
 
             if let Ok(mut state) = self.state.lock() {
+                paused = state.picker_armed || state.paused_for_editing;
                 if !state.picker_armed && state.enabled && !state.paused_for_editing {
                     matched_profile =
                         state.match_profile_for_window(&effective_class, &resolved_caption);
@@ -2374,6 +2683,12 @@ impl KWinBridgeService {
                     }
                 }
             }
+
+            dispatch_window_switch_to_secondary_devices(
+                &effective_class,
+                &resolved_caption,
+                paused,
+            );
 
             if let Err(e) = self.ui_event_tx.send(WindowChangeEvent {
                 resource_class: effective_class,
@@ -2468,14 +2783,36 @@ pub fn send_hid_switch_profile(profile_number: u8) -> bool {
     send_hid_switch_profile_checked(profile_number) == HidSwitchOutcome::Switched
 }
 
+pub fn send_hid_switch_profile_for_serial(target_serial: Option<&str>, profile_number: u8) -> bool {
+    send_hid_switch_profile_checked_for_serial(target_serial, profile_number)
+        == HidSwitchOutcome::Switched
+}
+
 pub fn send_hid_switch_profile_checked(profile_number: u8) -> HidSwitchOutcome {
+    let selected = crate::hardware::storage::get_selected_duckypad_serial();
+    send_hid_switch_profile_checked_for_serial(selected.as_deref(), profile_number)
+}
+
+pub fn send_hid_switch_profile_checked_for_serial(
+    target_serial: Option<&str>,
+    profile_number: u8,
+) -> HidSwitchOutcome {
     if crate::hardware::storage::MSC_SYNC_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst) {
         return HidSwitchOutcome::DeviceUnavailable;
     }
     let clamped = profile_number.clamp(1, 64);
+    let is_selected_target = match (
+        target_serial
+            .map(crate::hardware::storage::normalize_duckypad_serial)
+            .filter(|s| !s.is_empty()),
+        crate::hardware::storage::get_selected_duckypad_serial(),
+    ) {
+        (Some(req), Some(sel)) => crate::hardware::storage::serial_matches_target(&req, &sel),
+        (None, _) | (_, None) => true,
+    };
 
     let _guard = crate::hardware::storage::HID_IO_LOCK.lock().ok();
-    crate::hardware::storage::with_cached_duckypad_hid(|device| {
+    crate::hardware::storage::with_cached_duckypad_hid_for_serial(target_serial, |device| {
         // Query current hardware profile first so we don't re-flash the OLED if already on `clamped`,
         // while still switching if the user manually changed profiles on the physical device.
         let mut qtx = [0u8; 64];
@@ -2486,9 +2823,11 @@ pub fn send_hid_switch_profile_checked(profile_number: u8) -> HidSwitchOutcome {
             let mut qrx = [0u8; 64];
             if let Ok(n) = crate::hardware::storage::read_hid_report4(device, &mut qrx, 200) {
                 if n >= 12 && qrx[2] == 0 && qrx[6] != 0 && qrx[11] == clamped {
-                    LAST_SW_PROFILE_TARGET.store(clamped, std::sync::atomic::Ordering::SeqCst);
-                    LAST_SW_PROFILE_SWITCH_MS
-                        .store(current_epoch_ms(), std::sync::atomic::Ordering::SeqCst);
+                    if is_selected_target {
+                        LAST_SW_PROFILE_TARGET.store(clamped, std::sync::atomic::Ordering::SeqCst);
+                        LAST_SW_PROFILE_SWITCH_MS
+                            .store(current_epoch_ms(), std::sync::atomic::Ordering::SeqCst);
+                    }
                     return Ok(HidSwitchOutcome::Switched);
                 }
             }
@@ -2515,9 +2854,11 @@ pub fn send_hid_switch_profile_checked(profile_number: u8) -> HidSwitchOutcome {
                         return Ok(HidSwitchOutcome::NotLoadedOnHardware);
                     }
                 }
-                LAST_SW_PROFILE_TARGET.store(clamped, std::sync::atomic::Ordering::SeqCst);
-                LAST_SW_PROFILE_SWITCH_MS
-                    .store(current_epoch_ms(), std::sync::atomic::Ordering::SeqCst);
+                if is_selected_target {
+                    LAST_SW_PROFILE_TARGET.store(clamped, std::sync::atomic::Ordering::SeqCst);
+                    LAST_SW_PROFILE_SWITCH_MS
+                        .store(current_epoch_ms(), std::sync::atomic::Ordering::SeqCst);
+                }
                 return Ok(HidSwitchOutcome::Switched);
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
@@ -3011,8 +3352,10 @@ pub async fn run_kwin_auto_switcher(
                         resolve_full_browser_caption(&effective_class, &raw_caption);
                     let mut matched_profile: Option<u8> = None;
                     let mut hid_rejected_not_on_device = false;
+                    let mut paused = false;
 
                     if let Ok(mut st) = state_bg.lock() {
+                        paused = st.picker_armed || st.paused_for_editing;
                         if !st.picker_armed && st.enabled && !st.paused_for_editing {
                             matched_profile =
                                 st.match_profile_for_window(&effective_class, &resolved_caption);
@@ -3030,6 +3373,12 @@ pub async fn run_kwin_auto_switcher(
                             }
                         }
                     }
+
+                    dispatch_window_switch_to_secondary_devices(
+                        &effective_class,
+                        &resolved_caption,
+                        paused,
+                    );
 
                     if let Err(e) = ui_tx_bg.send(WindowChangeEvent {
                         resource_class: effective_class,

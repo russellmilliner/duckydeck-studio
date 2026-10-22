@@ -1147,7 +1147,7 @@ pub fn create_showcase_instance() -> DeviceControllerRust {
             connected: true,
             udev_rule_missing: false,
             model_name: QString::from("duckyPad Pro"),
-            firmware_version: QString::from("1.1.1 (DuckyDeck Studio)"),
+            firmware_version: QString::from("1.1.2 (DuckyDeck Studio)"),
             serial_number: QString::from("DP24-8F4A1C9E"),
             active_profile: 1,
             active_profile_name: QString::from("Dolphin"),
@@ -1161,7 +1161,7 @@ pub fn create_showcase_instance() -> DeviceControllerRust {
             profiles_json: QString::from(&profiles_json),
             active_profile_slots_json: QString::from(&slots_json),
             status_message: QString::from(
-                "Connected to duckyPad Pro (FW v1.1.1 DuckyDeck Studio) — 8 profile(s) synced & verified",
+                "Connected to duckyPad Pro (FW v1.1.2 DuckyDeck Studio) — 8 profile(s) synced & verified",
             ),
             ai_busy: false,
             generated_script_preview: QString::from(
@@ -1184,13 +1184,13 @@ pub fn create_showcase_instance() -> DeviceControllerRust {
             app_theme_mode: QString::from("dark"),
             close_to_tray: true,
             system_dark_theme: true,
-            latest_firmware_version: QString::from("1.1.1"),
+            latest_firmware_version: QString::from("1.1.2"),
             firmware_update_available: false,
             firmware_check_busy: false,
             firmware_update_url: QString::from(
                 "https://dekuNukem.github.io/duckyPad-Pro/doc/fw_update.html",
             ),
-            firmware_check_summary: QString::from("DuckyDeck Studio Firmware v1.1.1 is up to date"),
+            firmware_check_summary: QString::from("DuckyDeck Studio Firmware v1.1.2 is up to date"),
             profile_sync_state: QString::from("synced"),
             profile_sync_detail: QString::from(
                 "All 8 profiles verified in sync with duckyPad Pro microSD [hash #8f4a1c9e]",
@@ -1244,6 +1244,14 @@ pub fn create_showcase_instance() -> DeviceControllerRust {
             discovered_shortcuts_json: QString::from("[]"),
             auto_switch_error_message: QString::from(""),
             multi_click_interval_ms: 250,
+            available_devices_json: QString::from(
+                "[{\"id\":\"8F4A1C9E\",\"serialNumber\":\"8F4A1C9E\",\"hwModel\":24,\"pid\":53533,\"modelName\":\"duckyPad Pro\",\"firmwareVersion\":\"1.1.2\",\"diskLabel\":\"DP24_1C9E\",\"usbConnected\":true,\"activeProfile\":1,\"isBusy\":false,\"sdMounted\":true,\"sdMountPath\":\"/run/media/ducky/DP24_1C9E\",\"cachedProfileCount\":8,\"isSelected\":true},{\"id\":\"A042B910\",\"serialNumber\":\"A042B910\",\"hwModel\":20,\"pid\":53532,\"modelName\":\"duckyPad (2020)\",\"firmwareVersion\":\"1.1.2\",\"diskLabel\":\"DP20_B910\",\"usbConnected\":true,\"activeProfile\":1,\"isBusy\":false,\"sdMounted\":false,\"sdMountPath\":\"\",\"cachedProfileCount\":4,\"isSelected\":false}]",
+            ),
+            multi_device_oled_states_json: QString::from("{}"),
+            connected_device_count: 2,
+            active_hw_model: 24,
+            is_duckypad_2020: false,
+            onboard_key_count: 20,
             copied_key_slot: None,
             firmware_download_url: String::new(),
             sd_root_path: None,

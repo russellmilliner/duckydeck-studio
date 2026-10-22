@@ -134,6 +134,12 @@ pub mod qobject {
         #[qproperty(QString, discovered_shortcuts_json)]
         #[qproperty(QString, auto_switch_error_message)]
         #[qproperty(i32, multi_click_interval_ms)]
+        #[qproperty(QString, available_devices_json)]
+        #[qproperty(QString, multi_device_oled_states_json)]
+        #[qproperty(i32, connected_device_count)]
+        #[qproperty(i32, active_hw_model)]
+        #[qproperty(bool, is_duckypad_2020)]
+        #[qproperty(i32, onboard_key_count)]
         type DeviceController = super::DeviceControllerRust;
 
         #[qinvokable]
@@ -926,6 +932,34 @@ pub mod qobject {
             double_script: QString,
             triple_script: QString,
         ) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "scanAvailableDevices"]
+        fn scan_available_devices(self: Pin<&mut DeviceController>) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "selectManagedDevice"]
+        fn select_managed_device(self: Pin<&mut DeviceController>, device_id: QString) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "setSimulatedDeviceModel"]
+        fn set_simulated_device_model(self: Pin<&mut DeviceController>, hw_model: i32) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "switchProfileForDevice"]
+        fn switch_profile_for_device(
+            self: Pin<&mut DeviceController>,
+            device_id: QString,
+            profile_number: i32,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "setDeviceProfileWidgetRotation"]
+        fn set_device_profile_widget_rotation(
+            self: Pin<&mut DeviceController>,
+            device_id: QString,
+            degrees: i32,
+        ) -> bool;
     }
 
     impl cxx_qt::Threading for DeviceController {}
@@ -952,22 +986,28 @@ use crate::hardware::storage::{
     execute_profile_webhook_request, execute_web_api_request, extract_app_launch_config,
     extract_web_api_config, fetch_and_search_home_assistant_entities,
     fetch_official_firmwares_from_site, find_duckypad_msc_block_device, find_mounted_duckypad_sd,
-    flash_slot_led_feedback, get_sd_card_space_info, instantiate_profile_from_template,
-    list_available_duckypad_pro_firmwares, load_all_sd_profiles, load_home_assistant_config,
+    find_mounted_duckypad_sd_for_device, flash_slot_led_feedback, format_disk_label_for_device,
+    get_sd_card_space_info, get_selected_duckypad_serial, inspect_duckypad_sd_root,
+    install_duckypad_2020_firmware_dfu_with_progress, instantiate_profile_from_template,
+    list_available_duckypad_2020_firmwares, list_available_duckypad_pro_firmwares,
+    list_manageable_duckypad_targets, load_all_sd_profiles, load_home_assistant_config,
     load_profiles_for_connected_device, load_sd_synced_snapshot, load_web_api_destinations,
-    mark_profiles_sd_synced, merge_host_only_profile_settings, mount_duckypad_sd_only,
-    oled_label_to_hardware_ascii, poll_and_clear_pgv31_trigger, poll_hardware_active_profile,
+    mark_profiles_sd_synced, merge_host_only_profile_settings, model_name_for_hw_model,
+    mount_duckypad_sd_only, normalize_duckypad_serial, oled_label_to_hardware_ascii,
+    onboard_key_count_for_model, poll_and_clear_pgv31_trigger, poll_hardware_active_profile,
     profile_cache_dir_for_serial, query_connected_duckypad_info, read_dpp_config,
     read_duckypad_pro_profiles_via_msc, read_duckypad_pro_profiles_via_msc_with_progress,
     reboot_duckypad, run_storage_cmd, save_home_assistant_config, save_profile_as_user_template,
     save_profile_order_to_sd, scan_installed_desktop_apps, seed_web_api_destinations_from_profiles,
-    set_single_key_led_hid, stage_duckypad_pro_firmware_via_msc_with_progress,
-    sync_profile_web_api_triggers, sync_profiles_to_cache, sync_profiles_to_device_cache,
+    set_selected_duckypad_serial, set_single_key_led_hid,
+    stage_duckypad_pro_firmware_via_msc_with_progress, sync_profile_web_api_triggers,
+    sync_profiles_to_cache, sync_profiles_to_device_cache, sync_profiles_to_device_cache_with_meta,
     unmount_mounted_duckypad_sd, upsert_web_api_destination,
-    write_duckypad_pro_profiles_via_msc_with_progress, write_profiles_to_sd_root, AppLaunchConfig,
-    DuckyKeySlot, DuckyProfile, DuckypadEvdevListener, GlobalMacroEvdevRecorder,
-    ProfileWebhookConfig, WebApiConfig, DUCKYPAD_VID, HID_CMD_SET_LED_SINGLE, HID_REPORT_ID_OUT,
-    MAX_INPUT_SLOTS, PID_DUCKYPAD_2020, PID_DUCKYPAD_PRO,
+    write_duckypad_pro_profiles_via_msc_with_progress, write_profiles_to_sd_root_for_model,
+    AppLaunchConfig, DuckyKeySlot, DuckyProfile, DuckySdDeviceMeta, DuckypadEvdevListener,
+    GlobalMacroEvdevRecorder, ProfileWebhookConfig, WebApiConfig, DP_MODEL_DUCKYPAD_PRO,
+    DP_MODEL_OG_DUCKYPAD, DUCKYPAD_VID, HID_CMD_SET_LED_SINGLE, HID_REPORT_ID_OUT, MAX_INPUT_SLOTS,
+    PID_DUCKYPAD_2020, PID_DUCKYPAD_PRO,
 };
 use crate::kwin::auto_switcher::{
     discover_dekunukem_autoswitcher_configs, is_kde_autostart_enabled, is_web_browser_class,
@@ -1108,6 +1148,12 @@ pub struct DeviceControllerRust {
     pub(crate) discovered_shortcuts_json: QString,
     pub(crate) auto_switch_error_message: QString,
     pub(crate) multi_click_interval_ms: i32,
+    pub(crate) available_devices_json: QString,
+    pub(crate) multi_device_oled_states_json: QString,
+    pub(crate) connected_device_count: i32,
+    pub(crate) active_hw_model: i32,
+    pub(crate) is_duckypad_2020: bool,
+    pub(crate) onboard_key_count: i32,
     pub(crate) copied_key_slot: Option<DuckyKeySlot>,
     pub(crate) firmware_download_url: String,
     pub(crate) sd_root_path: Option<PathBuf>,
@@ -1125,8 +1171,29 @@ impl Default for DeviceControllerRust {
             return Self::create_showcase_instance();
         }
 
-        let mounted_sd = find_mounted_duckypad_sd();
         let connected_info = query_connected_duckypad_info().ok();
+        if let Some(ref info) = connected_info {
+            if !info.serial.is_empty() && info.serial != "-" {
+                set_selected_duckypad_serial(Some(&info.serial));
+            }
+        }
+        let mounted_sd = if let Some(ref info) = connected_info {
+            find_mounted_duckypad_sd_for_device(
+                if info.serial.is_empty() || info.serial == "-" {
+                    None
+                } else {
+                    Some(&info.serial)
+                },
+                if info.disk_label.is_empty() {
+                    None
+                } else {
+                    Some(&info.disk_label)
+                },
+                Some(info.hw_model),
+            )
+        } else {
+            find_mounted_duckypad_sd()
+        };
 
         let mut sd_root_path: Option<PathBuf> = None;
         let mut profiles: Vec<DuckyProfile> = Vec::new();
@@ -1140,7 +1207,14 @@ impl Default for DeviceControllerRust {
                         {
                             merge_host_only_profile_settings(&mut loaded, &cached);
                         }
-                        sync_profiles_to_device_cache(&info.serial, &loaded);
+                        let meta = DuckySdDeviceMeta {
+                            serial_number: info.serial.clone(),
+                            hw_model: info.hw_model,
+                            model_name: model_name_for_hw_model(info.hw_model).to_string(),
+                            firmware_version: info.fw_version.clone(),
+                            disk_label: info.disk_label.clone(),
+                        };
+                        sync_profiles_to_device_cache_with_meta(&info.serial, &loaded, Some(&meta));
                         mark_profiles_sd_synced(&info.serial, &loaded);
                     } else {
                         sync_profiles_to_cache(&loaded);
@@ -1156,7 +1230,7 @@ impl Default for DeviceControllerRust {
             if let Some(ref info) = connected_info {
                 if let Some(loaded) = load_profiles_for_connected_device(info.pid, &info.serial) {
                     profiles = loaded;
-                } else if info.pid == PID_DUCKYPAD_PRO && !info.disk_label.is_empty() {
+                } else if !info.disk_label.is_empty() {
                     if let Ok(loaded) = read_duckypad_pro_profiles_via_msc(
                         &info.disk_label,
                         &info.serial,
@@ -1189,13 +1263,9 @@ impl Default for DeviceControllerRust {
             switcher.align_rules_with_profiles(&profiles);
         }
 
-        let (connected, model_str, fw_str, sn_str, active_prof, status_str) =
+        let (connected, model_str, fw_str, sn_str, active_prof, status_str, init_hw_model) =
             if let Some(ref info) = connected_info {
-                let model = if info.pid == PID_DUCKYPAD_PRO {
-                    "duckyPad Pro"
-                } else {
-                    "duckyPad (2020)"
-                };
+                let model = model_name_for_hw_model(info.hw_model);
                 let prof = (info.active_profile as i32).clamp(1, 64);
                 switcher.last_switched_profile = prof as u8;
                 let count = profiles.len();
@@ -1209,18 +1279,29 @@ impl Default for DeviceControllerRust {
                         "Connected to {model} (FW v{}) — {count} profile(s) loaded",
                         info.fw_version
                     ),
+                    info.hw_model,
                 )
             } else if let Some(ref sd_dir) = sd_root_path {
                 let dpp_cfg = read_dpp_config(sd_dir).unwrap_or_default();
+                let sd_info = inspect_duckypad_sd_root(sd_dir);
+                let hw_m = sd_info
+                    .as_ref()
+                    .map(|s| s.hw_model)
+                    .or(dpp_cfg.hw_model)
+                    .unwrap_or(DP_MODEL_DUCKYPAD_PRO);
                 let fw = dpp_cfg.fw_ver.unwrap_or_else(|| "-".to_string());
-                let sn = dpp_cfg.serial_number.unwrap_or_else(|| "-".to_string());
+                let sn = dpp_cfg
+                    .serial_number
+                    .or_else(|| sd_info.as_ref().and_then(|s| s.serial_number.clone()))
+                    .unwrap_or_else(|| "-".to_string());
                 if sn != "-" {
+                    set_selected_duckypad_serial(Some(&sn));
                     mark_profiles_sd_synced(&sn, &profiles);
                 }
-                let model = if fw != "-" {
-                    "duckyPad Pro (SD Mode)"
+                let model = if hw_m == DP_MODEL_OG_DUCKYPAD {
+                    "duckyPad (2020) (SD Mode)"
                 } else {
-                    "duckyPad (SD Mode)"
+                    "duckyPad Pro (SD Mode)"
                 };
                 let prof = dpp_cfg.last_profile.unwrap_or(1).max(1) as i32;
                 (
@@ -1234,6 +1315,7 @@ impl Default for DeviceControllerRust {
                         profiles.len(),
                         sd_dir.display()
                     ),
+                    hw_m,
                 )
             } else {
                 (
@@ -1244,8 +1326,38 @@ impl Default for DeviceControllerRust {
                     1,
                     "Click Scan USB HID or Load SD Card to configure duckyPad Pro / 2020"
                         .to_string(),
+                    DP_MODEL_DUCKYPAD_PRO,
                 )
             };
+
+        if !sn_str.is_empty() && sn_str != "-" {
+            let (dev_en, dev_fb, dev_rules) =
+                crate::kwin::auto_switcher::load_device_rules_for_serial(
+                    &sn_str,
+                    &profiles,
+                    sd_root_path.as_deref(),
+                );
+            switcher.enabled = dev_en;
+            if let Some(fb) = dev_fb {
+                switcher.default_profile = Some(fb);
+            }
+            if !dev_rules.is_empty() || crate::hardware::profile::has_other_cached_devices(&sn_str)
+            {
+                switcher.rules = dev_rules;
+                switcher.loaded_from_disk = true;
+            }
+        }
+        crate::kwin::auto_switcher::sync_secondary_connected_devices(
+            &crate::hardware::storage::list_connected_duckypads(),
+            get_selected_duckypad_serial().as_deref(),
+        );
+
+        let targets = list_manageable_duckypad_targets();
+        let connected_count = targets.iter().filter(|t| t.usb_connected).count() as i32;
+        let available_devices_json =
+            serde_json::to_string(&targets).unwrap_or_else(|_| "[]".to_string());
+        let is_dp20 = init_hw_model == DP_MODEL_OG_DUCKYPAD;
+        let onboard_keys = onboard_key_count_for_model(init_hw_model) as i32;
 
         let auto_enabled = switcher.enabled;
         let max_init_prof = profiles.len().max(1) as u8;
@@ -1445,6 +1557,12 @@ impl Default for DeviceControllerRust {
             discovered_shortcuts_json: QString::from("[]"),
             auto_switch_error_message: QString::from(""),
             multi_click_interval_ms: multi_click_ms,
+            available_devices_json: QString::from(&available_devices_json),
+            multi_device_oled_states_json: QString::from("{}"),
+            connected_device_count: connected_count,
+            active_hw_model: init_hw_model as i32,
+            is_duckypad_2020: is_dp20,
+            onboard_key_count: onboard_keys,
             copied_key_slot: None,
             firmware_download_url: String::new(),
             sd_root_path,
@@ -1925,11 +2043,17 @@ impl qobject::DeviceController {
                 )
             })
             .unwrap_or((0, -1, 0));
+        let is_dp20 = *self.is_duckypad_2020();
+        let onboard_keys = *self.onboard_key_count();
+        let hw_model = *self.active_hw_model();
         let oled_snapshot = json!({
             "connected": connected,
             "modelName": model,
             "firmwareVersion": fw,
             "serialNumber": sn,
+            "hwModel": hw_model,
+            "isDuckyPad2020": is_dp20,
+            "onboardKeyCount": onboard_keys,
             "activeProfile": prof_num,
             "activeProfileName": prof_name,
             "activeProfileBgColor": bg_color_str,
@@ -2120,6 +2244,7 @@ impl qobject::DeviceController {
             self.as_mut()
                 .set_auto_switch_error_message(QString::from(""));
         }
+        self.as_mut().sync_multi_device_oled_states();
         self.as_mut().refresh_color_palettes();
         self.as_mut().sync_tray_state();
     }
@@ -2131,12 +2256,25 @@ impl qobject::DeviceController {
 
         let active_num = (*self.active_profile()).clamp(1, 64) as u8;
         let serial_str = self.serial_number().to_string();
+        let hw_model = (*self.active_hw_model()).clamp(20, 24) as u8;
+        let fw_str = self.firmware_version().to_string();
+        let disk_label_for_dev = format_disk_label_for_device(hw_model, &serial_str);
         let profiles_snapshot = self.rust().profiles.clone();
-        let mounted_sd = self
-            .rust()
-            .sd_root_path
-            .clone()
-            .or_else(find_mounted_duckypad_sd);
+        let mounted_sd = self.rust().sd_root_path.clone().or_else(|| {
+            find_mounted_duckypad_sd_for_device(
+                if serial_str.is_empty() || serial_str == "-" {
+                    None
+                } else {
+                    Some(&serial_str)
+                },
+                if disk_label_for_dev.is_empty() {
+                    None
+                } else {
+                    Some(&disk_label_for_dev)
+                },
+                Some(hw_model),
+            )
+        });
 
         if let Some(sd_root) = mounted_sd {
             self.as_mut().set_sd_sync_busy(true);
@@ -2148,8 +2286,9 @@ impl qobject::DeviceController {
                 "Step 1/2: Writing profile changes & .dsb bytecode to mounted microSD...",
             ));
             self.as_mut().set_sd_sync_log(QString::from(&format!(
-                "• Target mounted microSD: {}\n• Writing {} profile(s) and compiling DSVM bytecode...",
+                "• Target mounted microSD: {} ({})\n• Writing {} profile(s) and compiling DSVM bytecode...",
                 sd_root.display(),
+                model_name_for_hw_model(hw_model),
                 profiles_snapshot.len()
             )));
             self.as_mut().set_status_message(QString::from(
@@ -2158,9 +2297,25 @@ impl qobject::DeviceController {
 
             let qt_thread = self.qt_thread();
             std::thread::spawn(move || {
-                let res = write_profiles_to_sd_root(&sd_root, &profiles_snapshot);
+                let meta = DuckySdDeviceMeta {
+                    serial_number: serial_str.clone(),
+                    hw_model,
+                    model_name: model_name_for_hw_model(hw_model).to_string(),
+                    firmware_version: fw_str.clone(),
+                    disk_label: disk_label_for_dev.clone(),
+                };
+                let res = write_profiles_to_sd_root_for_model(
+                    &sd_root,
+                    &profiles_snapshot,
+                    hw_model,
+                    Some(&meta),
+                );
                 if res.is_ok() {
-                    sync_profiles_to_device_cache(&serial_str, &profiles_snapshot);
+                    sync_profiles_to_device_cache_with_meta(
+                        &serial_str,
+                        &profiles_snapshot,
+                        Some(&meta),
+                    );
                     mark_profiles_sd_synced(&serial_str, &profiles_snapshot);
                 }
                 let sd_display = sd_root.display().to_string();
@@ -2221,11 +2376,12 @@ impl qobject::DeviceController {
         }
 
         if let Ok(info) = query_connected_duckypad_info() {
-            if info.pid == PID_DUCKYPAD_PRO {
+            if info.pid == PID_DUCKYPAD_PRO || info.pid == PID_DUCKYPAD_2020 {
                 let disk_label = info.disk_label.clone();
                 let dev_serial = info.serial.clone();
+                let dev_model_name = model_name_for_hw_model(info.hw_model).to_string();
                 let label_display = if disk_label.is_empty() {
-                    "duckyPad Pro".to_string()
+                    dev_model_name.clone()
                 } else {
                     disk_label.clone()
                 };
@@ -2235,16 +2391,16 @@ impl qobject::DeviceController {
                 self.as_mut()
                     .set_sd_sync_result_state(QString::from("running"));
                 self.as_mut().set_sd_sync_result_summary(QString::from(""));
-                self.as_mut().set_sd_sync_step(QString::from(
-                    "Preparing to sync profiles to duckyPad Pro microSD...",
-                ));
+                self.as_mut().set_sd_sync_step(QString::from(&format!(
+                    "Preparing to sync profiles to {dev_model_name} microSD..."
+                )));
                 self.as_mut().set_sd_sync_log(QString::from(&format!(
-                    "• Connected device: duckyPad Pro ({label_display}, SN {dev_serial})\n• Preparing {} profile(s) for USB Mass Storage sync...",
+                    "• Connected device: {dev_model_name} ({label_display}, SN {dev_serial})\n• Preparing {} profile(s) for hardware sync...",
                     profiles_snapshot.len()
                 )));
-                self.as_mut().set_status_message(QString::from(
-                    "Syncing profiles to duckyPad Pro microSD via USB MSC...",
-                ));
+                self.as_mut().set_status_message(QString::from(&format!(
+                    "Syncing profiles to {dev_model_name}..."
+                )));
 
                 let qt_thread = self.qt_thread();
                 let qt_thread_done = self.qt_thread();
@@ -2281,7 +2437,7 @@ impl qobject::DeviceController {
                                 let short_fp = &summary.validated_fingerprint
                                     [..8.min(summary.validated_fingerprint.len())];
                                 let summary_msg = format!(
-                                    "Validated & Saved! {} profile(s) verified on duckyPad Pro ({label_display}) — {} file(s) updated, {} unchanged file(s) verified, read-back hash #{short_fp} confirmed.",
+                                    "Validated & Saved! {} profile(s) verified on {dev_model_name} ({label_display}) — {} file(s) updated, {} unchanged file(s) verified, read-back hash #{short_fp} confirmed.",
                                     summary.profiles_count,
                                     summary.files_written,
                                     summary.files_verified_unchanged
@@ -2306,7 +2462,7 @@ impl qobject::DeviceController {
                                 let prev = qobject.sd_sync_log().to_string();
                                 let next = format!("{prev}\n✗ Error: {err}");
                                 let err_msg =
-                                    format!("Failed syncing profiles to duckyPad Pro SD: {err}");
+                                    format!("Failed syncing profiles to {dev_model_name}: {err}");
                                 qobject
                                     .as_mut()
                                     .set_sd_sync_result_state(QString::from("error"));
@@ -2330,7 +2486,7 @@ impl qobject::DeviceController {
         }
 
         let msg =
-            "Connect duckyPad Pro via USB or mount the microSD card to sync changes to hardware";
+            "Connect duckyPad Pro / 2020 via USB or mount the microSD card to sync changes to hardware";
         self.as_mut()
             .set_sd_sync_result_state(QString::from("error"));
         self.as_mut()
@@ -2345,12 +2501,25 @@ impl qobject::DeviceController {
             return false;
         }
 
-        if let Some(sd_root) = self
-            .rust()
-            .sd_root_path
-            .clone()
-            .or_else(find_mounted_duckypad_sd)
-        {
+        let cur_serial = self.serial_number().to_string();
+        let cur_hw_model = (*self.active_hw_model()).clamp(20, 24) as u8;
+        let cur_disk_label = format_disk_label_for_device(cur_hw_model, &cur_serial);
+
+        if let Some(sd_root) = self.rust().sd_root_path.clone().or_else(|| {
+            find_mounted_duckypad_sd_for_device(
+                if cur_serial.is_empty() || cur_serial == "-" {
+                    None
+                } else {
+                    Some(&cur_serial)
+                },
+                if cur_disk_label.is_empty() {
+                    None
+                } else {
+                    Some(&cur_disk_label)
+                },
+                Some(cur_hw_model),
+            )
+        }) {
             self.as_mut().set_sd_sync_busy(true);
             self.as_mut().set_sd_sync_progress(40);
             self.as_mut()
@@ -2398,15 +2567,14 @@ impl qobject::DeviceController {
         }
 
         let msc_target = if let Ok(info) = query_connected_duckypad_info() {
-            if info.pid == PID_DUCKYPAD_PRO {
+            if info.pid == PID_DUCKYPAD_PRO || info.pid == PID_DUCKYPAD_2020 {
                 Some((info.disk_label, info.serial, info.active_profile))
             } else {
                 None
             }
-        } else if find_duckypad_msc_block_device("", true).is_some() {
-            let cur_serial = self.serial_number().to_string();
+        } else if find_duckypad_msc_block_device(&cur_disk_label, true).is_some() {
             let cur_prof = (*self.active_profile() as u8).clamp(1, 64);
-            Some((String::new(), cur_serial, cur_prof))
+            Some((cur_disk_label, cur_serial, cur_prof))
         } else {
             None
         };
@@ -2536,7 +2704,7 @@ impl qobject::DeviceController {
             return true;
         }
 
-        let msg = "No mounted duckyPad microSD or connected duckyPad Pro found to reload from";
+        let msg = "No mounted duckyPad microSD or connected duckyPad found to reload from";
         self.as_mut()
             .set_sd_sync_result_state(QString::from("error"));
         self.as_mut()
@@ -2544,6 +2712,472 @@ impl qobject::DeviceController {
         self.as_mut().set_sd_sync_result_summary(QString::from(msg));
         self.as_mut().set_status_message(QString::from(msg));
         false
+    }
+
+    pub(crate) fn update_hardware_model_properties(mut self: Pin<&mut Self>, hw_model: u8) {
+        let normalized = if hw_model == DP_MODEL_OG_DUCKYPAD {
+            DP_MODEL_OG_DUCKYPAD
+        } else {
+            DP_MODEL_DUCKYPAD_PRO
+        };
+        let is_dp20 = normalized == DP_MODEL_OG_DUCKYPAD;
+        let key_count = onboard_key_count_for_model(normalized) as i32;
+        if *self.active_hw_model() != normalized as i32 {
+            self.as_mut().set_active_hw_model(normalized as i32);
+        }
+        if *self.is_duckypad_2020() != is_dp20 {
+            self.as_mut().set_is_duckypad_2020(is_dp20);
+        }
+        if *self.onboard_key_count() != key_count {
+            self.as_mut().set_onboard_key_count(key_count);
+        }
+    }
+
+    pub(crate) fn sync_multi_device_oled_states(mut self: Pin<&mut Self>) {
+        let mut map = serde_json::Map::new();
+        let active_serial = normalize_duckypad_serial(&self.serial_number().to_string());
+        let active_hw = (*self.active_hw_model()).clamp(20, 24) as u8;
+        let active_prof_num = (*self.active_profile()).clamp(1, 64) as u8;
+        let active_connected = *self.connected();
+        let active_model_name = self.model_name().to_string();
+
+        {
+            let rust = self.rust();
+            let prof_opt = rust
+                .profiles
+                .iter()
+                .find(|p| p.number == active_prof_num)
+                .or_else(|| rust.profiles.first());
+            let (prof_name, hw_rot, eff_rot, slots_val) = if let Some(p) = prof_opt {
+                let slots_raw = DeviceControllerRust::serialize_profile_slots(p);
+                let parsed_slots =
+                    serde_json::from_str::<serde_json::Value>(&slots_raw).unwrap_or(json!([]));
+                (
+                    p.name.clone(),
+                    p.oled_rotation_degrees(),
+                    p.effective_widget_rotation_degrees(),
+                    parsed_slots,
+                )
+            } else {
+                ("Default".to_string(), 0, 0, json!([]))
+            };
+            let key_id = if !active_serial.is_empty() {
+                active_serial.clone()
+            } else {
+                "SELECTED".to_string()
+            };
+            map.insert(
+                key_id.clone(),
+                json!({
+                    "id": key_id,
+                    "serialNumber": if active_serial.is_empty() { "-".to_string() } else { active_serial.clone() },
+                    "modelName": active_model_name,
+                    "hwModel": active_hw,
+                    "isDuckyPad2020": active_hw == DP_MODEL_OG_DUCKYPAD,
+                    "onboardKeyCount": onboard_key_count_for_model(active_hw),
+                    "connected": active_connected,
+                    "isSelected": true,
+                    "activeProfile": active_prof_num,
+                    "activeProfileName": prof_name,
+                    "profileCount": rust.profiles.len(),
+                    "oledRotation": hw_rot,
+                    "effectiveWidgetRotation": eff_rot,
+                    "slots": slots_val,
+                }),
+            );
+        }
+
+        for sec in crate::kwin::auto_switcher::get_secondary_devices_snapshot() {
+            let clean_sn = normalize_duckypad_serial(&sec.serial);
+            if clean_sn.is_empty() || map.contains_key(&clean_sn) {
+                continue;
+            }
+            let prof_opt = sec
+                .profiles
+                .iter()
+                .find(|p| p.number == sec.active_profile)
+                .or_else(|| sec.profiles.first());
+            let (prof_num, prof_name, hw_rot, eff_rot, slots_val) = if let Some(p) = prof_opt {
+                let slots_raw = DeviceControllerRust::serialize_profile_slots(p);
+                let parsed_slots =
+                    serde_json::from_str::<serde_json::Value>(&slots_raw).unwrap_or(json!([]));
+                (
+                    p.number,
+                    p.name.clone(),
+                    p.oled_rotation_degrees(),
+                    p.effective_widget_rotation_degrees(),
+                    parsed_slots,
+                )
+            } else {
+                (
+                    sec.active_profile.max(1),
+                    "Default".to_string(),
+                    0,
+                    0,
+                    json!([]),
+                )
+            };
+            map.insert(
+                clean_sn.clone(),
+                json!({
+                    "id": clean_sn,
+                    "serialNumber": sec.serial,
+                    "modelName": sec.model_name,
+                    "hwModel": sec.hw_model,
+                    "isDuckyPad2020": sec.hw_model == DP_MODEL_OG_DUCKYPAD,
+                    "onboardKeyCount": onboard_key_count_for_model(sec.hw_model),
+                    "connected": sec.usb_connected,
+                    "isSelected": false,
+                    "activeProfile": prof_num,
+                    "activeProfileName": prof_name,
+                    "profileCount": sec.profiles.len(),
+                    "oledRotation": hw_rot,
+                    "effectiveWidgetRotation": eff_rot,
+                    "slots": slots_val,
+                }),
+            );
+        }
+
+        let serialized = serde_json::Value::Object(map).to_string();
+        if self.multi_device_oled_states_json().to_string() != serialized {
+            self.as_mut()
+                .set_multi_device_oled_states_json(QString::from(&serialized));
+        }
+    }
+
+    pub fn switch_profile_for_device(
+        mut self: Pin<&mut Self>,
+        device_id: QString,
+        profile_number: i32,
+    ) -> bool {
+        let raw_id = normalize_duckypad_serial(&device_id.to_string());
+        let active_serial = normalize_duckypad_serial(&self.serial_number().to_string());
+        if raw_id.is_empty()
+            || raw_id == "SELECTED"
+            || (!active_serial.is_empty()
+                && crate::hardware::storage::serial_matches_target(&raw_id, &active_serial))
+        {
+            return self.switch_profile(profile_number);
+        }
+
+        let clamped = profile_number.clamp(1, 64) as u8;
+        let _ =
+            crate::kwin::auto_switcher::send_hid_switch_profile_for_serial(Some(&raw_id), clamped);
+        crate::kwin::auto_switcher::update_secondary_device_active_profile(&raw_id, clamped);
+        self.as_mut().sync_multi_device_oled_states();
+        let _ = self.as_mut().refresh_available_devices_state();
+        true
+    }
+
+    pub fn set_device_profile_widget_rotation(
+        mut self: Pin<&mut Self>,
+        device_id: QString,
+        degrees: i32,
+    ) -> bool {
+        let raw_id = normalize_duckypad_serial(&device_id.to_string());
+        let active_serial = normalize_duckypad_serial(&self.serial_number().to_string());
+        if raw_id.is_empty()
+            || raw_id == "SELECTED"
+            || (!active_serial.is_empty()
+                && crate::hardware::storage::serial_matches_target(&raw_id, &active_serial))
+        {
+            return self.set_active_profile_widget_rotation(degrees);
+        }
+
+        let norm_deg = match degrees {
+            90 => 90u16,
+            180 => 180u16,
+            270 => 270u16,
+            _ => 0u16,
+        };
+        let ok =
+            crate::kwin::auto_switcher::set_secondary_device_profile_rotation(&raw_id, norm_deg);
+        self.as_mut().sync_multi_device_oled_states();
+        ok
+    }
+
+    pub(crate) fn refresh_available_devices_state(mut self: Pin<&mut Self>) -> String {
+        if is_demo_showcase_env() {
+            self.as_mut().sync_multi_device_oled_states();
+            return self.available_devices_json().to_string();
+        }
+        let targets = list_manageable_duckypad_targets();
+        let connected_count = targets.iter().filter(|t| t.usb_connected).count() as i32;
+        let json_str = serde_json::to_string(&targets).unwrap_or_else(|_| "[]".to_string());
+        if *self.connected_device_count() != connected_count {
+            self.as_mut().set_connected_device_count(connected_count);
+        }
+        if self.available_devices_json().to_string() != json_str {
+            self.as_mut()
+                .set_available_devices_json(QString::from(&json_str));
+        }
+        self.as_mut().sync_multi_device_oled_states();
+        json_str
+    }
+
+    pub fn scan_available_devices(mut self: Pin<&mut Self>) -> QString {
+        let json_str = self.as_mut().refresh_available_devices_state();
+        QString::from(&json_str)
+    }
+
+    pub fn set_simulated_device_model(mut self: Pin<&mut Self>, hw_model: i32) -> bool {
+        let target_model = if hw_model == DP_MODEL_OG_DUCKYPAD as i32 {
+            DP_MODEL_OG_DUCKYPAD
+        } else {
+            DP_MODEL_DUCKYPAD_PRO
+        };
+        self.as_mut().update_hardware_model_properties(target_model);
+        let model_label = model_name_for_hw_model(target_model);
+        if !*self.connected() {
+            if !self.sd_mount_path().is_empty() {
+                self.as_mut()
+                    .set_model_name(QString::from(&format!("{model_label} (SD Mode)")));
+            } else {
+                self.as_mut().set_model_name(QString::from(model_label));
+            }
+        } else {
+            self.as_mut().set_model_name(QString::from(model_label));
+        }
+        let msg = format!(
+            "Switched hardware layout to {} ({} mechanical keys{})",
+            model_label,
+            onboard_key_count_for_model(target_model),
+            if target_model == DP_MODEL_OG_DUCKYPAD {
+                ", 3×5 grid"
+            } else {
+                " + 2 rotary encoders, 4×5 grid"
+            }
+        );
+        record_system_event("INFO", "HARDWARE", &msg);
+        self.as_mut().sync_event_log_properties();
+        self.as_mut().set_status_message(QString::from(&msg));
+        self.as_mut().sync_active_profile_state();
+        true
+    }
+
+    pub fn select_managed_device(mut self: Pin<&mut Self>, device_id: QString) -> bool {
+        let raw_id = device_id.to_string().trim().to_string();
+        if raw_id.is_empty() {
+            return false;
+        }
+
+        // Save current profiles and auto-switch rules to previous device cache before switching
+        let prev_serial = self.serial_number().to_string();
+        let prev_hw_model = (*self.active_hw_model()).clamp(20, 24) as u8;
+        let prev_fw = self.firmware_version().to_string();
+        let prev_active_prof = (*self.active_profile()).clamp(1, 64) as u8;
+        if !is_demo_showcase_env() && !prev_serial.is_empty() && prev_serial != "-" {
+            let meta = DuckySdDeviceMeta {
+                serial_number: prev_serial.clone(),
+                hw_model: prev_hw_model,
+                model_name: model_name_for_hw_model(prev_hw_model).to_string(),
+                firmware_version: prev_fw.clone(),
+                disk_label: format_disk_label_for_device(prev_hw_model, &prev_serial),
+            };
+            sync_profiles_to_device_cache_with_meta(
+                &prev_serial,
+                &self.rust().profiles,
+                Some(&meta),
+            );
+            if let Ok(sw) = self.rust().switcher_state.lock() {
+                crate::kwin::auto_switcher::save_device_rules_for_serial(
+                    &prev_serial,
+                    sw.enabled,
+                    sw.default_profile,
+                    &sw.rules,
+                    &self.rust().profiles,
+                    self.rust().sd_root_path.as_deref(),
+                );
+                crate::kwin::auto_switcher::update_secondary_device_runtime(
+                    crate::kwin::auto_switcher::SecondaryDeviceRuntime {
+                        serial: prev_serial.clone(),
+                        pid: if prev_hw_model == DP_MODEL_OG_DUCKYPAD {
+                            crate::hardware::storage::PID_DUCKYPAD_2020
+                        } else {
+                            crate::hardware::storage::PID_DUCKYPAD_PRO
+                        },
+                        hw_model: prev_hw_model,
+                        model_name: model_name_for_hw_model(prev_hw_model).to_string(),
+                        firmware_version: prev_fw.clone(),
+                        disk_label: format_disk_label_for_device(prev_hw_model, &prev_serial),
+                        usb_connected: *self.connected(),
+                        active_profile: prev_active_prof,
+                        profiles: self.rust().profiles.clone(),
+                        rules_enabled: sw.enabled,
+                        default_profile: sw.default_profile,
+                        rules: sw.rules.clone(),
+                    },
+                );
+            }
+        }
+        self.as_mut()
+            .set_auto_switch_error_message(QString::from(""));
+
+        if is_demo_showcase_env() {
+            let is_dp20 = raw_id.contains("A042B910") || raw_id.contains("DP20");
+            let new_model = if is_dp20 {
+                DP_MODEL_OG_DUCKYPAD
+            } else {
+                DP_MODEL_DUCKYPAD_PRO
+            };
+            self.as_mut().update_hardware_model_properties(new_model);
+            self.as_mut()
+                .set_model_name(QString::from(model_name_for_hw_model(new_model)));
+            self.as_mut().set_serial_number(QString::from(if is_dp20 {
+                "DP20-A042B910"
+            } else {
+                "DP24-8F4A1C9E"
+            }));
+            self.as_mut()
+                .set_firmware_version(QString::from("1.1.2 (DuckyDeck Studio)"));
+            let updated_demo_targets = serde_json::json!([
+                {
+                    "id": "8F4A1C9E",
+                    "serialNumber": "8F4A1C9E",
+                    "hwModel": 24,
+                    "pid": 53533,
+                    "modelName": "duckyPad Pro",
+                    "firmwareVersion": "1.1.2",
+                    "diskLabel": "DP24_1C9E",
+                    "usbConnected": true,
+                    "activeProfile": 1,
+                    "isBusy": false,
+                    "sdMounted": true,
+                    "sdMountPath": "/run/media/ducky/DP24_1C9E",
+                    "cachedProfileCount": 8,
+                    "isSelected": !is_dp20
+                },
+                {
+                    "id": "A042B910",
+                    "serialNumber": "A042B910",
+                    "hwModel": 20,
+                    "pid": 53532,
+                    "modelName": "duckyPad (2020)",
+                    "firmwareVersion": "1.1.2",
+                    "diskLabel": "DP20_B910",
+                    "usbConnected": true,
+                    "activeProfile": 1,
+                    "isBusy": false,
+                    "sdMounted": false,
+                    "sdMountPath": "",
+                    "cachedProfileCount": 4,
+                    "isSelected": is_dp20
+                }
+            ])
+            .to_string();
+            self.as_mut()
+                .set_available_devices_json(QString::from(&updated_demo_targets));
+            self.as_mut().set_status_message(QString::from(&format!(
+                "Now managing {} ({})",
+                model_name_for_hw_model(new_model),
+                if is_dp20 {
+                    "DP20-A042B910"
+                } else {
+                    "DP24-8F4A1C9E"
+                }
+            )));
+            self.as_mut().sync_active_profile_state();
+            return true;
+        }
+
+        if let Some(sd_path_str) = raw_id.strip_prefix("SD:") {
+            set_selected_duckypad_serial(Some(&raw_id));
+            let ok = self.as_mut().load_sd_directory(QString::from(sd_path_str));
+            let _ = self.as_mut().refresh_available_devices_state();
+            return ok;
+        }
+
+        let targets = list_manageable_duckypad_targets();
+        let matched_target = targets
+            .iter()
+            .find(|t| {
+                t.id.eq_ignore_ascii_case(&raw_id)
+                    || t.serial_number.eq_ignore_ascii_case(&raw_id)
+                    || t.disk_label.eq_ignore_ascii_case(&raw_id)
+            })
+            .cloned();
+
+        let clean_serial = matched_target
+            .as_ref()
+            .map(|t| normalize_duckypad_serial(&t.serial_number))
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| normalize_duckypad_serial(&raw_id));
+
+        if !clean_serial.is_empty() {
+            set_selected_duckypad_serial(Some(&clean_serial));
+        } else {
+            set_selected_duckypad_serial(Some(&raw_id));
+        }
+
+        // Clear previous device's mounted SD root before resolving the newly selected device's SD card
+        self.as_mut().rust_mut().get_mut().sd_root_path = None;
+        self.as_mut().set_sd_mount_path(QString::from(""));
+
+        if let Some(target) = matched_target {
+            self.as_mut()
+                .update_hardware_model_properties(target.hw_model);
+            self.as_mut()
+                .set_serial_number(QString::from(&target.serial_number));
+            self.as_mut()
+                .set_firmware_version(QString::from(&target.firmware_version));
+            self.as_mut().set_connected(target.usb_connected);
+            self.as_mut()
+                .set_model_name(QString::from(&target.model_name));
+
+            if target.sd_mounted && !target.sd_mount_path.is_empty() {
+                let _ = self
+                    .as_mut()
+                    .load_sd_directory(QString::from(&target.sd_mount_path));
+            } else if let Some(loaded) =
+                load_profiles_for_connected_device(target.pid, &target.serial_number)
+            {
+                let (dev_enabled, dev_default, dev_rules) =
+                    crate::kwin::auto_switcher::load_device_rules_for_serial(
+                        &target.serial_number,
+                        &loaded,
+                        None,
+                    );
+                let rust = self.as_mut().rust_mut().get_mut();
+                if let Ok(mut sw) = rust.switcher_state.lock() {
+                    sw.enabled = dev_enabled;
+                    sw.default_profile = dev_default;
+                    sw.rules = dev_rules;
+                    sw.align_rules_with_profiles(&loaded);
+                    sw.last_switched_profile = target.active_profile.clamp(1, 64);
+                }
+                rust.profiles = loaded;
+                self.as_mut().set_auto_switch_enabled(dev_enabled);
+                self.as_mut()
+                    .set_default_fallback_profile(dev_default.unwrap_or(1) as i32);
+            }
+
+            let active_p = (target.active_profile as i32).clamp(1, 64);
+            self.as_mut().set_active_profile(active_p);
+            let _ = self.as_mut().refresh_sd_mount_status();
+            let _ = self.as_mut().refresh_available_devices_state();
+            self.as_mut().sync_active_profile_state();
+
+            let msg = format!(
+                "Now managing {} (SN: {}{}) — {} profile(s) loaded",
+                target.model_name,
+                target.serial_number,
+                if target.sd_mounted {
+                    format!(", SD at {}", target.sd_mount_path)
+                } else if target.usb_connected {
+                    ", USB HID connected".to_string()
+                } else {
+                    ", offline cache".to_string()
+                },
+                self.rust().profiles.len()
+            );
+            record_system_event("INFO", "HARDWARE", &msg);
+            self.as_mut().sync_event_log_properties();
+            self.as_mut().set_status_message(QString::from(&msg));
+            return true;
+        }
+
+        self.as_mut().refresh_device();
+        true
     }
 
     pub fn refresh_device(mut self: Pin<&mut Self>) {
@@ -2557,6 +3191,7 @@ impl qobject::DeviceController {
             self.as_mut().set_udev_rule_missing(true);
             self.as_mut()
                 .set_status_message(QString::from("USB udev permissions required"));
+            let _ = self.as_mut().refresh_available_devices_state();
             self.as_mut().sync_tray_state();
             if !is_ui_test_suite_env() && !self.rust().kwin_listener_started {
                 self.as_mut().start_kwin_listener();
@@ -2572,23 +3207,44 @@ impl qobject::DeviceController {
             }
         }
 
-        // If a duckyPad SD card is mounted, load directly from it
-        if self.rust().sd_root_path.is_none() {
-            if let Some(sd_root) = find_mounted_duckypad_sd() {
-                self.as_mut()
-                    .load_sd_directory(QString::from(sd_root.to_string_lossy().as_ref()));
-            }
-        }
-
         match query_connected_duckypad_info() {
             Ok(info) => {
-                let model = if info.pid == PID_DUCKYPAD_PRO {
-                    "duckyPad Pro"
-                } else {
-                    "duckyPad (2020)"
-                };
+                if !info.serial.is_empty()
+                    && info.serial != "-"
+                    && get_selected_duckypad_serial().is_none()
+                {
+                    set_selected_duckypad_serial(Some(&info.serial));
+                }
+                let model = model_name_for_hw_model(info.hw_model);
+                self.as_mut()
+                    .update_hardware_model_properties(info.hw_model);
                 self.as_mut().set_model_name(QString::from(model));
                 self.as_mut().set_connected(true);
+
+                // Check if the SD card for THIS specific duckyPad is mounted
+                let matching_sd = find_mounted_duckypad_sd_for_device(
+                    if info.serial.is_empty() || info.serial == "-" {
+                        None
+                    } else {
+                        Some(&info.serial)
+                    },
+                    if info.disk_label.is_empty() {
+                        None
+                    } else {
+                        Some(&info.disk_label)
+                    },
+                    Some(info.hw_model),
+                );
+                if let Some(ref sd_root) = matching_sd {
+                    if self.rust().sd_root_path.as_ref() != Some(sd_root) {
+                        self.as_mut()
+                            .load_sd_directory(QString::from(sd_root.to_string_lossy().as_ref()));
+                    }
+                } else if self.rust().sd_root_path.is_some() {
+                    // Previously mounted SD card doesn't belong to this device or was unmounted
+                    self.as_mut().rust_mut().get_mut().sd_root_path = None;
+                    self.as_mut().set_sd_mount_path(QString::from(""));
+                }
 
                 // Load the profile list for this connected duckyPad if not already loaded from a mounted SD card
                 let prev_serial = self.serial_number().to_string();
@@ -2601,7 +3257,7 @@ impl qobject::DeviceController {
                 if need_profile_load {
                     let loaded_opt = load_profiles_for_connected_device(info.pid, &info.serial)
                         .or_else(|| {
-                            if info.pid == PID_DUCKYPAD_PRO && !info.disk_label.is_empty() {
+                            if !info.disk_label.is_empty() {
                                 read_duckypad_pro_profiles_via_msc(
                                     &info.disk_label,
                                     &info.serial,
@@ -2614,11 +3270,24 @@ impl qobject::DeviceController {
                         });
 
                     if let Some(loaded) = loaded_opt {
+                        let sd_root_for_rules = self.rust().sd_root_path.clone();
+                        let (dev_enabled, dev_default, dev_rules) =
+                            crate::kwin::auto_switcher::load_device_rules_for_serial(
+                                &info.serial,
+                                &loaded,
+                                sd_root_for_rules.as_deref(),
+                            );
                         let rust = self.as_mut().rust_mut().get_mut();
                         if let Ok(mut sw) = rust.switcher_state.lock() {
+                            sw.enabled = dev_enabled;
+                            sw.default_profile = dev_default;
+                            sw.rules = dev_rules;
                             sw.align_rules_with_profiles(&loaded);
                         }
                         rust.profiles = loaded;
+                        self.as_mut().set_auto_switch_enabled(dev_enabled);
+                        self.as_mut()
+                            .set_default_fallback_profile(dev_default.unwrap_or(1) as i32);
                     }
                 } else if self.rust().sd_root_path.is_none() {
                     let rust = self.as_mut().rust_mut().get_mut();
@@ -2643,6 +3312,7 @@ impl qobject::DeviceController {
                     self.as_mut().set_serial_number(QString::from(&info.serial));
                 }
                 self.as_mut().set_active_profile(current_prof);
+                let _ = self.as_mut().refresh_available_devices_state();
                 self.as_mut().sync_active_profile_state();
 
                 let count = self.rust().profiles.len();
@@ -2658,6 +3328,12 @@ impl qobject::DeviceController {
             Err(msg) => {
                 self.as_mut().set_connected(false);
                 if self.rust().sd_root_path.is_none() {
+                    if let Some(sd_root) = find_mounted_duckypad_sd() {
+                        self.as_mut()
+                            .load_sd_directory(QString::from(sd_root.to_string_lossy().as_ref()));
+                    }
+                }
+                if self.rust().sd_root_path.is_none() {
                     self.as_mut().set_model_name(QString::from("Disconnected"));
                     self.as_mut().set_firmware_version(QString::from("-"));
                     self.as_mut().set_serial_number(QString::from("-"));
@@ -2666,6 +3342,7 @@ impl qobject::DeviceController {
                     self.as_mut().set_firmware_update_available(false);
                     self.as_mut().set_status_message(QString::from(&msg));
                 }
+                let _ = self.as_mut().refresh_available_devices_state();
                 self.as_mut().sync_active_profile_state();
                 self.as_mut().sync_tray_state();
             }
@@ -3854,15 +4531,28 @@ impl qobject::DeviceController {
                 }
 
                 if !*self.connected() {
+                    let sd_info = inspect_duckypad_sd_root(&sd_root);
+                    let sd_hw_model = sd_info
+                        .as_ref()
+                        .map(|s| s.hw_model)
+                        .or(dpp_cfg.hw_model)
+                        .unwrap_or(DP_MODEL_DUCKYPAD_PRO);
+                    self.as_mut().update_hardware_model_properties(sd_hw_model);
+                    let model_label = if sd_hw_model == DP_MODEL_OG_DUCKYPAD {
+                        "duckyPad (2020) (SD Mode)"
+                    } else {
+                        "duckyPad Pro (SD Mode)"
+                    };
+                    self.as_mut().set_model_name(QString::from(model_label));
                     if let Some(fw) = dpp_cfg.fw_ver.as_deref().filter(|s| !s.is_empty()) {
                         self.as_mut().set_firmware_version(QString::from(fw));
-                        self.as_mut()
-                            .set_model_name(QString::from("duckyPad Pro (SD Mode)"));
-                    } else {
-                        self.as_mut()
-                            .set_model_name(QString::from("duckyPad (SD Mode)"));
                     }
-                    if let Some(sn) = dpp_cfg.serial_number.as_deref().filter(|s| !s.is_empty()) {
+                    if let Some(sn) = dpp_cfg
+                        .serial_number
+                        .as_deref()
+                        .or_else(|| sd_info.as_ref().and_then(|s| s.serial_number.as_deref()))
+                        .filter(|s| !s.is_empty())
+                    {
                         self.as_mut().set_serial_number(QString::from(sn));
                     }
                 }
@@ -3870,6 +4560,7 @@ impl qobject::DeviceController {
                 self.as_mut()
                     .set_sd_mount_path(QString::from(sd_root.to_string_lossy().as_ref()));
                 self.as_mut().set_active_profile(chosen_num);
+                let _ = self.as_mut().refresh_available_devices_state();
                 self.as_mut().sync_active_profile_state();
 
                 let msg = format!("Loaded {count} profile(s) from {}", sd_root.display());
@@ -4217,11 +4908,50 @@ impl qobject::DeviceController {
                         } else {
                             None
                         };
+                        let new_connected_count =
+                            crate::hardware::storage::count_connected_duckypad_hid_nodes() as i32;
+                        let selected_ser = crate::hardware::storage::get_selected_duckypad_serial();
+                        let mut secondary_prof_changed = false;
+                        for sec_dev in crate::kwin::auto_switcher::get_secondary_devices_snapshot()
+                        {
+                            if !sec_dev.usb_connected || sec_dev.serial.is_empty() {
+                                continue;
+                            }
+                            let is_sel = selected_ser
+                                .as_deref()
+                                .map(|s| {
+                                    crate::hardware::storage::serial_matches_target(
+                                        &sec_dev.serial,
+                                        s,
+                                    )
+                                })
+                                .unwrap_or(false);
+                            if !is_sel {
+                                if let Some(sec_prof) =
+                                    crate::hardware::storage::poll_hardware_active_profile_for_serial(
+                                        Some(&sec_dev.serial),
+                                    )
+                                {
+                                    if crate::kwin::auto_switcher::update_secondary_device_active_profile(
+                                        &sec_dev.serial,
+                                        sec_prof,
+                                    ) {
+                                        secondary_prof_changed = true;
+                                    }
+                                }
+                            }
+                        }
                         let _ = hotplug_qt_thread.queue(move |mut qobject| {
                             if crate::hardware::storage::MSC_SYNC_IN_PROGRESS
                                 .load(std::sync::atomic::Ordering::SeqCst)
                             {
                                 return;
+                            }
+
+                            if *qobject.connected_device_count() != new_connected_count {
+                                let _ = qobject.as_mut().refresh_available_devices_state();
+                            } else if secondary_prof_changed {
+                                qobject.as_mut().sync_multi_device_oled_states();
                             }
 
                             let mut sd_unmounted = false;
@@ -4539,6 +5269,11 @@ impl qobject::DeviceController {
                 hid_rejected,
             );
         }
+        crate::kwin::auto_switcher::dispatch_window_switch_to_secondary_devices(
+            &active_class,
+            &active_title,
+            false,
+        );
     }
 
     pub fn set_script_editor_open(mut self: Pin<&mut Self>, open: bool) {
@@ -4549,6 +5284,7 @@ impl qobject::DeviceController {
     }
 
     pub fn set_auto_switch_config(mut self: Pin<&mut Self>, enabled: bool, default_profile: i32) {
+        let cur_serial = self.serial_number().to_string();
         let effective_fb = {
             let rust = self.as_mut().rust_mut().get_mut();
             let max_prof = rust.profiles.len().max(1) as u8;
@@ -4568,6 +5304,14 @@ impl qobject::DeviceController {
                         format!("Failed saving auto-switch config: {e}"),
                     );
                 }
+                crate::kwin::auto_switcher::save_device_rules_for_serial(
+                    &cur_serial,
+                    sw.enabled,
+                    sw.default_profile,
+                    &sw.rules,
+                    &rust.profiles,
+                    rust.sd_root_path.as_deref(),
+                );
             }
             chosen_fb as i32
         };
@@ -4811,6 +5555,7 @@ impl qobject::DeviceController {
             target_profile: target,
         };
 
+        let cur_serial = self.serial_number().to_string();
         {
             let rust = self.as_mut().rust_mut().get_mut();
             if let Ok(mut sw) = rust.switcher_state.lock() {
@@ -4832,6 +5577,14 @@ impl qobject::DeviceController {
                         format!("Failed saving auto-switch rule: {e}"),
                     );
                 }
+                crate::kwin::auto_switcher::save_device_rules_for_serial(
+                    &cur_serial,
+                    sw.enabled,
+                    sw.default_profile,
+                    &sw.rules,
+                    &rust.profiles,
+                    rust.sd_root_path.as_deref(),
+                );
             }
         }
 
@@ -4852,6 +5605,7 @@ impl qobject::DeviceController {
     }
 
     pub fn remove_auto_switch_rule(mut self: Pin<&mut Self>, rule_index: i32) -> bool {
+        let cur_serial = self.serial_number().to_string();
         let mut removed = false;
         {
             let rust = self.as_mut().rust_mut().get_mut();
@@ -4867,6 +5621,14 @@ impl qobject::DeviceController {
                             format!("Failed saving after removing rule: {e}"),
                         );
                     }
+                    crate::kwin::auto_switcher::save_device_rules_for_serial(
+                        &cur_serial,
+                        sw.enabled,
+                        sw.default_profile,
+                        &sw.rules,
+                        &rust.profiles,
+                        rust.sd_root_path.as_deref(),
+                    );
                     removed = true;
                 }
             }
@@ -4886,6 +5648,7 @@ impl qobject::DeviceController {
         rule_index: i32,
         enabled: bool,
     ) -> bool {
+        let cur_serial = self.serial_number().to_string();
         let mut updated = false;
         {
             let rust = self.as_mut().rust_mut().get_mut();
@@ -4901,6 +5664,14 @@ impl qobject::DeviceController {
                             format!("Failed saving after toggling rule: {e}"),
                         );
                     }
+                    crate::kwin::auto_switcher::save_device_rules_for_serial(
+                        &cur_serial,
+                        sw.enabled,
+                        sw.default_profile,
+                        &sw.rules,
+                        &rust.profiles,
+                        rust.sd_root_path.as_deref(),
+                    );
                     updated = true;
                 }
             }
@@ -4921,6 +5692,7 @@ impl qobject::DeviceController {
         if from_index < 0 || to_index < 0 || from_index == to_index {
             return false;
         }
+        let cur_serial = self.serial_number().to_string();
         let from_idx = from_index as usize;
         let to_idx = to_index as usize;
         let mut moved_class = String::new();
@@ -4941,6 +5713,14 @@ impl qobject::DeviceController {
                             format!("Failed saving after reordering rule: {e}"),
                         );
                     }
+                    crate::kwin::auto_switcher::save_device_rules_for_serial(
+                        &cur_serial,
+                        sw.enabled,
+                        sw.default_profile,
+                        &sw.rules,
+                        &rust.profiles,
+                        rust.sd_root_path.as_deref(),
+                    );
                     reordered = true;
                 }
             }
@@ -6756,7 +7536,11 @@ impl qobject::DeviceController {
 
     pub fn list_available_firmwares_json(&self) -> QString {
         let curr = self.firmware_version().to_string();
-        let list = list_available_duckypad_pro_firmwares(&curr);
+        let list = if *self.is_duckypad_2020() {
+            list_available_duckypad_2020_firmwares(&curr)
+        } else {
+            list_available_duckypad_pro_firmwares(&curr)
+        };
         let json_str = serde_json::to_string(&list).unwrap_or_else(|_| "[]".to_string());
         QString::from(&json_str)
     }
@@ -6773,16 +7557,26 @@ impl qobject::DeviceController {
             return false;
         }
 
+        let is_dp20 = *self.is_duckypad_2020() || clean_path.to_ascii_lowercase().ends_with(".dfu");
         let dev_serial = self.serial_number().to_string();
         let disk_label = if dev_serial.len() >= 4 && dev_serial != "-" {
-            format!("DP24_{}", &dev_serial[dev_serial.len() - 4..])
+            format!(
+                "{}_{}",
+                if is_dp20 { "DP20" } else { "DP24" },
+                &dev_serial[dev_serial.len() - 4..]
+            )
         } else {
             String::new()
         };
         let label_display = if disk_label.is_empty() {
-            "DP24".to_string()
+            if is_dp20 { "DP20" } else { "DP24" }.to_string()
         } else {
             disk_label.clone()
+        };
+        let dev_model_name = if is_dp20 {
+            "duckyPad (2020)"
+        } else {
+            "duckyPad Pro"
         };
 
         self.as_mut().set_sd_sync_busy(true);
@@ -6790,43 +7584,67 @@ impl qobject::DeviceController {
         self.as_mut()
             .set_sd_sync_result_state(QString::from("running"));
         self.as_mut().set_sd_sync_result_summary(QString::from(""));
-        self.as_mut().set_sd_sync_step(QString::from(
-            "Preparing duckyPad Pro firmware installation...",
-        ));
-        self.as_mut().set_sd_sync_log(QString::from(&format!(
-            "• Target device: duckyPad Pro ({label_display})\n• Firmware image: {clean_path}"
+        self.as_mut().set_sd_sync_step(QString::from(&format!(
+            "Preparing {dev_model_name} firmware installation..."
         )));
-        self.as_mut().set_status_message(QString::from(
-            "Staging firmware update to duckyPad Pro microSD...",
-        ));
+        self.as_mut().set_sd_sync_log(QString::from(&format!(
+            "• Target device: {dev_model_name} ({label_display})\n• Firmware image: {clean_path}"
+        )));
+        self.as_mut().set_status_message(QString::from(&format!(
+            "Installing firmware update to {dev_model_name}..."
+        )));
 
         let qt_thread = self.qt_thread();
         let qt_thread_done = self.qt_thread();
         let fw_path_buf = PathBuf::from(&clean_path);
 
         std::thread::spawn(move || {
-            let res = stage_duckypad_pro_firmware_via_msc_with_progress(
-                &disk_label,
-                &fw_path_buf,
-                |pct, step, log_line| {
-                    let step_s = step.to_string();
-                    let log_s = log_line.to_string();
-                    let _ = qt_thread.queue(move |mut qobject| {
-                        qobject.as_mut().set_sd_sync_progress(pct);
-                        qobject.as_mut().set_sd_sync_step(QString::from(&step_s));
-                        if !log_s.is_empty() {
-                            let prev = qobject.sd_sync_log().to_string();
-                            let next = if prev.is_empty() {
-                                log_s.clone()
-                            } else {
-                                format!("{prev}\n{log_s}")
-                            };
-                            qobject.as_mut().set_sd_sync_log(QString::from(&next));
-                        }
-                        qobject.as_mut().set_status_message(QString::from(&step_s));
-                    });
-                },
-            );
+            let res = if is_dp20 {
+                install_duckypad_2020_firmware_dfu_with_progress(
+                    &fw_path_buf,
+                    |pct, step, log_line| {
+                        let step_s = step.to_string();
+                        let log_s = log_line.to_string();
+                        let _ = qt_thread.queue(move |mut qobject| {
+                            qobject.as_mut().set_sd_sync_progress(pct);
+                            qobject.as_mut().set_sd_sync_step(QString::from(&step_s));
+                            if !log_s.is_empty() {
+                                let prev = qobject.sd_sync_log().to_string();
+                                let next = if prev.is_empty() {
+                                    log_s.clone()
+                                } else {
+                                    format!("{prev}\n{log_s}")
+                                };
+                                qobject.as_mut().set_sd_sync_log(QString::from(&next));
+                            }
+                            qobject.as_mut().set_status_message(QString::from(&step_s));
+                        });
+                    },
+                )
+            } else {
+                stage_duckypad_pro_firmware_via_msc_with_progress(
+                    &disk_label,
+                    &fw_path_buf,
+                    |pct, step, log_line| {
+                        let step_s = step.to_string();
+                        let log_s = log_line.to_string();
+                        let _ = qt_thread.queue(move |mut qobject| {
+                            qobject.as_mut().set_sd_sync_progress(pct);
+                            qobject.as_mut().set_sd_sync_step(QString::from(&step_s));
+                            if !log_s.is_empty() {
+                                let prev = qobject.sd_sync_log().to_string();
+                                let next = if prev.is_empty() {
+                                    log_s.clone()
+                                } else {
+                                    format!("{prev}\n{log_s}")
+                                };
+                                qobject.as_mut().set_sd_sync_log(QString::from(&next));
+                            }
+                            qobject.as_mut().set_status_message(QString::from(&step_s));
+                        });
+                    },
+                )
+            };
 
             let _ = qt_thread_done.queue(move |mut qobject| {
                 qobject.as_mut().set_sd_sync_busy(false);
@@ -6874,6 +7692,10 @@ impl qobject::DeviceController {
     }
 
     pub fn refresh_sd_mount_status(mut self: Pin<&mut Self>) -> bool {
+        let dev_serial = self.serial_number().to_string();
+        let hw_model = (*self.active_hw_model()).clamp(20, 24) as u8;
+        let disk_label = format_disk_label_for_device(hw_model, &dev_serial);
+
         if let Some(ref sd_root) = self.rust().sd_root_path.clone() {
             if !crate::hardware::storage::is_duckypad_sd_root(sd_root) {
                 self.as_mut().rust_mut().get_mut().sd_root_path = None;
@@ -6881,19 +7703,25 @@ impl qobject::DeviceController {
             }
         }
         if self.rust().sd_root_path.is_none() {
-            if let Some(mounted) = find_mounted_duckypad_sd() {
+            if let Some(mounted) = find_mounted_duckypad_sd_for_device(
+                if dev_serial.is_empty() || dev_serial == "-" {
+                    None
+                } else {
+                    Some(&dev_serial)
+                },
+                if disk_label.is_empty() {
+                    None
+                } else {
+                    Some(&disk_label)
+                },
+                Some(hw_model),
+            ) {
                 let mounted_str = mounted.to_string_lossy().to_string();
                 self.as_mut().rust_mut().get_mut().sd_root_path = Some(mounted);
                 self.as_mut().set_sd_mount_path(QString::from(&mounted_str));
             }
         }
         let is_mounted = !self.sd_mount_path().is_empty();
-        let dev_serial = self.serial_number().to_string();
-        let disk_label = if dev_serial.len() >= 4 && dev_serial != "-" {
-            format!("DP24_{}", &dev_serial[dev_serial.len() - 4..])
-        } else {
-            String::new()
-        };
         let detected = is_mounted || detect_unmounted_duckypad_sd(&disk_label).is_some();
         if *self.sd_card_detected() != detected {
             self.as_mut().set_sd_card_detected(detected);
@@ -6909,11 +7737,8 @@ impl qobject::DeviceController {
             return true;
         }
         let dev_serial = self.serial_number().to_string();
-        let disk_label = if dev_serial.len() >= 4 && dev_serial != "-" {
-            format!("DP24_{}", &dev_serial[dev_serial.len() - 4..])
-        } else {
-            String::new()
-        };
+        let hw_model = (*self.active_hw_model()).clamp(20, 24) as u8;
+        let disk_label = format_disk_label_for_device(hw_model, &dev_serial);
         match mount_duckypad_sd_only(&disk_label) {
             Ok(mount_root) => {
                 let mount_str = mount_root.to_string_lossy().to_string();

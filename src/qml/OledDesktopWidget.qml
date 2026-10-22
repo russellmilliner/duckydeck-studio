@@ -18,6 +18,11 @@ Window {
     color: "transparent"
 
     property var controller: null
+    property string targetDeviceId: ""
+    property string targetDeviceLabel: ""
+    property var targetDeviceState: null
+    readonly property bool isTargetDeviceSelected: targetDeviceId.length === 0
+        || (targetDeviceState !== null && !!targetDeviceState.isSelected)
     property int selectedSlot: 0
     property bool alwaysOnTop: true
     property bool framelessMode: true
@@ -26,9 +31,13 @@ Window {
     property bool showTransparencySlider: false
     property int transparencyPercent: 0
     property bool keyEditorOpen: false
-    readonly property bool autoSwitchDisabled: (controller && !controller.autoSwitchEnabled)
+    readonly property bool autoSwitchDisabled: targetDeviceState !== null
+        ? !targetDeviceState.autoSwitchEnabled
+        : (controller && !controller.autoSwitchEnabled)
     readonly property bool autoSwitchPaused: autoSwitchDisabled || (keyEditorOpen && controller && controller.autoSwitchEnabled)
-    readonly property string autoSwitchError: controller ? String(controller.autoSwitchErrorMessage || "") : ""
+    readonly property string autoSwitchError: (isTargetDeviceSelected && controller)
+        ? String(controller.autoSwitchErrorMessage || "")
+        : ""
     readonly property bool hasAutoSwitchError: autoSwitchError.length > 0
     onAutoSwitchErrorChanged: Qt.callLater(updateTitleExpansion)
     readonly property real windowOpacity: Math.max(0.20, Math.min(1.0, (100 - transparencyPercent) / 100.0))
@@ -111,7 +120,8 @@ Window {
     // Scroll up = more opaque, scroll down = more transparent.
     // Accumulates high-resolution touchpad deltas into 120-unit notches.
     function handleTransparencyWheel(wheel) {
-        const dy = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.pixelDelta.y * 4
+        const rawAngle = wheel.angleDelta.y
+        const dy = rawAngle !== 0 ? rawAngle : wheel.pixelDelta.y * 4
         if (dy === 0) return
         wheelTransparencyAccum += dy
         const notches = wheelTransparencyAccum > 0
@@ -214,10 +224,14 @@ Window {
     readonly property real fontScale: (controller && controller.uiTextScale > 0
         ? controller.uiTextScale
         : 100) / 100.0
-    readonly property int activeProfile: controller ? controller.activeProfile : 1
-    readonly property string activeProfileName: (controller && controller.activeProfileName)
-        ? controller.activeProfileName
-        : "Default"
+    readonly property int activeProfile: targetDeviceState !== null && targetDeviceState.activeProfile !== undefined
+        ? Number(targetDeviceState.activeProfile)
+        : (controller ? controller.activeProfile : 1)
+    readonly property string activeProfileName: targetDeviceState !== null && targetDeviceState.activeProfileName
+        ? String(targetDeviceState.activeProfileName)
+        : ((controller && controller.activeProfileName)
+            ? controller.activeProfileName
+            : "Default")
 
     Shortcut {
         sequence: "Escape"
@@ -237,7 +251,9 @@ Window {
     readonly property int outerPad: Math.max(6, Math.round(8 * uiScale))
     readonly property int sectionGap: Math.max(4, Math.round(6 * uiScale))
     readonly property int headerBarHeight: Math.max(26, Math.round(28 * uiScale))
-    readonly property int footerBarHeight: Math.max(70, Math.round(78 * uiScale))
+    readonly property int footerBarHeight: isDuckyPad2020
+        ? Math.max(32, Math.round(34 * uiScale))
+        : Math.max(70, Math.round(78 * uiScale))
     readonly property int windowTitleFontPx: Math.max(10, Math.round(10 * uiScale))
     readonly property int availOledWidth: Math.max(120, width - outerPad * 2)
     readonly property int availOledHeight: Math.max(120, baseWindowHeight - outerPad * 2 - headerBarHeight - footerBarHeight - windowTitleReserved - sectionGap * 2)
@@ -248,8 +264,17 @@ Window {
     property int profileHardwareOledRotation: 0
     property int profileOledRotation: 0
     readonly property int effectiveRotation: profileOledRotation
-    readonly property int gridCols: (profileOledRotation === 90 || profileOledRotation === 270) ? 5 : 4
-    readonly property int gridRows: (profileOledRotation === 90 || profileOledRotation === 270) ? 4 : 5
+    readonly property bool isDuckyPad2020: targetDeviceState !== null && targetDeviceState.isDuckyPad2020 !== undefined
+        ? !!targetDeviceState.isDuckyPad2020
+        : (controller ? !!controller.isDuckyPad2020 : false)
+    readonly property int onboardKeyCount: targetDeviceState !== null && targetDeviceState.onboardKeyCount > 0
+        ? Number(targetDeviceState.onboardKeyCount)
+        : ((controller && controller.onboardKeyCount > 0)
+            ? controller.onboardKeyCount
+            : (isDuckyPad2020 ? 15 : 20))
+    readonly property int basePortraitCols: isDuckyPad2020 ? 3 : 4
+    readonly property int gridCols: (profileOledRotation === 90 || profileOledRotation === 270) ? 5 : basePortraitCols
+    readonly property int gridRows: (profileOledRotation === 90 || profileOledRotation === 270) ? basePortraitCols : 5
     property int dataRevision: 0
     property var slotItems: []
     property string enc1Summary: "CCW · CW · [Push]"
@@ -257,14 +282,15 @@ Window {
 
     function slotForCell(colIdx, rowIdx) {
         const rot = oledWidgetWindow.profileOledRotation
+        const pCols = oledWidgetWindow.basePortraitCols
         if (rot === 90) {
-            return colIdx * 4 + (3 - rowIdx) + 1
+            return colIdx * pCols + ((pCols - 1) - rowIdx) + 1
         } else if (rot === 180) {
-            return (4 - rowIdx) * 4 + (3 - colIdx) + 1
+            return (4 - rowIdx) * pCols + ((pCols - 1) - colIdx) + 1
         } else if (rot === 270) {
-            return (4 - colIdx) * 4 + rowIdx + 1
+            return (4 - colIdx) * pCols + rowIdx + 1
         }
-        return rowIdx * 4 + colIdx + 1
+        return rowIdx * pCols + colIdx + 1
     }
 
     function cellSlotForIndex(idx) {
@@ -348,8 +374,75 @@ Window {
         return { slot: slotNum, l1: "", l2: "", wl1: "", wl2: "", r: 0, g: 170, b: 255, hasScript: false }
     }
 
+    function applySlotsArray(arr) {
+        if (!Array.isArray(arr)) return
+        const keys = []
+        let e1ccw = "CCW", e1cw = "CW", e1push = "Push"
+        let e2ccw = "CCW", e2cw = "CW", e2push = "Push"
+        for (let i = 0; i < arr.length; ++i) {
+            const it = arr[i]
+            if (it.slot >= 1 && it.slot <= 20) {
+                keys.push({
+                    slot: it.slot,
+                    l1: it.l1 || "",
+                    l2: it.l2 || "",
+                    wl1: it.wl1 || "",
+                    wl2: it.wl2 || "",
+                    r: it.r !== undefined ? it.r : 0,
+                    g: it.g !== undefined ? it.g : 170,
+                    b: it.b !== undefined ? it.b : 255,
+                    hasScript: !!it.hasScript
+                })
+            } else if (it.slot === 21) {
+                e1ccw = formatEnc(it, "CCW")
+            } else if (it.slot === 22) {
+                e1cw = formatEnc(it, "CW")
+            } else if (it.slot === 23) {
+                e1push = formatEnc(it, "Push")
+            } else if (it.slot === 24) {
+                e2ccw = formatEnc(it, "CCW")
+            } else if (it.slot === 25) {
+                e2cw = formatEnc(it, "CW")
+            } else if (it.slot === 26) {
+                e2push = formatEnc(it, "Push")
+            }
+        }
+        slotItems = keys
+        enc1Summary = e1ccw + " · " + e1cw + " · [" + e1push + "]"
+        enc2Summary = e2ccw + " · " + e2cw + " · [" + e2push + "]"
+        oledWidgetWindow.dataRevision += 1
+    }
+
     function syncFromController() {
         if (!controller) return
+        if (targetDeviceId.length > 0 && controller.multiDeviceOledStatesJson) {
+            try {
+                const mapObj = JSON.parse(controller.multiDeviceOledStatesJson)
+                if (mapObj && typeof mapObj === "object") {
+                    let st = mapObj[targetDeviceId]
+                    if (!st) {
+                        const targetUpper = targetDeviceId.toUpperCase()
+                        const keys = Object.keys(mapObj)
+                        for (let i = 0; i < keys.length; ++i) {
+                            if (keys[i].toUpperCase() === targetUpper) {
+                                st = mapObj[keys[i]]
+                                break
+                            }
+                        }
+                    }
+                    if (st) {
+                        targetDeviceState = st
+                        oledWidgetWindow.profileHardwareOledRotation = Number(st.profileHardwareOledRotation || 0)
+                        oledWidgetWindow.profileOledRotation = Number(st.profileOledRotation || 0)
+                        if (Array.isArray(st.slots)) {
+                            applySlotsArray(st.slots)
+                        }
+                        return
+                    }
+                }
+            } catch (e) {}
+        }
+        targetDeviceState = null
         if (controller.profilesJson) {
             try {
                 const parr = JSON.parse(controller.profilesJson)
@@ -375,42 +468,7 @@ Window {
         if (!controller.activeProfileSlotsJson) return
         try {
             const arr = JSON.parse(controller.activeProfileSlotsJson)
-            if (!Array.isArray(arr)) return
-            const keys = []
-            let e1ccw = "CCW", e1cw = "CW", e1push = "Push"
-            let e2ccw = "CCW", e2cw = "CW", e2push = "Push"
-            for (let i = 0; i < arr.length; ++i) {
-                const it = arr[i]
-                if (it.slot >= 1 && it.slot <= 20) {
-                    keys.push({
-                        slot: it.slot,
-                        l1: it.l1 || "",
-                        l2: it.l2 || "",
-                        wl1: it.wl1 || "",
-                        wl2: it.wl2 || "",
-                        r: it.r !== undefined ? it.r : 0,
-                        g: it.g !== undefined ? it.g : 170,
-                        b: it.b !== undefined ? it.b : 255,
-                        hasScript: !!it.hasScript
-                    })
-                } else if (it.slot === 21) {
-                    e1ccw = formatEnc(it, "CCW")
-                } else if (it.slot === 22) {
-                    e1cw = formatEnc(it, "CW")
-                } else if (it.slot === 23) {
-                    e1push = formatEnc(it, "Push")
-                } else if (it.slot === 24) {
-                    e2ccw = formatEnc(it, "CCW")
-                } else if (it.slot === 25) {
-                    e2cw = formatEnc(it, "CW")
-                } else if (it.slot === 26) {
-                    e2push = formatEnc(it, "Push")
-                }
-            }
-            slotItems = keys
-            enc1Summary = e1ccw + " · " + e1cw + " · [" + e1push + "]"
-            enc2Summary = e2ccw + " · " + e2cw + " · [" + e2push + "]"
-            oledWidgetWindow.dataRevision += 1
+            applySlotsArray(arr)
         } catch (e) {}
     }
 
@@ -433,6 +491,9 @@ Window {
             oledWidgetWindow.syncFromController()
         }
         function onProfilesJsonChanged() {
+            oledWidgetWindow.syncFromController()
+        }
+        function onMultiDeviceOledStatesJsonChanged() {
             oledWidgetWindow.syncFromController()
         }
         function onActiveWindowTitleChanged() {
@@ -510,6 +571,7 @@ Window {
                     smooth: true
                     mipmap: true
 
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: iconMouse.containsMouse
                     QQC2.ToolTip.text: qsTr("DuckyDeck Studio — Click to open main window")
 
@@ -535,6 +597,7 @@ Window {
                         ? "#22c55e"
                         : "#38bdf8"
 
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: dotMouse.containsMouse
                     QQC2.ToolTip.text: (oledWidgetWindow.controller && oledWidgetWindow.controller.connected)
                         ? qsTr("Connected · P%1: %2").arg(oledWidgetWindow.activeProfile).arg(oledWidgetWindow.activeProfileName)
@@ -545,6 +608,43 @@ Window {
                         anchors.fill: parent
                         hoverEnabled: true
                         acceptedButtons: Qt.NoButton
+                    }
+                }
+
+                // Multi-Device Identification Pill (shown when multiple duckyPads are connected or bound to a specific device)
+                Rectangle {
+                    visible: oledWidgetWindow.targetDeviceLabel.length > 0
+                        || oledWidgetWindow.targetDeviceId.length > 0
+                        || (oledWidgetWindow.controller && oledWidgetWindow.controller.connectedDeviceCount > 1)
+                    Layout.preferredHeight: Math.max(16, Math.round(18 * oledWidgetWindow.uiScale))
+                    Layout.preferredWidth: devBadgeLabel.implicitWidth + 10
+                    radius: height / 2
+                    color: oledWidgetWindow.isDuckyPad2020
+                        ? Qt.rgba(0.66, 0.33, 0.97, 0.22)
+                        : Qt.rgba(0.22, 0.74, 0.97, 0.22)
+                    border.width: 1
+                    border.color: oledWidgetWindow.isDuckyPad2020 ? "#a855f7" : "#38bdf8"
+                    Layout.alignment: Qt.AlignVCenter
+
+                    QQC2.Label {
+                        id: devBadgeLabel
+                        anchors.centerIn: parent
+                        text: {
+                            if (oledWidgetWindow.targetDeviceLabel.length > 0) {
+                                return oledWidgetWindow.targetDeviceLabel
+                            }
+                            if (oledWidgetWindow.targetDeviceId.length > 0) {
+                                const s = oledWidgetWindow.targetDeviceId
+                                return (oledWidgetWindow.isDuckyPad2020 ? "DP20·" : "DP24·") + s.slice(-4)
+                            }
+                            const sn = oledWidgetWindow.controller ? String(oledWidgetWindow.controller.serialNumber || "") : ""
+                            const suffix = (sn.length >= 4 && sn !== "-") ? ("·" + sn.slice(-4)) : ""
+                            return (oledWidgetWindow.isDuckyPad2020 ? "DP20" : "DP24") + suffix
+                        }
+                        font.bold: true
+                        font.pixelSize: Math.max(8, Math.round(9 * oledWidgetWindow.uiScale))
+                        font.family: "monospace"
+                        color: oledWidgetWindow.isDuckyPad2020 ? "#c084fc" : "#38bdf8"
                     }
                 }
 
@@ -569,6 +669,7 @@ Window {
                         color: "#f59e0b"
                     }
 
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: pausedMouse.containsMouse
                     QQC2.ToolTip.text: oledWidgetWindow.autoSwitchDisabled
                         ? qsTr("Auto-Switcher is disabled in settings")
@@ -665,6 +766,7 @@ Window {
                         border.width: 1
                         border.color: oledWidgetWindow.alwaysOnTop ? "#38bdf8" : "#344663"
                     }
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: oledWidgetWindow.alwaysOnTop
                         ? qsTr("Always on Top: ON (Click to unpin)")
@@ -733,6 +835,7 @@ Window {
                             ? "#38bdf8"
                             : "#344663"
                     }
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: qsTr("Window Transparency: %1% (Click to adjust · Scroll to change)").arg(oledWidgetWindow.transparencyPercent)
 
@@ -804,6 +907,7 @@ Window {
                         border.width: 1
                         border.color: oledWidgetWindow.showWindowTitle ? "#38bdf8" : "#344663"
                     }
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: oledWidgetWindow.showWindowTitle
                         ? qsTr("Active Window Title: shown (Click to hide)")
@@ -873,6 +977,7 @@ Window {
                         border.width: 1
                         border.color: oledWidgetWindow.showSizeSlider ? "#38bdf8" : "#344663"
                     }
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: qsTr("Adjust OLED Widget Size")
                 }
@@ -891,7 +996,11 @@ Window {
                         oledWidgetWindow.profileOledRotation = nextRot
                         if (oledWidgetWindow.controller) {
                             const targetArg = (nextRot === oledWidgetWindow.profileHardwareOledRotation) ? -1 : nextRot
-                            oledWidgetWindow.controller.setActiveProfileWidgetRotation(targetArg)
+                            if (oledWidgetWindow.targetDeviceId.length > 0) {
+                                oledWidgetWindow.controller.setDeviceProfileWidgetRotation(oledWidgetWindow.targetDeviceId, targetArg)
+                            } else {
+                                oledWidgetWindow.controller.setActiveProfileWidgetRotation(targetArg)
+                            }
                         }
                     }
                     contentItem: Text {
@@ -911,6 +1020,7 @@ Window {
                         border.width: 1
                         border.color: oledWidgetWindow.profileOledRotation !== 0 ? "#38bdf8" : "#344663"
                     }
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: qsTr("Desktop Widget Orientation: %1° (Click to cycle 0° / 90° / 180° / 270°)").arg(oledWidgetWindow.profileOledRotation)
                 }
@@ -972,6 +1082,7 @@ Window {
                         border.width: 1
                         border.color: !oledWidgetWindow.framelessMode ? "#38bdf8" : "#344663"
                     }
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: oledWidgetWindow.framelessMode
                         ? qsTr("Restore Window Titlebar")
@@ -1050,6 +1161,7 @@ Window {
                         border.width: 1
                         border.color: "#344663"
                     }
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: qsTr("Reset to opaque (0% transparency)")
                 }
@@ -1079,6 +1191,7 @@ Window {
                         border.width: 1
                         border.color: "#38bdf8"
                     }
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: qsTr("Close transparency slider")
                 }
@@ -1157,6 +1270,7 @@ Window {
                         border.width: 1
                         border.color: "#344663"
                     }
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: qsTr("Reset to default size (1.5×)")
                 }
@@ -1186,6 +1300,7 @@ Window {
                         border.width: 1
                         border.color: "#38bdf8"
                     }
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: qsTr("Close size slider")
                 }
@@ -1316,6 +1431,7 @@ Window {
 
                 // Rotary Knob 1 Row
                 RowLayout {
+                    visible: !oledWidgetWindow.isDuckyPad2020
                     Layout.fillWidth: true
                     spacing: Math.max(5, Math.round(6 * oledWidgetWindow.uiScale))
 
@@ -1363,6 +1479,7 @@ Window {
 
                 // Rotary Knob 2 Row
                 RowLayout {
+                    visible: !oledWidgetWindow.isDuckyPad2020
                     Layout.fillWidth: true
                     spacing: Math.max(5, Math.round(6 * oledWidgetWindow.uiScale))
 
@@ -1423,7 +1540,11 @@ Window {
                         onClicked: {
                             if (oledWidgetWindow.controller) {
                                 const prev = Math.max(1, oledWidgetWindow.activeProfile - 1)
-                                oledWidgetWindow.controller.switchProfile(prev)
+                                if (oledWidgetWindow.targetDeviceId.length > 0) {
+                                    oledWidgetWindow.controller.switchProfileForDevice(oledWidgetWindow.targetDeviceId, prev)
+                                } else {
+                                    oledWidgetWindow.controller.switchProfile(prev)
+                                }
                             }
                         }
                         contentItem: Text {
@@ -1440,6 +1561,7 @@ Window {
                             border.width: 1
                             border.color: prevProfileBtn.hovered ? "#38bdf8" : "#344663"
                         }
+                        QQC2.ToolTip.delay: 500
                         QQC2.ToolTip.visible: hovered
                         QQC2.ToolTip.text: qsTr("Previous Profile")
                     }
@@ -1454,7 +1576,11 @@ Window {
                         onClicked: {
                             if (oledWidgetWindow.controller) {
                                 const next = Math.min(64, oledWidgetWindow.activeProfile + 1)
-                                oledWidgetWindow.controller.switchProfile(next)
+                                if (oledWidgetWindow.targetDeviceId.length > 0) {
+                                    oledWidgetWindow.controller.switchProfileForDevice(oledWidgetWindow.targetDeviceId, next)
+                                } else {
+                                    oledWidgetWindow.controller.switchProfile(next)
+                                }
                             }
                         }
                         contentItem: Text {
@@ -1471,6 +1597,7 @@ Window {
                             border.width: 1
                             border.color: nextProfileBtn.hovered ? "#38bdf8" : "#344663"
                         }
+                        QQC2.ToolTip.delay: 500
                         QQC2.ToolTip.visible: hovered
                         QQC2.ToolTip.text: qsTr("Next Profile")
                     }
@@ -1499,6 +1626,7 @@ Window {
                             }
                         }
 
+                        QQC2.ToolTip.delay: 500
                         QQC2.ToolTip.visible: resizeMouse.containsMouse
                         QQC2.ToolTip.text: qsTr("Drag to resize OLED Desktop Widget")
                     }
@@ -1590,8 +1718,8 @@ Window {
 
                     readonly property bool isLandscapeRot:
                         oledWidgetWindow.profileOledRotation === 90 || oledWidgetWindow.profileOledRotation === 270
-                    readonly property int gridCols: isLandscapeRot ? 5 : 4
-                    readonly property int gridRows: isLandscapeRot ? 4 : 5
+                    readonly property int gridCols: isLandscapeRot ? 5 : oledWidgetWindow.basePortraitCols
+                    readonly property int gridRows: isLandscapeRot ? oledWidgetWindow.basePortraitCols : 5
                     readonly property int bannerHeight: Math.max(14, Math.round(height * 0.105))
                     readonly property int errorStripHeight: oledWidgetWindow.hasAutoSwitchError
                         ? Math.max(14, Math.round(height * 0.095))
@@ -1660,7 +1788,7 @@ Window {
 
                         Repeater {
                             id: keyCellRepeater
-                            model: 20
+                            model: oledWidgetWindow.onboardKeyCount
 
                             delegate: Rectangle {
                                 id: keyCellRect
@@ -1668,7 +1796,8 @@ Window {
                                 required property int index
                                 readonly property int currentRot: oledWidgetWindow.profileOledRotation
                                 readonly property bool isLandscapeCell: currentRot === 90 || currentRot === 270
-                                readonly property int cols: isLandscapeCell ? 5 : 4
+                                readonly property int pCols: oledWidgetWindow.basePortraitCols
+                                readonly property int cols: isLandscapeCell ? 5 : pCols
                                 readonly property int colIdx: index % cols
                                 readonly property int rowIdx: Math.floor(index / cols)
                                 readonly property int slotNum: {
@@ -1676,13 +1805,13 @@ Window {
                                     const c = colIdx
                                     const r = rowIdx
                                     if (rot === 90) {
-                                        return c * 4 + (3 - r) + 1
+                                        return c * pCols + ((pCols - 1) - r) + 1
                                     } else if (rot === 180) {
-                                        return (4 - r) * 4 + (3 - c) + 1
+                                        return (4 - r) * pCols + ((pCols - 1) - c) + 1
                                     } else if (rot === 270) {
-                                        return (4 - c) * 4 + r + 1
+                                        return (4 - c) * pCols + r + 1
                                     }
-                                    return r * 4 + c + 1
+                                    return r * pCols + c + 1
                                 }
                                 readonly property string l1: {
                                     const _rev = oledWidgetWindow.dataRevision

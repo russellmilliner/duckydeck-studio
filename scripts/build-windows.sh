@@ -57,6 +57,10 @@ export QT_VERSION_MAJOR=6
 export LD_LIBRARY_PATH="$HOST_QT/lib:${LD_LIBRARY_PATH:-}"
 
 echo "==> Building DuckyDeck Studio v$VERSION for Windows ($TARGET)..."
+rm -rf "$REPO_ROOT/target/$TARGET/release/build/duckydeck-studio-"* \
+       "$REPO_ROOT/target/$TARGET/release/.fingerprint/duckydeck-studio-"* \
+       "$REPO_ROOT/target/$TARGET/release/build/cxx-qt-"* \
+       "$REPO_ROOT/target/$TARGET/release/.fingerprint/cxx-qt-"*
 cargo build --release --target "$TARGET" --manifest-path "$REPO_ROOT/Cargo.toml"
 
 EXE="$REPO_ROOT/target/$TARGET/release/duckydeck-studio.exe"
@@ -146,7 +150,7 @@ EOF
 mkdir -p "$STAGE_DIR/docs" "$STAGE_DIR/firmware/releases"
 cp "$REPO_ROOT/README.md" "$STAGE_DIR/README.md"
 cp "$REPO_ROOT/docs/"*.html "$STAGE_DIR/docs/"
-cp "$REPO_ROOT/firmware/releases/"*.bin "$STAGE_DIR/firmware/releases/"
+cp "$REPO_ROOT/firmware/releases/"*.bin "$REPO_ROOT/firmware/releases/"*.dfu "$STAGE_DIR/firmware/releases/"
 
 export WINEPREFIX="${WINEPREFIX:-$HOME/.local/share/llu-wintoolchain/wineprefix}"
 export WINEDEBUG="${WINEDEBUG:--all}"

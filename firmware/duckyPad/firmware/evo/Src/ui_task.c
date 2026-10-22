@@ -1,0 +1,368 @@
+#include <string.h>
+#include <stdio.h>
+#include "main.h"
+#include "ui_task.h"
+#include "ssd1306.h"
+#include "shared.h"
+#include "profiles.h"
+#include "ds_vm.h"
+#include "usb_device.h"
+#include "usbd_customhid.h"
+#include "usbd_custom_hid_if.h"
+
+#define OLED_LINE_BUF_SIZE 32
+char oled_line_buf[OLED_LINE_BUF_SIZE];
+
+#define OLED_CHAR_WIDTH_PIXELS 6
+#define OLED_WIDTH_PIXELS SSD1306_WIDTH
+
+static const uint8_t col_lookup[7][3] = {  
+   {18, 60, 103},
+   {15, 57, 100},
+   {12, 54, 97},
+   {9, 51, 94},
+   {6, 48, 91},
+   {3, 45, 88},
+   {0, 42, 85}
+};
+
+uint8_t center_line(uint8_t line_len)
+{
+  int16_t start_pixel = (OLED_WIDTH_PIXELS - line_len * OLED_CHAR_WIDTH_PIXELS) / 2;
+  if(start_pixel < 0)
+    start_pixel = 0;
+  return start_pixel;
+}
+
+void draw_nosd(void)
+{
+  ssd1306_Fill(Black);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "duckyPad V%d.%d.%d", fw_version_major, fw_version_minor, fw_version_patch);
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 0);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "Please Insert");
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 15);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "SD card");
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 27);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "Instructions:");
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 41);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "duckyPad.com");
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 53);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+  ssd1306_UpdateScreen();
+}
+
+void draw_noprofile(void)
+{
+  ssd1306_Fill(Black);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "No Valid Profiles");
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 10);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "Use Latest");
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 30);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "Configurator");
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 43);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+  ssd1306_UpdateScreen();
+}
+
+#include "oled_icons.h"
+
+void print_keyname(char* keyname, uint8_t keynum)
+{
+  CLEAR_TEMP_BUF();
+  strcpy(temp_buf, keyname);
+  if(temp_buf[0] == 0)
+    temp_buf[0] = '-';
+  oled_utf8_truncate_glyphs(temp_buf, 7);
+  uint8_t glyph_len = oled_utf8_glyph_count(temp_buf);
+  if(glyph_len == 0)
+    glyph_len = 1;
+  if(glyph_len > 7)
+    glyph_len = 7;
+  uint8_t row = keynum / 3;
+  uint8_t col = keynum - row * 3;
+  int8_t x_start = col_lookup[glyph_len - 1][col];
+  int8_t y_start = (row + 1) * 10 + 2;
+  if(x_start < 0)
+    x_start = 0;
+  if(y_start < 0)
+    y_start = 0;
+  ssd1306_SetCursor((uint8_t)x_start, (uint8_t)y_start);
+  ssd1306_WriteString(temp_buf, Font_6x10, White);
+}
+
+/*
+  Bit 0: Numlock
+  Bit 1: Capslock
+  Bit 2: Scroll Lock
+  Bit 7: is_usb_connected
+*/
+uint8_t last_led_state = 255;
+void draw_kbled_icon(uint8_t force_redraw, uint8_t refresh_screen)
+{
+  uint8_t this_state = kb_led_status;
+  if(hUsbDeviceFS.dev_state == USBD_STATE_CONFIGURED)
+    this_state |= 0x80;
+  else
+    this_state &= 0x7f;
+
+  if(force_redraw == 0 && this_state == last_led_state)
+    return;
+
+  SSD1306_COLOR color;
+  // numlock
+  color = (kb_led_status & 0x1) ? White : Black;
+  ssd1306_FillCircle(118, 4, 1, color);
+  // caps lock
+  color = (kb_led_status & 0x2) ? White : Black;
+  ssd1306_FillCircle(122, 4, 1, color);
+  // scroll lock
+  color = (kb_led_status & 0x4) ? White : Black;
+  ssd1306_FillCircle(126, 4, 1, color);
+  if(this_state & 0x80)
+  {
+    ssd1306_Line(117, 0, 119, 0, White);
+    ssd1306_Line(121, 0, 123, 0, White);
+    ssd1306_Line(125, 0, 127, 0, White);
+  }
+  else
+  {
+    ssd1306_FillRectangle(117, 0, 127, 9, Black);
+  }
+  if(refresh_screen)
+    ssd1306_UpdateScreen();
+  last_led_state = this_state;
+}
+
+void draw_current_profile(void)
+{
+  ssd1306_Fill(Black);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "%s", profile_name_list[current_profile_number]);
+	ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 0);
+	ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+  draw_rtc_icon(0);
+  ssd1306_Line(0,10,127,10,White); // title solid line
+
+  for (int i = 0; i < MECH_OBSW_COUNT; ++i)
+    print_keyname(curr_pf_info.sw_name[i], i);
+
+  draw_kbled_icon(1, 0);
+  ssd1306_UpdateScreen();
+}
+
+const char* sleep_index_to_string_lookup[SLEEP_OPTION_SIZE] = {
+  "2 min",
+  "5 min",
+  "15 min",
+  "30 min",
+  "1 Hr",
+  "2 Hrs",
+  "Never",
+};
+
+void draw_settings(dp_global_settings *dps)
+{
+  ssd1306_Fill(Black);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "Settings V%d.%d.%d", fw_version_major, fw_version_minor, fw_version_patch);
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 0);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+  ssd1306_Line(0,10,128,10,White);
+
+//------------------------------
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "1-Brightness %d%%", brightness_index_to_percent_lookup[dps->brightness_index]);
+  ssd1306_SetCursor(0, 13);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+//------------------------------
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "2-Sleep: %s", sleep_index_to_string_lookup[dps->sleep_index]);
+  ssd1306_SetCursor(0, 25);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+//------------------------------
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "3-Keyboard Region");
+  ssd1306_SetCursor(0, 37);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  if(strlen(dps->current_kb_layout) >= 9)
+  {
+    strcpy(oled_line_buf, dps->current_kb_layout+5);
+    oled_line_buf[strlen(oled_line_buf)-4] = 0; // don't print .txt extension
+  }
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 49);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+//------------------------------
+  ssd1306_UpdateScreen();
+  // ssd1306_take_screenshot();
+}
+
+void oled_say(char* what)
+{
+  ssd1306_Fill(Black);
+
+  ssd1306_SetCursor(center_line(strlen(what)), 30);
+  ssd1306_WriteString(what, Font_6x10, White);
+
+  ssd1306_UpdateScreen();
+}
+
+
+static const char* exe_error_string(uint8_t err_code)
+{
+  switch (err_code)
+  {
+    case EXE_ILLEGAL_INSTRUCTION:      return "Unknown Opcode";
+    case EXE_DSB_INCOMPATIBLE_VERSION: return "Unsupported VM";
+    case EXE_DSB_FOPEN_FAIL:           return "File Open Fail";
+    case EXE_DSB_FREAD_ERROR:          return "File Read Fail";
+    case EXE_STACK_OVERFLOW:           return "Stack Overflow";
+    case EXE_STACK_UNDERFLOW:          return "Stack Underflow";
+    case EXE_DIVISION_BY_ZERO:         return "Division by Zero";
+    case EXE_ILLEGAL_ADDR:             return "Illegal Address";
+    case EXE_DSB_FILE_TOO_LARGE:       return "File Too Large";
+    case EXE_UNIMPLEMENTED:            return "Unimplemented";
+    case EXE_UNALIGNED_ACCESS:         return "Unaligned Read";
+    case EXE_PROFILE_NOT_FOUND:        return "Profile Not Found";
+    case EXE_STR_ERROR:                return "String Overflow";
+    default:                           return "Unknown Error";
+  }
+}
+
+void draw_wrong_vmver()
+{
+  ssd1306_Fill(Black);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "Incompatible Script!");
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 0);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+  ssd1306_Line(0,10,128,10,White);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "Use latest FW & App");
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 14);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "Load & Save to");
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 26);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "Refresh Files");
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 38);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+  ssd1306_Line(0,51,128,51,White);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "Press Any Key");
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 53);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+  ssd1306_UpdateScreen();
+}
+
+void draw_exe_error(exe_context* ctx)
+{
+  uint8_t err_code = ctx->result;
+  uint16_t err_pc = ctx->this_pc;
+  if(err_code == EXE_DSB_INCOMPATIBLE_VERSION)
+  {
+    draw_wrong_vmver();
+    return;
+  }
+
+  ssd1306_Fill(Black);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "Runtime Error");
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 0);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+  ssd1306_Line(0,10,128,10,White);
+
+  const char *err_msg = exe_error_string(err_code);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "%s", err_msg);
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 15);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "PC: 0x%04X / %d", err_pc, err_pc);
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 30);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "Press Any Key");
+  ssd1306_SetCursor(center_line(strlen(oled_line_buf)), 50);
+  ssd1306_WriteString(oled_line_buf, Font_6x10, White);
+
+  ssd1306_UpdateScreen();
+}
+
+void draw_fatal_error(uint8_t err_code)
+{
+  memset(oled_line_buf, 0, OLED_LINE_BUF_SIZE);
+  snprintf(oled_line_buf, OLED_LINE_BUF_SIZE, "Fatal Error:%d", err_code);
+  oled_say(oled_line_buf);
+  while(1)
+  {
+    delay_ms(500);
+  }
+}
+
+#define RTC_ICON_HEIGHT (9)
+#define RTC_ICON_WIDTH (9)
+const unsigned char rtc_icon[] = {
+    0x1C, 0x00, 0x6B, 0x00, 0x49, 0x00, 0x88, 0x80, 0x8E, 0x80, 0x80, 0x80,
+    0x41, 0x00, 0x63, 0x00, 0x1C, 0x00,
+};
+
+void draw_rtc_icon(uint8_t update_screen)
+{
+  if(is_rtc_valid() == 0)
+    return;
+  ssd1306_DrawBitmap(0, 0, rtc_icon, RTC_ICON_WIDTH, RTC_ICON_HEIGHT, White);
+  if(update_screen)
+    ssd1306_UpdateScreen();
+}
+

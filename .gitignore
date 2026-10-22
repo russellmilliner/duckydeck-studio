@@ -4,4 +4,6 @@
 /*.flatpak
 /firmware/.esp-idf/
 /firmware/.espressif/
+/firmware/.arm-toolchain/
 /firmware/duckyPad-Pro/firmware/dpp_fw/build/
+/firmware/duckyPad/firmware/evo/build/

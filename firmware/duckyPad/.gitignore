@@ -1,0 +1,6 @@
+*.iml
+.idea
+**/venv/
+
+firmware/code/MDK-ARM/lul
+firmware/evo/MDK-ARM/lul

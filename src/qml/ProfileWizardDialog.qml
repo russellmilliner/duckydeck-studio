@@ -1016,6 +1016,7 @@ Window {
                                 font.pointSize: 9.5 * fontScale
                                 enabled: wizardDialog.discoveredShortcutsList.length > 0
                                 onClicked: wizardDialog.autoFillEmptySlots()
+                                QQC2.ToolTip.delay: 500
                                 QQC2.ToolTip.visible: hovered
                                 QQC2.ToolTip.text: qsTr("Automatically fill empty keys with top discovered shortcuts")
                             }
@@ -1027,6 +1028,7 @@ Window {
                                 font.pointSize: 9.5 * fontScale
                                 enabled: Object.keys(wizardDialog.keyAssignments).length > 0
                                 onClicked: wizardDialog.clearAllAssignments()
+                                QQC2.ToolTip.delay: 500
                                 QQC2.ToolTip.visible: hovered
                                 QQC2.ToolTip.text: qsTr("Clear all assigned keys (or right-click any key to clear it)")
                             }
@@ -1402,6 +1404,7 @@ Window {
                                     }
                                     wizardDialog.triggerShortcutsSearch(step4AppSearchField.text)
                                 }
+                                QQC2.ToolTip.delay: 500
                                 QQC2.ToolTip.visible: hovered
                                 QQC2.ToolTip.text: qsTr("Allow online web search for application shortcut cheatsheets")
                             }
@@ -1440,6 +1443,7 @@ Window {
                                     font.pointSize: 9 * fontScale
                                     highlighted: wizardDialog.targetClickPhase === 1
                                     onClicked: wizardDialog.targetClickPhase = 1
+                                    QQC2.ToolTip.delay: 500
                                     QQC2.ToolTip.visible: hovered
                                     QQC2.ToolTip.text: qsTr("Assign dragged/clicked shortcuts to 1× Single Click (On Press)")
                                 }
@@ -1450,6 +1454,7 @@ Window {
                                     font.pointSize: 9 * fontScale
                                     highlighted: wizardDialog.targetClickPhase === 2
                                     onClicked: wizardDialog.targetClickPhase = 2
+                                    QQC2.ToolTip.delay: 500
                                     QQC2.ToolTip.visible: hovered
                                     QQC2.ToolTip.text: qsTr("Assign dragged/clicked shortcuts to 2× Double Click")
                                 }
@@ -1460,6 +1465,7 @@ Window {
                                     font.pointSize: 9 * fontScale
                                     highlighted: wizardDialog.targetClickPhase === 3
                                     onClicked: wizardDialog.targetClickPhase = 3
+                                    QQC2.ToolTip.delay: 500
                                     QQC2.ToolTip.visible: hovered
                                     QQC2.ToolTip.text: qsTr("Assign dragged/clicked shortcuts to 3× Triple Click")
                                 }
@@ -1473,6 +1479,7 @@ Window {
                                 font.bold: checked
                                 checked: wizardDialog.gamingHoldModeDefault
                                 onToggled: wizardDialog.gamingHoldModeDefault = checked
+                                QQC2.ToolTip.delay: 500
                                 QQC2.ToolTip.visible: hovered
                                 QQC2.ToolTip.text: qsTr("Hold keys continuously while the physical duckyPad button is held down (KEYDOWN on press + KEYUP on release) — ideal for gaming movement/actions")
                             }

@@ -1,10 +1,10 @@
 # DuckyDeck Studio — OLED Icon Library Reference (Color & 1-Bit Monochrome)
 
-**DuckyDeck Studio (`v0.1.6`)** and **Custom Firmware (`DDS_FW v1.1.1`)** include **204 unique OLED icons** (199 application & macro icons across 14 categories in the in-app **OLED Button Icon Picker**, plus 5 dedicated keyboard modifier glyphs).
+**DuckyDeck Studio (`v0.1.7`)** and **Custom Firmware (`DDS_FW v1.1.2`)** include **204 unique OLED icons** (199 application & macro icons across 14 categories in the in-app **OLED Button Icon Picker**, plus 5 dedicated keyboard modifier glyphs).
 
 Every icon has **dual representations**:
 1. **Color Desktop UI Version**: Full-color Unicode/Emoji symbol displayed on the interactive Hardware Canvas, Floating OLED Desktop Widget, and Key Inspector.
-2. **1-Bit Monochrome Hardware OLED Version (`16×16` & `10×10`)**: Hand-crafted pixel-art bitmaps compiled into `oled_icons.c` in `DDS_FW v1.1.1` for the physical `128×128` SSD1306 monochrome OLED screen:
+2. **1-Bit Monochrome Hardware OLED Version (`16×16` & `10×10`)**: Hand-crafted pixel-art bitmaps compiled into `oled_icons.c` in `DDS_FW v1.1.2` for the physical `128×128` SSD1306 monochrome OLED screen:
    - **`16×16` Full-Cell Bitmap**: Rendered centered inside the button's OLED cell when **Line 1** contains a single icon and **Line 2** is empty (**Big Icon Only** mode).
    - **`10×10` Top-Line Bitmap**: Rendered at the top of the button's OLED cell above a 4-character text label on **Line 2** (**Icon + Short Label** mode), or inline (`7×10` / `6×8`).
    - **Stock Firmware (`DPP_FW`) Fallback**: When syncing to stock `dekuNukem` firmware, DuckyDeck Studio writes the 4-character ASCII fallback (`z<N>`/`x<N>`) while preserving the full UTF-8 icon in `ui_z<N>`/`ui_x<N>`.

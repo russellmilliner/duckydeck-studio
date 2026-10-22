@@ -16,6 +16,11 @@ Item {
     property bool showExpansion: false
     property bool oledScriptMode: false
     property int activeProfileOledRotation: 0
+    readonly property bool isDuckyPad2020: controller ? !!controller.isDuckyPad2020 : false
+    readonly property int onboardKeyCount: (controller && controller.onboardKeyCount > 0)
+        ? controller.onboardKeyCount
+        : (isDuckyPad2020 ? 15 : 20)
+    readonly property int onboardGridColumns: isDuckyPad2020 ? 3 : 4
     readonly property bool isLightTheme: (0.2126 * Kirigami.Theme.backgroundColor.r + 0.7152 * Kirigami.Theme.backgroundColor.g + 0.0722 * Kirigami.Theme.backgroundColor.b) > 0.45
     readonly property color highContrastHighlightText: isLightTheme ? "#0369a1" : Kirigami.Theme.highlightColor
 
@@ -458,10 +463,11 @@ Item {
         if (!canvasRoot.showExpansion) {
             const pt = sourceItem.mapToItem(switchMatrix, mx, my)
             const stride = 72
+            const cols = canvasRoot.onboardGridColumns
             if (pt.x >= 0 && pt.x < switchMatrix.width && pt.y >= 0 && pt.y < switchMatrix.height) {
-                const col = Math.min(3, Math.max(0, Math.floor(pt.x / stride)))
+                const col = Math.min(cols - 1, Math.max(0, Math.floor(pt.x / stride)))
                 const row = Math.min(4, Math.max(0, Math.floor(pt.y / stride)))
-                return row * 4 + col + 1
+                return row * cols + col + 1
             }
         } else {
             const pt = sourceItem.mapToItem(expansionGrid, mx, my)
@@ -543,6 +549,20 @@ Item {
             oledSimulator.requestPaint()
         }
         function onActiveProfileNameChanged() {
+            oledSimulator.requestPaint()
+        }
+        function onIsDuckyPad2020Changed() {
+            if (canvasRoot.isDuckyPad2020) {
+                if (canvasRoot.showExpansion) {
+                    canvasRoot.showExpansion = false
+                }
+                if (canvasRoot.selectedSlot > 15) {
+                    canvasRoot.clearSelection()
+                }
+            }
+            oledSimulator.requestPaint()
+        }
+        function onOnboardKeyCountChanged() {
             oledSimulator.requestPaint()
         }
     }
@@ -890,7 +910,7 @@ Item {
                         }
 
                         QQC2.Label {
-                            text: qsTr("Onboard")
+                            text: canvasRoot.isDuckyPad2020 ? qsTr("Onboard (15 Keys)") : qsTr("Onboard")
                             font.pointSize: 10.5 * canvasRoot.uiFontScale
                             font.bold: onboardTabBtn.isActiveTab
                             color: onboardTabBtn.isActiveTab
@@ -907,13 +927,17 @@ Item {
                         onClicked: canvasRoot.showExpansion = false
                     }
 
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: onboardTabMouse.containsMouse
-                    QQC2.ToolTip.text: qsTr("Onboard (20 Keys + 2 Encoders)")
+                    QQC2.ToolTip.text: canvasRoot.isDuckyPad2020
+                        ? qsTr("Onboard duckyPad (2020) — 15 Keys (3×5 Matrix)")
+                        : qsTr("Onboard duckyPad Pro — 20 Keys + 2 Rotary Encoders")
                 }
 
                 // Tab 2: Expansion (Channels 27–58)
                 Rectangle {
                     id: expansionTabBtn
+                    visible: !canvasRoot.isDuckyPad2020
                     readonly property bool isActiveTab: canvasRoot.showExpansion
                     Layout.preferredHeight: 34
                     implicitWidth: expansionTabRow.implicitWidth + 24
@@ -985,6 +1009,7 @@ Item {
                         onClicked: canvasRoot.showExpansion = true
                     }
 
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: expansionTabMouse.containsMouse
                     QQC2.ToolTip.text: qsTr("Daisy-Chained Expansion Channels (27–58)")
                 }
@@ -1003,6 +1028,7 @@ Item {
                         canvasRoot.oledScriptMode = checked
                         oledSimulator.requestPaint()
                     }
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: canvasRoot.oledScriptMode ? qsTr("Switch to Profile Grid HUD") : qsTr("Switch to duckStack VM HUD")
                 }
@@ -1058,7 +1084,7 @@ Item {
 
                 Grid {
                     id: switchMatrix
-                    columns: 4
+                    columns: canvasRoot.onboardGridColumns
                     rowSpacing: 6
                     columnSpacing: 6
 
@@ -1067,6 +1093,7 @@ Item {
 
                         delegate: Item {
                             id: keycapItem
+                            visible: slot <= canvasRoot.onboardKeyCount
                             width: 66
                             height: 66
                             required property int index
@@ -1410,11 +1437,12 @@ Item {
                                         canvasRoot.dragShiftMode = (mouse.modifiers & Qt.ShiftModifier) !== 0
                                         const pt = keyMouse.mapToItem(switchMatrix, mouse.x, mouse.y)
                                         const stride = 72
+                                        const cols = canvasRoot.onboardGridColumns
                                         if (pt.x >= 0 && pt.x < switchMatrix.width && pt.y >= 0 && pt.y < switchMatrix.height) {
-                                            const col = Math.min(3, Math.max(0, Math.floor(pt.x / stride)))
+                                            const col = Math.min(cols - 1, Math.max(0, Math.floor(pt.x / stride)))
                                             const row = Math.min(4, Math.max(0, Math.floor(pt.y / stride)))
-                                            const target = row * 4 + col + 1
-                                            canvasRoot.dropTargetSlot = (target !== keycapItem.slot) ? target : -1
+                                            const target = row * cols + col + 1
+                                            canvasRoot.dropTargetSlot = (target !== keycapItem.slot && target <= canvasRoot.onboardKeyCount) ? target : -1
                                         } else {
                                             canvasRoot.dropTargetSlot = -1
                                         }
@@ -1430,7 +1458,7 @@ Item {
                                         keycapItem.dragOffsetY = 0
                                         canvasRoot.draggingSlot = -1
                                         canvasRoot.dropTargetSlot = -1
-                                        if (target >= 1 && target <= 20 && target !== keycapItem.slot) {
+                                        if (target >= 1 && target <= canvasRoot.onboardKeyCount && target !== keycapItem.slot) {
                                             canvasRoot.moveOrSwapSlotAction(keycapItem.slot, target, shift)
                                         }
                                         return
@@ -1508,6 +1536,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
 
                     RotaryEncoderWidget {
+                        visible: !canvasRoot.isDuckyPad2020
                         anchors.horizontalCenter: parent.horizontalCenter
                         encoderTitle: qsTr("Encoder 1 (Top)")
                         ccwSlot: 21
@@ -1533,6 +1562,7 @@ Item {
                     }
 
                     RotaryEncoderWidget {
+                        visible: !canvasRoot.isDuckyPad2020
                         anchors.horizontalCenter: parent.horizontalCenter
                         encoderTitle: qsTr("Encoder 2 (Mid)")
                         ccwSlot: 24
@@ -1594,23 +1624,26 @@ Item {
                                         : "Default"
                                     ctx.fillText("P" + profNum + ": " + profName.slice(0, 16), 64, 10)
 
-                                    const cellW = 32
+                                    const cols = canvasRoot.onboardGridColumns
+                                    const maxKeys = Math.min(keyModel.count, canvasRoot.onboardKeyCount)
+                                    const cellW = Math.floor(128 / cols)
                                     const cellH = 23
 
-                                    for (let i = 0; i < keyModel.count; ++i) {
+                                    for (let i = 0; i < maxKeys; ++i) {
                                         const item = keyModel.get(i)
-                                        const col = i % 4
-                                        const row = Math.floor(i / 4)
+                                        const col = i % cols
+                                        const row = Math.floor(i / cols)
                                         const x = col * cellW
+                                        const w = (col === cols - 1) ? (128 - x) : cellW
                                         const y = 13 + row * cellH
                                         const isSel = (canvasRoot.selectedSlot === item.slot)
 
                                         if (isSel) {
                                             ctx.fillStyle = "#38bdf8"
-                                            ctx.fillRect(x + 1, y + 1, cellW - 2, cellH - 2)
+                                            ctx.fillRect(x + 1, y + 1, w - 2, cellH - 2)
                                         } else {
                                             ctx.strokeStyle = "#334155"
-                                            ctx.strokeRect(x, y, cellW, cellH)
+                                            ctx.strokeRect(x, y, w, cellH)
                                         }
                                     }
                                     ctx.restore()
@@ -1652,22 +1685,25 @@ Item {
                                 Repeater {
                                     model: keyModel
                                     delegate: Item {
+                                        visible: slot <= canvasRoot.onboardKeyCount
                                         required property int index
                                         required property int slot
                                         required property string l1
                                         required property string l2
 
-                                        readonly property int col: index % 4
-                                        readonly property int row: Math.floor(index / 4)
+                                        readonly property int cols: canvasRoot.onboardGridColumns
+                                        readonly property int col: index % cols
+                                        readonly property int row: Math.floor(index / cols)
+                                        readonly property int cellW: Math.floor(128 / cols)
                                         readonly property bool isSel: canvasRoot.selectedSlot === slot
                                         readonly property string s1: canvasRoot.sliceOledLabel(l1 || "", 5)
                                         readonly property string s2: canvasRoot.sliceOledLabel(l2 || "", 5)
                                         readonly property bool icon1: canvasRoot.isSingleIconLabel(s1)
                                         readonly property bool icon2: canvasRoot.isSingleIconLabel(s2)
 
-                                        x: col * 32
+                                        x: col * cellW
                                         y: 13 + row * 23
-                                        width: 32
+                                        width: (col === cols - 1) ? (128 - x) : cellW
                                         height: 23
                                         clip: true
 

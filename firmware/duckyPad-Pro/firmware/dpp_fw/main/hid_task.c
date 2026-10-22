@@ -31,7 +31,27 @@
 #include "esp_mac.h"
 
 #include <dirent.h> 
+#include <sys/stat.h>
+#include <errno.h>
+#include "dsb_cache.h"
 #include "bluetooth_task.h"
+
+static FILE *hid_sd_write_fp = NULL;
+static char hid_sd_write_path[128] = {0};
+
+static void build_sd_full_path(const uint8_t *hid_rx_buf, char *out_path, size_t out_sz)
+{
+    char rel[64] = {0};
+    memcpy(rel, &hid_rx_buf[2], 60);
+    rel[60] = '\0';
+    if (strncmp(rel, "/sdcard", 7) == 0) {
+        snprintf(out_path, out_sz, "%s", rel);
+    } else if (rel[0] == '/') {
+        snprintf(out_path, out_sz, "/sdcard%s", rel);
+    } else {
+        snprintf(out_path, out_sz, "/sdcard/%s", rel);
+    }
+}
 
 
 static const char *TAG = "USBHID";
@@ -518,7 +538,10 @@ void handle_hid_command(const uint8_t* hid_rx_buf, uint8_t rx_buf_size)
         return;
     }
 
-    if(is_profile_load_complete == 0 && (command_type != HID_COMMAND_GET_INFO && command_type != HID_COMMAND_SW_RESET))
+    if(is_profile_load_complete == 0 &&
+       command_type != HID_COMMAND_GET_INFO &&
+       command_type != HID_COMMAND_SW_RESET &&
+       !(command_type >= HID_COMMAND_OPEN_FILE_FOR_WRITING && command_type <= HID_COMMAND_DELETE_DIR))
     {
         hid_tx_buf[1] = HID_RESPONSE_NO_PROFILE;
         send_hid_cmd_response(hid_tx_buf);
@@ -753,6 +776,103 @@ void handle_hid_command(const uint8_t* hid_rx_buf, uint8_t rx_buf_size)
         settimeofday(&tv, NULL);
         memcpy(&utc_offset_minutes, &hid_rx_buf[6], sizeof(utc_offset_minutes));
         is_rtc_valid = 1;
+        send_hid_cmd_response(hid_tx_buf);
+    }
+    else if(command_type == HID_COMMAND_OPEN_FILE_FOR_WRITING)
+    {
+        if(hid_sd_write_fp != NULL)
+        {
+            fclose(hid_sd_write_fp);
+            hid_sd_write_fp = NULL;
+        }
+        build_sd_full_path(hid_rx_buf, hid_sd_write_path, sizeof(hid_sd_write_path));
+        hid_sd_write_fp = fopen(hid_sd_write_path, "wb");
+        if(hid_sd_write_fp == NULL)
+            hid_tx_buf[1] = HID_RESPONSE_GENERIC_ERROR;
+        send_hid_cmd_response(hid_tx_buf);
+    }
+    else if(command_type == HID_COMMAND_WRITE_FILE)
+    {
+        uint8_t chunk_len = hid_rx_buf[0];
+        if(chunk_len > 60)
+            chunk_len = 60;
+        if(hid_sd_write_fp == NULL)
+        {
+            hid_tx_buf[1] = HID_RESPONSE_GENERIC_ERROR;
+        }
+        else if(chunk_len > 0 && fwrite(&hid_rx_buf[2], 1, chunk_len, hid_sd_write_fp) != chunk_len)
+        {
+            hid_tx_buf[1] = HID_RESPONSE_GENERIC_ERROR;
+        }
+        send_hid_cmd_response(hid_tx_buf);
+    }
+    else if(command_type == HID_COMMAND_CLOSE_FILE)
+    {
+        if(hid_sd_write_fp != NULL)
+        {
+            fclose(hid_sd_write_fp);
+            hid_sd_write_fp = NULL;
+        }
+        memset(dsb_cache, 0, sizeof(dsb_cache));
+        if(strstr(hid_sd_write_path, "config.txt") != NULL)
+        {
+            char sps_path[128] = {0};
+            const char *slash = strrchr(hid_sd_write_path, '/');
+            if(slash != NULL)
+            {
+                size_t dir_len = (size_t)(slash - hid_sd_write_path);
+                if(dir_len < sizeof(sps_path) - 16)
+                {
+                    memcpy(sps_path, hid_sd_write_path, dir_len);
+                    snprintf(sps_path + dir_len, sizeof(sps_path) - dir_len, "/state_dpp.sps");
+                    remove(sps_path);
+                }
+            }
+            if(scan_profiles() == PSCAN_OK)
+                is_profile_load_complete = 1;
+        }
+        else if(strstr(hid_sd_write_path, "profile_info.txt") != NULL)
+        {
+            if(scan_profiles() == PSCAN_OK)
+                is_profile_load_complete = 1;
+        }
+        hid_sd_write_path[0] = '\0';
+        send_hid_cmd_response(hid_tx_buf);
+    }
+    else if(command_type == HID_COMMAND_DELETE_FILE)
+    {
+        char full_path[128] = {0};
+        build_sd_full_path(hid_rx_buf, full_path, sizeof(full_path));
+        remove(full_path);
+        send_hid_cmd_response(hid_tx_buf);
+    }
+    else if(command_type == HID_COMMAND_CREATE_DIR)
+    {
+        char full_path[128] = {0};
+        build_sd_full_path(hid_rx_buf, full_path, sizeof(full_path));
+        if(mkdir(full_path, 0777) != 0 && errno != EEXIST)
+            hid_tx_buf[1] = HID_RESPONSE_GENERIC_ERROR;
+        send_hid_cmd_response(hid_tx_buf);
+    }
+    else if(command_type == HID_COMMAND_DELETE_DIR)
+    {
+        char full_path[128] = {0};
+        build_sd_full_path(hid_rx_buf, full_path, sizeof(full_path));
+        DIR *d = opendir(full_path);
+        if(d != NULL)
+        {
+            struct dirent *ent;
+            char fpath[400];
+            while((ent = readdir(d)) != NULL)
+            {
+                if(strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
+                    continue;
+                snprintf(fpath, sizeof(fpath), "%s/%s", full_path, ent->d_name);
+                remove(fpath);
+            }
+            closedir(d);
+            rmdir(full_path);
+        }
         send_hid_cmd_response(hid_tx_buf);
     }
     else // invalid HID command

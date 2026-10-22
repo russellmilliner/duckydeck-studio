@@ -211,7 +211,7 @@ Excel, PowerPoint, Photoshop, FreeCAD/Fusion 360, and Home Automation.
 
 uint8_t fw_version_major = 1;
 uint8_t fw_version_minor = 1;
-uint8_t fw_version_patch = 1;
+uint8_t fw_version_patch = 2;
 
 uint8_t dsvm_version = 2;
 

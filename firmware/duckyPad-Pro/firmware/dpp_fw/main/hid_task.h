@@ -19,6 +19,12 @@ void handle_hid_command(const uint8_t* hid_rx_buf, uint8_t rx_buf_size);
 #define HID_COMMAND_PREV_PROFILE           0x02
 #define HID_COMMAND_NEXT_PROFILE           0x03
 #define HID_COMMAND_SET_LED_SINGLE         0x04
+#define HID_COMMAND_OPEN_FILE_FOR_WRITING  0x0E
+#define HID_COMMAND_WRITE_FILE             0x0F
+#define HID_COMMAND_CLOSE_FILE             0x10
+#define HID_COMMAND_DELETE_FILE            0x11
+#define HID_COMMAND_CREATE_DIR             0x12
+#define HID_COMMAND_DELETE_DIR             0x13
 #define HID_COMMAND_SW_RESET               0x14
 #define HID_COMMAND_SLEEP                  0x15
 #define HID_COMMAND_WAKEUP                 0x16

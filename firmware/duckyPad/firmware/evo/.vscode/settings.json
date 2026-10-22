@@ -1,0 +1,23 @@
+{
+    "files.associations": {
+        "ff_gen_drv.h": "c",
+        "user_diskio.h": "c",
+        "stdlib.h": "c",
+        "string.h": "c",
+        "stdio.h": "c",
+        "usb_device.h": "c",
+        "input_task.h": "c",
+        "shared.h": "c",
+        "main.h": "c",
+        "profiles.h": "c",
+        "neopixel.h": "c",
+        "keypress_task.h": "c",
+        "ssd1306.h": "c",
+        "stdint.h": "c",
+        "usbd_custom_hid_if.h": "c",
+        "usbd_customhid.h": "c",
+        "ui_task.h": "c",
+        "fatfs.h": "c",
+        "dsb_cache.h": "c"
+    }
+}

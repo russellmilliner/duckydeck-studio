@@ -69,7 +69,10 @@ modules:
       - install -Dm644 ./data/syntax/duckyscript3.xml -t /app/share/org.kde.syntax-highlighting/syntax/
       - install -Dm644 ./docs/user-guide.html -t /app/share/duckydeck-studio/docs/
       - install -Dm644 ./docs/architecture.html -t /app/share/duckydeck-studio/docs/
-      - install -Dm644 ./firmware/releases/DDS_FW_1.1.1_eed0141e.bin -t /app/share/duckydeck-studio/firmware/
+      - install -Dm644 ./firmware/releases/DDS_FW_1.1.2_0f85dab1.bin -t /app/share/duckydeck-studio/firmware/
+      - install -Dm644 ./firmware/releases/DDS_FW_1.1.2_0f85dab1.bin -t /app/share/duckydeck-studio/firmware/releases/
+      - install -Dm644 ./firmware/releases/DDS20_FW_1.1.2_3bd4beef.dfu -t /app/share/duckydeck-studio/firmware/
+      - install -Dm644 ./firmware/releases/DDS20_FW_1.1.2_3bd4beef.dfu -t /app/share/duckydeck-studio/firmware/releases/
       - install -Dm644 ./firmware/releases/DDS_FW_1.1.1_eed0141e.bin -t /app/share/duckydeck-studio/firmware/releases/
       - install -Dm644 ./firmware/releases/DDS_FW_1.0.1_bf177326.bin -t /app/share/duckydeck-studio/firmware/releases/
       - install -Dm644 ./firmware/releases/DDS_FW_1.0.0_ad2acc81.bin -t /app/share/duckydeck-studio/firmware/releases/

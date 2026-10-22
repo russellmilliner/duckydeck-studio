@@ -34,6 +34,11 @@
   <url type="bugtracker">https://github.com/russellmilliner/duckydeck-studio/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.1.7" date="2026-10-22">
+      <description>
+        <p>Simultaneous multi-device support for duckyPad Pro and duckyPad (2020) with isolated per-device profile caches, per-device Auto-Switcher rules, and per-device Desktop OLED Widgets; high-resolution mouse/Ploopy wheel smooth scrolling; and DuckyDeck Studio Custom Firmware v1.1.2 for both duckyPad Pro (DDS_FW_1.1.2_0f85dab1.bin with 4 customizable OLED layout styles and universal DPP_FW_ OTA staging) and duckyPad 2020 (DDS20_FW_1.1.2_3bd4beef.dfu with 204 monochrome icons, SWC_FADE_TO smooth RGB fade, dirty-page I2C OLED refresh, RTC backup register profile cache, and software Jump-to-DFU).</p>
+      </description>
+    </release>
     <release version="0.1.6" date="2026-10-21">
       <description>
         <p>Full Windows 10/11 (x86_64) support with Inno Setup installer and portable ZIP, expanded 165-icon OLED icon library across 13 categories, New Profile Wizard with step-by-step setup, application window picker, automated rule creation, online keyboard shortcut discovery, and drag-and-drop hotkey assignment.</p>

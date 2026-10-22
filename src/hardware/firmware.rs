@@ -6,9 +6,10 @@ use std::path::{Path, PathBuf};
 use crate::hardware::msc::{
     reboot_duckypad, unmount_duckypad_sd_cleanly, wait_and_mount_duckypad_msc,
 };
-use crate::hardware::profile::find_mounted_duckypad_sd;
+use crate::hardware::profile::find_mounted_duckypad_sd_for_device;
 use crate::hardware::storage::{
-    open_duckypad_hid, HID_CMD_SOFTWARE_RESET, HID_IO_LOCK, HID_REPORT_ID_OUT, MSC_SYNC_IN_PROGRESS,
+    open_duckypad_hid, DP_MODEL_DUCKYPAD_PRO, HID_CMD_SOFTWARE_RESET, HID_IO_LOCK,
+    HID_REPORT_ID_OUT, MSC_SYNC_IN_PROGRESS,
 };
 
 #[derive(Debug, Clone)]
@@ -125,8 +126,8 @@ pub async fn check_latest_duckypad_firmware(
         let curr_studio = parse_semver(current_version.split_whitespace().next().unwrap_or(""))
             .map(|v| if v == (3, 4, 0) { (1, 0, 0) } else { v })
             .unwrap_or((1, 0, 0));
-        if curr_studio < (1, 1, 1) {
-            latest_version = "1.1.1".to_string();
+        if curr_studio < (1, 1, 2) {
+            latest_version = "1.1.2".to_string();
             true
         } else {
             remote_semver > (3, 3, 5)
@@ -273,8 +274,17 @@ pub fn is_duckydeck_studio_firmware_version(version: &str) -> bool {
     if lower.contains("studio") || lower.contains("dds") {
         return true;
     }
-    let clean = trimmed.trim_start_matches(['v', 'V']);
-    clean == "1.1.1" || clean == "1.1.0" || clean == "1.0.1" || clean == "1.0.0" || clean == "3.4.0"
+    let clean = trimmed
+        .split_whitespace()
+        .next()
+        .unwrap_or(trimmed)
+        .trim_start_matches(['v', 'V']);
+    clean == "1.1.2"
+        || clean == "1.1.1"
+        || clean == "1.1.0"
+        || clean == "1.0.1"
+        || clean == "1.0.0"
+        || clean == "3.4.0"
 }
 
 pub fn compute_ieee_crc32(data: &[u8]) -> u32 {
@@ -318,10 +328,17 @@ fn firmware_release_metadata(
                 "DuckyDeck Studio custom firmware v1.1.0 (built on duckyPad Pro 3.3.5 / DSVM v2): adds native Home Automation OLED icons, SSD1306 SPI DMA dirty page tracking for low-latency display updates, SWC_FADE_TO hardware smooth RGB fade opcode (89), sub-millisecond USB HID SOF dispatch spin-retry, and NVS wear-leveling cache for instantaneous profile switching without SD card write latency.",
             );
         }
+        if version == "1.1.1" {
+            return (
+                "DuckyDeck Studio Custom (v1.1.1)",
+                "Oct 22, 2026",
+                "DuckyDeck Studio custom firmware v1.1.1 (built on duckyPad Pro 3.3.5 / DSVM v2): expands the native 1-bit monochrome pixel-art OLED icon library to 204 zero-duplicate icons (16×16, 10×10, 7×10, 6×8) across 14 categories including Web Browsers, Word, Excel, PowerPoint, Photoshop, FreeCAD/Fusion 360, and Home Automation, plus SWC_FADE_TO smooth RGB fade, SPI DMA dirty page tracking, sub-ms USB HID SOF spin-retry, and NVS profile cache.",
+            );
+        }
         return (
-            "DuckyDeck Studio Custom (v1.1.1)",
+            "DuckyDeck Studio Custom (v1.1.2)",
             "Oct 22, 2026",
-            "DuckyDeck Studio custom firmware v1.1.1 (built on duckyPad Pro 3.3.5 / DSVM v2): expands the native 1-bit monochrome pixel-art OLED icon library to 204 zero-duplicate icons (16×16, 10×10, 7×10, 6×8) across 14 categories including Web Browsers, Word, Excel, PowerPoint, Photoshop, FreeCAD/Fusion 360, and Home Automation, plus SWC_FADE_TO smooth RGB fade, SPI DMA dirty page tracking, sub-ms USB HID SOF spin-retry, and NVS profile cache.",
+            "DuckyDeck Studio custom firmware v1.1.2 (built on duckyPad Pro 3.3.5 / DSVM v2): adds 4 customizable OLED layout styles (Top Bezel Header, Micro-Page Dots, Header/Footer Split, and 3px Recessed Divider Strip), 204 native 1-bit monochrome pixel-art OLED icons, SWC_FADE_TO smooth RGB fade, SPI DMA dirty page tracking, sub-ms USB HID SOF spin-retry, and NVS profile cache.",
         );
     }
     match version {
@@ -353,19 +370,31 @@ fn firmware_release_metadata(
     }
 }
 
-const EMBEDDED_STUDIO_FW_FILENAME: &str = "DDS_FW_1.1.1_eed0141e.bin";
+const EMBEDDED_STUDIO_FW_FILENAME: &str = "DDS_FW_1.1.2_0f85dab1.bin";
 const EMBEDDED_STUDIO_FW_BYTES: &[u8] =
-    include_bytes!("../../firmware/releases/DDS_FW_1.1.1_eed0141e.bin");
+    include_bytes!("../../firmware/releases/DDS_FW_1.1.2_0f85dab1.bin");
+
+const EMBEDDED_STUDIO_2020_FW_FILENAME: &str = "DDS20_FW_1.1.2_3bd4beef.dfu";
+const EMBEDDED_STUDIO_2020_FW_BYTES: &[u8] =
+    include_bytes!("../../firmware/releases/DDS20_FW_1.1.2_3bd4beef.dfu");
 
 fn ensure_embedded_studio_firmware_cached() -> PathBuf {
     let user_fw_dir = crate::paths::data_dir().join("firmware");
-    let target_path = user_fw_dir.join(EMBEDDED_STUDIO_FW_FILENAME);
-    let needs_write = match fs::metadata(&target_path) {
-        Ok(meta) => meta.len() != EMBEDDED_STUDIO_FW_BYTES.len() as u64,
-        Err(_) => true,
-    };
-    if needs_write && fs::create_dir_all(&user_fw_dir).is_ok() {
-        let _ = fs::write(&target_path, EMBEDDED_STUDIO_FW_BYTES);
+    for (fname, bytes) in [
+        (EMBEDDED_STUDIO_FW_FILENAME, EMBEDDED_STUDIO_FW_BYTES),
+        (
+            EMBEDDED_STUDIO_2020_FW_FILENAME,
+            EMBEDDED_STUDIO_2020_FW_BYTES,
+        ),
+    ] {
+        let target_path = user_fw_dir.join(fname);
+        let needs_write = match fs::metadata(&target_path) {
+            Ok(meta) => meta.len() != bytes.len() as u64,
+            Err(_) => true,
+        };
+        if needs_write && fs::create_dir_all(&user_fw_dir).is_ok() {
+            let _ = fs::write(&target_path, bytes);
+        }
     }
     user_fw_dir
 }
@@ -442,7 +471,7 @@ pub fn list_available_duckypad_pro_firmwares(current_version: &str) -> Vec<Firmw
                 || is_bundled_studio_dir
                 || matches!(
                     crc_str.as_str(),
-                    "eed0141e" | "b3291568" | "5d742340" | "bf177326" | "ad2acc81"
+                    "0f85dab1" | "eed0141e" | "b3291568" | "5d742340" | "bf177326" | "ad2acc81"
                 );
             let is_official = !is_studio_custom;
             let (channel, release_date, notes) =
@@ -587,7 +616,7 @@ pub async fn fetch_official_firmwares_from_site(
             if crc_str.is_empty()
                 || matches!(
                     crc_str.as_str(),
-                    "eed0141e" | "b3291568" | "5d742340" | "bf177326" | "ad2acc81"
+                    "0f85dab1" | "eed0141e" | "b3291568" | "5d742340" | "bf177326" | "ad2acc81"
                 )
             {
                 return;
@@ -961,36 +990,24 @@ where
     }
 
     let crc = compute_ieee_crc32(&fw_bytes);
-    let crc_hex = format!("{crc:x}");
+    let crc_hex = format!("{crc:08x}");
     let raw_name = src_path
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("DDS_FW_custom.bin");
 
-    let is_dds = raw_name.starts_with("DDS_FW_");
-    let prefix = if is_dds { "DDS_FW_" } else { "DPP_FW_" };
-
-    let (ver_label, target_filename) = if (is_dds || raw_name.starts_with("DPP_FW_"))
-        && raw_name.ends_with(".bin")
-        && raw_name.to_lowercase().contains(&crc_hex)
-    {
-        let ver = raw_name
-            .strip_prefix(prefix)
-            .and_then(|s| s.strip_suffix(".bin"))
-            .and_then(|s| s.split('_').next())
-            .unwrap_or("custom")
-            .to_string();
-        (ver, raw_name.to_string())
-    } else {
-        let ver = raw_name
-            .strip_prefix("DDS_FW_")
-            .or_else(|| raw_name.strip_prefix("DPP_FW_"))
-            .and_then(|s| s.strip_suffix(".bin"))
-            .and_then(|s| s.split('_').next())
-            .unwrap_or("1.1.1")
-            .to_string();
-        (ver.clone(), format!("{prefix}{ver}_{crc_hex}.bin"))
-    };
+    // Always stage onto the microSD card using the `DPP_FW_<ver>_<crc32>.bin` prefix so that
+    // ALL duckyPad Pro bootloaders/firmwares (official 3.0.x–3.3.5, early 1.0.x–1.1.0, and 1.1.1+)
+    // recognize the OTA file on boot (`is_fw_filename()` checks `DPP_FW_`).
+    let ver_label = raw_name
+        .strip_prefix("DDS_FW_")
+        .or_else(|| raw_name.strip_prefix("DPP_FW_"))
+        .and_then(|s| s.strip_suffix(".bin"))
+        .and_then(|s| s.split('_').next())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("1.1.2")
+        .to_string();
+    let target_filename = format!("DPP_FW_{ver_label}_{crc_hex}.bin");
 
     on_progress(
         10,
@@ -1002,7 +1019,14 @@ where
         ),
     );
 
-    if let Some(already_mounted) = find_mounted_duckypad_sd() {
+    let target_label_opt = if disk_label.trim().is_empty() {
+        None
+    } else {
+        Some(disk_label.trim())
+    };
+    if let Some(already_mounted) =
+        find_mounted_duckypad_sd_for_device(None, target_label_opt, Some(DP_MODEL_DUCKYPAD_PRO))
+    {
         on_progress(
             45,
             &format!("Staging {target_filename} to mounted microSD card..."),
@@ -1145,4 +1169,246 @@ where
         }
         Err(e) => Err(e),
     }
+}
+
+pub fn list_available_duckypad_2020_firmwares(current_version: &str) -> Vec<FirmwareVersionEntry> {
+    let mut candidate_dirs: Vec<PathBuf> = Vec::new();
+    for sys_fw_dir in [
+        "/app/share/duckydeck-studio/firmware",
+        "/app/share/duckydeck-studio/firmware/releases",
+        "/usr/local/share/duckydeck-studio/firmware",
+        "/usr/local/share/duckydeck-studio/firmware/releases",
+        "/usr/share/duckydeck-studio/firmware",
+        "/usr/share/duckydeck-studio/firmware/releases",
+    ] {
+        candidate_dirs.push(PathBuf::from(sys_fw_dir));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(bin_dir) = exe.parent() {
+            candidate_dirs.push(bin_dir.join("firmware"));
+            candidate_dirs.push(bin_dir.join("firmware/releases"));
+            candidate_dirs.push(bin_dir.join("../share/duckydeck-studio/firmware"));
+            candidate_dirs.push(bin_dir.join("../share/duckydeck-studio/firmware/releases"));
+        }
+    }
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    candidate_dirs.push(manifest_dir.join("firmware/releases"));
+    candidate_dirs.push(manifest_dir.join("firmware/duckyPad/firmware"));
+    let user_fw_dir = ensure_embedded_studio_firmware_cached();
+    candidate_dirs.push(official_firmware_cache_dir());
+    candidate_dirs.push(user_fw_dir);
+
+    let mut by_key: std::collections::BTreeMap<(u8, u32, u32, u32, String), FirmwareVersionEntry> =
+        std::collections::BTreeMap::new();
+
+    for dir in candidate_dirs {
+        let Ok(rd) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in rd.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Some(fname) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if !fname.ends_with(".dfu") {
+                continue;
+            }
+            let (is_studio_custom, ver_str, crc_str) =
+                if let Some(rest) = fname.strip_prefix("DDS20_FW_") {
+                    let inner = &rest[..rest.len() - ".dfu".len()];
+                    let mut parts = inner.split('_');
+                    let Some(v) = parts.next() else {
+                        continue;
+                    };
+                    let c = parts.next().unwrap_or("").to_lowercase();
+                    (true, v.to_string(), c)
+                } else if let Some(rest) = fname.strip_prefix("duckypad_v") {
+                    let v = &rest[..rest.len() - ".dfu".len()];
+                    let crc = fs::read(&path)
+                        .map(|b| format!("{:08x}", compute_ieee_crc32(&b)))
+                        .unwrap_or_default();
+                    (false, v.to_string(), crc)
+                } else {
+                    continue;
+                };
+
+            let Some((maj, min, pat)) = parse_semver(&ver_str) else {
+                continue;
+            };
+            let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+            let is_official = !is_studio_custom;
+            let (channel, release_date, notes) = if is_studio_custom {
+                (
+                    "DuckyDeck Studio Custom (v1.1.2 — duckyPad 2020)",
+                    "Oct 22, 2026",
+                    "DuckyDeck Studio custom firmware v1.1.2 for duckyPad (2020) STM32F072 (built on Evo 3.0.4 / DSVM v2): adds 204 native 1-bit monochrome pixel-art OLED icons, UTF-8 ui_z key labels, SWC_FADE_TO smooth RGB fade opcode (89) + Q8 fixed-point 50 Hz LED engine, SSD1306 I²C dirty-page tracking, RTC backup register profile cache (zero SD wear on profile switch), stuck-key release guard, and software Jump-to-DFU bootloader.",
+                )
+            } else if ver_str == "3.0.4" {
+                (
+                    "Official Release (duckyPad 2020 Evo)",
+                    "2025",
+                    "Official dekuNukem duckyPad (2020) Evo firmware v3.0.4 (STM32F072 DFU image): DSVM v2 bytecode support and duckyPad Pro profile compatibility.",
+                )
+            } else {
+                (
+                    "Official Release (duckyPad 2020)",
+                    "Official Release",
+                    "Official dekuNukem duckyPad (2020) STM32F072 DFU firmware image.",
+                )
+            };
+
+            let curr_clean = current_version
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_start_matches(['v', 'V']);
+            let is_installed = if is_studio_custom {
+                is_duckydeck_studio_firmware_version(current_version) && curr_clean == ver_str
+            } else {
+                !is_duckydeck_studio_firmware_version(current_version)
+                    && current_version.trim().starts_with(&ver_str)
+            };
+
+            let studio_rank = if is_studio_custom { 1u8 } else { 0u8 };
+            let key = (studio_rank, maj, min, pat, crc_str.clone());
+            by_key.entry(key).or_insert_with(|| FirmwareVersionEntry {
+                version: ver_str,
+                filename: fname.to_string(),
+                path: path.to_string_lossy().to_string(),
+                crc32: crc_str,
+                size_bytes,
+                vendor: if is_official {
+                    "dekuNukem (Official)".to_string()
+                } else {
+                    "DuckyDeck Studio".to_string()
+                },
+                is_official,
+                channel: channel.to_string(),
+                release_date: release_date.to_string(),
+                notes: notes.to_string(),
+                is_installed,
+                supports_monochrome_icons: is_studio_custom,
+                download_url: String::new(),
+                is_downloaded: true,
+            });
+        }
+    }
+
+    let mut out: Vec<FirmwareVersionEntry> = by_key.into_values().collect();
+    out.reverse();
+    out
+}
+
+pub fn install_duckypad_2020_firmware_dfu_with_progress<F>(
+    fw_source_path: &Path,
+    mut on_progress: F,
+) -> Result<String, String>
+where
+    F: FnMut(i32, &str, &str),
+{
+    let clean_str = crate::paths::clean_file_uri_to_path_str(&fw_source_path.to_string_lossy());
+    let src_path = PathBuf::from(&clean_str);
+    if !src_path.is_file() {
+        return Err(format!(
+            "DFU firmware file not found: {}",
+            src_path.display()
+        ));
+    }
+
+    let fw_bytes = fs::read(&src_path)
+        .map_err(|e| format!("Failed reading DFU firmware {}: {e}", src_path.display()))?;
+    if fw_bytes.len() < 16 * 1024 || &fw_bytes[..5] != b"DfuSe" {
+        return Err(format!(
+            "File {} is not a valid STM32 DfuSe (.dfu) firmware image",
+            src_path.display()
+        ));
+    }
+
+    let crc = compute_ieee_crc32(&fw_bytes);
+    let crc_hex = format!("{crc:08x}");
+    let fname = src_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("DDS20_FW_1.1.2.dfu");
+
+    on_progress(
+        15,
+        &format!("Validated STM32F072 DfuSe image {fname} (CRC32: {crc_hex})..."),
+        &format!(
+            "• Verified DfuSe header & payload ({} bytes, IEEE CRC32: 0x{crc_hex})",
+            fw_bytes.len()
+        ),
+    );
+
+    // Send software Jump-to-DFU command (0x14 with arg 2) if duckyPad (2020) is connected over USB HID
+    let mut sent_dfu_reboot = false;
+    {
+        let _guard = HID_IO_LOCK.lock().ok();
+        if let Ok(dev) = open_duckypad_hid() {
+            let mut tx = [0u8; 64];
+            tx[0] = HID_REPORT_ID_OUT;
+            tx[1] = 0x15;
+            tx[2] = HID_CMD_SOFTWARE_RESET;
+            tx[3] = 2; // Reboot into STM32 ROM DFU bootloader
+            if dev.write(&tx).is_ok() {
+                sent_dfu_reboot = true;
+            }
+        }
+    }
+
+    if sent_dfu_reboot {
+        on_progress(
+            35,
+            "Sent software Jump-to-DFU command to duckyPad (2020)...",
+            "✓ Sent HID software DFU reboot (0x14, mode=2); waiting for STM32 DFU bootloader (0483:df11)...",
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1200));
+    }
+
+    // Attempt direct flashing via dfu-util if available and DFU device is present
+    let dfu_list = std::process::Command::new("dfu-util")
+        .args(["-l", "-d", "0483:df11"])
+        .output();
+
+    if let Ok(list_out) = dfu_list {
+        let stdout_s = String::from_utf8_lossy(&list_out.stdout);
+        if stdout_s.contains("0483:df11") || stdout_s.contains("Found DFU") {
+            on_progress(
+                60,
+                &format!("Flashing {fname} to duckyPad (2020) via dfu-util..."),
+                "• Detected STM32F072 in DFU mode (0483:df11)\n• Running dfu-util -d 0483:df11 -a 0 -D ...",
+            );
+            let flash_out = std::process::Command::new("dfu-util")
+                .args(["-d", "0483:df11", "-a", "0", "-D"])
+                .arg(&src_path)
+                .output()
+                .map_err(|e| format!("Failed launching dfu-util: {e}"))?;
+
+            let combined = format!(
+                "{}\n{}",
+                String::from_utf8_lossy(&flash_out.stdout),
+                String::from_utf8_lossy(&flash_out.stderr)
+            );
+            if flash_out.status.success() || combined.contains("File downloaded successfully") {
+                let msg = format!(
+                    "Flashed {fname} to duckyPad (2020) via USB DFU! Unplug and replug your duckyPad (2020) (with DIP switch #1 OFF) to boot the new firmware."
+                );
+                on_progress(100, &msg, &format!("✓ {msg}"));
+                return Ok(msg);
+            } else {
+                return Err(format!("dfu-util exited with error:\n{}", combined.trim()));
+            }
+        }
+    }
+
+    let msg = format!(
+        "Prepared {fname} ({}) for duckyPad (2020). To flash: put duckyPad (2020) into DFU mode (flip DIP switch #1 ON + power cycle, or use software DFU on v1.1.2+) and flash via `dfu-util -d 0483:df11 -a 0 -D \"{}\"` or https://dekunukem.github.io/duckyPad-Pro/doc/dfu_web/",
+        src_path.display(),
+        src_path.display()
+    );
+    on_progress(100, &msg, &format!("✓ {msg}"));
+    Ok(msg)
 }

@@ -534,6 +534,7 @@ Window {
                                                 webApiDestinationsDialog.clearForm()
                                             }
                                         }
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Delete destination '%1'").arg(modelData.name || "")
                                     }

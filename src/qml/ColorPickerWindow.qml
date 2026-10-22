@@ -1561,6 +1561,7 @@ Window {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: duckyColorPickerWindow.setColorFromHex(duckyColorPickerWindow.initialHex)
+                            QQC2.ToolTip.delay: 500
                             QQC2.ToolTip.visible: containsMouse
                             QQC2.ToolTip.text: qsTr("Revert to previous color (%1)").arg(duckyColorPickerWindow.initialHex)
                         }
@@ -1950,6 +1951,7 @@ Window {
                             nativeSystemColorDialog.selectedColor = duckyColorPickerWindow.currentColor
                             nativeSystemColorDialog.open()
                         }
+                        QQC2.ToolTip.delay: 500
                         QQC2.ToolTip.visible: hovered
                         QQC2.ToolTip.text: qsTr("Open native desktop color dialog / screen eyedropper")
                     }
@@ -1997,6 +1999,7 @@ Window {
                         deviceController.savePaletteColor(duckyColorPickerWindow.currentHex)
                         duckyColorPickerWindow.refreshPaletteLists()
                     }
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: qsTr("Save %1 to your persistent Saved Colors palette").arg(duckyColorPickerWindow.currentHex)
                 }
@@ -2093,6 +2096,7 @@ Window {
                                     }
                                 }
 
+                                QQC2.ToolTip.delay: 500
                                 QQC2.ToolTip.visible: savedSwatchMouse.containsMouse
                                 QQC2.ToolTip.text: labelName.length > 0
                                     ? qsTr("%1 (%2) • Left-click to select • Double-click to apply • Right-click for menu").arg(labelName).arg(savedSwatch.modelData)
@@ -2209,6 +2213,7 @@ Window {
                                     }
                                 }
 
+                                QQC2.ToolTip.delay: 500
                                 QQC2.ToolTip.visible: usedSwatchMouse.containsMouse
                                 QQC2.ToolTip.text: qsTr("%1 • Left-click to select • Double-click to apply • Right-click to save to Saved Colors").arg(usedSwatch.modelData)
                             }
@@ -2235,6 +2240,7 @@ Window {
                     }
                     duckyColorPickerWindow.close()
                 }
+                QQC2.ToolTip.delay: 500
                 QQC2.ToolTip.visible: hovered
                 QQC2.ToolTip.text: qsTr("Remove custom SWCOLOR from Key %1 and use profile BG_COLOR").arg(duckyColorPickerWindow.targetSlotNumber)
             }

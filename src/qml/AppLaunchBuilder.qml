@@ -905,6 +905,7 @@ Window {
                                 macroRecorderDialog.timingMode = "exact"
                                 macroRecorderDialog.rebuildGeneratedDuckyScript()
                             }
+                            QQC2.ToolTip.delay: 500
                             QQC2.ToolTip.visible: hovered
                             QQC2.ToolTip.text: qsTr("Inserts DELAY <ms> commands matching the exact millisecond intervals between your recorded actions")
                         }
@@ -918,6 +919,7 @@ Window {
                                 macroRecorderDialog.timingMode = "fast"
                                 macroRecorderDialog.rebuildGeneratedDuckyScript()
                             }
+                            QQC2.ToolTip.delay: 500
                             QQC2.ToolTip.visible: hovered
                             QQC2.ToolTip.text: qsTr("Omits all DELAY commands between actions and collapses quick key taps so the macro runs at maximum hardware speed")
                         }
@@ -983,6 +985,7 @@ Window {
                             font.bold: true
                             font.pointSize: 10 * root.fontScale
                             onToggled: macroRecorderDialog.captureMouseClicks = checked
+                            QQC2.ToolTip.delay: 500
                             QQC2.ToolTip.visible: hovered
                             QQC2.ToolTip.text: qsTr("Captures LMOUSE, RMOUSE, MMOUSE, and MOUSE_SCROLL events")
                         }
@@ -2079,6 +2082,7 @@ Window {
                                 }
                             }
 
+                            QQC2.ToolTip.delay: 500
                             QQC2.ToolTip.visible: iconTileMouse.containsMouse
                             QQC2.ToolTip.text: qsTr("%1 (%2 / HW: %3) — Click to apply, double-click to apply & close")
                                 .arg(modelData.name)

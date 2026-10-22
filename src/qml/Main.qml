@@ -1853,12 +1853,188 @@ Kirigami.ApplicationWindow {
         }
     }
 
+    // Managed duckyPad & Hardware Model Selector Menu
+    property var openDeviceWidgetIds: ({})
+    readonly property var openDeviceWidgetIdList: Object.keys(openDeviceWidgetIds)
+
+    function isDeviceOledWidgetOpen(devId) {
+        const clean = String(devId || "").trim()
+        if (!clean) return oledDesktopWidget.visible
+        return !!root.openDeviceWidgetIds[clean]
+    }
+
+    function toggleDeviceOledWidget(devId, devLabel) {
+        const clean = String(devId || "").trim()
+        if (!clean) {
+            deviceController.toggleOledDesktopWidget()
+            return
+        }
+        const copy = Object.assign({}, root.openDeviceWidgetIds)
+        if (copy[clean]) {
+            delete copy[clean]
+        } else {
+            copy[clean] = String(devLabel || clean)
+        }
+        root.openDeviceWidgetIds = copy
+    }
+
+    property var availableDevicesList: {
+        if (!deviceController || !deviceController.availableDevicesJson) return []
+        try {
+            const parsed = JSON.parse(deviceController.availableDevicesJson)
+            return Array.isArray(parsed) ? parsed : []
+        } catch (e) {
+            return []
+        }
+    }
+
+    QQC2.Menu {
+        id: deviceSelectorMenu
+        font.pointSize: 10 * root.fontScale
+        title: qsTr("Select Managed duckyPad")
+        onAboutToShow: {
+            if (deviceController) {
+                deviceController.scanAvailableDevices()
+            }
+        }
+
+        QQC2.MenuItem {
+            enabled: false
+            font.bold: true
+            text: deviceController && deviceController.connectedDeviceCount > 1
+                ? qsTr("Attached duckyPads (%1 Connected)").arg(deviceController.connectedDeviceCount)
+                : qsTr("Managed duckyPad & SD Card Target")
+        }
+
+        Repeater {
+            model: root.availableDevicesList
+            delegate: QQC2.MenuItem {
+                required property var modelData
+                icon.name: modelData.usbConnected
+                    ? "input-keyboard"
+                    : (modelData.sdMounted ? "media-flash-sd-mmc" : "folder-saved-search")
+                font.bold: !!modelData.isSelected
+                text: {
+                    const prefix = modelData.isSelected ? "✓ " : "    "
+                    const tags = []
+                    if (modelData.usbConnected) tags.push(qsTr("USB HID"))
+                    if (modelData.sdMounted) {
+                        tags.push(modelData.diskLabel ? qsTr("SD: %1").arg(modelData.diskLabel) : qsTr("SD Mounted"))
+                    } else if (!modelData.usbConnected && modelData.hasCachedProfiles) {
+                        tags.push(qsTr("Cached"))
+                    }
+                    const tagStr = tags.length > 0 ? (" [" + tags.join(" + ") + "]") : ""
+                    return prefix + (modelData.displayLabel || modelData.id) + tagStr
+                }
+                onTriggered: {
+                    if (deviceController && modelData.id) {
+                        if (deviceController.selectManagedDevice(modelData.id)) {
+                            root.syncSidebarProfilesFromController()
+                            hardwareCanvas.syncProfilesFromController()
+                            hardwareCanvas.syncSlotsFromController()
+                            root.refreshSelectedSlotFromController()
+                        }
+                    }
+                }
+            }
+        }
+
+        QQC2.MenuSeparator {
+            visible: root.availableDevicesList.length > 0
+        }
+
+        QQC2.MenuItem {
+            visible: root.availableDevicesList.length > 0
+            enabled: false
+            font.bold: true
+            text: qsTr("Desktop OLED Widgets (Per duckyPad)")
+        }
+
+        Repeater {
+            model: root.availableDevicesList
+            delegate: QQC2.MenuItem {
+                required property var modelData
+                readonly property bool widgetOpen: root.isDeviceOledWidgetOpen(modelData.id)
+                icon.name: "view-fullscreen"
+                font.bold: widgetOpen
+                text: (widgetOpen ? "✓ 🖥️ " : "    🖥️ ")
+                    + qsTr("OLED Widget: %1").arg(modelData.displayLabel || modelData.id)
+                onTriggered: {
+                    const shortBadge = (modelData.hwModel === 20 ? "DP20·" : "DP24·")
+                        + String(modelData.serialNumber || modelData.id).slice(-4)
+                    root.toggleDeviceOledWidget(modelData.id, shortBadge)
+                }
+            }
+        }
+
+        QQC2.MenuSeparator {}
+
+        QQC2.MenuItem {
+            icon.name: "input-keyboard"
+            font.bold: deviceController && !deviceController.isDuckyPad2020
+            text: (deviceController && !deviceController.isDuckyPad2020 ? "✓ " : "    ")
+                + qsTr("Layout: duckyPad Pro (20 Keys + 2 Encoders)")
+            onTriggered: {
+                if (deviceController) {
+                    deviceController.setSimulatedDeviceModel(24)
+                    hardwareCanvas.syncSlotsFromController()
+                    root.refreshSelectedSlotFromController()
+                }
+            }
+        }
+
+        QQC2.MenuItem {
+            icon.name: "input-keyboard"
+            font.bold: deviceController && deviceController.isDuckyPad2020
+            text: (deviceController && deviceController.isDuckyPad2020 ? "✓ " : "    ")
+                + qsTr("Layout: duckyPad (2020) (15 Keys • 3×5)")
+            onTriggered: {
+                if (deviceController) {
+                    deviceController.setSimulatedDeviceModel(20)
+                    hardwareCanvas.syncSlotsFromController()
+                    root.refreshSelectedSlotFromController()
+                }
+            }
+        }
+
+        QQC2.MenuSeparator {}
+
+        QQC2.MenuItem {
+            icon.name: "view-refresh"
+            text: qsTr("Scan Attached duckyPads & Mounted SD Cards")
+            onTriggered: {
+                if (deviceController) {
+                    deviceController.scanAvailableDevices()
+                    deviceController.refreshDevice()
+                    root.refreshSelectedSlotFromController()
+                }
+            }
+        }
+
+        QQC2.MenuItem {
+            icon.name: "settings-configure"
+            text: qsTr("Manage Devices in Settings...")
+            onTriggered: settingsDialog.open()
+        }
+    }
+
     // Hamburger Menu for Action Buttons
     QQC2.Menu {
         font.pointSize: 10 * root.fontScale
         id: hamburgerMenu
         title: qsTr("Menu")
-        onAboutToShow: deviceController.refreshSdMountStatus()
+        onAboutToShow: {
+            deviceController.refreshSdMountStatus()
+            deviceController.scanAvailableDevices()
+        }
+
+        QQC2.MenuItem {
+            icon.name: "network-connect"
+            text: deviceController.connectedDeviceCount > 1
+                ? qsTr("🔀 Switch Managed duckyPad (%1 Connected)...").arg(deviceController.connectedDeviceCount)
+                : qsTr("🔀 Switch Managed duckyPad / Model (%1)...").arg(deviceController.modelName)
+            onTriggered: deviceSelectorMenu.popup()
+        }
 
         QQC2.MenuItem {
             icon.name: "view-refresh"
@@ -2192,6 +2368,7 @@ Kirigami.ApplicationWindow {
                                 )
                             }
 
+                            QQC2.ToolTip.delay: 500
                             QQC2.ToolTip.visible: headerSwatchMouse.containsMouse
                             QQC2.ToolTip.text: qsTr("Click to change Default Button Color (BG_COLOR) for Profile #%1").arg(deviceController.activeProfile)
                         }
@@ -2246,6 +2423,7 @@ Kirigami.ApplicationWindow {
                         onClicked: Qt.openUrlExternally("https://ko-fi.com/russellmilliner")
                     }
 
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: headerKofiMouse.containsMouse
                     QQC2.ToolTip.text: qsTr("Buy Russell Milliner a coffee on Ko-fi (https://ko-fi.com/russellmilliner)")
                 }
@@ -2258,6 +2436,7 @@ Kirigami.ApplicationWindow {
                     implicitWidth: 36
                     implicitHeight: 32
                     onClicked: hamburgerMenu.popup(hamburgerMenuBtn, 0, hamburgerMenuBtn.height)
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: qsTr("Menu (Device Actions, Profile Groups, Import/Export, Rules, Variables, AI & Settings)")
                 }
@@ -2374,6 +2553,7 @@ Kirigami.ApplicationWindow {
                                     profileFilterField.text = ""
                                     profileFilterField.forceActiveFocus()
                                 }
+                                QQC2.ToolTip.delay: 500
                                 QQC2.ToolTip.visible: hovered
                                 QQC2.ToolTip.text: qsTr("Clear profile filter")
                             }
@@ -2669,6 +2849,7 @@ Kirigami.ApplicationWindow {
                                                     }
                                                 }
 
+                                                QQC2.ToolTip.delay: 500
                                                 QQC2.ToolTip.visible: profSwatchMouse.containsMouse
                                                 QQC2.ToolTip.text: qsTr("Click to change Default Button Color (BG_COLOR) for Profile #%1").arg(profDelegate.profNumber)
                                             }
@@ -2700,6 +2881,7 @@ Kirigami.ApplicationWindow {
                                                         id: appIconHover
                                                     }
 
+                                                    QQC2.ToolTip.delay: 500
                                                     QQC2.ToolTip.visible: appIconHover.hovered && profDelegate.boundTooltip.length > 0
                                                     QQC2.ToolTip.text: profDelegate.boundTooltip
                                                 }
@@ -2779,6 +2961,7 @@ Kirigami.ApplicationWindow {
                                     }
 
                                     Component.onCompleted: reloadTemplates()
+                                    QQC2.ToolTip.delay: 500
                                     QQC2.ToolTip.visible: hovered
                                     QQC2.ToolTip.text: qsTr("Select a template for the new profile")
                                 }
@@ -2789,6 +2972,7 @@ Kirigami.ApplicationWindow {
                                     implicitHeight: Math.round(24 * root.sidebarScale)
                                     font.pointSize: 10 * root.fontScale
                                     onClicked: profileTemplatesDialog.openGeneral()
+                                    QQC2.ToolTip.delay: 500
                                     QQC2.ToolTip.visible: hovered
                                     QQC2.ToolTip.text: qsTr("Manage profile templates or save an existing profile as a template")
                                 }
@@ -2850,6 +3034,7 @@ Kirigami.ApplicationWindow {
                                         newProfileNameField.forceActiveFocus()
                                     }
                                 }
+                                QQC2.ToolTip.delay: 500
                                 QQC2.ToolTip.visible: hovered
                                 QQC2.ToolTip.text: qsTr("Create a new profile from blank or from a template (Right-click a profile for Templates & Export)")
                             }
@@ -2860,6 +3045,7 @@ Kirigami.ApplicationWindow {
                                 text: qsTr("Wizard...")
                                 font.pointSize: 10 * root.fontScale
                                 onClicked: profileWizardDialog.openWizard()
+                                QQC2.ToolTip.delay: 500
                                 QQC2.ToolTip.visible: hovered
                                 QQC2.ToolTip.text: qsTr("Open New Profile Wizard: step-by-step setup with window picker, auto-switch rule, and shortcut search")
                             }
@@ -2870,6 +3056,7 @@ Kirigami.ApplicationWindow {
                                 text: qsTr("Import")
                                 font.pointSize: 10 * root.fontScale
                                 onClicked: importProfileFileDialog.open()
+                                QQC2.ToolTip.delay: 500
                                 QQC2.ToolTip.visible: hovered
                                 QQC2.ToolTip.text: qsTr("Import a profile from .duckyprofile.json or config.txt")
                             }
@@ -2885,6 +3072,7 @@ Kirigami.ApplicationWindow {
                                     0,
                                     -profileGroupMenu.implicitHeight
                                 )
+                                QQC2.ToolTip.delay: 500
                                 QQC2.ToolTip.visible: hovered
                                 QQC2.ToolTip.text: qsTr("Manage Profile Templates and Profile Groups (.duckygroup.json)")
 
@@ -2970,6 +3158,7 @@ Kirigami.ApplicationWindow {
                                             deviceController.defaultFallbackProfile
                                         )
                                     }
+                                    QQC2.ToolTip.delay: 500
                                     QQC2.ToolTip.visible: hovered
                                     QQC2.ToolTip.text: qsTr("Toggle automatic profile switching")
                                 }
@@ -3037,6 +3226,7 @@ Kirigami.ApplicationWindow {
                                 text: qsTr("Rules")
                                 font.pointSize: 10 * root.fontScale
                                 onClicked: autoSwitchDrawer.open()
+                                QQC2.ToolTip.delay: 500
                                 QQC2.ToolTip.visible: hovered
                                 QQC2.ToolTip.text: qsTr("Open Auto-Switcher Rules")
                             }
@@ -3220,6 +3410,7 @@ Kirigami.ApplicationWindow {
                                             onClicked: root.openKeyColorPicker(root.selectedSlotNumber, root.selectedSlotColor)
                                         }
 
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: inspectorBadgeSwatchMouse.containsMouse && inspectorCard.isMechanicalKey
                                         QQC2.ToolTip.text: qsTr("Click to change Key %1 RGB Color (%2)")
                                             .arg(root.selectedSlotNumber)
@@ -3330,6 +3521,7 @@ Kirigami.ApplicationWindow {
                                             onClicked: lightingAnimatorDialog.openFor("key", root.selectedSlotNumber)
                                         }
 
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: keyFxPillMouse.containsMouse
                                         QQC2.ToolTip.text: qsTr("Configure gaming RGB lighting animations (Pulse, Wave, Ripple, Starlight, Spectrum, Scanner) for Key %1 or Profile #%2")
                                             .arg(root.selectedSlotNumber)
@@ -3381,6 +3573,7 @@ Kirigami.ApplicationWindow {
                                             onClicked: root.openKeyColorPicker(root.selectedSlotNumber, root.selectedSlotColor)
                                         }
 
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: keyColorPillMouse.containsMouse
                                         QQC2.ToolTip.text: qsTr("Set Key %1 Color (SWCOLOR) or pick from Saved & Used Palettes").arg(root.selectedSlotNumber)
                                     }
@@ -3391,6 +3584,7 @@ Kirigami.ApplicationWindow {
                                         implicitHeight: Math.round(26 * root.inspectorScale)
                                         font.pointSize: 10 * root.fontScale
                                         onClicked: root.clearSlotSelection()
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Close Key Inspector (or click the selected key again)")
                                     }
@@ -3506,6 +3700,7 @@ Kirigami.ApplicationWindow {
                                         font.pointSize: 10 * root.fontScale
                                         font.bold: true
                                         onClicked: oledIconPickerDialog.openForInspector(1)
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Pick an OLED Button Icon or Symbol for Slot %1").arg(root.selectedSlotNumber)
                                     }
@@ -3518,6 +3713,7 @@ Kirigami.ApplicationWindow {
                                         implicitHeight: Math.max(Math.round(28 * root.inspectorScale), Math.ceil(oledLabelMetrics.height + 6))
                                         font.pointSize: 10 * root.fontScale
                                         onClicked: root.clearSelectedSlotNow()
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Clear labels, scripts, and custom RGB color on Slot %1").arg(root.selectedSlotNumber)
                                     }
@@ -3536,6 +3732,7 @@ Kirigami.ApplicationWindow {
                                         color: (widgetLabel1Input.text.trim().length > 0 || widgetLabel2Input.text.trim().length > 0)
                                             ? root.highContrastWarningText
                                             : Kirigami.Theme.disabledTextColor
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: widgetLblHover.hovered
                                         QQC2.ToolTip.text: qsTr("💻 Host App Only (Not Hardware-Portable): Longer labels (up to 24 chars) displayed only on the Desktop OLED Widget while DuckyDeck Studio is running. Physical OLED always uses the 5-char L1/L2 labels above.")
                                         HoverHandler { id: widgetLblHover }
@@ -3674,6 +3871,7 @@ Kirigami.ApplicationWindow {
                                             onClicked: root.switchEditingClickPhase(0)
                                         }
 
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: onPressTabMouse.containsMouse
                                         QQC2.ToolTip.text: qsTr("Edit script executed on 1× Single Click (On Press)")
                                     }
@@ -3743,6 +3941,7 @@ Kirigami.ApplicationWindow {
                                             onClicked: root.switchEditingClickPhase(1)
                                         }
 
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: doubleClickTabMouse.containsMouse
                                         QQC2.ToolTip.text: qsTr("Assign an action or DuckyScript 3 executed when this key is double-clicked within %1 ms").arg(deviceController ? deviceController.multiClickIntervalMs : 250)
                                     }
@@ -3812,6 +4011,7 @@ Kirigami.ApplicationWindow {
                                             onClicked: root.switchEditingClickPhase(2)
                                         }
 
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: tripleClickTabMouse.containsMouse
                                         QQC2.ToolTip.text: qsTr("Assign an action or DuckyScript 3 executed when this key is triple-clicked (%1 ms between clicks)").arg(deviceController ? deviceController.multiClickIntervalMs : 250)
                                     }
@@ -3878,6 +4078,7 @@ Kirigami.ApplicationWindow {
                                             onClicked: root.switchEditingClickPhase(3)
                                         }
 
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: onReleaseTabMouse.containsMouse
                                         QQC2.ToolTip.text: qsTr("Edit script executed when released")
                                     }
@@ -3919,6 +4120,7 @@ Kirigami.ApplicationWindow {
                                                     liveSlotAutoSaveTimer.restart()
                                                 }
                                             }
+                                            QQC2.ToolTip.delay: 500
                                             QQC2.ToolTip.visible: hovered
                                             QQC2.ToolTip.text: qsTr("Global timing window (ms) between clicks for Double & Triple Click detection (also configurable in Settings)")
                                         }
@@ -3993,6 +4195,7 @@ Kirigami.ApplicationWindow {
                                                 console.warn("Failed converting script for Gaming Hold Mode:", e)
                                             }
                                         }
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("🎮 Gaming Hold Mode: Sends KEYDOWN when pressed and KEYUP when released so movement/action keys (like W/A/S/D/Space/Shift in Minecraft) stay continuously held down while you hold the physical duckyPad key.")
                                     }
@@ -4006,6 +4209,7 @@ Kirigami.ApplicationWindow {
                                             root.updateCompilerStatus()
                                             liveSlotAutoSaveTimer.restart()
                                         }
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Execute this key action only once per press even if the key is held down — essential for Delete or destructive actions (dr %1 / $_DONT_REPEAT = 1)").arg(root.selectedSlotNumber)
                                     }
@@ -4020,6 +4224,7 @@ Kirigami.ApplicationWindow {
                                             root.updateCompilerStatus()
                                             liveSlotAutoSaveTimer.restart()
                                         }
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Allow any key press to abort this script early (ab %1 / $_ALLOW_ABORT = 1)").arg(root.selectedSlotNumber)
                                     }
@@ -4113,6 +4318,7 @@ Kirigami.ApplicationWindow {
                                         }
                                     }
 
+                                    QQC2.ToolTip.delay: 500
                                     QQC2.ToolTip.visible: codeTabMouse.containsMouse
                                     QQC2.ToolTip.text: qsTr("Full-height DuckyScript 3 editor with syntax highlighting, autocomplete & command reference")
                                 }
@@ -4184,6 +4390,7 @@ Kirigami.ApplicationWindow {
                                         }
                                     }
 
+                                    QQC2.ToolTip.delay: 500
                                     QQC2.ToolTip.visible: appLaunchTabMouse.containsMouse
                                     QQC2.ToolTip.text: qsTr("Switch to Launch App tab")
                                 }
@@ -4255,6 +4462,7 @@ Kirigami.ApplicationWindow {
                                         }
                                     }
 
+                                    QQC2.ToolTip.delay: 500
                                     QQC2.ToolTip.visible: webApiTabMouse.containsMouse
                                     QQC2.ToolTip.text: qsTr("Switch to Web API tab")
                                 }
@@ -4330,6 +4538,7 @@ Kirigami.ApplicationWindow {
                                         }
                                     }
 
+                                    QQC2.ToolTip.delay: 500
                                     QQC2.ToolTip.visible: shortcutsTabMouse.containsMouse
                                     QQC2.ToolTip.text: qsTr("Search application keyboard shortcuts (Google & local cheatsheets) and drag or assign them to keys")
                                 }
@@ -4344,6 +4553,7 @@ Kirigami.ApplicationWindow {
                                     leftPadding: 6
                                     rightPadding: 6
                                     onClicked: macroRecorderDialog.openRecorder()
+                                    QQC2.ToolTip.delay: 500
                                     QQC2.ToolTip.visible: hovered
                                     QQC2.ToolTip.text: qsTr("Record live keyboard keys, mouse clicks, and mouse movements into DuckyScript 3 (with Exact Timings or As Fast As Possible)")
                                 }
@@ -4355,6 +4565,7 @@ Kirigami.ApplicationWindow {
                                     leftPadding: 6
                                     rightPadding: 6
                                     onClicked: aiModal.open()
+                                    QQC2.ToolTip.delay: 500
                                     QQC2.ToolTip.visible: hovered
                                     QQC2.ToolTip.text: qsTr("Generate DuckyScript 3 macro templates from KDE shortcuts using Macro Template Generator (experimental)")
                                 }
@@ -4395,6 +4606,7 @@ Kirigami.ApplicationWindow {
                             }
 
                             HoverHandler { id: slotPortabilityHover }
+                            QQC2.ToolTip.delay: 500
                             QQC2.ToolTip.visible: slotPortabilityHover.hovered
                             QQC2.ToolTip.text: slotPortabilityStrip.requiresHostApp
                                 ? qsTr("This key uses Launch App or Web API, which are executed by the DuckyDeck Studio host process over USB HID. If DuckyDeck Studio is closed or the keypad is plugged into another computer, host actions will not run.")
@@ -4530,6 +4742,7 @@ Kirigami.ApplicationWindow {
                                                 root.refreshCommandReferenceModel()
                                                 commandRefSearchField.forceActiveFocus()
                                             }
+                                            QQC2.ToolTip.delay: 500
                                             QQC2.ToolTip.visible: hovered
                                             QQC2.ToolTip.text: qsTr("Clear search filter")
                                         }
@@ -4546,6 +4759,7 @@ Kirigami.ApplicationWindow {
                                                 root.autocompleteVisible = false
                                             }
                                         }
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Show inline duckyScript 3 suggestions while typing (or press Ctrl+Space anytime)")
                                     }
@@ -4751,6 +4965,7 @@ Kirigami.ApplicationWindow {
                                         onClicked: {
                                             if (deviceController) deviceController.armWindowPicker(false)
                                         }
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Pick any open desktop window to search its shortcuts")
                                     }
@@ -4794,6 +5009,7 @@ Kirigami.ApplicationWindow {
                                         font.bold: checked
                                         checked: shortcutsLibraryCard.forceGamingHoldMode
                                         onToggled: shortcutsLibraryCard.forceGamingHoldMode = checked
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Assign shortcuts in Gaming Hold Mode (KEYDOWN on press + KEYUP on release) so keys stay held while pressed")
                                     }
@@ -4814,6 +5030,7 @@ Kirigami.ApplicationWindow {
                                                 }
                                             }
                                         }
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Allow online web search for shortcut cheatsheets (privacy permission)")
                                     }
@@ -5198,6 +5415,7 @@ Kirigami.ApplicationWindow {
                                         font.bold: true
                                         implicitHeight: Math.round(22 * root.inspectorScale)
                                         onClicked: root.showScriptPreviewInBuilder = !root.showScriptPreviewInBuilder
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Show or hide the live generated DuckyScript 3 source preview while using a visual builder")
                                     }
@@ -5250,6 +5468,7 @@ Kirigami.ApplicationWindow {
                                         font.bold: true
                                         implicitHeight: Math.round(22 * root.inspectorScale)
                                         onClicked: root.insertCommandFromReference("DELAY 100")
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Insert DELAY 100 (pause 100ms)")
                                     }
@@ -5262,6 +5481,7 @@ Kirigami.ApplicationWindow {
                                         font.bold: true
                                         implicitHeight: Math.round(22 * root.inspectorScale)
                                         onClicked: root.insertCommandFromReference("STRINGLN ")
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Insert STRINGLN command")
                                     }
@@ -5274,6 +5494,7 @@ Kirigami.ApplicationWindow {
                                         font.bold: true
                                         implicitHeight: Math.round(22 * root.inspectorScale)
                                         onClicked: root.insertCommandFromReference("OLED_CLEAR\nOLED_CURSOR 10 24\nOLED_PRINT Hello!\nOLED_UPDATE")
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Insert OLED screen drawing block")
                                     }
@@ -5287,6 +5508,7 @@ Kirigami.ApplicationWindow {
                                             scriptEditor.forceActiveFocus()
                                             root.updateAutocompleteSuggestions(true)
                                         }
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Trigger DuckyScript 3 Autocomplete (Ctrl+Space)")
                                     }
@@ -5310,6 +5532,7 @@ Kirigami.ApplicationWindow {
                                                 commandRefSearchField.forceActiveFocus()
                                             }
                                         }
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Toggle interactive DuckyScript 3 Command Reference browser")
                                     }
@@ -5720,6 +5943,7 @@ Kirigami.ApplicationWindow {
                                     liveSlotAutoSaveTimer.stop()
                                     root.revertSlotToSnapshot()
                                 }
+                                QQC2.ToolTip.delay: 500
                                 QQC2.ToolTip.visible: hovered
                                 QQC2.ToolTip.text: inspectorCard.hasRevertibleChanges
                                     ? qsTr("Restore Key %1 labels, color, flags, and scripts to their state when this key was selected").arg(root.selectedSlotNumber)
@@ -5762,14 +5986,16 @@ Kirigami.ApplicationWindow {
                 Layout.fillWidth: true
                 spacing: 10
 
-                // Connection Status Pill
+                // Connection Status Pill (Click to select managed duckyPad or switch model)
                 Rectangle {
+                    id: connStatusPill
+                    objectName: "connStatusPill"
                     radius: 4
                     color: deviceController.connected
-                        ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.16)
+                        ? Qt.alpha(Kirigami.Theme.positiveTextColor, connStatusMouse.containsMouse ? 0.24 : 0.16)
                         : (deviceController.sdMountPath.length > 0
-                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.16)
-                            : Qt.alpha(Kirigami.Theme.neutralTextColor, 0.16))
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, connStatusMouse.containsMouse ? 0.24 : 0.16)
+                            : Qt.alpha(Kirigami.Theme.neutralTextColor, connStatusMouse.containsMouse ? 0.24 : 0.16))
                     border.color: deviceController.connected
                         ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.5)
                         : (deviceController.sdMountPath.length > 0
@@ -5796,16 +6022,36 @@ Kirigami.ApplicationWindow {
                         }
 
                         QQC2.Label {
-                            text: deviceController.connected
-                                ? qsTr("USB HID Connected — %1").arg(deviceController.modelName)
-                                : (deviceController.sdMountPath.length > 0
-                                    ? qsTr("SD Card Mode — %1").arg(deviceController.modelName)
-                                    : qsTr("Disconnected"))
+                            text: {
+                                const multiSuffix = deviceController.connectedDeviceCount > 1
+                                    ? qsTr(" (1/%1)").arg(deviceController.connectedDeviceCount)
+                                    : ""
+                                const base = deviceController.connected
+                                    ? qsTr("USB HID Connected — %1%2").arg(deviceController.modelName).arg(multiSuffix)
+                                    : (deviceController.sdMountPath.length > 0
+                                        ? qsTr("SD Card Mode — %1").arg(deviceController.modelName)
+                                        : qsTr("Disconnected (%1)").arg(deviceController.modelName))
+                                return base + " ▾"
+                            }
                             font.bold: true
                             font.pointSize: 10 * root.fontScale
                             color: Kirigami.Theme.textColor
                         }
                     }
+
+                    MouseArea {
+                        id: connStatusMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            deviceSelectorMenu.popup(connStatusPill, 0, -deviceSelectorMenu.implicitHeight)
+                        }
+                    }
+
+                    QQC2.ToolTip.delay: 500
+                    QQC2.ToolTip.visible: connStatusMouse.containsMouse
+                    QQC2.ToolTip.text: qsTr("Click to choose which attached duckyPad or mounted SD card to manage, or switch between duckyPad Pro (20-key) and duckyPad 2020 (15-key)")
                 }
 
                 // Profile Sync / Mismatch Status Indicator Badge
@@ -5879,6 +6125,7 @@ Kirigami.ApplicationWindow {
                         }
                     }
 
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: syncBadgeMouse.containsMouse
                     QQC2.ToolTip.text: deviceController.sdSyncBusy
                         ? deviceController.sdSyncStep
@@ -5935,6 +6182,7 @@ Kirigami.ApplicationWindow {
                         onClicked: eventLogDialog.openLogWindow()
                     }
 
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: statusLogLineMouse.containsMouse
                     QQC2.ToolTip.text: (statusLogLineBox.hasAutoSwitchErr
                         ? (deviceController.autoSwitchErrorMessage + "\n" + deviceController.statusMessage + "\n")
@@ -6026,6 +6274,7 @@ Kirigami.ApplicationWindow {
                         }
                     }
 
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: fwBadgeMouse.containsMouse
                     QQC2.ToolTip.text: {
                         const originDesc = root.isDuckyDeckStudioFirmware(deviceController.firmwareVersion)
@@ -6069,6 +6318,7 @@ Kirigami.ApplicationWindow {
                         hoverEnabled: true
                     }
 
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: sdSpaceMouse.containsMouse
                     QQC2.ToolTip.text: deviceController.sdMountPath.length > 0
                         ? (deviceController.sdSpaceDetail + "\n" + qsTr("Mount Path: %1").arg(deviceController.sdMountPath))
@@ -6082,11 +6332,12 @@ Kirigami.ApplicationWindow {
                 // Desktop OLED Widget Toggle Badge
                 Rectangle {
                     id: oledWidgetStatusBtn
+                    readonly property int activeWidgetCount: (oledDesktopWidget.visible ? 1 : 0) + root.openDeviceWidgetIdList.length
                     radius: 4
-                    color: oledDesktopWidget.visible
+                    color: activeWidgetCount > 0
                         ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.16)
                         : Kirigami.Theme.backgroundColor
-                    border.color: oledDesktopWidget.visible
+                    border.color: activeWidgetCount > 0
                         ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.5)
                         : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
                     border.width: 1
@@ -6102,7 +6353,7 @@ Kirigami.ApplicationWindow {
                             width: 9
                             height: 9
                             radius: 5
-                            color: oledDesktopWidget.visible
+                            color: oledWidgetStatusBtn.activeWidgetCount > 0
                                 ? Kirigami.Theme.positiveTextColor
                                 : Kirigami.Theme.disabledTextColor
                         }
@@ -6117,9 +6368,11 @@ Kirigami.ApplicationWindow {
                         }
 
                         QQC2.Label {
-                            text: oledDesktopWidget.visible
-                                ? qsTr("Desktop OLED: Active")
-                                : qsTr("Desktop OLED Widget")
+                            text: oledWidgetStatusBtn.activeWidgetCount > 1
+                                ? qsTr("Desktop OLED (%1 Active)").arg(oledWidgetStatusBtn.activeWidgetCount)
+                                : (oledWidgetStatusBtn.activeWidgetCount === 1
+                                    ? qsTr("Desktop OLED: Active")
+                                    : qsTr("Desktop OLED Widget"))
                             font.bold: true
                             font.pointSize: 10 * root.fontScale
                             color: Kirigami.Theme.textColor
@@ -6130,14 +6383,20 @@ Kirigami.ApplicationWindow {
                         id: oledWidgetBtnMouse
                         anchors.fill: parent
                         hoverEnabled: true
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            deviceController.toggleOledDesktopWidget()
+                        onClicked: (mouse) => {
+                            if (mouse.button === Qt.RightButton) {
+                                deviceSelectorMenu.popup(oledWidgetStatusBtn, 0, -deviceSelectorMenu.implicitHeight)
+                            } else {
+                                deviceController.toggleOledDesktopWidget()
+                            }
                         }
                     }
 
+                    QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: oledWidgetBtnMouse.containsMouse
-                    QQC2.ToolTip.text: qsTr("Toggle the floating, resizable, always-on-top KDE Desktop OLED Widget")
+                    QQC2.ToolTip.text: qsTr("Toggle the floating Desktop OLED Widget (Right-click to toggle individual widgets per duckyPad)")
                 }
             }
         }
@@ -6300,6 +6559,34 @@ Kirigami.ApplicationWindow {
             root.show()
             root.raise()
             root.requestActivate()
+        }
+    }
+
+    Repeater {
+        id: perDeviceOledWidgetRepeater
+        model: root.openDeviceWidgetIdList
+        delegate: OledDesktopWidget {
+            id: secondaryOledWidget
+            required property string modelData
+            required property int index
+            controller: deviceController
+            targetDeviceId: modelData
+            targetDeviceLabel: String(root.openDeviceWidgetIds[modelData] || "")
+            visible: true
+            x: oledDesktopWidget.x + (index + 1) * 304
+            y: oledDesktopWidget.y
+            onVisibleChanged: {
+                if (!visible && root.openDeviceWidgetIds[modelData]) {
+                    const copy = Object.assign({}, root.openDeviceWidgetIds)
+                    delete copy[modelData]
+                    root.openDeviceWidgetIds = copy
+                }
+            }
+            onRequestOpenMainWindow: {
+                root.show()
+                root.raise()
+                root.requestActivate()
+            }
         }
     }
 

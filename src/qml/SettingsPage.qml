@@ -1056,6 +1056,7 @@ Window {
                                 onClicked: Qt.openUrlExternally("https://ko-fi.com/russellmilliner")
                             }
 
+                            QQC2.ToolTip.delay: 500
                             QQC2.ToolTip.visible: aboutKofiMouse.containsMouse
                             QQC2.ToolTip.text: qsTr("Support Russell Milliner on Ko-fi (https://ko-fi.com/russellmilliner)")
                         }
@@ -1925,6 +1926,7 @@ Window {
                                     font.pointSize: 10 * root.fontScale
                                     Layout.fillWidth: true
                                     wrapMode: Text.WordWrap
+                                    QQC2.ToolTip.delay: 500
                                     QQC2.ToolTip.visible: dwRotHover.hovered
                                     QQC2.ToolTip.text: qsTr("💻 Host App Only: Configure the Desktop OLED Widget orientation separately from the physical hardware OLED screen. Applies immediately without requiring a microSD card sync.")
                                     HoverHandler { id: dwRotHover }
@@ -2588,6 +2590,7 @@ Window {
                                     text: qsTr("★ Icon...")
                                     font.bold: true
                                     onClicked: oledIconPickerDialog.openForKeyProperties(1)
+                                    QQC2.ToolTip.delay: 500
                                     QQC2.ToolTip.visible: hovered
                                     QQC2.ToolTip.text: qsTr("Pick an OLED Button Icon or Symbol for Line 1")
                                 }
@@ -2641,6 +2644,7 @@ Window {
                                     text: qsTr("★ Icon...")
                                     font.bold: true
                                     onClicked: oledIconPickerDialog.openForKeyProperties(2)
+                                    QQC2.ToolTip.delay: 500
                                     QQC2.ToolTip.visible: hovered
                                     QQC2.ToolTip.text: qsTr("Pick an OLED Button Icon or Symbol for Line 2")
                                 }
@@ -2988,6 +2992,9 @@ Window {
 
 
         function open() {
+            if (deviceController) {
+                deviceController.scanAvailableDevices()
+            }
             restApiSettingsSection.resetAndSync()
             settingsDialog.height = Math.min(settingsDialog.availScreenHeight - 48, settingsDialog.targetFullHeight)
             settingsDialog.show()
@@ -3025,6 +3032,7 @@ Window {
                 font.bold: true
                 enabled: deviceController.uiTextScale > 75
                 onClicked: root.zoomOut()
+                QQC2.ToolTip.delay: 500
                 QQC2.ToolTip.visible: hovered
                 QQC2.ToolTip.text: qsTr("Zoom Out (Ctrl+-)")
             }
@@ -3044,6 +3052,7 @@ Window {
                 font.bold: true
                 enabled: deviceController.uiTextScale < 160
                 onClicked: root.zoomIn()
+                QQC2.ToolTip.delay: 500
                 QQC2.ToolTip.visible: hovered
                 QQC2.ToolTip.text: qsTr("Zoom In (Ctrl++ / Ctrl+=)")
             }
@@ -3054,6 +3063,7 @@ Window {
                 text: qsTr("Reset Zoom (100%)")
                 enabled: deviceController.uiTextScale !== 100
                 onClicked: root.resetZoom()
+                QQC2.ToolTip.delay: 500
                 QQC2.ToolTip.visible: hovered
                 QQC2.ToolTip.text: qsTr("Reset Zoom to 100% (Ctrl+0)")
             }
@@ -3087,6 +3097,229 @@ Window {
                     settingsFlickable.width - (settingsFlickable.contentHeight > settingsFlickable.height ? 18 : 2)
                 )
                 spacing: 12
+
+                // Section 0: Managed duckyPad & Multi-Device / SD Card Selector
+                Rectangle {
+                    id: multiDeviceSettingsCard
+                    objectName: "multiDeviceSettingsCard"
+                    Kirigami.Theme.colorSet: Kirigami.Theme.View
+                    Kirigami.Theme.inherit: false
+                    Layout.fillWidth: true
+                    implicitHeight: multiDeviceCol.implicitHeight + 20
+                    radius: 8
+                    color: Kirigami.Theme.alternateBackgroundColor
+                    border.color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+                    border.width: 1
+
+                    readonly property var targetsList: {
+                        if (!deviceController || !deviceController.availableDevicesJson) return []
+                        try {
+                            const parsed = JSON.parse(deviceController.availableDevicesJson)
+                            return Array.isArray(parsed) ? parsed : []
+                        } catch (e) {
+                            return []
+                        }
+                    }
+
+                    ColumnLayout {
+                        id: multiDeviceCol
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        spacing: 8
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            QQC2.Label {
+                                text: qsTr("MANAGED DUCKYPAD & MULTI-DEVICE / SD CARD SELECTOR")
+                                font.bold: true
+                                font.pointSize: 10 * root.fontScale
+                                color: Kirigami.Theme.disabledTextColor
+                                Layout.fillWidth: true
+                            }
+
+                            QQC2.Button {
+                                font.pointSize: 10 * root.fontScale
+                                icon.name: "view-refresh"
+                                text: qsTr("Scan Devices & SD Cards")
+                                onClicked: {
+                                    if (deviceController) {
+                                        deviceController.scanAvailableDevices()
+                                        deviceController.refreshDevice()
+                                    }
+                                }
+                            }
+                        }
+
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            font.pointSize: 10 * root.fontScale
+                            color: Kirigami.Theme.textColor
+                            text: qsTr("Choose which attached duckyPad Pro (20-key) or duckyPad 2020 (15-key) to manage. When multiple duckyPads or microSD cards are connected at the same time, DuckyDeck Studio matches each device's serial number and volume label (DP24_XXXX / DP20_XXXX) so SD card reads and writes always target the selected unit.")
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            QQC2.Label {
+                                text: qsTr("Hardware Layout:")
+                                font.bold: true
+                                font.pointSize: 10 * root.fontScale
+                                color: Kirigami.Theme.textColor
+                            }
+
+                            QQC2.Button {
+                                objectName: "modelSwitchProButton"
+                                font.pointSize: 10 * root.fontScale
+                                text: qsTr("duckyPad Pro (20 Keys + 2 Encoders)")
+                                checkable: true
+                                checked: deviceController ? !deviceController.isDuckyPad2020 : true
+                                highlighted: checked
+                                onClicked: {
+                                    if (deviceController) {
+                                        deviceController.setSimulatedDeviceModel(24)
+                                        if (hardwareCanvas) hardwareCanvas.syncSlotsFromController()
+                                        if (root) root.refreshSelectedSlotFromController()
+                                    }
+                                }
+                            }
+
+                            QQC2.Button {
+                                objectName: "modelSwitch2020Button"
+                                font.pointSize: 10 * root.fontScale
+                                text: qsTr("duckyPad (2020) (15 Keys • 3×5)")
+                                checkable: true
+                                checked: deviceController ? !!deviceController.isDuckyPad2020 : false
+                                highlighted: checked
+                                onClicked: {
+                                    if (deviceController) {
+                                        deviceController.setSimulatedDeviceModel(20)
+                                        if (hardwareCanvas) hardwareCanvas.syncSlotsFromController()
+                                        if (root) root.refreshSelectedSlotFromController()
+                                    }
+                                }
+                            }
+
+                            Item { Layout.fillWidth: true }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 6
+                            visible: multiDeviceSettingsCard.targetsList.length > 0
+
+                            Repeater {
+                                model: multiDeviceSettingsCard.targetsList
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    implicitHeight: devRowLayout.implicitHeight + 14
+                                    radius: 6
+                                    color: modelData.isSelected
+                                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.16)
+                                        : Kirigami.Theme.backgroundColor
+                                    border.width: modelData.isSelected ? 1.5 : 1
+                                    border.color: modelData.isSelected
+                                        ? Kirigami.Theme.highlightColor
+                                        : Qt.alpha(Kirigami.Theme.textColor, 0.22)
+
+                                    RowLayout {
+                                        id: devRowLayout
+                                        anchors.fill: parent
+                                        anchors.margins: 7
+                                        spacing: 8
+
+                                        Rectangle {
+                                            width: 10
+                                            height: 10
+                                            radius: 5
+                                            color: modelData.usbConnected
+                                                ? Kirigami.Theme.positiveTextColor
+                                                : (modelData.sdMounted
+                                                    ? Kirigami.Theme.highlightColor
+                                                    : Kirigami.Theme.disabledTextColor)
+                                        }
+
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 2
+
+                                            QQC2.Label {
+                                                Layout.fillWidth: true
+                                                elide: Text.ElideRight
+                                                font.bold: true
+                                                font.pointSize: 10 * root.fontScale
+                                                color: Kirigami.Theme.textColor
+                                                text: (modelData.displayLabel || modelData.id)
+                                                    + (modelData.firmwareVersion && modelData.firmwareVersion !== "-"
+                                                        ? ("  •  FW v" + modelData.firmwareVersion)
+                                                        : "")
+                                            }
+
+                                            QQC2.Label {
+                                                Layout.fillWidth: true
+                                                elide: Text.ElideRight
+                                                font.family: "monospace"
+                                                font.pointSize: 9.5 * root.fontScale
+                                                color: Kirigami.Theme.disabledTextColor
+                                                text: {
+                                                    const parts = []
+                                                    parts.push(modelData.usbConnected ? qsTr("USB HID: Connected") : qsTr("USB HID: Offline"))
+                                                    if (modelData.sdMounted) {
+                                                        parts.push(qsTr("SD Mounted: %1 (%2)").arg(modelData.diskLabel || "SD").arg(modelData.sdMountPath))
+                                                    } else if (modelData.diskLabel) {
+                                                        parts.push(qsTr("Volume Label: %1").arg(modelData.diskLabel))
+                                                    }
+                                                    return parts.join("  •  ")
+                                                }
+                                            }
+                                        }
+
+                                        QQC2.Button {
+                                            font.pointSize: 10 * root.fontScale
+                                            readonly property bool devWidgetOpen: root ? root.isDeviceOledWidgetOpen(modelData.id) : false
+                                            highlighted: devWidgetOpen
+                                            text: devWidgetOpen ? qsTr("🖥️ Widget Active") : qsTr("🖥️ OLED Widget")
+                                            onClicked: {
+                                                if (root && modelData.id) {
+                                                    const shortBadge = (modelData.hwModel === 20 ? "DP20·" : "DP24·")
+                                                        + String(modelData.serialNumber || modelData.id).slice(-4)
+                                                    root.toggleDeviceOledWidget(modelData.id, shortBadge)
+                                                }
+                                            }
+                                            QQC2.ToolTip.delay: 500
+                                            QQC2.ToolTip.visible: hovered
+                                            QQC2.ToolTip.text: qsTr("Open or close a dedicated floating Desktop OLED Widget for this specific duckyPad")
+                                        }
+
+                                        QQC2.Button {
+                                            font.pointSize: 10 * root.fontScale
+                                            highlighted: !!modelData.isSelected
+                                            text: modelData.isSelected ? qsTr("✓ Managing") : qsTr("Manage Device")
+                                            onClicked: {
+                                                if (deviceController && modelData.id) {
+                                                    if (deviceController.selectManagedDevice(modelData.id)) {
+                                                        if (root) {
+                                                            root.syncSidebarProfilesFromController()
+                                                            root.refreshSelectedSlotFromController()
+                                                        }
+                                                        if (hardwareCanvas) {
+                                                            hardwareCanvas.syncProfilesFromController()
+                                                            hardwareCanvas.syncSlotsFromController()
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
                     RestApiSettings {
                         id: restApiSettingsSection

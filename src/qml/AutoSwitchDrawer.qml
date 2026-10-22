@@ -618,6 +618,7 @@ Window {
                                         onClicked: drawerRoot.enableSectionExpanded = !drawerRoot.enableSectionExpanded
                                     }
 
+                                    QQC2.ToolTip.delay: 500
                                     QQC2.ToolTip.visible: enableTwistMouse.containsMouse
                                     QQC2.ToolTip.text: drawerRoot.enableSectionExpanded
                                         ? qsTr("Minimize Auto-Switcher enable & timing settings")
@@ -703,6 +704,7 @@ Window {
                                         font.pointSize: 10 * drawerRoot.fontScale
                                         font.bold: true
                                         color: Kirigami.Theme.textColor
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: settleLabelHover.hovered
                                         QQC2.ToolTip.text: qsTr("How long the mouse cursor must stop moving inside a window before switching profiles")
                                         HoverHandler { id: settleLabelHover }
@@ -720,6 +722,7 @@ Window {
                                             font.pointSize: 11 * drawerRoot.fontScale
                                             enabled: drawerRoot.settleMsValue > 0
                                             onClicked: drawerRoot.applyTimings(Math.max(0, drawerRoot.settleMsValue - 50), drawerRoot.dwellMsValue)
+                                            QQC2.ToolTip.delay: 500
                                             QQC2.ToolTip.visible: hovered
                                             QQC2.ToolTip.text: qsTr("Decrease Mouse Settle by 50 ms")
                                         }
@@ -748,6 +751,7 @@ Window {
                                                     event.accepted = true
                                                 }
                                             }
+                                            QQC2.ToolTip.delay: 500
                                             QQC2.ToolTip.visible: hovered
                                             QQC2.ToolTip.text: qsTr("Wait for the mouse cursor to stop moving for this duration before switching profiles (0–5000 ms)")
                                         }
@@ -760,6 +764,7 @@ Window {
                                             font.pointSize: 11 * drawerRoot.fontScale
                                             enabled: drawerRoot.settleMsValue < 5000
                                             onClicked: drawerRoot.applyTimings(Math.min(5000, drawerRoot.settleMsValue + 50), drawerRoot.dwellMsValue)
+                                            QQC2.ToolTip.delay: 500
                                             QQC2.ToolTip.visible: hovered
                                             QQC2.ToolTip.text: qsTr("Increase Mouse Settle by 50 ms")
                                         }
@@ -779,6 +784,7 @@ Window {
                                         font.pointSize: 10 * drawerRoot.fontScale
                                         font.bold: true
                                         color: Kirigami.Theme.textColor
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: dwellLabelHover.hovered
                                         QQC2.ToolTip.text: qsTr("Minimum time a window must stay hovered or focused before switching profiles")
                                         HoverHandler { id: dwellLabelHover }
@@ -796,6 +802,7 @@ Window {
                                             font.pointSize: 11 * drawerRoot.fontScale
                                             enabled: drawerRoot.dwellMsValue > 0
                                             onClicked: drawerRoot.applyTimings(drawerRoot.settleMsValue, Math.max(0, drawerRoot.dwellMsValue - 50))
+                                            QQC2.ToolTip.delay: 500
                                             QQC2.ToolTip.visible: hovered
                                             QQC2.ToolTip.text: qsTr("Decrease Window Dwell by 50 ms")
                                         }
@@ -824,6 +831,7 @@ Window {
                                                     event.accepted = true
                                                 }
                                             }
+                                            QQC2.ToolTip.delay: 500
                                             QQC2.ToolTip.visible: hovered
                                             QQC2.ToolTip.text: qsTr("Minimum time cursor/focus must stay in the window before switching profiles (0–5000 ms)")
                                         }
@@ -836,6 +844,7 @@ Window {
                                             font.pointSize: 11 * drawerRoot.fontScale
                                             enabled: drawerRoot.dwellMsValue < 5000
                                             onClicked: drawerRoot.applyTimings(drawerRoot.settleMsValue, Math.min(5000, drawerRoot.dwellMsValue + 50))
+                                            QQC2.ToolTip.delay: 500
                                             QQC2.ToolTip.visible: hovered
                                             QQC2.ToolTip.text: qsTr("Increase Window Dwell by 50 ms")
                                         }
@@ -869,6 +878,7 @@ Window {
                                         implicitHeight: 26
                                         highlighted: drawerRoot.settleMsValue === 0 && drawerRoot.dwellMsValue === 0
                                         onClicked: drawerRoot.applyTimings(0, 0)
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Switch immediately when entering a window (0 ms settle, 0 ms dwell)")
                                     }
@@ -880,6 +890,7 @@ Window {
                                         implicitHeight: 26
                                         highlighted: drawerRoot.settleMsValue === 250 && drawerRoot.dwellMsValue === 150
                                         onClicked: drawerRoot.applyTimings(250, 150)
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Default balanced settle timing (250 ms mouse settle, 150 ms window dwell)")
                                     }
@@ -891,6 +902,7 @@ Window {
                                         implicitHeight: 26
                                         highlighted: drawerRoot.settleMsValue === 500 && drawerRoot.dwellMsValue === 300
                                         onClicked: drawerRoot.applyTimings(500, 300)
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Relaxed settle timing (500 ms mouse settle, 300 ms window dwell)")
                                     }
@@ -972,6 +984,7 @@ Window {
                                         drawerRoot.controller.armWindowPicker(false)
                                     }
                                 }
+                                QQC2.ToolTip.delay: 500
                                 QQC2.ToolTip.visible: hovered
                                 QQC2.ToolTip.text: qsTr("Click this button, then click any open window to fill its class and title below")
                             }
@@ -1001,6 +1014,7 @@ Window {
                                             : rawTitle
                                     }
                                 }
+                                QQC2.ToolTip.delay: 500
                                 QQC2.ToolTip.visible: hovered
                                 QQC2.ToolTip.text: qsTr("Copy the last detected window class and title into the rule editor below")
                             }
@@ -1061,6 +1075,7 @@ Window {
                                         onClicked: drawerRoot.ruleEditorSectionExpanded = !drawerRoot.ruleEditorSectionExpanded
                                     }
 
+                                    QQC2.ToolTip.delay: 500
                                     QQC2.ToolTip.visible: ruleTwistMouse.containsMouse
                                     QQC2.ToolTip.text: drawerRoot.ruleEditorSectionExpanded
                                         ? qsTr("Minimize Add / Edit Window Rule section")
@@ -1153,6 +1168,7 @@ Window {
                                                 }
                                             }
                                         }
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Match all web browser window classes (Chrome, Zen, Firefox, Edge, Brave, Opera, Vivaldi, Chromium, LibreWolf, etc.)")
                                     }
@@ -1193,6 +1209,7 @@ Window {
                                         Layout.alignment: Qt.AlignVCenter
                                         text: qsTr(".* Regex")
                                         font.pointSize: 10 * drawerRoot.fontScale
+                                        QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Match window title using a regular expression (case-insensitive by default; supports |, ^, $, .*, [a-z], etc.)")
                                     }
@@ -1306,6 +1323,7 @@ Window {
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
                             Layout.preferredWidth: 1
+                            QQC2.ToolTip.delay: 500
                             QQC2.ToolTip.visible: rulesHeaderHover.hovered
                             QQC2.ToolTip.text: rulesListView.canReorder
                                 ? qsTr("Drag to Reorder • Double-click to Edit • Right-click for Options")
@@ -1347,6 +1365,7 @@ Window {
                                     ruleFilterField.text = ""
                                     ruleFilterField.forceActiveFocus()
                                 }
+                                QQC2.ToolTip.delay: 500
                                 QQC2.ToolTip.visible: hovered
                                 QQC2.ToolTip.text: qsTr("Clear filter")
                             }
@@ -1636,6 +1655,7 @@ Window {
                                                     drawerRoot.controller.toggleAutoSwitchRule(ruleIndex, checked)
                                                 }
                                             }
+                                            QQC2.ToolTip.delay: 500
                                             QQC2.ToolTip.visible: hovered
                                             QQC2.ToolTip.text: qsTr("Enable or disable this auto-switch rule")
                                         }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>HTTP REST API Reference (/api/v1/*) — DuckyDeck Studio v0.1.6</title>
+  <title>HTTP REST API Reference (/api/v1/*) — DuckyDeck Studio v0.1.7</title>
   <style>
     :root[data-theme="dark"] {
       --bg-primary: #0f1116;
@@ -245,7 +245,7 @@
           <rect x="86" y="72" width="24" height="34" rx="3" fill="#000000" stroke="#94a3b8" stroke-width="2"/>
         </svg>
       <span>DuckyDeck Studio</span>
-      <span class="brand-badge">v0.1.6</span>
+      <span class="brand-badge">v0.1.7</span>
     </a>
     <nav class="top-nav">
       <a class="top-link" href="index.html">🏠 Home</a>
@@ -255,7 +255,7 @@
       <a class="top-link" href="architecture.html">🏗️ Architecture</a>
     </nav>
     <div class="top-actions">
-      <a class="top-link" href="https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.6" target="_blank" rel="noopener noreferrer">⬇ Releases</a>
+      <a class="top-link" href="https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.7" target="_blank" rel="noopener noreferrer">⬇ Releases</a>
       <button class="theme-btn" style="padding:5px 10px;font-size:0.8rem;" onclick="toggleTheme()">🌓 Theme</button>
     </div>
   </header>
@@ -280,7 +280,7 @@
     <section id="overview">
       <h1>🔌 HTTP REST API &amp; Webhook Reference (<code>/api/v1/*</code>)</h1>
       <p>
-        DuckyDeck Studio (<code>v0.1.6</code> for <strong>Windows 10/11</strong> &amp; <strong>Linux</strong>) includes an embedded, low-latency HTTP/1.1 REST API server
+        DuckyDeck Studio (<code>v0.1.7</code> for <strong>Windows 10/11</strong> &amp; <strong>Linux</strong>) includes an embedded, low-latency HTTP/1.1 REST API server
         (<code>src/api_server.rs</code>) that exposes full programmatic control over your duckyPad Pro, profiles, keys, DuckyScript 3 compiler,
         Persistent Global Variables (<code>_GV0.._GV31</code>), live RGB LEDs, and microSD card sync.
       </p>
@@ -319,9 +319,9 @@ X-API-Token: ddk_0123456789abcdef0123456789abcdef01234567</code></pre>
             </tr>
           </thead>
           <tbody>
-            <tr><td><code>GET /api/v1/health</code></td><td>Unauthenticated liveness probe (<code>{"ok":true,"service":"duckydeck-studio","version":"0.1.6"}</code>).</td></tr>
+            <tr><td><code>GET /api/v1/health</code></td><td>Unauthenticated liveness probe (<code>{"ok":true,"service":"duckydeck-studio","version":"0.1.7"}</code>).</td></tr>
             <tr><td><code>GET /api/v1/openapi.json</code> | <code>/swagger.json</code> | <code>/openapi.yaml</code></td><td>Unauthenticated OpenAPI 3.0.3 / Swagger specification.</td></tr>
-            <tr><td><code>GET /api/v1/status</code></td><td>Full device connection, firmware (<code>v1.1.1</code>), active profile, SD sync, and auto-switcher state.</td></tr>
+            <tr><td><code>GET /api/v1/status</code></td><td>Full device connection, firmware (<code>v1.1.2</code>), active profile, SD sync, and auto-switcher state.</td></tr>
             <tr><td><code>GET /api/v1/profiles</code></td><td>List all profiles and their properties.</td></tr>
             <tr><td><code>POST /api/v1/profiles</code></td><td>Create a new profile (<code>{"name":"Streaming"}</code>) or duplicate an existing profile (<code>{"name":"Copy","duplicateFrom":1}</code>).</td></tr>
             <tr><td><code>POST /api/v1/profiles/select</code></td><td>Select active profile and switch hardware (<code>{"profile":2,"switchHardware":true}</code>).</td></tr>

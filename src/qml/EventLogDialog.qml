@@ -1431,14 +1431,16 @@ Window {
                     + " fallback=" + deviceController.defaultFallbackProfile
             )
 
-            // 13. DuckyDeck Studio custom firmware (DDS_FW_1.1.1_eed0141e.bin) is available in the firmware catalog
+            // 13. DuckyDeck Studio custom firmware (DDS_FW_1.1.2_0f85dab1.bin) is available in the firmware catalog
             var fwList = []
             try { fwList = JSON.parse(deviceController.listAvailableFirmwaresJson() || "[]") } catch (e) {}
             var studioFw = fwList.find(function(fw) {
                 return fw.is_official === false
                     && fw.supports_monochrome_icons === true
                     && fw.is_downloaded === true
-                    && (fw.filename === "DDS_FW_1.1.1_eed0141e.bin" || fw.filename.indexOf("DDS_FW_1.1.1_") === 0)
+                    && (fw.filename === "DDS_FW_1.1.2_0f85dab1.bin"
+                        || fw.filename.indexOf("DDS_FW_1.1.2_") === 0
+                        || fw.filename.indexOf("DDS_FW_1.1.1_") === 0)
             })
             recordBehavior(
                 "duckydeck_studio_firmware_available_in_catalog",
@@ -1535,6 +1537,43 @@ Window {
                 "oled_label_input_fields_no_clipping",
                 l1FitOk && l2FitOk && l1HeightOk && l2HeightOk && l1EmojiFitOk,
                 "l1Fit=" + l1FitOk + " l2Fit=" + l2FitOk + " l1H=" + l1HeightOk + " l2H=" + l2HeightOk + " emoji=" + l1EmojiFitOk
+            )
+
+            // 17. duckyPad (2020) 15-key (3x5) & duckyPad Pro 20-key (4x5) model switching & multi-device discovery
+            deviceController.setSimulatedDeviceModel(20)
+            var dp20ModelOk = (
+                deviceController.isDuckyPad2020 === true
+                && deviceController.activeHwModel === 20
+                && deviceController.onboardKeyCount === 15
+                && hardwareCanvas.isDuckyPad2020 === true
+                && hardwareCanvas.onboardGridColumns === 3
+                && hardwareCanvas.onboardKeyCount === 15
+                && oledDesktopWidget.isDuckyPad2020 === true
+                && oledDesktopWidget.onboardKeyCount === 15
+                && oledDesktopWidget.basePortraitCols === 3
+            )
+            deviceController.setSimulatedDeviceModel(24)
+            var dp24ModelOk = (
+                deviceController.isDuckyPad2020 === false
+                && deviceController.activeHwModel === 24
+                && deviceController.onboardKeyCount === 20
+                && hardwareCanvas.isDuckyPad2020 === false
+                && hardwareCanvas.onboardGridColumns === 4
+                && hardwareCanvas.onboardKeyCount === 20
+                && oledDesktopWidget.isDuckyPad2020 === false
+                && oledDesktopWidget.onboardKeyCount === 20
+                && oledDesktopWidget.basePortraitCols === 4
+            )
+            var scannedJson = deviceController.scanAvailableDevices()
+            var scannedParsedOk = false
+            try {
+                var scannedArr = JSON.parse(scannedJson || "[]")
+                scannedParsedOk = Array.isArray(scannedArr)
+            } catch (e) {}
+            recordBehavior(
+                "duckypad_2020_and_multi_device_selector_support",
+                dp20ModelOk && dp24ModelOk && scannedParsedOk,
+                "dp20=" + dp20ModelOk + " dp24=" + dp24ModelOk + " scanJsonOk=" + scannedParsedOk
             )
 
             // Restore initial profile group for visual window steps

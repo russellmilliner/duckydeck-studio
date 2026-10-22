@@ -369,6 +369,7 @@ Window {
                                         diffCardDelegate.profileName,
                                         "profile_all"
                                     )
+                                    QQC2.ToolTip.delay: 500
                                     QQC2.ToolTip.visible: hovered
                                     QQC2.ToolTip.text: qsTr("Discard all unsynced changes in Profile #%1 and restore its microSD card state").arg(diffCardDelegate.profileNumber)
                                 }
@@ -422,6 +423,7 @@ Window {
                                                     diffCardDelegate.profileName,
                                                     itemKey
                                                 )
+                                                QQC2.ToolTip.delay: 500
                                                 QQC2.ToolTip.visible: hovered
                                                 QQC2.ToolTip.text: qsTr("Delete this unsynced change and revert it back to the microSD card state")
                                             }
@@ -579,8 +581,8 @@ Window {
 
         FileDialog {
             id: customFirmwareFileDialog
-            title: qsTr("Select duckyPad Pro Firmware Binary (DDS_FW_*.bin / DPP_FW_*.bin)")
-            nameFilters: ["duckyPad Pro Firmware (*.bin)", "All Files (*)"]
+            title: qsTr("Select duckyPad Firmware Image (*.bin / *.dfu)")
+            nameFilters: ["duckyPad Firmware (*.bin *.dfu)", "All Files (*)"]
             onAccepted: {
                 let p = selectedFile.toString()
                 if (p.startsWith("file://")) {
@@ -705,7 +707,7 @@ Window {
                         Layout.minimumWidth: 0
                         wrapMode: Text.WordWrap
                         font.pointSize: 10 * root.fontScale
-                        text: qsTr("DuckyDeck Studio includes its custom DuckyDeck Studio Firmware v1.1.1 (with Home Automation icons, smooth LED fade, 0°/90°/180°/270° OLED orientation, SPI DMA dirty page tracking, and sub-ms USB HID) and can fetch official dekuNukem firmware releases directly from github.com/dekuNukem/duckyPad-Pro.")
+                        text: qsTr("DuckyDeck Studio includes its custom DuckyDeck Studio Firmware v1.1.2 for both duckyPad Pro (DDS_FW_1.1.2_0f85dab1.bin) and duckyPad 2020 (DDS20_FW_1.1.2_3bd4beef.dfu) — with 204 monochrome pixel-art OLED icons, 4 customizable OLED layout styles, smooth SWC_FADE_TO LED fade, dirty-page display tracking, and zero-SD-wear profile switching — plus official dekuNukem firmware releases.")
                         color: Kirigami.Theme.textColor
                     }
                 }
@@ -771,6 +773,7 @@ Window {
                         enabled: !deviceController.firmwareFetchBusy && !deviceController.sdSyncBusy
                         highlighted: true
                         onClicked: deviceController.fetchOfficialFirmwaresFromSite()
+                        QQC2.ToolTip.delay: 500
                         QQC2.ToolTip.visible: hovered
                         QQC2.ToolTip.text: qsTr("Query dekuNukem/duckyPad-Pro on GitHub for all available official DPP_FW_*.bin firmware releases")
                     }
@@ -785,6 +788,7 @@ Window {
                         icon.name: "internet-services"
                         text: qsTr("Open Official Releases Page (GitHub)")
                         onClicked: Qt.openUrlExternally("https://github.com/dekuNukem/duckyPad-Pro/releases")
+                        QQC2.ToolTip.delay: 500
                         QQC2.ToolTip.visible: hovered
                         QQC2.ToolTip.text: qsTr("Open https://github.com/dekuNukem/duckyPad-Pro/releases in your web browser")
                     }
@@ -1161,7 +1165,7 @@ Window {
                     text: firmwareUpdateDialog.selectedTargetLabel().length > 0
                         ? (needsDownloadFirst
                             ? qsTr("Download & Install %1").arg(firmwareUpdateDialog.selectedTargetLabel())
-                            : qsTr("Install %1 on duckyPad Pro").arg(firmwareUpdateDialog.selectedTargetLabel()))
+                            : qsTr("Install %1 on %2").arg(firmwareUpdateDialog.selectedTargetLabel()).arg(deviceController.isDuckyPad2020 ? "duckyPad (2020)" : "duckyPad Pro"))
                         : qsTr("Install Selected Firmware")
                     enabled: !deviceController.sdSyncBusy && !deviceController.firmwareFetchBusy && firmwareUpdateDialog.canInstallSelected()
                     highlighted: true
