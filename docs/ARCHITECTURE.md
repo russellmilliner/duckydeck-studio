@@ -18,6 +18,7 @@
 **Windows Portable Archive (`.zip`):** [`duckydeck-studio-v0.1.6-windows-x86_64-portable.zip`](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.6/duckydeck-studio-v0.1.6-windows-x86_64-portable.zip)  
 **Linux Flatpak Release Bundle:** [`duckydeck-studio-v0.1.6-x86_64.flatpak`](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.6-x86_64.flatpak)  
 **REST API Reference:** [`docs/REST_API.md`](REST_API.md) ([https://duckydeckstudio.com/REST_API.md](https://duckydeckstudio.com/REST_API.md))  
+**OLED Icon Library Reference (Color & 1-Bit Monochrome):** [`docs/OLED_ICONS.md`](OLED_ICONS.md) · [`docs/assets/oled-icons-chart.svg`](assets/oled-icons-chart.svg)  
 **Support:** [☕ Buy Me a Coffee on Ko-fi (https://ko-fi.com/russellmilliner)](https://ko-fi.com/russellmilliner)  
 **License:** GPL-3.0-or-later  
 
