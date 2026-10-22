@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DuckyDeck Studio — Architecture &amp; Developer Reference (v0.1.4)</title>
+  <title>DuckyDeck Studio — Architecture &amp; Developer Reference (v0.1.6)</title>
   <link rel="icon" type="image/svg+xml" href="../data/icons/io.github.duckydeck.Studio.svg" />
   <style>
     :root {
@@ -544,9 +544,9 @@
           <rect x="86" y="72" width="24" height="34" rx="3" fill="#000000" stroke="#94a3b8" stroke-width="2"/>
         </svg>
         <span>DuckyDeck Studio</span>
-        <span class="brand-badge">v0.1.4</span>
+        <span class="brand-badge">v0.1.6</span>
       </a>
-      <div class="brand-sub">Architecture &amp; Developer Guide (v0.1.4)</div>
+      <div class="brand-sub">Architecture &amp; Developer Guide (v0.1.6)</div>
     </div>
 
     <div class="search-box">
@@ -563,13 +563,13 @@
       <div class="nav-group-title">Hardware &amp; Compiler</div>
       <a class="nav-link" href="#hardware">🔌 5. USB HID, MSC &amp; Flatpak Bridge</a>
       <a class="nav-link" href="#compiler">⚙️ 6. DSVM v2 Bytecode Compiler</a>
-      <a class="nav-link" href="#wayland">🪟 7. Wayland Auto-Switcher &amp; D-Bus</a>
+      <a class="nav-link" href="#wayland">🪟 7. Cross-Platform Auto-Switcher &amp; IPC</a>
       <a class="nav-link" href="#ui-verification">🎨 8. Keycap UI &amp; Scene-Graph Tests</a>
 
       <div class="nav-group-title">Persistence, API &amp; Build</div>
       <a class="nav-link" href="#persistence">💾 9. Persistence &amp; Portability</a>
       <a class="nav-link" href="#rest-api">🌐 9.7 Embedded REST API Server</a>
-      <a class="nav-link" href="#flatpak">📦 10. Flatpak Sandbox &amp; Packaging</a>
+      <a class="nav-link" href="#flatpak">📦 10. Flatpak &amp; Windows Packaging</a>
       <a class="nav-link" href="#building">🛠️ 11. Building, Testing &amp; Extending</a>
     </nav>
 
@@ -583,11 +583,17 @@
       <a class="ext-btn" href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
         🐙 GitHub Repository
       </a>
-      <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.4-x86_64.flatpak" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
-        📦 Download Flatpak v0.1.4
+      <a class="ext-btn" href="https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.6/DuckyDeck-Studio-Setup-v0.1.6-x86_64.exe" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
+        🪟 Windows Setup v0.1.6 (.exe)
       </a>
-      <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.4-linux-x86_64.tar.gz" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
-        ⬇ Download Tarball v0.1.4
+      <a class="ext-btn" href="https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.6/duckydeck-studio-v0.1.6-windows-x86_64-portable.zip" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
+        📦 Windows Portable v0.1.6 (.zip)
+      </a>
+      <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.6-x86_64.flatpak" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
+        🐧 Download Linux Flatpak v0.1.6
+      </a>
+      <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.6-linux-x86_64.tar.gz" target="_blank" rel="noopener noreferrer" style="justify-content:center;">
+        ⬇ Download Linux Tarball v0.1.6
       </a>
       <a class="kofi-btn" href="https://ko-fi.com/russellmilliner" target="_blank" rel="noopener noreferrer">
         ☕ Buy Me a Coffee on Ko-fi
@@ -619,7 +625,7 @@
             <circle cx="98" cy="55" r="10" fill="#262b36" stroke="#38bdf8" stroke-width="2.5"/>
             <rect x="86" y="72" width="24" height="34" rx="3" fill="#000000" stroke="#94a3b8" stroke-width="2"/>
           </svg>
-          <span>DuckyDeck Studio — Architecture &amp; Developer Reference (v0.1.4)</span>
+          <span>DuckyDeck Studio — Architecture &amp; Developer Reference (v0.1.6)</span>
         </h1>
         <div style="display:flex;flex-wrap:wrap;gap:10px;">
           <a class="ext-btn" href="user-guide.html">
@@ -631,11 +637,17 @@
           <a class="ext-btn" href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer">
             🐙 GitHub Repository
           </a>
-          <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.4-x86_64.flatpak" target="_blank" rel="noopener noreferrer">
-            📦 Flatpak Bundle (v0.1.4)
+          <a class="ext-btn" href="https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.6/DuckyDeck-Studio-Setup-v0.1.6-x86_64.exe" target="_blank" rel="noopener noreferrer">
+            🪟 Windows Setup (v0.1.6)
           </a>
-          <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.4-linux-x86_64.tar.gz" target="_blank" rel="noopener noreferrer">
-            ⬇ Linux Tarball (v0.1.4)
+          <a class="ext-btn" href="https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.6/duckydeck-studio-v0.1.6-windows-x86_64-portable.zip" target="_blank" rel="noopener noreferrer">
+            📦 Windows Portable (v0.1.6)
+          </a>
+          <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.6-x86_64.flatpak" target="_blank" rel="noopener noreferrer">
+            🐧 Linux Flatpak Bundle (v0.1.6)
+          </a>
+          <a class="ext-btn" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.6-linux-x86_64.tar.gz" target="_blank" rel="noopener noreferrer">
+            ⬇ Linux Tarball (v0.1.6)
           </a>
           <a class="ext-btn" href="REST_API.md" target="_blank" rel="noopener noreferrer">
             🔌 REST API Reference
@@ -650,8 +662,9 @@
       </div>
 
       <p>
-        <strong>DuckyDeck Studio (<code>v0.1.4</code>)</strong> is a native Linux desktop configurator,
-        <strong>DSVM v2 bytecode compiler</strong>, <strong>KDE Plasma 6 Wayland Auto-Switcher</strong>, and
+        <strong>DuckyDeck Studio (<code>v0.1.6</code>)</strong> is a native <strong>Linux (KDE Plasma 6 / Wayland &amp; X11)</strong> and
+        <strong>Windows 10/11 (x86_64)</strong> desktop configurator,
+        <strong>DSVM v2 bytecode compiler</strong>, <strong>Window-Aware Auto-Switcher</strong>, and
         <strong>host automation daemon</strong> for the <strong>duckyPad Pro (<code>0x0483:0xd11d</code>)</strong> and
         <strong>duckyPad 2020 (<code>0x0483:0xd11c</code>)</strong>.
       </p>
@@ -659,6 +672,7 @@
       <div class="callout" style="margin-top: 14px;">
         <div class="callout-title">🏷️ Release Metadata &amp; Official Links</div>
         <strong>Application Version:</strong> <code>v0.1.6</code> &nbsp;•&nbsp;
+        <strong>Platforms:</strong> <code>Linux (x86_64)</code> &amp; <code>Windows 10/11 (x86_64)</code> &nbsp;•&nbsp;
         <strong>Custom Firmware:</strong> <code>v1.1.0</code> (<code>DDS_FW_1.1.0_b3291568.bin</code>) &nbsp;•&nbsp;
         <strong>KDE Plasma 6 Applet:</strong> <code>v1.0.2</code><br/>
         <strong>Website &amp; User Guide:</strong> <a href="https://duckydeckstudio.com" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">https://duckydeckstudio.com</a> &nbsp;•&nbsp;
@@ -667,14 +681,14 @@
       </div>
 
       <div class="badge-row">
-        <span class="pill accent">Rust 2021 Edition</span>
-        <span class="pill accent">CXX-Qt 0.7 Bridge</span>
-        <span class="pill accent">Qt 6 &amp; KDE Kirigami 6</span>
+        <span class="pill accent">Rust + CXX-Qt 0.7</span>
+        <span class="pill accent">Linux (KDE Kirigami 6)</span>
+        <span class="pill accent">Windows 10/11 (Qt 6 + Win32)</span>
         <span class="pill accent">Flatpak org.kde.Platform//6.11</span>
         <span class="pill">Two-Pass DSVM v2 Compiler</span>
-        <span class="pill">zbus KWin Wayland Bridge</span>
+        <span class="pill">KWin Wayland &amp; Win32 Auto-Switcher</span>
         <span class="pill">Embedded HTTP/1.1 REST API</span>
-        <span class="pill">Automated Scene-Graph UI Test Suite</span>
+        <span class="pill">208-Window Scene-Graph UI Test Suite</span>
       </div>
     </div>
 
@@ -685,15 +699,15 @@
         <div class="card">
           <h4>⚡ 1. Zero-Runtime-Wrapper Native Stack</h4>
           <p>
-            Built directly in <strong>Rust (2021 edition)</strong> bridged to <strong>Qt 6 / KDE Frameworks 6 (Kirigami + KSyntaxHighlighting)</strong>
-            via <strong>CXX-Qt 0.7</strong>, avoiding Electron or Python runtime overhead while delivering native KDE Breeze theming, fractional HiDPI scaling, and first-class Wayland integration.
+            Built directly in <strong>Rust</strong> bridged to <strong>Qt 6</strong>
+            via <strong>CXX-Qt 0.7</strong>, avoiding Electron or Python runtime overhead. On Linux, it uses native <strong>KDE Frameworks 6 (Kirigami + KSyntaxHighlighting)</strong>; on Windows 10/11, it uses a self-contained <strong>Kirigami QML Compatibility Layer (<code>src/qml/kirigami/</code>)</strong> and Qt Fusion Dark/Light palette sync.
           </p>
         </div>
         <div class="card">
           <h4>💾 2. Offline-First &amp; Deterministic SD Sync</h4>
           <p>
             All profile edits, key scripts, RGB LED overrides, and rule bindings are immediately persisted to a per-device local cache
-            (<code>~/.local/share/duckydeck-studio/profile_cache/&lt;serial&gt;/</code>) and compared against the hardware microSD state using SHA-256 content fingerprinting before writing and read-back validating <code>.dsb</code> bytecode.
+            (<code>~/.local/share/duckydeck-studio/profile_cache/&lt;serial&gt;/</code> on Linux or <code>%LOCALAPPDATA%\duckydeck-studio\profile_cache\&lt;serial&gt;\</code> on Windows) and compared against the hardware microSD state using SHA-256 content fingerprinting before writing and read-back validating <code>.dsb</code> bytecode.
           </p>
         </div>
         <div class="card">
@@ -706,7 +720,7 @@
         <div class="card">
           <h4>🔄 4. Bidirectional Hardware-Host Automation</h4>
           <p>
-            Combines KWin Wayland window focus events (<code>zbus</code> D-Bus listener) for automatic profile switching (<code>Host → duckyPad</code>)
+            Combines KWin Wayland window focus events (<code>zbus</code> D-Bus listener on Linux) and Win32 foreground window tracking (<code>GetForegroundWindow</code> on Windows) for automatic profile switching (<code>Host → duckyPad</code>)
             with USB HID PGV polling (<code>_GV31</code> encoded via <code>encode_pgv31_trigger</code>) and global <code>F13–F24</code> shortcut triggers for Web API webhooks and Desktop Application Launching (<code>duckyPad → Host</code>).
           </p>
         </div>
@@ -755,8 +769,8 @@
               <span>rest_routes.rs, serialize.rs, event_log.rs, showcase.rs</span>
             </div>
             <div class="arch-box">
-              <strong>KF6 C++ Helper (src/cpp/app_helper.h)</strong>
-              <span>QSystemTrayIcon (Dynamic Profile Badge + About Action), KColorScheme, KSyntaxHighlighting</span>
+              <strong>C++ Qt / KF6 / Win32 Helpers (src/cpp/*.h)</strong>
+              <span>QSystemTrayIcon, KColorScheme / Fusion Palette, KSyntaxHighlighting / Kirigami Compat, RegisterHotKey</span>
             </div>
           </div>
         </div>
@@ -766,7 +780,7 @@
           <div class="arch-boxes">
             <div class="arch-box">
               <strong>Hardware &amp; Storage (src/hardware/*.rs)</strong>
-              <span>storage.rs (HID), profile.rs (SD/Cache), msc.rs (udisksctl / Flatpak Host Spawn), firmware.rs, permissions.rs</span>
+              <span>storage.rs (HID), profile.rs (SD/Cache), msc.rs (udisksctl / Windows Drive Volumes), firmware.rs, permissions.rs</span>
             </div>
             <div class="arch-box">
               <strong>DSVM v2 Compiler (src/vm/compiler.rs)</strong>
@@ -774,15 +788,15 @@
             </div>
             <div class="arch-box">
               <strong>Host Actions (src/actions/*.rs)</strong>
-              <span>web_api.rs (HTTP/HA + Keyring), app_launch.rs (Desktop Spawner), desktop_apps.rs (.desktop Scanner)</span>
+              <span>web_api.rs (HTTP/HA + Keyring), app_launch.rs (Desktop Spawner), desktop_apps.rs (.desktop &amp; Start Menu .lnk Scanner)</span>
             </div>
             <div class="arch-box">
-              <strong>Wayland &amp; REST API</strong>
-              <span>auto_switcher.rs (KWin 6 D-Bus + Rule Remapper), api_server.rs (HTTP/1.1 /api/v1/*), shortcut_scraper.rs</span>
+              <strong>Auto-Switcher &amp; REST API</strong>
+              <span>auto_switcher.rs (KWin 6 D-Bus + Win32 Tracker + Rule Remapper), api_server.rs (HTTP/1.1 /api/v1/*), shortcut_scraper.rs</span>
             </div>
           </div>
         </div>
-        <div class="arch-arrow">⇅ USB HID (0x0483:0xd11d / 0xd11c), Session D-Bus &amp; Flatpak Host Portal</div>
+        <div class="arch-arrow">⇅ USB HID (0x0483:0xd11d / 0xd11c), Session D-Bus / Win32 &amp; Flatpak Host Portal</div>
         <div class="arch-layer" style="margin-bottom:0;">
           <div class="arch-layer-title">Layer 4 — Background Worker Threads &amp; External Interfaces</div>
           <div class="arch-boxes">
@@ -791,8 +805,8 @@
               <span>Polls HID 0x00 &amp; 0x18, decodes _GV31 triggers (0x5741xxxx), re-arms _GV31=0 via 0x19</span>
             </div>
             <div class="arch-box">
-              <strong>Tokio zbus D-Bus Service</strong>
-              <span>io.github.duckydeck.Studio at /KWinBridge for KWin Active-Window Hooks &amp; CLI IPC</span>
+              <strong>KWin D-Bus / Win32 Window Tracker</strong>
+              <span>Linux zbus /KWinBridge &amp; Windows GetForegroundWindow poller + QLocalServer Named Pipe IPC</span>
             </div>
             <div class="arch-box">
               <strong>Async REST Job Worker</strong>
@@ -816,19 +830,19 @@
         <tbody>
           <tr>
             <td><code>Cargo.toml</code></td>
-            <td>Crate manifest (<code>version = "0.1.4"</code>, <code>cxx-qt 0.7</code>, <code>hidapi</code>, <code>zbus</code>, <code>tokio</code>, <code>reqwest</code>, <code>keyring</code>, <code>serde</code>, <code>serde_json</code>, <code>sha2</code>).</td>
+            <td>Crate manifest (<code>version = "0.1.6"</code>, <code>cxx-qt 0.7</code>, <code>hidapi</code>, <code>zbus</code>, <code>windows-sys</code>, <code>tokio</code>, <code>reqwest</code>, <code>keyring</code>, <code>serde</code>, <code>serde_json</code>, <code>sha2</code>).</td>
           </tr>
           <tr>
             <td><code>build.rs</code></td>
-            <td><code>CxxQtBuilder</code> configuration registering QML module <code>io.github.duckydeck</code> and compiling <code>src/bridge/device_controller.rs</code>.</td>
+            <td><code>CxxQtBuilder</code> configuration registering QML module <code>io.github.duckydeck</code>, embedding <code>src/qml/kirigami/*.qml</code> on Windows, and compiling <code>src/bridge/device_controller.rs</code>.</td>
           </tr>
           <tr>
             <td><code>src/main.rs</code></td>
-            <td>Application entrypoint: CLI &amp; D-Bus single-instance IPC client, <code>QApplication</code> initialization, <code>KSyntaxHighlighting</code> registration, QML startup, and automated Native + Flatpak UI test suites.</td>
+            <td>Application entrypoint: CLI &amp; D-Bus / <code>QLocalSocket</code> single-instance IPC client, <code>QApplication</code> initialization, <code>KSyntaxHighlighting</code> / Windows Kirigami registration, QML startup, and automated UI test suites.</td>
           </tr>
           <tr>
             <td><code>src/paths.rs</code></td>
-            <td>XDG directory helpers (<code>XDG_CONFIG_HOME</code>, <code>XDG_DATA_HOME</code>, <code>XDG_CACHE_HOME</code>, <code>XDG_RUNTIME_DIR</code>) and environment sanitization.</td>
+            <td>Cross-platform directory helpers: Linux XDG (<code>XDG_CONFIG_HOME</code>, <code>XDG_DATA_HOME</code>), Flatpak host paths, and Windows (<code>%APPDATA%\duckydeck-studio</code>, <code>%LOCALAPPDATA%\duckydeck-studio</code>).</td>
           </tr>
           <tr>
             <td><code>src/api_server.rs</code></td>
@@ -856,7 +870,7 @@
           </tr>
           <tr>
             <td><code>src/hardware/storage.rs</code></td>
-            <td>USB HID transport (<code>hidapi</code>), device discovery, RTC sync, PGV burst read/write (<code>0x18</code>/<code>0x19</code>), and submodule re-exports.</td>
+            <td>USB HID transport (<code>hidapi</code> on Linux &amp; Windows), device discovery, RTC sync, PGV burst read/write (<code>0x18</code>/<code>0x19</code>), and submodule re-exports.</td>
           </tr>
           <tr>
             <td><code>src/hardware/profile.rs</code></td>
@@ -864,7 +878,7 @@
           </tr>
           <tr>
             <td><code>src/hardware/msc.rs</code></td>
-            <td>USB Mass Storage (<code>0x14</code>) mounting/unmounting via <code>udisksctl</code> (bridged via <code>flatpak-spawn --host</code> inside Flatpak) and microSD capacity inspection.</td>
+            <td>USB Mass Storage (<code>0x14</code>) mounting/unmounting (<code>udisksctl</code> on Linux; <code>D:\..Z:\</code> volume discovery, <code>FlushFileBuffers</code>, and PowerShell eject on Windows) and microSD capacity inspection.</td>
           </tr>
           <tr>
             <td><code>src/hardware/firmware.rs</code></td>
@@ -872,19 +886,19 @@
           </tr>
           <tr>
             <td><code>src/hardware/permissions.rs</code></td>
-            <td>Inspects <code>/sys/class/hidraw</code> device nodes for <code>PermissionDenied</code> and invokes <code>pkexec</code> (or <code>flatpak-spawn --host pkexec</code>) to install <code>70-duckypad.rules</code>.</td>
+            <td>Inspects <code>/sys/class/hidraw</code> device nodes for <code>PermissionDenied</code> on Linux and invokes <code>pkexec</code> to install <code>70-duckypad.rules</code> (no-op on Windows).</td>
           </tr>
           <tr>
             <td><code>src/actions/web_api.rs</code></td>
-            <td>Web API / Webhook &amp; Home Assistant client, OS keyring secret storage, and <code>_GV31</code> trigger encoding (<code>encode_pgv31_trigger</code>).</td>
+            <td>Web API / Webhook &amp; Home Assistant client, OS keyring secret storage (Secret Service on Linux, Credential Manager on Windows), and <code>_GV31</code> trigger encoding (<code>encode_pgv31_trigger</code>).</td>
           </tr>
           <tr>
             <td><code>src/actions/app_launch.rs</code></td>
-            <td>Desktop Application Launcher metadata parser/generator (<code>// @DUCKYDECK_APPLAUNCH</code>), host-aware process spawner, and <code>_GV31</code> / <code>F13–F24</code> registries.</td>
+            <td>Desktop Application Launcher metadata parser/generator (<code>// @DUCKYDECK_APPLAUNCH</code>), host-aware process spawner, macro recorder (<code>evdev</code> on Linux, <code>GetAsyncKeyState</code> on Windows), and <code>_GV31</code> / <code>F13–F24</code> registries.</td>
           </tr>
           <tr>
             <td><code>src/actions/desktop_apps.rs</code></td>
-            <td>XDG <code>.desktop</code> entry scanner across system, user, and Flatpak directories.</td>
+            <td>Cross-platform app scanner: XDG <code>.desktop</code> entries on Linux and Start Menu <code>.lnk</code> shortcuts (<code>%ProgramData%</code> &amp; <code>%APPDATA%</code>) on Windows.</td>
           </tr>
           <tr>
             <td><code>src/vm/compiler.rs</code></td>
@@ -892,19 +906,23 @@
           </tr>
           <tr>
             <td><code>src/kwin/auto_switcher.rs</code></td>
-            <td>KWin Wayland script injector, <code>zbus</code> D-Bus service (<code>io.github.duckydeck.Studio</code> at <code>/KWinBridge</code>), window picker, profile reorder/deletion rule remapper, and persisted rules (<code>kwin_rules.json</code>).</td>
+            <td>Cross-platform active-window Auto-Switcher: KWin Wayland D-Bus listener on Linux and Win32 <code>GetForegroundWindow</code> + <code>WindowFromPoint</code> picker on Windows, plus rule remapper and persisted rules (<code>kwin_rules.json</code>).</td>
           </tr>
           <tr>
             <td><code>src/ai/shortcut_scraper.rs</code></td>
             <td>Parses <code>~/.config/kglobalshortcutsrc</code> and converts KDE shortcuts into duckyScript 3 syntax (<code>kde_shortcut_to_duckyscript</code>).</td>
           </tr>
           <tr>
-            <td><code>src/cpp/app_helper.h</code></td>
-            <td>C++ helper bridging <code>QSystemTrayIcon</code> (dynamic profile badge, SD status, Auto-Switcher/Autostart toggles, and <code>"About DuckyDeck Studio"</code> dialog trigger), <code>KColorScheme</code>, <code>KIconLoader</code>, and <code>KSyntaxHighlighting</code> into QML.</td>
+            <td><code>src/cpp/app_helper.h</code> &amp; <code>src/cpp/kirigami_compat.h</code></td>
+            <td>C++ helpers bridging <code>QSystemTrayIcon</code>, Linux/Windows Autostart, Win32 <code>RegisterHotKey</code> (<code>F13–F24</code>), <code>QLocalServer</code> IPC, Win32 <code>HWND_TOPMOST</code>, Dark/Light palette sync, and Windows Kirigami QML compatibility into QML.</td>
           </tr>
           <tr>
-            <td><code>src/qml/*.qml</code></td>
-            <td>14 QML components: <code>Main.qml</code>, <code>HardwareCanvas.qml</code>, <code>OledDesktopWidget.qml</code>, <code>AutoSwitchDrawer.qml</code>, <code>ColorPickerWindow.qml</code>, <code>WebApiBuilder.qml</code>, <code>AppLaunchBuilder.qml</code>, <code>SettingsPage.qml</code>, <code>RestApiSettings.qml</code>, <code>SdSyncDialog.qml</code>, <code>EventLogDialog.qml</code>, <code>PgvInspectorDrawer.qml</code>, <code>AiArchitectModal.qml</code>, and <code>UdevBanner.qml</code>.</td>
+            <td><code>src/qml/*.qml</code> &amp; <code>src/qml/kirigami/*.qml</code></td>
+            <td>14 primary QML components (<code>Main.qml</code>, <code>HardwareCanvas.qml</code>, <code>OledDesktopWidget.qml</code>, <code>AutoSwitchDrawer.qml</code>, <code>ColorPickerWindow.qml</code>, <code>WebApiBuilder.qml</code>, <code>AppLaunchBuilder.qml</code>, <code>SettingsPage.qml</code>, <code>RestApiSettings.qml</code>, <code>SdSyncDialog.qml</code>, <code>EventLogDialog.qml</code>, <code>PgvInspectorDrawer.qml</code>, <code>AiArchitectModal.qml</code>, <code>UdevBanner.qml</code>) plus the Windows Kirigami QML compatibility layer.</td>
+          </tr>
+          <tr>
+            <td><code>scripts/build-windows.sh</code> &amp; <code>packaging/windows/DuckyDeckStudio.iss</code></td>
+            <td>Automated Windows <code>x86_64</code> cross-compilation (<code>x86_64-pc-windows-gnullvm</code>), Qt6 MinGW64 DLL bundler, Portable ZIP packager, and Inno Setup 6 installer script.</td>
           </tr>
         </tbody>
       </table>
@@ -937,13 +955,13 @@ pub fn encode_pgv31_trigger(profile_num: u8, slot_num: u8, is_release: bool) -&g
     0x5741_0000 | rel_bit | ((profile_num as u32 &amp; 0x7F) &lt;&lt; 8) | (slot_num as u32)
 }</code></pre>
       <p>
-        When the background USB HID poller reads <code>_GV0.._GV31</code> via command <code>0x18</code> (<code>HID_CMD_DUMP_PGV</code>) and detects a non-zero <code>_GV31</code> matching <code>decode_pgv31_trigger</code>, it immediately writes <code>_GV31 = 0</code> via command <code>0x19</code> (<code>HID_CMD_WRITE_PGV</code>) to re-arm the trigger and dispatches the matching <code>WEB_API_PGV_REGISTRY</code> or <code>APP_LAUNCH_PGV_REGISTRY</code> action on the Linux host.
+        When the background USB HID poller reads <code>_GV0.._GV31</code> via command <code>0x18</code> (<code>HID_CMD_DUMP_PGV</code>) and detects a non-zero <code>_GV31</code> matching <code>decode_pgv31_trigger</code>, it immediately writes <code>_GV31 = 0</code> via command <code>0x19</code> (<code>HID_CMD_WRITE_PGV</code>) to re-arm the trigger and dispatches the matching <code>WEB_API_PGV_REGISTRY</code> or <code>APP_LAUNCH_PGV_REGISTRY</code> action on the Linux or Windows host.
       </p>
     </section>
 
     <!-- 5. Hardware Communication & Storage Layer -->
     <section id="hardware">
-      <h2>🔌 5. USB HID Protocol, USB Mass Storage &amp; Flatpak Host Bridge</h2>
+      <h2>🔌 5. USB HID Protocol, USB Mass Storage &amp; Cross-Platform Volume Sync</h2>
       <h3>5.1 64-Byte USB HID Report Protocol (<code>src/hardware/storage.rs</code>)</h3>
       <p>
         The duckyPad Pro (<code>0x0483:0xd11d</code>) and duckyPad 2020 (<code>0x0483:0xd11c</code>) communicate over a 64-byte vendor-defined USB HID interface (<code>HID_REPORT_ID_OUT = 0x05</code>):
@@ -995,9 +1013,9 @@ pub fn encode_pgv31_trigger(profile_num: u8, slot_num: u8, is_release: bool) -&g
         </tbody>
       </table>
 
-      <h3>5.2 USB Mass Storage (MSC) Mounting &amp; Flatpak Host Command Bridging (<code>src/hardware/msc.rs</code>)</h3>
+      <h3>5.2 USB Mass Storage (MSC) Mounting &amp; Flatpak / Windows Volume Handling (<code>src/hardware/msc.rs</code>)</h3>
       <p>
-        When reading or writing profiles or staging firmware on a duckyPad Pro, DuckyDeck Studio sends HID command <code>0x14</code> (<code>tx[3] = 1</code>) to enumerate the microSD card as a TinyUSB Mass Storage block device (<code>/dev/disk/by-label/DP24_*</code> or <code>/dev/disk/by-id/*TinyUSB_Flash_Storage*</code>), mounts the FAT32 partition via <code>udisksctl mount --no-user-interaction -b /dev/sdX1</code>, performs SHA-256 read-back verification, flushes buffers via <code>sync</code>, unmounts cleanly via <code>udisksctl unmount</code>, and reboots back into HID mode (<code>0x14, tx[3] = 0</code>).
+        When reading or writing profiles or staging firmware on a duckyPad Pro, DuckyDeck Studio sends HID command <code>0x14</code> (<code>tx[3] = 1</code>) to enumerate the microSD card as a TinyUSB Mass Storage block device. On <strong>Linux</strong>, it locates <code>/dev/disk/by-label/DP24_*</code> or <code>/dev/disk/by-id/*TinyUSB_Flash_Storage*</code> and mounts the FAT32 partition via <code>udisksctl mount --no-user-interaction -b /dev/sdX1</code>. On <strong>Windows 10/11</strong>, it scans removable drives <code>D:\..Z:\</code> for duckyPad profile signatures, flushes dirty buffers via <code>FlushFileBuffers</code>, and safely ejects the drive via PowerShell <code>Shell.Application</code> before rebooting back into HID mode (<code>0x14, tx[3] = 0</code>).
       </p>
       <div class="callout success">
         <div class="callout-title">📦 Flatpak Host Storage Bridge (<code>run_storage_cmd</code>)</div>
@@ -1034,17 +1052,15 @@ pub fn encode_pgv31_trigger(profile_num: u8, slot_num: u8, is_release: bool) -&g
       </div>
     </section>
 
-    <!-- 7. Wayland Auto-Switcher & Session D-Bus IPC -->
+    <!-- 7. Cross-Platform Auto-Switcher & IPC -->
     <section id="wayland">
-      <h2>🪟 7. Wayland Auto-Switcher, Session D-Bus IPC &amp; Rule Invariants</h2>
+      <h2>🪟 7. Cross-Platform Window Auto-Switcher (KWin Wayland &amp; Windows Win32), IPC &amp; Rule Invariants</h2>
       <p>
-        On KDE Plasma 6 Wayland, DuckyDeck Studio registers the session D-Bus service <strong><code>io.github.duckydeck.Studio</code></strong> at object path
-        <strong><code>/KWinBridge</code></strong> (interface <strong><code>io.github.duckydeck.KWinBridge</code></strong>) via <code>zbus</code>:
+        DuckyDeck Studio implements automatic active-window profile switching and single-instance IPC on both <strong>Linux (KDE Plasma 6 Wayland)</strong> and <strong>Windows 10/11 (Win32)</strong>:
       </p>
       <ul>
-        <li><code>ReportActiveWindow(window_class: &amp;str, window_title: &amp;str)</code>: Invoked by the dynamically injected KWin 6 JavaScript hook (<code>duckydeck-kwin6-hook.js</code>) whenever the active Wayland window changes; evaluates <code>AutoSwitchRule</code> entries and switches the duckyPad profile over USB HID unless paused while the script editor is open.</li>
-        <li><code>ReportPickedWindow(window_class: &amp;str, window_title: &amp;str)</code>: Invoked when the user clicks a window using the interactive KWin crosshair picker.</li>
-        <li><code>DispatchIpcCommand(command: &amp;str) -&gt; u32</code>: Handles single-instance activation, system tray actions, and CLI remote control (<code>show</code>, <code>show-about</code>, <code>minimize</code>, <code>toggle</code>, <code>quit</code>, <code>toggle-oled-widget</code>, <code>switch-profile:&lt;n&gt;</code>, <code>trigger-fkey:&lt;F13..F24&gt;</code>).</li>
+        <li><strong>Linux (KWin Wayland + Session D-Bus <code>io.github.duckydeck.Studio</code> at <code>/KWinBridge</code>):</strong> Dynamically loads a KWin 6 JavaScript hook (<code>duckydeck-kwin6-hook.js</code>) that invokes <code>ReportActiveWindow(window_class, window_title)</code> and <code>ReportPickedWindow(window_class, window_title)</code> over <code>zbus</code>, plus <code>DispatchIpcCommand</code> for CLI/tray IPC.</li>
+        <li><strong>Windows 10/11 (Win32 Foreground Tracker + Named-Pipe IPC):</strong> Polls <code>GetForegroundWindow()</code>, <code>GetWindowTextW</code>, <code>GetWindowThreadProcessId</code>, and <code>QueryFullProcessImageNameW</code> every <code>150 ms</code> to resolve active process names and window titles, provides an interactive hover-and-click Window Picker via <code>WindowFromPoint</code> + <code>GetAsyncKeyState(VK_LBUTTON)</code>, and handles single-instance CLI IPC over <code>QLocalServer</code> (<code>duckydeck-studio-ipc</code>).</li>
       </ul>
 
       <h3>Profile Fallback &amp; Auto-Switcher Synchronization Invariants</h3>
@@ -1056,8 +1072,8 @@ pub fn encode_pgv31_trigger(profile_num: u8, slot_num: u8, is_release: bool) -&g
 
       <h3>First-Run Deck Setup, Legacy Migration &amp; Conflict Resolution</h3>
       <ul>
-        <li><strong>Conflicting Process Detection:</strong> Detects legacy background processes (<code>duckypad_autoprofile.py</code>, <code>duckypad_autoswitcher</code>, <code>duckypad_configurator</code>) via <code>/proc</code> and host process inspection, offering one-click graceful shutdown to prevent USB HID bus contention.</li>
-        <li><strong>Profile &amp; Rule Discovery:</strong> Discovers profiles from the deck microSD, local cache, and legacy dekuNukem backups in <code>~/.local/share/duckypad_config/profile_backups/</code> (<code>src/hardware/profile.rs</code>). Discovers rules from microSD <code>duckydeck_rules.json</code>, local rules, and legacy auto-switcher files in <code>~/.local/share/duckypad_autoswitcher/</code> (<code>src/kwin/auto_switcher.rs</code>).</li>
+        <li><strong>Conflicting Process Detection:</strong> Detects legacy background processes (<code>duckypad_autoprofile.py</code>, <code>duckypad_autoswitcher</code>, <code>duckypad_configurator</code>) via <code>/proc</code> on Linux or <code>tasklist</code> on Windows, offering one-click graceful shutdown to prevent USB HID bus contention.</li>
+        <li><strong>Profile &amp; Rule Discovery:</strong> Discovers profiles from the deck microSD, local cache, and legacy dekuNukem backups (<code>~/.local/share/duckypad_config/profile_backups/</code> on Linux or <code>%APPDATA%\dekuNukem\duckypad_config\profile_backups\</code> on Windows). Discovers rules from microSD <code>duckydeck_rules.json</code>, local rules, and legacy auto-switcher files (<code>~/.local/share/duckypad_autoswitcher/</code> on Linux or <code>%APPDATA%\dekuNukem\duckypad_autoswitcher\</code> on Windows).</li>
         <li><strong>Portable SD Rules Bundle:</strong> <code>duckydeck_rules.json</code> on the microSD card syncs auto-switcher rules alongside hardware profiles, enabling instant cross-machine rule portability.</li>
         <li><strong>Onboarding State Tracking:</strong> Persists completion in <code>first_run_onboarding_state.json</code> across local and host configs.</li>
       </ul>
@@ -1082,9 +1098,9 @@ pub fn encode_pgv31_trigger(profile_num: u8, slot_num: u8, is_release: bool) -&g
         </div>
       </div>
 
-      <h3>Automated Scene-Graph UI Test Suite (Native &amp; Flatpak)</h3>
+      <h3>Automated Scene-Graph UI Test Suite (Linux Native, Flatpak &amp; Windows 11)</h3>
       <p>
-        <code>src/qml/EventLogDialog.qml</code> and <code>src/main.rs</code> include a comprehensive automated UI verification harness (<code>--ui-test-suite</code>) that walks every window, drawer, and modal across both <strong>Dark Mode</strong> and <strong>Light Mode</strong> at <strong><code>100%</code></strong> and <strong><code>115%</code></strong> zoom levels, auditing:
+        <code>src/qml/EventLogDialog.qml</code> and <code>src/main.rs</code> include a comprehensive automated UI verification harness (<code>--ui-test-suite</code>) that walks all 208 window/drawer/modal states across both <strong>Dark Mode</strong> and <strong>Light Mode</strong> at <strong><code>100%</code></strong> and <strong><code>115%</code></strong> zoom levels on both Linux and Windows 11, auditing:
       </p>
       <ul>
         <li><strong>Zero Overflow &amp; Overlap Violations:</strong> Audits 160+ keycap instances and all text labels for truncation or sibling bounding-box collisions.</li>
@@ -1095,45 +1111,50 @@ pub fn encode_pgv31_trigger(profile_num: u8, slot_num: u8, is_release: bool) -&g
 
     <!-- 9. Persistence & Portability -->
     <section id="persistence">
-      <h2>💾 9. Persistence, Credentials &amp; Hardware Portability</h2>
+      <h2>💾 9. Persistence, Credentials &amp; Hardware Portability (Linux, Flatpak &amp; Windows)</h2>
       <table>
         <thead>
           <tr>
-            <th>Path (Host / XDG)</th>
-            <th>Flatpak Sandbox Equivalent</th>
+            <th>Linux Native Path (XDG)</th>
+            <th>Windows 10/11 Path</th>
             <th>Contents</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><code>~/.config/duckydeck-studio/kwin_rules.json</code></td>
-            <td><code>~/.var/app/io.github.duckydeck.Studio/config/duckydeck-studio/kwin_rules.json</code></td>
+            <td><code>%APPDATA%\duckydeck-studio\kwin_rules.json</code></td>
             <td>Auto-Switcher rules, fallback profile, UI text scale, tray settings, REST API config, Global Profile Webhook, and Saved Colors palette.</td>
           </tr>
           <tr>
             <td><code>~/.config/duckydeck-studio/first_run_onboarding_state.json</code></td>
-            <td><code>~/.var/app/io.github.duckydeck.Studio/config/duckydeck-studio/first_run_onboarding_state.json</code></td>
+            <td><code>%APPDATA%\duckydeck-studio\first_run_onboarding_state.json</code></td>
             <td>Onboarding setup completion flag and application version metadata.</td>
           </tr>
           <tr>
             <td><code>&lt;microSD&gt;/duckydeck_rules.json</code></td>
-            <td><code>&lt;microSD&gt;/duckydeck_rules.json</code></td>
-            <td>Portable KWin Wayland auto-switcher rules bundle (<code>SdPersistedRulesBundle</code>) stored on deck microSD.</td>
+            <td><code>&lt;Drive&gt;:\duckydeck_rules.json</code></td>
+            <td>Portable window auto-switcher rules bundle (<code>SdPersistedRulesBundle</code>) stored on deck microSD.</td>
           </tr>
           <tr>
             <td><code>~/.config/duckydeck-studio/oled_widget_geometry.json</code></td>
-            <td><code>~/.var/app/io.github.duckydeck.Studio/config/duckydeck-studio/oled_widget_geometry.json</code></td>
+            <td><code>%APPDATA%\duckydeck-studio\oled_widget_geometry.json</code></td>
             <td>Desktop OLED Widget monitor, position, size, transparency, always-on-top, and frameless settings.</td>
           </tr>
           <tr>
             <td><code>~/.local/share/duckydeck-studio/profile_cache/&lt;serial&gt;/</code></td>
-            <td><code>~/.var/app/io.github.duckydeck.Studio/data/duckydeck-studio/profile_cache/&lt;serial&gt;/</code></td>
+            <td><code>%LOCALAPPDATA%\duckydeck-studio\profile_cache\&lt;serial&gt;\</code></td>
             <td>Offline mirror of all hardware profiles and <code>.sd_synced_snapshot.json</code> baseline for SHA-256 diffing.</td>
           </tr>
           <tr>
             <td><code>~/.local/share/duckydeck-studio/firmware/DDS_FW_1.1.0_b3291568.bin</code></td>
-            <td><code>/app/share/duckydeck-studio/firmware/DDS_FW_1.1.0_b3291568.bin</code></td>
+            <td><code>%LOCALAPPDATA%\duckydeck-studio\firmware\DDS_FW_1.1.0_b3291568.bin</code></td>
             <td>Bundled DuckyDeck Studio custom firmware v1.1.0 (also embedded in the binary for automatic extraction).</td>
+          </tr>
+          <tr>
+            <td><code>~/.config/autostart/io.github.duckydeck.Studio.desktop</code></td>
+            <td><code>HKCU\Software\Microsoft\Windows\CurrentVersion\Run\DuckyDeckStudio</code></td>
+            <td>Autostart at login entry (launches <code>--minimized</code> to system tray).</td>
           </tr>
         </tbody>
       </table>
@@ -1153,12 +1174,13 @@ pub fn encode_pgv31_trigger(profile_num: u8, slot_num: u8, is_release: bool) -&g
       </ul>
     </section>
 
-    <!-- 10. Flatpak Sandbox & Packaging -->
+    <!-- 10. Flatpak & Windows Packaging -->
     <section id="flatpak">
-      <h2>📦 10. Flatpak Sandbox Architecture &amp; Packaging</h2>
+      <h2>📦 10. Linux Flatpak Sandbox &amp; Windows 10/11 Packaging</h2>
       <p>
-        DuckyDeck Studio is packaged as a self-contained Flatpak bundle (<code>io.github.duckydeck.Studio</code>) built against
+        On <strong>Linux</strong>, DuckyDeck Studio is packaged as a self-contained Flatpak bundle (<code>io.github.duckydeck.Studio</code>) built against
         <code>org.kde.Platform//6.11</code> and <code>org.kde.Sdk//6.11</code> (configured in <code>io.github.duckydeck.Studio.yml</code> and <code>scripts/build-flatpak.sh</code>).
+        On <strong>Windows 10/11 (x86_64)</strong>, it is cross-compiled with <code>llvm-mingw</code> (<code>x86_64-pc-windows-gnullvm</code>) + Qt 6.8.3 MinGW64 and packaged via <code>scripts/build-windows.sh</code> and <code>packaging/windows/DuckyDeckStudio.iss</code> into both a per-user Inno Setup installer (<code>DuckyDeck-Studio-Setup-v0.1.6-x86_64.exe</code>) and a portable archive (<code>duckydeck-studio-v0.1.6-windows-x86_64-portable.zip</code>).
       </p>
       <table>
         <thead>
@@ -1191,16 +1213,15 @@ pub fn encode_pgv31_trigger(profile_num: u8, slot_num: u8, is_release: bool) -&g
         </tbody>
       </table>
 
-      <h3>Download, Install &amp; Run the Flatpak</h3>
-      <pre><code># Download &amp; install the latest Flatpak bundle directly:
-curl -LO https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.4-x86_64.flatpak
-flatpak install --user -y duckydeck-studio-v0.1.4-x86_64.flatpak
+      <h3>Download, Install &amp; Run on Windows 10/11 or Linux Flatpak</h3>
+      <pre><code># Windows 10/11 Setup Installer (PowerShell):
+Invoke-WebRequest -Uri "https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.6/DuckyDeck-Studio-Setup-v0.1.6-x86_64.exe" -OutFile "DuckyDeck-Studio-Setup.exe"
+.\DuckyDeck-Studio-Setup.exe
 
-# Launch GUI:
-flatpak run io.github.duckydeck.Studio
-
-# Run CLI commands inside Flatpak:
-flatpak run io.github.duckydeck.Studio --status</code></pre>
+# Linux Flatpak Bundle:
+curl -LO https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.6-x86_64.flatpak
+flatpak install --user -y duckydeck-studio-v0.1.6-x86_64.flatpak
+flatpak run io.github.duckydeck.Studio</code></pre>
     </section>
 
     <!-- 11. Building, Testing & Extending -->
@@ -1212,12 +1233,15 @@ bash scripts/check.sh
 # 2. Run the Native QML UI Overflow, Contrast &amp; Behavioral Test Suite:
 cargo test ui_test_suite::test_full_qml_ui_overflow_and_contrast_suite -- --ignored --nocapture
 
-# 3. Build &amp; install the Flatpak bundle from source:
+# 3. Build &amp; install the Linux Flatpak bundle from source:
 bash scripts/build-flatpak.sh
-flatpak install --user -y --reinstall target/release/duckydeck-studio-v0.1.4-x86_64.flatpak
+flatpak install --user -y --reinstall target/release/duckydeck-studio-v0.1.6-x86_64.flatpak
 
 # 4. Run the Flatpak QML UI Test Suite inside the Flatpak sandbox:
-bash scripts/test-flatpak-ui.sh</code></pre>
+bash scripts/test-flatpak-ui.sh
+
+# 5. Cross-compile the Windows x86_64 Portable ZIP &amp; Inno Setup .exe installer:
+bash scripts/build-windows.sh</code></pre>
     </section>
   </main>
 

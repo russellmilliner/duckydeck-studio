@@ -1494,9 +1494,7 @@ pub fn query_filesystem_space(path: &Path) -> Option<(u64, u64, u64)> {
         let mut total: u64 = 0;
         let mut free: u64 = 0;
         // SAFETY: `wide` is null-terminated UTF-16 and output pointers are valid stack u64s.
-        let ok = unsafe {
-            GetDiskFreeSpaceExW(wide.as_ptr(), &mut avail, &mut total, &mut free)
-        };
+        let ok = unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut avail, &mut total, &mut free) };
         if ok != 0 && total > 0 {
             let used = total.saturating_sub(free);
             return Some((total, used, avail));

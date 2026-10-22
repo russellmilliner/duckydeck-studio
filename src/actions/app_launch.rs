@@ -465,66 +465,66 @@ impl DuckypadEvdevListener {
 
         #[cfg(not(target_os = "windows"))]
         {
-        use std::io::Read;
-        if self.last_scan.elapsed() >= std::time::Duration::from_secs(3) {
-            self.refresh_nodes();
-        }
-        let mut triggered = Vec::new();
-        let mut buf = [0u8; 24]; // sizeof(struct input_event) on 64-bit Linux
-        let mut drop_indices = Vec::new();
+            use std::io::Read;
+            if self.last_scan.elapsed() >= std::time::Duration::from_secs(3) {
+                self.refresh_nodes();
+            }
+            let mut triggered = Vec::new();
+            let mut buf = [0u8; 24]; // sizeof(struct input_event) on 64-bit Linux
+            let mut drop_indices = Vec::new();
 
-        for (idx, (_, file)) in self.files.iter_mut().enumerate() {
-            loop {
-                match file.read_exact(&mut buf) {
-                    Ok(()) => {
-                        let ev_type = u16::from_ne_bytes([buf[16], buf[17]]);
-                        let ev_code = u16::from_ne_bytes([buf[18], buf[19]]);
-                        let ev_value = i32::from_ne_bytes([buf[20], buf[21], buf[22], buf[23]]);
-                        if ev_type == 1 {
-                            let now_ms = crate::kwin::auto_switcher::current_epoch_ms();
-                            crate::hardware::storage::LAST_EVDEV_KEY_ACTIVITY_MS
-                                .store(now_ms, std::sync::atomic::Ordering::SeqCst);
-                            if ev_value == 1 {
-                                crate::hardware::storage::LAST_EVDEV_KEYDOWN_MS
+            for (idx, (_, file)) in self.files.iter_mut().enumerate() {
+                loop {
+                    match file.read_exact(&mut buf) {
+                        Ok(()) => {
+                            let ev_type = u16::from_ne_bytes([buf[16], buf[17]]);
+                            let ev_code = u16::from_ne_bytes([buf[18], buf[19]]);
+                            let ev_value = i32::from_ne_bytes([buf[20], buf[21], buf[22], buf[23]]);
+                            if ev_type == 1 {
+                                let now_ms = crate::kwin::auto_switcher::current_epoch_ms();
+                                crate::hardware::storage::LAST_EVDEV_KEY_ACTIVITY_MS
                                     .store(now_ms, std::sync::atomic::Ordering::SeqCst);
-                                let cur = crate::hardware::storage::EVDEV_KEYS_HELD_COUNT
-                                    .load(std::sync::atomic::Ordering::SeqCst);
-                                crate::hardware::storage::EVDEV_KEYS_HELD_COUNT.store(
-                                    cur.saturating_add(1).min(16),
-                                    std::sync::atomic::Ordering::SeqCst,
-                                );
-                            } else if ev_value == 0 {
-                                let cur = crate::hardware::storage::EVDEV_KEYS_HELD_COUNT
-                                    .load(std::sync::atomic::Ordering::SeqCst);
-                                crate::hardware::storage::EVDEV_KEYS_HELD_COUNT.store(
-                                    cur.saturating_sub(1),
-                                    std::sync::atomic::Ordering::SeqCst,
-                                );
-                            }
-                            // EV_KEY == 1, value == 1 (key press), KEY_F13 (183)..=KEY_F24 (194)
-                            if ev_value == 1 && (183..=194).contains(&ev_code) {
-                                let f_num = 13 + (ev_code - 183);
-                                triggered.push(format!("F{f_num}"));
+                                if ev_value == 1 {
+                                    crate::hardware::storage::LAST_EVDEV_KEYDOWN_MS
+                                        .store(now_ms, std::sync::atomic::Ordering::SeqCst);
+                                    let cur = crate::hardware::storage::EVDEV_KEYS_HELD_COUNT
+                                        .load(std::sync::atomic::Ordering::SeqCst);
+                                    crate::hardware::storage::EVDEV_KEYS_HELD_COUNT.store(
+                                        cur.saturating_add(1).min(16),
+                                        std::sync::atomic::Ordering::SeqCst,
+                                    );
+                                } else if ev_value == 0 {
+                                    let cur = crate::hardware::storage::EVDEV_KEYS_HELD_COUNT
+                                        .load(std::sync::atomic::Ordering::SeqCst);
+                                    crate::hardware::storage::EVDEV_KEYS_HELD_COUNT.store(
+                                        cur.saturating_sub(1),
+                                        std::sync::atomic::Ordering::SeqCst,
+                                    );
+                                }
+                                // EV_KEY == 1, value == 1 (key press), KEY_F13 (183)..=KEY_F24 (194)
+                                if ev_value == 1 && (183..=194).contains(&ev_code) {
+                                    let f_num = 13 + (ev_code - 183);
+                                    triggered.push(format!("F{f_num}"));
+                                }
                             }
                         }
-                    }
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                    Err(_) => {
-                        drop_indices.push(idx);
-                        break;
+                        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                        Err(_) => {
+                            drop_indices.push(idx);
+                            break;
+                        }
                     }
                 }
             }
-        }
 
-        if !drop_indices.is_empty() {
-            crate::hardware::storage::EVDEV_KEYS_HELD_COUNT
-                .store(0, std::sync::atomic::Ordering::SeqCst);
-        }
-        for idx in drop_indices.into_iter().rev() {
-            self.files.remove(idx);
-        }
-        triggered
+            if !drop_indices.is_empty() {
+                crate::hardware::storage::EVDEV_KEYS_HELD_COUNT
+                    .store(0, std::sync::atomic::Ordering::SeqCst);
+            }
+            for idx in drop_indices.into_iter().rev() {
+                self.files.remove(idx);
+            }
+            triggered
         }
     }
 }
@@ -1003,91 +1003,91 @@ impl GlobalMacroEvdevRecorder {
 
         #[cfg(not(target_os = "windows"))]
         {
-        use std::io::Read;
-        let mut out = Vec::new();
-        let mut buf = [0u8; 24];
-        let mut accum_dx: i32 = 0;
-        let mut accum_dy: i32 = 0;
-        let mut accum_wheel_v: i32 = 0;
-        let mut accum_wheel_h: i32 = 0;
+            use std::io::Read;
+            let mut out = Vec::new();
+            let mut buf = [0u8; 24];
+            let mut accum_dx: i32 = 0;
+            let mut accum_dy: i32 = 0;
+            let mut accum_wheel_v: i32 = 0;
+            let mut accum_wheel_h: i32 = 0;
 
-        for (_, file) in self.files.iter_mut() {
-            loop {
-                match file.read_exact(&mut buf) {
-                    Ok(()) => {
-                        let ev_type = u16::from_ne_bytes([buf[16], buf[17]]);
-                        let ev_code = u16::from_ne_bytes([buf[18], buf[19]]);
-                        let ev_value = i32::from_ne_bytes([buf[20], buf[21], buf[22], buf[23]]);
+            for (_, file) in self.files.iter_mut() {
+                loop {
+                    match file.read_exact(&mut buf) {
+                        Ok(()) => {
+                            let ev_type = u16::from_ne_bytes([buf[16], buf[17]]);
+                            let ev_code = u16::from_ne_bytes([buf[18], buf[19]]);
+                            let ev_value = i32::from_ne_bytes([buf[20], buf[21], buf[22], buf[23]]);
 
-                        if ev_type == 1 {
-                            // EV_KEY: 1 = press, 0 = release (ignore 2 = autorepeat)
-                            if ev_value == 1 || ev_value == 0 {
-                                if let Some(duck_key) = evdev_code_to_duckyscript_key(ev_code) {
-                                    // Flush pending mouse moves before key/click
-                                    if accum_dx != 0 || accum_dy != 0 {
+                            if ev_type == 1 {
+                                // EV_KEY: 1 = press, 0 = release (ignore 2 = autorepeat)
+                                if ev_value == 1 || ev_value == 0 {
+                                    if let Some(duck_key) = evdev_code_to_duckyscript_key(ev_code) {
+                                        // Flush pending mouse moves before key/click
+                                        if accum_dx != 0 || accum_dy != 0 {
+                                            out.push(RecordedMacroInputEvent {
+                                                kind: "mouse_move".to_string(),
+                                                key: String::new(),
+                                                dx: accum_dx,
+                                                dy: accum_dy,
+                                            });
+                                            accum_dx = 0;
+                                            accum_dy = 0;
+                                        }
+                                        let is_mouse_btn = (0x110..=0x117).contains(&ev_code);
                                         out.push(RecordedMacroInputEvent {
-                                            kind: "mouse_move".to_string(),
-                                            key: String::new(),
-                                            dx: accum_dx,
-                                            dy: accum_dy,
-                                        });
-                                        accum_dx = 0;
-                                        accum_dy = 0;
-                                    }
-                                    let is_mouse_btn = (0x110..=0x117).contains(&ev_code);
-                                    out.push(RecordedMacroInputEvent {
-                                        kind: if is_mouse_btn {
-                                            if ev_value == 1 {
-                                                "mouse_down".to_string()
+                                            kind: if is_mouse_btn {
+                                                if ev_value == 1 {
+                                                    "mouse_down".to_string()
+                                                } else {
+                                                    "mouse_up".to_string()
+                                                }
+                                            } else if ev_value == 1 {
+                                                "key_down".to_string()
                                             } else {
-                                                "mouse_up".to_string()
-                                            }
-                                        } else if ev_value == 1 {
-                                            "key_down".to_string()
-                                        } else {
-                                            "key_up".to_string()
-                                        },
-                                        key: duck_key.to_string(),
-                                        dx: 0,
-                                        dy: 0,
-                                    });
+                                                "key_up".to_string()
+                                            },
+                                            key: duck_key.to_string(),
+                                            dx: 0,
+                                            dy: 0,
+                                        });
+                                    }
+                                }
+                            } else if ev_type == 2 {
+                                // EV_REL: 0 = REL_X, 1 = REL_Y, 6 = REL_HWHEEL, 8 = REL_WHEEL
+                                match ev_code {
+                                    0 => accum_dx = accum_dx.saturating_add(ev_value),
+                                    1 => accum_dy = accum_dy.saturating_add(ev_value),
+                                    6 => accum_wheel_h = accum_wheel_h.saturating_add(ev_value),
+                                    8 => accum_wheel_v = accum_wheel_v.saturating_add(ev_value),
+                                    _ => {}
                                 }
                             }
-                        } else if ev_type == 2 {
-                            // EV_REL: 0 = REL_X, 1 = REL_Y, 6 = REL_HWHEEL, 8 = REL_WHEEL
-                            match ev_code {
-                                0 => accum_dx = accum_dx.saturating_add(ev_value),
-                                1 => accum_dy = accum_dy.saturating_add(ev_value),
-                                6 => accum_wheel_h = accum_wheel_h.saturating_add(ev_value),
-                                8 => accum_wheel_v = accum_wheel_v.saturating_add(ev_value),
-                                _ => {}
-                            }
                         }
+                        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                        Err(_) => break,
                     }
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                    Err(_) => break,
                 }
             }
-        }
 
-        if accum_dx != 0 || accum_dy != 0 {
-            out.push(RecordedMacroInputEvent {
-                kind: "mouse_move".to_string(),
-                key: String::new(),
-                dx: accum_dx,
-                dy: accum_dy,
-            });
-        }
-        if accum_wheel_h != 0 || accum_wheel_v != 0 {
-            out.push(RecordedMacroInputEvent {
-                kind: "mouse_scroll".to_string(),
-                key: String::new(),
-                dx: accum_wheel_h,
-                dy: accum_wheel_v,
-            });
-        }
+            if accum_dx != 0 || accum_dy != 0 {
+                out.push(RecordedMacroInputEvent {
+                    kind: "mouse_move".to_string(),
+                    key: String::new(),
+                    dx: accum_dx,
+                    dy: accum_dy,
+                });
+            }
+            if accum_wheel_h != 0 || accum_wheel_v != 0 {
+                out.push(RecordedMacroInputEvent {
+                    kind: "mouse_scroll".to_string(),
+                    key: String::new(),
+                    dx: accum_wheel_h,
+                    dy: accum_wheel_v,
+                });
+            }
 
-        out
+            out
         }
     }
 }

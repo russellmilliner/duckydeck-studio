@@ -1,8 +1,10 @@
 # <img src="data/icons/io.github.duckydeck.Studio.svg" width="36" height="36" align="top" alt="DuckyDeck Studio Icon" /> DuckyDeck Studio
 
-[![Version v0.1.4](https://img.shields.io/badge/Version-v0.1.4-38bdf8?style=for-the-badge)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.4-linux-x86_64.tar.gz)
-[![Flatpak v0.1.4](https://img.shields.io/badge/Flatpak-v0.1.4-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.4-x86_64.flatpak)
-[![Firmware v1.0.0](https://img.shields.io/badge/Custom%20Firmware-v1.0.0-10b981?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.0.0)
+[![Version v0.1.6](https://img.shields.io/badge/Version-v0.1.6-38bdf8?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.6)
+[![Windows 10/11 Setup v0.1.6](https://img.shields.io/badge/Windows%2010%2F11%20Setup-v0.1.6%20(.exe)-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.6/DuckyDeck-Studio-Setup-v0.1.6-x86_64.exe)
+[![Windows Portable v0.1.6](https://img.shields.io/badge/Windows%20Portable-v0.1.6%20(.zip)-0284c7?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.6/duckydeck-studio-v0.1.6-windows-x86_64-portable.zip)
+[![Flatpak v0.1.6](https://img.shields.io/badge/Linux%20Flatpak-v0.1.6-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.6-x86_64.flatpak)
+[![Firmware v1.1.0](https://img.shields.io/badge/Custom%20Firmware-v1.1.0-10b981?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.1.0)
 [![Website & Documentation](https://img.shields.io/badge/Docs%20%26%20Website-duckydeckstudio.com-0ea5e9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://duckydeckstudio.com)
 [![Architecture Guide](https://img.shields.io/badge/Architecture-architecture.html-8b5cf6?style=for-the-badge)](https://duckydeckstudio.com/architecture.html)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-russellmilliner%2Fduckydeck--studio-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio)
@@ -10,15 +12,15 @@
 [![duckyPad Official Site](https://img.shields.io/badge/duckyPad-Official%20Site-f59e0b?style=for-the-badge)](https://www.duckypad.com)
 [![Tindie Store](https://img.shields.io/badge/Tindie-dekuNukem%20Store-10b981?style=for-the-badge)](https://www.tindie.com/stores/dekunukem/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg?style=for-the-badge)](https://www.gnu.org/licenses/gpl-3.0)
-[![Platform: Linux / KDE Plasma 6](https://img.shields.io/badge/Platform-Linux%20%7C%20KDE%20Plasma%206-3daee9?logo=kde&logoColor=white&style=for-the-badge)](https://kde.org/)
+[![Platform: Linux & Windows 10/11](https://img.shields.io/badge/Platform-Linux%20(KDE%20Plasma%206)%20%7C%20Windows%2010%2F11-3daee9?logo=kde&logoColor=white&style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.6)
 
-**DuckyDeck Studio (`v0.1.4`)** is a native Linux desktop configurator, **DSVM v2 bytecode compiler**, **KDE Plasma 6 Wayland Auto-Switcher**, and **Macro Template Generator (experimental)** for the **duckyPad Pro (`0x0483:0xd11d`)** and **duckyPad 2020 (`0x0483:0xd11c`)**, built with **Rust**, **CXX-Qt 0.7**, and **KDE Frameworks 6 (Kirigami + KSyntaxHighlighting)**.
+**DuckyDeck Studio (`v0.1.6`)** is a native **Linux (KDE Plasma 6 / Wayland & X11)** and **Windows 10/11 (x86_64)** desktop configurator, **DSVM v2 bytecode compiler**, **Window-Aware Auto-Switcher**, and **Macro Template Generator (experimental)** for the **duckyPad Pro (`0x0483:0xd11d`)** and **duckyPad 2020 (`0x0483:0xd11c`)**, built with **Rust**, **CXX-Qt 0.7**, **Qt 6**, and **KDE Frameworks 6 (Kirigami + KSyntaxHighlighting)** (with a self-contained Kirigami QML compatibility layer on Windows).
 
-> 🏷️ **Current Version:** **DuckyDeck Studio `v0.1.4`** · **Custom Firmware `v1.0.1`** · **KDE Plasma 6 Applet `v1.0.2`**
+> 🏷️ **Current Version:** **DuckyDeck Studio `v0.1.6`** · **Custom Firmware `v1.1.0` (`DDS_FW_1.1.0_b3291568.bin`)** · **KDE Plasma 6 Applet `v1.0.2`**
 >
 > 🌐 **Official Website & Online Documentation:** **[https://duckydeckstudio.com](https://duckydeckstudio.com)** · **[Architecture Reference (`architecture.html`)](https://duckydeckstudio.com/architecture.html)**
 >
-> 💻 **GitHub Repository & Releases:** **[https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)** · **[Flatpak Bundle (`v0.1.4`)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.4-x86_64.flatpak)** · **[Linux x86_64 Tarball (`v0.1.4`)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.4-linux-x86_64.tar.gz)**
+> 💻 **GitHub Repository & Releases:** **[https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)** · **[Windows 10/11 Setup Installer (`v0.1.6` `.exe`)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.6/DuckyDeck-Studio-Setup-v0.1.6-x86_64.exe)** · **[Windows Portable ZIP (`v0.1.6` `.zip`)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.6/duckydeck-studio-v0.1.6-windows-x86_64-portable.zip)** · **[Linux Flatpak Bundle (`v0.1.6`)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.6-x86_64.flatpak)** · **[Linux x86_64 Tarball (`v0.1.6`)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.6-linux-x86_64.tar.gz)**
 >
 > ☕ **Enjoying DuckyDeck Studio?** Support development by buying Russell Milliner a coffee on Ko-fi: **[https://ko-fi.com/russellmilliner](https://ko-fi.com/russellmilliner)**
 >
@@ -56,38 +58,40 @@
   - Pure-Rust two-pass compiler that compiles `duckyScript 3` (`keyN.txt` & `keyN-release.txt`) directly into **DSVM v2 (`.dsb`)** bytecode binaries.
   - Live syntax verification with byte count & exact error line reporting, KDE `KSyntaxHighlighting`, and a searchable **Command Reference Drawer**.
 - **🚀 Launch Application Builder (No-Code Desktop App Launcher):**
-  - Search installed Linux desktop applications (`.desktop` entries from system, user, and Flatpak directories with icons and categories) or configure custom CLI commands, arguments, working directories, and terminal execution.
-  - Triggers instantaneously over USB HID via Persistent Global Variable `_GV31` (`encode_pgv31_trigger`, no keyboard shortcut conflicts!) or via `F13–F24` global hotkeys (`evdev`).
+  - Search installed desktop applications on **Linux** (`.desktop` entries from system, user, and Flatpak directories) and **Windows 10/11** (Start Menu `.lnk` shortcuts from `%ProgramData%\Microsoft\Windows\Start Menu\Programs` and `%APPDATA%\Microsoft\Windows\Start Menu\Programs` resolved via COM `WScript.Shell`), or configure custom CLI commands, `.exe` paths, arguments, working directories, and terminal execution.
+  - Triggers instantaneously over USB HID via Persistent Global Variable `_GV31` (`encode_pgv31_trigger`, no keyboard shortcut conflicts!) or via `F13–F24` global hotkeys (Linux `evdev` or Windows Win32 `RegisterHotKey`).
+  - **165+ Built-in OLED Key Icons Across 13 Categories:** Includes curated pixel-art icons across `Browser`, `Word`, `Excel`, `Slides`, `Photo`, `CAD/3D`, `Media`, `Nav`, `Edit`, `System`, `Dev`, `Home`, and `Badges`.
 - **🌐 Web API / Webhook Builder & 🏠 Home Assistant Entity Search:**
   - Trigger HTTP `GET`, `POST`, `PUT`, `PATCH`, and `DELETE` requests (Home Assistant, Miniflux, OBS, custom webhooks) with custom headers and JSON bodies directly from any duckyPad key via USB HID (`_GV31`) or `F13–F24`.
   - **Built-in Home Assistant Web API Browser:** Connect to your Home Assistant instance (`base_url` + Long-Lived Access Token) to search devices and entities across domains (`light`, `switch`, `scene`, `script`, `automation`, `button`, `input_boolean`, `media_player`, `cover`, `fan`, `climate`, `lock`) and bind `toggle` / `turn_on` / `turn_off` / `trigger` service calls to any key in one click.
   - **🔔 Profile Change Webhooks:** Automatically fire a per-profile HTTP webhook (configured in **Profile Properties**) and/or a global profile-change webhook (configured in **Settings**) whenever the active profile changes via UI, hardware buttons, Window Auto-Switcher, or the REST API, with template placeholders (`{{profile_number}}`, `{{profile_name}}`, `{{previous_profile_number}}`, `{{previous_profile_name}}`, `{{source}}`, `{{device_serial}}`, `{{timestamp}}`).
 - **🔌 Built-In HTTP REST API Server (`/api/v1/*`) for Remote Control & Programming:**
   - Optional embedded HTTP/1.1 REST API server configurable in **Settings → HTTP REST API Server** (defaults to `127.0.0.1:28491`, disabled by default, with 160-bit `ddk_...` Bearer token authentication) for controlling and programming every function of the duckyPad remotely (switching/creating/editing/deleting profiles, programming key labels/colors/icons/scripts, reading/writing `_GV0.._GV31`, setting LEDs/OLED, triggering slots, and syncing to microSD).
-- **🪟 KDE Plasma 6 Wayland Auto-Switcher & Protected Fallback Profile:**
-  - Pure-Rust `zbus` D-Bus listener integrated with KWin Wayland to automatically switch duckyPad hardware profiles when you focus different applications or browser tabs.
+- **🪟 Cross-Platform Window Auto-Switcher (KDE Plasma 6 Wayland & Windows 10/11 Win32) & Protected Fallback Profile:**
+  - **Linux (`zbus` + KWin Wayland):** Pure-Rust D-Bus listener integrated with KDE Plasma 6 KWin Wayland to automatically switch duckyPad hardware profiles when you focus different applications or browser tabs.
+  - **Windows 10/11 (Win32 Foreground Tracker):** Native Win32 listener (`GetForegroundWindow`, `GetWindowTextW`, `GetWindowThreadProcessId`, `QueryFullProcessImageNameW`) that tracks active `.exe` process names and window titles (including regex title matching) with zero CPU overhead.
   - **Automatic Rule & Fallback Synchronization:** New profile groups always create a Default Fallback Profile (`★ FALLBACK`) that is protected from deletion. Reordering profiles automatically updates all Auto-Switcher rule bindings, and deleting a profile automatically reassigns any rules referencing it to the Fallback Profile.
-  - Includes a **🎯 Crosshair Window Picker** to bind any open window or web app tab in one click, inline `✕` filter clear buttons, hover tooltips for drag-and-drop reordering, and automatic pausing while the Key Editor is open.
+  - Includes a **🎯 Crosshair Window Picker** on both Linux (KWin interactive picker) and Windows (`WindowFromPoint` + `GetAsyncKeyState(VK_LBUTTON)` hover-and-click picker) to bind any open window or web app tab in one click, inline `✕` filter clear buttons, hover tooltips for drag-and-drop reordering, and automatic pausing while the Key Editor is open.
 - **💾 Offline Profile Cache, Diff Summary & Validated microSD Sync:**
-  - Edits are saved immediately to a local per-device cache (`~/.local/share/duckydeck-studio/profiles_cache/`).
-  - Inspect a detailed **Unsynced Changes Summary** before syncing, then write, flush, and verify `.dsb` bytecode and `config.txt` files on the duckyPad microSD card.
-  - **Portable `duckydeck_rules.json` microSD Persistence:** Syncs your KWin Wayland auto-switcher rules directly onto the microSD card root alongside hardware profiles so your window bindings travel with your duckyPad across computers.
+  - Edits are saved immediately to a local per-device cache (`~/.local/share/duckydeck-studio/profile_cache/` on Linux or `%LOCALAPPDATA%\duckydeck-studio\profile_cache\` on Windows).
+  - Inspect a detailed **Unsynced Changes Summary** before syncing, then write, flush, and verify `.dsb` bytecode and `config.txt` files on the duckyPad microSD card (supporting Linux `udisksctl` / `/run/media` and Windows `D:\..Z:\` removable volume detection with `FlushFileBuffers` and safe PowerShell drive eject).
+  - **Portable `duckydeck_rules.json` microSD Persistence:** Syncs your window auto-switcher rules directly onto the microSD card root alongside hardware profiles so your window bindings travel with your duckyPad across computers.
   - Export and import individual profiles (`.duckyprofile.json` or folder) or complete **Profile Groups (`.duckygroup.json`)**.
 - **🧙‍♂️ First-Run Deck Setup & Legacy dekuNukem Migration:**
-  - Automatically detects unconfigured or fresh decks and discovers legacy profiles and auto-switcher rules from existing dekuNukem installations (`~/.local/share/duckypad_config/profile_backups/` and `~/.local/share/duckypad_autoswitcher/`).
+  - Automatically detects unconfigured or fresh decks and discovers legacy profiles and auto-switcher rules from existing dekuNukem installations (`~/.local/share/duckypad_config/profile_backups/` on Linux or `%APPDATA%\dekuNukem\duckypad_config\profile_backups\` on Windows).
   - Detects running legacy background daemons (`duckypad_autoprofile.py`, `duckypad_autoswitcher`, `duckypad_configurator`) and provides 1-click graceful termination to prevent USB HID bus contention.
 - **🔢 Live PGV Inspector (`_GV0`..`_GV31`) & ✨ Macro Template Generator (experimental):**
   - Read and write all 32 non-volatile 32-bit Persistent Global Variables (`_GV0.._GV31`) over USB HID (`0x18`/`0x19`) in Signed, Unsigned, or Hex format.
   - Generate duckyScript 3 macro templates from your local KDE shortcuts (`~/.config/kglobalshortcutsrc`), converting KDE key sequences directly into duckyScript 3 key combos.
 - **📋 System Event Log, Global UI Zoom (`Ctrl++`/`Ctrl+-`), High-Contrast Controls & System Tray:**
   - Built-in **System Event Log** (`DEVICE`, `PROFILE`, `AUTOSWITCH`, `SD_SYNC`, `SCRIPT`, `WEB_API`, `APP_LAUNCH`, `SYSTEM`) with search, category/severity filters, and file export.
-  - Global UI text zoom (`75%–160%`, minimum `10pt` base font) with standard <kbd>Ctrl</kbd>+<kbd>+</kbd>, <kbd>Ctrl</kbd>+<kbd>=</kbd>, <kbd>Ctrl</kbd>+<kbd>-</kbd>, and <kbd>Ctrl</kbd>+<kbd>0</kbd> shortcuts persisted across restarts, high-contrast checkboxes and scrollbars in Dark and Light modes, and a dynamic KDE `StatusNotifierItem` System Tray icon with quick access to **Show / Hide**, **Toggle Desktop OLED Widget**, **Auto-Switcher**, **Autostart**, and **About DuckyDeck Studio**.
+  - Global UI text zoom (`75%–160%`, minimum `10pt` base font) with standard <kbd>Ctrl</kbd>+<kbd>+</kbd>, <kbd>Ctrl</kbd>+<kbd>=</kbd>, <kbd>Ctrl</kbd>+<kbd>-</kbd>, and <kbd>Ctrl</kbd>+<kbd>0</kbd> shortcuts persisted across restarts, high-contrast checkboxes and scrollbars in Dark and Light modes, and a dynamic System Tray icon (KDE `StatusNotifierItem` on Linux, Notification Area Tray on Windows) with quick access to **Show / Hide**, **Toggle Desktop OLED Widget**, **Auto-Switcher**, **Autostart** (XDG `.desktop` on Linux, Registry `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` on Windows), and **About DuckyDeck Studio**.
 - **🗂️ Reusable Profile Templates:**
-  - Create new profiles from built-in templates (*Blank*, *Media & Streaming*, *IDE & Developer*, *Desktop App & Web API Launcher*) or copy any existing profile into a reusable custom template (`~/.config/duckydeck-studio/profile_templates.json`).
+  - Create new profiles from built-in templates (*Blank*, *Media & Streaming*, *IDE & Developer*, *Desktop App & Web API Launcher*) or copy any existing profile into a reusable custom template (`~/.config/duckydeck-studio/profile_templates.json` on Linux or `%APPDATA%\duckydeck-studio\profile_templates.json` on Windows).
 - **🖥️ Desktop OLED Companion Widget & Instant 4-Way Rotated Key Labels (`0° / 90° / 180° / 270°`):**
-  - Floating, multi-monitor-aware desktop replica of the duckyPad OLED screen (plus a companion KDE Plasma 6 Applet in `plasmoid/io.github.duckydeck.oled`) with persistent screen/position/transparency settings, optional 24-character extended labels (`wzN`/`wxN`), and independent **Desktop Widget Orientation** (`Follow OLED`, `0°`, `90°`, `180°`, `270°`) configurable per profile in **Profile Properties** that rotates both the key grid positions and the text inside each key immediately without requiring a microSD card sync.
-- **🔧 DuckyDeck Studio Firmware `v1.0.0` & Official Firmware Catalog Downloader:**
-  - Custom firmware build (`v1.0.0`, badged with the DuckyDeck Studio icon in the status bar) supporting `0°`, `90°`, `180°`, and `270°` hardware OLED orientations and crisp 1-bit monochrome key icons.
+  - Floating, multi-monitor-aware desktop replica of the duckyPad OLED screen (using KWin Wayland placement rules on Linux and Win32 `HWND_TOPMOST` on Windows, plus a companion KDE Plasma 6 Applet in `plasmoid/io.github.duckydeck.oled`) with persistent screen/position/transparency settings, optional 24-character extended labels (`wzN`/`wxN`), and independent **Desktop Widget Orientation** (`Follow OLED`, `0°`, `90°`, `180°`, `270°`) configurable per profile in **Profile Properties** that rotates both the key grid positions and the text inside each key immediately without requiring a microSD card sync.
+- **🔧 DuckyDeck Studio Firmware `v1.1.0` & Official Firmware Catalog Downloader:**
+  - Custom firmware build (`v1.1.0`, `DDS_FW_1.1.0_b3291568.bin`, badged with the DuckyDeck Studio icon in the status bar) supporting `0°`, `90°`, `180°`, and `270°` hardware OLED orientations, smooth 60 FPS `SWC_FADE_TO` LED transitions, NVS profile caching, and crisp 1-bit monochrome key icons.
   - **Official Firmware Catalog Downloader:** Fetch the list of official dekuNukem firmwares directly inside the **Firmware Manager** window, download `.bin` images with IEEE CRC32 verification, and install them in one click.
 
 ---
@@ -102,13 +106,13 @@ DuckyDeck Studio clearly badges capabilities in the UI as either **✅ Hardware-
 | **Static Profile & Key RGB Colors** (`BG_COLOR`, `SWCOLOR`, `KEYDOWN_COLOR`, `DIM_UNUSED_KEYS`) | ✅ **Hardware-Portable** | Stored in `config.txt` on the microSD card and rendered directly by duckyPad hardware. |
 | **Embedded Key Script RGB Animations** (`SWC_SET`, `SWC_FILL`, `SWC_RESET`) | ✅ **Hardware-Portable** | Compiled directly into `keyN.dsb` bytecode on the microSD card; runs standalone on hardware. |
 | **5-Char Physical OLED Key Labels (`zN` / `xN`) & `OLED_*` Script Graphics** | ✅ **Hardware-Portable** | Stored on microSD and rendered by the physical 128×128 OLED display. |
-| **Physical OLED Orientation (`0° / 90° / 180° / 270°`) & Monochrome Icons** | ✅ **Hardware-Portable** *(180°/270° & icons require DuckyDeck Studio Firmware v1.0.0)* | Stored in `config.txt` (`IS_LANDSCAPE` / `OLED_ROTATION`) and rendered on the hardware OLED screen. |
+| **Physical OLED Orientation (`0° / 90° / 180° / 270°`) & Monochrome Icons** | ✅ **Hardware-Portable** *(180°/270° & icons require DuckyDeck Studio Firmware v1.1.0)* | Stored in `config.txt` (`IS_LANDSCAPE` / `OLED_ROTATION`) and rendered on the hardware OLED screen. |
 | **Manual Profile Switching** (`GOTO_PROFILE`, `NEXT_PROFILE`, `PREV_PROFILE`, `+`/`-` button hold) | ✅ **Hardware-Portable** | Handled natively on the duckyPad hardware. |
-| **🚀 Launch Desktop Application (`APP` badge)** | 💻 **Requires DuckyDeck Studio Running** | Triggered over USB HID (`_GV31`) or `evdev` (`F13–F24`) by the DuckyDeck Studio host process. **Will not launch apps if DuckyDeck Studio is closed or on another PC.** |
+| **🚀 Launch Desktop Application (`APP` badge)** | 💻 **Requires DuckyDeck Studio Running** | Triggered over USB HID (`_GV31`) or `F13–F24` (Linux `evdev` / Windows Win32 `RegisterHotKey`) by the DuckyDeck Studio host process. **Will not launch apps if DuckyDeck Studio is closed or on another PC.** |
 | **🌐 Web API / HTTP Webhooks & Home Assistant Triggers (`API` badge)** | 💻 **Requires DuckyDeck Studio Running** | Outbound HTTP requests are dispatched by DuckyDeck Studio on the host PC. **The duckyPad hardware has no network stack and cannot fire webhooks standalone.** |
 | **🔔 Profile Change Webhooks (Per-Profile & Global)** | 💻 **Requires DuckyDeck Studio Running** | Fired by DuckyDeck Studio when a profile switch is initiated or detected on the host PC. Does not require a microSD card sync. |
 | **🔌 HTTP REST API Server (`/api/v1/*`)** | 💻 **Requires DuckyDeck Studio Running** | Hosted by the DuckyDeck Studio process (`127.0.0.1:28491` by default). |
-| **🪟 KWin Wayland Active-Window Auto-Switcher** | 💻 **Requires DuckyDeck Studio Running** | Uses KDE Plasma 6 KWin D-Bus tracking on the host PC to send USB HID profile-switch commands. Without the host app, switch profiles manually on the keypad. |
+| **🪟 Active-Window Auto-Switcher (KWin Wayland on Linux / Win32 on Windows)** | 💻 **Requires DuckyDeck Studio Running** | Uses KDE Plasma 6 KWin D-Bus tracking on Linux or Win32 `GetForegroundWindow` tracking on Windows to send USB HID profile-switch commands. Without the host app, switch profiles manually on the keypad. |
 | **🖥️ Desktop OLED Widget, 24-Char Extended Widget Labels (`wzN`/`wxN`) & Widget Orientation (`DW_ROTATION`)** | 💻 **Requires DuckyDeck Studio Running** | Displayed on your computer monitor by DuckyDeck Studio; orientation changes apply immediately without requiring a microSD card sync. |
 | **✨ Live USB HID RGB Animation Streaming** | 💻 **Requires DuckyDeck Studio Running** | Streams RGB frames over USB HID (`0x14`) from DuckyDeck Studio. Use the *"Embed standalone DuckyScript 3 SWC_SET"* option if you want portable on-device key lighting. |
 
@@ -158,7 +162,7 @@ Full documentation and request/response schemas are available at **[https://duck
 
 | Method & Path | Description |
 | :--- | :--- |
-| `GET /api/v1/health` | Unauthenticated liveness probe (`{"ok":true,"service":"duckydeck-studio","version":"0.1.4","authRequired":true}`). |
+| `GET /api/v1/health` | Unauthenticated liveness probe (`{"ok":true,"service":"duckydeck-studio","version":"0.1.6","authRequired":true}`). |
 | `GET /api/v1/openapi.json` \| `/swagger.json` \| `/openapi.yaml` | Unauthenticated OpenAPI 3.0.3 / Swagger specification in JSON or YAML format. |
 | `GET /api/v1/status` *(or `/api/v1`)* | Full device connection, firmware, active profile, SD sync, and auto-switcher state. |
 | `GET /api/v1/profiles` | List all profiles and their properties. |
@@ -187,7 +191,7 @@ Full documentation and request/response schemas are available at **[https://duck
 ## 📚 Documentation & Links
 
 - **🌐 [Official Website & User Documentation (`https://duckydeckstudio.com`)](https://duckydeckstudio.com)** — Official online documentation, user manual, release downloads, and firmware downloads (accessible directly inside the app via **☰ → User Documentation** or **About → User Guide**; offline copy at [`docs/user-guide.html`](docs/user-guide.html)).
-- **🏗️ [Architecture & Design Developer Documentation (`https://duckydeckstudio.com/architecture.html`)](https://duckydeckstudio.com/architecture.html)** — Interactive HTML architecture reference ([`docs/architecture.html`](docs/architecture.html)) and Markdown documentation ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)) detailing the CXX-Qt bridge, USB HID/MSC protocol, DSVM v2 bytecode compiler, HTTP REST API server, Flatpak sandbox, and KWin Wayland Auto-Switcher.
+- **🏗️ [Architecture & Design Developer Documentation (`https://duckydeckstudio.com/architecture.html`)](https://duckydeckstudio.com/architecture.html)** — Interactive HTML architecture reference ([`docs/architecture.html`](docs/architecture.html)) and Markdown documentation ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)) detailing the CXX-Qt bridge, USB HID/MSC protocol, DSVM v2 bytecode compiler, HTTP REST API server, Flatpak sandbox, and Cross-Platform Auto-Switcher (KWin Wayland & Windows Win32).
 - **💻 [GitHub Repository & Issue Tracker (`https://github.com/russellmilliner/duckydeck-studio`)](https://github.com/russellmilliner/duckydeck-studio)** — Source code, issue tracker, and **[GitHub Releases](https://github.com/russellmilliner/duckydeck-studio/releases)**.
 - **🔌 [HTTP REST API Reference (`https://duckydeckstudio.com/REST_API.md` / `docs/REST_API.md`)](https://duckydeckstudio.com/REST_API.md)** — Complete endpoint documentation, authentication guide, and `curl` examples, accompanied by **[`docs/REST_API.md`](docs/REST_API.md)**, **[`docs/openapi.yaml`](docs/openapi.yaml)**, and **[`docs/swagger.json`](docs/swagger.json)**.
 
@@ -197,12 +201,17 @@ Full documentation and request/response schemas are available at **[https://duck
 
 ```text
 duckydeck-studio/
-├── Cargo.toml                             # Rust dependencies (cxx-qt, hidapi, zbus, tokio, reqwest, keyring)
-├── build.rs                               # CXX-Qt QML module & QObject bridge compiler
+├── Cargo.toml                             # Rust dependencies (cxx-qt, hidapi, zbus, windows-sys, tokio, reqwest, keyring)
+├── build.rs                               # CXX-Qt QML module & QObject bridge compiler (Linux Kirigami + Windows compat)
 ├── io.github.duckydeck.Studio.yml         # Flatpak manifest (org.kde.Platform 6.11 + Rust SDK)
+├── packaging/
+│   └── windows/
+│       ├── DuckyDeckStudio.iss            # Inno Setup 6 installer script for Windows 10/11 (x86_64)
+│       └── duckydeck-studio.ico           # Multi-resolution Windows application icon
 ├── scripts/
 │   ├── check.sh                           # Quality gate (rustfmt, clippy, unit tests, architecture checks)
-│   ├── build-flatpak.sh                   # Builds & bundles target/release/duckydeck-studio-v0.1.4-x86_64.flatpak
+│   ├── build-flatpak.sh                   # Builds & bundles target/release/duckydeck-studio-v0.1.6-x86_64.flatpak
+│   ├── build-windows.sh                   # Cross-compiles Windows x86_64 Portable ZIP & Inno Setup .exe installer
 │   └── test-flatpak-ui.sh                 # Runs the automated QML UI test suite inside the Flatpak sandbox
 ├── docs/
 │   ├── user-guide.html                    # Interactive Web User Documentation & Manual
@@ -217,18 +226,21 @@ duckydeck-studio/
 │   ├── icons/io.github.duckydeck.Studio.svg    # Scalable application icon
 │   ├── syntax/duckyscript3.xml                 # KDE KSyntaxHighlighting grammar for duckyScript 3
 │   └── udev/
-│       ├── 70-duckypad.rules                   # uaccess udev rules for 0x0483:0xd11d & 0xd11c
+│       ├── 70-duckypad.rules                   # uaccess udev rules for 0x0483:0xd11d & 0xd11c (Linux only)
 │       └── install-udev-rules.sh               # Helper script to install & reload udev rules
 └── src/
-    ├── main.rs                            # Qt 6 / Breeze entrypoint, D-Bus IPC & syntax registration
+    ├── main.rs                            # Qt 6 entrypoint, D-Bus/NamedPipe IPC & syntax registration
+    ├── paths.rs                           # Cross-platform Linux XDG / Flatpak & Windows %APPDATA% path resolver
     ├── api_server.rs                      # Embedded HTTP/1.1 REST API Server (/api/v1/*) with Bearer auth
     ├── actions/                           # Host actions (web_api.rs, app_launch.rs, desktop_apps.rs)
     ├── bridge/                            # #[cxx_qt::bridge] DeviceController & submodules
+    ├── cpp/                               # C++ Qt helpers (app_helper.h, syntax_highlighter.h, kirigami_compat.h)
     ├── hardware/                          # USB HID protocol, profile parser, MSC & firmware manager
     ├── vm/compiler.rs                     # Pure-Rust duckyScript 3 -> DSVM v2 (.dsb) bytecode compiler
-    ├── kwin/auto_switcher.rs              # Pure-Rust zbus listener for Plasma 6 KWin Wayland window focus
+    ├── kwin/auto_switcher.rs              # Cross-platform active-window listener (KWin Wayland D-Bus & Windows Win32)
     ├── ai/shortcut_scraper.rs             # Local ~/.config/kglobalshortcutsrc parser & DuckyScript converter
     └── qml/                               # Kirigami QML components (Main, HardwareCanvas, Builders, Dialogs)
+        ├── kirigami/                      # Self-contained Kirigami QML compatibility layer for Windows builds
         └── AiArchitectModal.qml           # Macro Template Generator (experimental) modal dialog
 ```
 
@@ -236,17 +248,37 @@ duckydeck-studio/
 
 ## 🛠️ Build & Installation Instructions
 
-### 1. Quick Install: Prebuilt Flatpak Bundle (Recommended for Any Linux Distribution)
+### 1. Windows 10 & 11 Installation (`x86_64`)
 
-Download and install the self-contained `io.github.duckydeck.Studio` Flatpak bundle directly from **[duckydeckstudio.com](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.4-x86_64.flatpak)** or **[GitHub Releases](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.4)**:
+DuckyDeck Studio runs natively on **Windows 10 and Windows 11 (`x86_64`)** with **zero extra driver installation required**—Windows automatically binds the duckyPad's vendor-defined USB HID interface (`0x0483:0xd11d` and `0x0483:0xd11c`) and Mass Storage microSD drive upon plug-in.
+
+#### Option A: Windows Setup Installer (Recommended)
+1. Download **[`DuckyDeck-Studio-Setup-v0.1.6-x86_64.exe`](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.6/DuckyDeck-Studio-Setup-v0.1.6-x86_64.exe)** from **[GitHub Releases](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.6)** or **[duckydeckstudio.com](https://duckydeckstudio.com/releases/DuckyDeck-Studio-Setup-v0.1.6-x86_64.exe)**.
+2. Run the installer (`DuckyDeck-Studio-Setup-v0.1.6-x86_64.exe`) — no Administrator privileges are required (installs per-user to `%LOCALAPPDATA%\Programs\DuckyDeck Studio` by default, creates Start Menu and optional Desktop shortcuts, and optionally enables **Autostart at Windows Login**).
+3. Launch **DuckyDeck Studio** from the Start Menu.
+
+#### Option B: Windows Portable ZIP (No Installer Required)
+1. Download **[`duckydeck-studio-v0.1.6-windows-x86_64-portable.zip`](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.6/duckydeck-studio-v0.1.6-windows-x86_64-portable.zip)**.
+2. Extract the archive to any folder and run `duckydeck-studio.exe`:
+   ```powershell
+   Invoke-WebRequest -Uri "https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.6/duckydeck-studio-v0.1.6-windows-x86_64-portable.zip" -OutFile "duckydeck-studio-portable.zip"
+   Expand-Archive -Path "duckydeck-studio-portable.zip" -DestinationPath ".\DuckyDeckStudio"
+   .\DuckyDeckStudio\duckydeck-studio-v0.1.6-windows-x86_64\duckydeck-studio.exe
+   ```
+
+---
+
+### 2. Quick Install on Linux: Prebuilt Flatpak Bundle (Recommended for Any Linux Distribution)
+
+Download and install the self-contained `io.github.duckydeck.Studio` Flatpak bundle directly from **[duckydeckstudio.com](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.6-x86_64.flatpak)** or **[GitHub Releases](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.6)**:
 
 ```bash
 # 1. Ensure Flathub is configured (for org.kde.Platform//6.11 runtime):
 flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
 
-# 2. Download & install the DuckyDeck Studio v0.1.4 Flatpak bundle:
-curl -LO https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.4-x86_64.flatpak
-flatpak install --user -y duckydeck-studio-v0.1.4-x86_64.flatpak
+# 2. Download & install the DuckyDeck Studio v0.1.6 Flatpak bundle:
+curl -LO https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.6-x86_64.flatpak
+flatpak install --user -y duckydeck-studio-v0.1.6-x86_64.flatpak
 
 # 3. Launch DuckyDeck Studio (or open from your KDE Application Launcher):
 flatpak run io.github.duckydeck.Studio
@@ -257,7 +289,7 @@ flatpak run io.github.duckydeck.Studio --status
 
 ---
 
-### 2. Download Prebuilt Tarball or Clone from GitHub
+### 3. Download Prebuilt Linux Tarball or Clone from GitHub
 
 #### Option A: Clone with Git
 ```bash
@@ -268,15 +300,15 @@ cd duckydeck-studio
 #### Option B: Download Prebuilt Linux x86_64 Tarball or Source ZIP
 Visit **[https://github.com/russellmilliner/duckydeck-studio/releases](https://github.com/russellmilliner/duckydeck-studio/releases)** or **[https://duckydeckstudio.com](https://duckydeckstudio.com)**, or download via terminal:
 ```bash
-curl -LO https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.4-linux-x86_64.tar.gz
-tar -xzf duckydeck-studio-v0.1.4-linux-x86_64.tar.gz
-cd duckydeck-studio-v0.1.4-linux-x86_64
+curl -LO https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.6-linux-x86_64.tar.gz
+tar -xzf duckydeck-studio-v0.1.6-linux-x86_64.tar.gz
+cd duckydeck-studio-v0.1.6-linux-x86_64
 ./duckydeck-studio
 ```
 
 ---
 
-### 3. Install Build Prerequisites (When Building from Source)
+### 4. Install Linux Build Prerequisites (When Building from Source)
 
 #### Arch Linux / CachyOS / EndeavourOS / Manjaro
 ```bash
@@ -300,9 +332,9 @@ sudo apt install build-essential cargo rustc clang cmake ninja-build pkg-config 
 
 ---
 
-### 4. Configure USB HID Permissions (`udev` Rules)
+### 5. Configure Linux USB HID Permissions (`udev` Rules)
 
-To allow non-root access to `/dev/hidraw*` for the duckyPad Pro (`0x0483:0xd11d`) and duckyPad 2020 (`0x0483:0xd11c`), install the included `udev` rules:
+*(Linux only — not needed on Windows)* To allow non-root access to `/dev/hidraw*` for the duckyPad Pro (`0x0483:0xd11d`) and duckyPad 2020 (`0x0483:0xd11c`), install the included `udev` rules:
 
 ```bash
 sudo ./data/udev/install-udev-rules.sh
@@ -311,7 +343,7 @@ sudo ./data/udev/install-udev-rules.sh
 
 ---
 
-### 5. Local Build & User Installation (`~/.local/bin`)
+### 6. Local Linux Build & User Installation (`~/.local/bin`)
 
 Build the optimized release binary and install the executable, desktop launcher, icon, and `duckyScript 3` syntax highlighting definition for your user account:
 
@@ -344,23 +376,35 @@ Run the application:
 
 ---
 
-### 6. Building & Testing the Flatpak from Source
+### 7. Building & Testing the Linux Flatpak & Windows Installer from Source
 
+#### A. Linux Flatpak Bundle (`scripts/build-flatpak.sh`)
 1. Install the KDE Plasma 6.11 Flatpak SDK and Rust/LLVM extensions:
    ```bash
    flatpak install --user flathub org.kde.Platform//6.11 org.kde.Sdk//6.11 \
        org.freedesktop.Sdk.Extension.rust-stable//25.08 \
        org.freedesktop.Sdk.Extension.llvm22//25.08
    ```
-2. Build and export the single-file `.flatpak` bundle (`target/release/duckydeck-studio-v0.1.4-x86_64.flatpak`) and install it:
+2. Build and export the single-file `.flatpak` bundle (`target/release/duckydeck-studio-v0.1.6-x86_64.flatpak`) and install it:
    ```bash
    bash scripts/build-flatpak.sh
-   flatpak install --user -y --reinstall target/release/duckydeck-studio-v0.1.4-x86_64.flatpak
+   flatpak install --user -y --reinstall target/release/duckydeck-studio-v0.1.6-x86_64.flatpak
    ```
 3. Run the automated Flatpak QML UI Overflow, Contrast & Behavioral Test Suite:
    ```bash
    bash scripts/test-flatpak-ui.sh
    ```
+
+#### B. Cross-Compiling the Windows `x86_64` Portable ZIP & Inno Setup Installer (`scripts/build-windows.sh`)
+DuckyDeck Studio can be cross-compiled for Windows `x86_64` (`x86_64-pc-windows-gnullvm`) directly from Linux using `llvm-mingw` + Qt 6 MinGW64 + Wine Inno Setup:
+```bash
+# Cross-compile duckydeck-studio.exe, bundle Qt6 runtime DLLs/QML plugins,
+# and generate both the Portable ZIP and Inno Setup .exe installer in target/release/:
+bash scripts/build-windows.sh
+```
+Outputs produced in `target/release/`:
+- `target/release/DuckyDeck-Studio-Setup-v0.1.6-x86_64.exe` (Inno Setup installer)
+- `target/release/duckydeck-studio-v0.1.6-windows-x86_64-portable.zip` (Self-contained portable archive)
 
 ---
 
@@ -377,7 +421,7 @@ A special thank you to **[dekuNukem](https://github.com/dekuNukem)** for creatin
 
 ## ☕ Support the Project
 
-If **DuckyDeck Studio** makes your duckyPad workflow better on Linux, consider buying Russell Milliner a coffee!
+If **DuckyDeck Studio** makes your duckyPad workflow better on Linux or Windows, consider buying Russell Milliner a coffee!
 
 - **Website & User Manual:** [https://duckydeckstudio.com](https://duckydeckstudio.com)
 - **GitHub:** [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)

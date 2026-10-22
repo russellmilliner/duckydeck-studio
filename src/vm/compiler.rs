@@ -3933,9 +3933,16 @@ mod tests {
     #[test]
     fn test_swc_fade_to_compilation() {
         let result = compile_duckyscript_to_dsb("SWC_FADE_TO 1 255 128 0 500\n", false, false);
-        assert!(result.is_success, "SWC_FADE_TO should compile successfully: {}", result.error_comment);
+        assert!(
+            result.is_success,
+            "SWC_FADE_TO should compile successfully: {}",
+            result.error_comment
+        );
         // Opcode for SwcFade is 89 (0x59)
-        assert!(result.bin_array.contains(&89), "Bytecode should contain opcode 89 (Op::SwcFade)");
+        assert!(
+            result.bin_array.contains(&89),
+            "Bytecode should contain opcode 89 (Op::SwcFade)"
+        );
     }
 
     #[test]

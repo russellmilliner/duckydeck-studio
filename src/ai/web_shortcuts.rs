@@ -136,7 +136,9 @@ pub fn make_smart_labels(action: &str, shortcut: &str) -> (String, String) {
         "LdBar".to_string()
     } else if act_lower.contains("save") {
         "Save".to_string()
-    } else if act_lower.contains("chunk border") || act_lower.contains("chunks") && act_lower.contains("border") {
+    } else if act_lower.contains("chunk border")
+        || act_lower.contains("chunks") && act_lower.contains("border")
+    {
         "Chunk".to_string()
     } else if act_lower.contains("reload chunk") {
         "RldCk".to_string()
@@ -144,7 +146,10 @@ pub fn make_smart_labels(action: &str, shortcut: &str) -> (String, String) {
         "Hitbx".to_string()
     } else if act_lower.contains("coordinate") || act_lower.contains("copy /tp") {
         "Coord".to_string()
-    } else if act_lower.contains("nbt") || act_lower.contains("block/entity") || act_lower.contains("entity data") {
+    } else if act_lower.contains("nbt")
+        || act_lower.contains("block/entity")
+        || act_lower.contains("entity data")
+    {
         "NBT".to_string()
     } else if act_lower.contains("gamemode") {
         "GMode".to_string()
@@ -170,7 +175,10 @@ pub fn make_smart_labels(action: &str, shortcut: &str) -> (String, String) {
         "Drop".to_string()
     } else if act_lower.contains("offhand") || act_lower.contains("swap hand") {
         "Offhd".to_string()
-    } else if act_lower.contains("perspective") || act_lower.contains("camera") || act_lower.contains("3rd person") {
+    } else if act_lower.contains("perspective")
+        || act_lower.contains("camera")
+        || act_lower.contains("3rd person")
+    {
         "Cam".to_string()
     } else if act_lower.contains("screenshot") {
         "Shot".to_string()
@@ -186,13 +194,17 @@ pub fn make_smart_labels(action: &str, shortcut: &str) -> (String, String) {
         "Chat".to_string()
     } else if act_lower.contains("move forward") || act_lower == "forward" {
         "Fwd".to_string()
-    } else if act_lower.contains("move backward") || act_lower == "backward" || act_lower == "back" {
+    } else if act_lower.contains("move backward") || act_lower == "backward" || act_lower == "back"
+    {
         "Back".to_string()
     } else if act_lower.contains("strafe left") || act_lower == "move left" {
         "Left".to_string()
     } else if act_lower.contains("strafe right") || act_lower == "move right" {
         "Right".to_string()
-    } else if act_lower.contains("attack") || act_lower.contains("mine") || act_lower.contains("break") {
+    } else if act_lower.contains("attack")
+        || act_lower.contains("mine")
+        || act_lower.contains("break")
+    {
         "Atk".to_string()
     } else if act_lower.contains("use / place") || act_lower.contains("place block") {
         "Place".to_string()
@@ -284,7 +296,16 @@ pub fn make_smart_labels(action: &str, shortcut: &str) -> (String, String) {
                 let wl = w.to_lowercase();
                 !matches!(
                     wl.as_str(),
-                    "open" | "toggle" | "show" | "hide" | "start" | "stop" | "the" | "a" | "an" | "to"
+                    "open"
+                        | "toggle"
+                        | "show"
+                        | "hide"
+                        | "start"
+                        | "stop"
+                        | "the"
+                        | "a"
+                        | "an"
+                        | "to"
                 )
             })
             .unwrap_or_else(|| action.split_whitespace().next().unwrap_or(action));
@@ -394,7 +415,8 @@ fn map_single_token_to_dsvm(raw_part: &str) -> Option<String> {
                 format!("F{num}")
             } else if part.len() == 1 && part.chars().all(|c| c.is_ascii_graphic()) {
                 part.to_ascii_lowercase()
-            } else if crate::vm::compiler::hid_keyname_lookup(&part.to_ascii_uppercase()).is_some() {
+            } else if crate::vm::compiler::hid_keyname_lookup(&part.to_ascii_uppercase()).is_some()
+            {
                 part.to_ascii_uppercase()
             } else {
                 return None;
@@ -550,9 +572,9 @@ pub fn convert_scripts_for_gaming_hold(
         }
         let first_word = t.split_whitespace().next().unwrap_or("");
         match first_word {
-            "REM" | "DEFAULTDELAY" | "DEFAULTCHARDELAY" | "CHARJITTER" | "DELAY"
-            | "OLED_CLEAR" | "OLED_CPRINT" | "OLED_PRINT" | "OLED_CURSOR" | "OLED_UPDATE"
-            | "OLED_RESTORE" | "OLED_LINE" | "OLED_RECT" | "OLED_CIRCLE" | "KEYUP" => {
+            "REM" | "DEFAULTDELAY" | "DEFAULTCHARDELAY" | "CHARJITTER" | "DELAY" | "OLED_CLEAR"
+            | "OLED_CPRINT" | "OLED_PRINT" | "OLED_CURSOR" | "OLED_UPDATE" | "OLED_RESTORE"
+            | "OLED_LINE" | "OLED_RECT" | "OLED_CIRCLE" | "KEYUP" => {
                 continue;
             }
             "SWCC" | "SWCF" | "SWCR" | "SWC_FADE" => {
@@ -946,13 +968,23 @@ pub fn get_curated_shortcuts(app: &str) -> Vec<AppShortcut> {
         add_hold(&mut list, "Sneak / Crouch (Hold)", "Shift", "Movement");
         add_hold(&mut list, "Sprint (Hold)", "Ctrl", "Movement");
         add_hold(&mut list, "Attack / Mine (Hold)", "Left-click", "Combat");
-        add_hold(&mut list, "Use / Place Block (Hold)", "Right-click", "Combat");
+        add_hold(
+            &mut list,
+            "Use / Place Block (Hold)",
+            "Right-click",
+            "Combat",
+        );
         // Gameplay, Inventory & Camera
         add(&mut list, "Open Inventory", "E", "Inventory");
         add(&mut list, "Drop Single Item", "Q", "Inventory");
         add(&mut list, "Drop Entire Stack", "Ctrl+Q", "Inventory");
         add(&mut list, "Swap Offhand Item", "F", "Inventory");
-        add(&mut list, "Pick Block (Middle Click)", "Middle-click", "Gameplay");
+        add(
+            &mut list,
+            "Pick Block (Middle Click)",
+            "Middle-click",
+            "Gameplay",
+        );
         add(&mut list, "Toggle Perspective (1st/3rd)", "F5", "Camera");
         add(&mut list, "Take Screenshot", "F2", "Camera");
         add(&mut list, "Hide HUD Overlay", "F1", "Camera");
@@ -1075,7 +1107,11 @@ pub fn get_curated_shortcuts(app: &str) -> Vec<AppShortcut> {
         add(&mut list, "Eraser Tool", "Shift+E", "Tools");
         add(&mut list, "Color Picker", "O", "Tools");
         add(&mut list, "Zoom 100%", "Ctrl+1", "View");
-    } else if lower.contains("vlc") || lower.contains("spotify") || lower.contains("media") || lower.contains("audacity") {
+    } else if lower.contains("vlc")
+        || lower.contains("spotify")
+        || lower.contains("media")
+        || lower.contains("audacity")
+    {
         add(&mut list, "Play / Pause", "Space", "Playback");
         add(&mut list, "Next Track", "Ctrl+Right", "Playback");
         add(&mut list, "Previous Track", "Ctrl+Left", "Playback");
@@ -1201,7 +1237,11 @@ pub fn query_google_shortcuts(app: &str) -> Vec<AppShortcut> {
         if let Ok(ddg_html) = resp.text() {
             // 1. Parse any shortcuts directly visible in search snippets
             for item in parse_google_html_shortcuts(&ddg_html) {
-                let k = format!("{}:{}", item.action.to_lowercase(), item.shortcut.to_lowercase());
+                let k = format!(
+                    "{}:{}",
+                    item.action.to_lowercase(),
+                    item.shortcut.to_lowercase()
+                );
                 if seen_combos.insert(k) {
                     all_results.push(item);
                 }
@@ -1384,7 +1424,14 @@ fn looks_like_action(s: &str) -> bool {
     let lower = trimmed.to_ascii_lowercase();
     if matches!(
         lower.as_str(),
-        "action" | "key" | "shortcut" | "command" | "description" | "press" | "i want to…" | "function"
+        "action"
+            | "key"
+            | "shortcut"
+            | "command"
+            | "description"
+            | "press"
+            | "i want to…"
+            | "function"
     ) {
         return false;
     }
@@ -1600,7 +1647,10 @@ mod tests {
         assert_eq!(normalize_app_name("firefox-developer-edition"), "Firefox");
         assert_eq!(normalize_app_name("blender"), "Blender");
         assert_eq!(normalize_app_name("Minecraft* 1.21.4"), "Minecraft");
-        assert_eq!(normalize_app_name("org.prismlauncher.PrismLauncher"), "Minecraft");
+        assert_eq!(
+            normalize_app_name("org.prismlauncher.PrismLauncher"),
+            "Minecraft"
+        );
     }
 
     #[test]
@@ -1649,11 +1699,7 @@ mod tests {
                 assert!(
                     compiled.is_success,
                     "Shortcut '{}' ({}) for {} failed DSVM compile: {} | script:\n{}",
-                    item.action,
-                    item.shortcut,
-                    app,
-                    compiled.error_comment,
-                    item.duckyscript
+                    item.action, item.shortcut, app, compiled.error_comment, item.duckyscript
                 );
                 if !item.release_script.trim().is_empty() {
                     let rel_compiled = crate::vm::compiler::compile_duckyscript_to_dsb(
@@ -1664,10 +1710,7 @@ mod tests {
                     assert!(
                         rel_compiled.is_success,
                         "Shortcut release '{}' ({}) for {} failed DSVM compile: {}",
-                        item.action,
-                        item.shortcut,
-                        app,
-                        rel_compiled.error_comment
+                        item.action, item.shortcut, app, rel_compiled.error_comment
                     );
                 }
             }
@@ -1694,12 +1737,12 @@ mod tests {
             &shortcut_to_duckyscript("F3+G", "Show Chunk Borders"),
             250,
         );
-        let mc_compiled = crate::vm::compiler::compile_duckyscript_to_dsb(&composed_mc, false, false);
+        let mc_compiled =
+            crate::vm::compiler::compile_duckyscript_to_dsb(&composed_mc, false, false);
         assert!(
             mc_compiled.is_success,
             "Multi-click script failed DSVM compile: {} | script:\n{}",
-            mc_compiled.error_comment,
-            composed_mc
+            mc_compiled.error_comment, composed_mc
         );
         let (s1, s2, s3) = split_multi_click_script(&composed_mc);
         assert!(s1.contains("Open Inventory"));

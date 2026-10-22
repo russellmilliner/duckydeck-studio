@@ -1,7 +1,7 @@
 use std::env;
-use std::fs::DirBuilder;
 #[cfg(unix)]
 use std::fs;
+use std::fs::DirBuilder;
 #[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -118,7 +118,9 @@ pub fn host_data_dir() -> PathBuf {
 pub fn dekunukem_config_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     if let Some(appdata) = env::var_os("APPDATA") {
-        return PathBuf::from(appdata).join("dekuNukem").join("duckypad_config");
+        return PathBuf::from(appdata)
+            .join("dekuNukem")
+            .join("duckypad_config");
     }
     home_or_cwd()
         .join(".local")
@@ -237,11 +239,7 @@ pub fn clean_file_uri_to_path_str(raw: &str) -> String {
     let trimmed = raw.trim();
     let without_scheme = trimmed.strip_prefix("file://").unwrap_or(trimmed).trim();
     let bytes = without_scheme.as_bytes();
-    if bytes.len() >= 3
-        && bytes[0] == b'/'
-        && bytes[1].is_ascii_alphabetic()
-        && bytes[2] == b':'
-    {
+    if bytes.len() >= 3 && bytes[0] == b'/' && bytes[1].is_ascii_alphabetic() && bytes[2] == b':' {
         without_scheme[1..].to_string()
     } else {
         without_scheme.to_string()

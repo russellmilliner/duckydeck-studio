@@ -181,71 +181,71 @@ pub(crate) fn wait_and_mount_duckypad_msc(
 
     #[cfg(not(target_os = "windows"))]
     {
-    let mut last_udisks_err = String::new();
-    let mut settled_dev_once = false;
+        let mut last_udisks_err = String::new();
+        let mut settled_dev_once = false;
 
-    for attempt in 0..48 {
-        if let Some(mounted) = find_mounted_duckypad_sd() {
-            std::thread::sleep(std::time::Duration::from_millis(350));
-            let dev = find_mount_block_device(&mounted)
-                .or_else(|| find_duckypad_msc_block_device(disk_label, true));
-            return Ok((mounted, dev));
-        }
-
-        // Only allow superfloppy whole-disk fallback after ~4.5s (18 * 250ms) if no partition table exists
-        let allow_whole_disk = attempt >= 18;
-        if let Some(dev_path) = find_duckypad_msc_block_device(disk_label, allow_whole_disk) {
-            if !settled_dev_once {
-                settled_dev_once = true;
-                // Give udev and udisksd a moment to finish probing the FAT32 partition before mounting
+        for attempt in 0..48 {
+            if let Some(mounted) = find_mounted_duckypad_sd() {
                 std::thread::sleep(std::time::Duration::from_millis(350));
+                let dev = find_mount_block_device(&mounted)
+                    .or_else(|| find_duckypad_msc_block_device(disk_label, true));
+                return Ok((mounted, dev));
+            }
+
+            // Only allow superfloppy whole-disk fallback after ~4.5s (18 * 250ms) if no partition table exists
+            let allow_whole_disk = attempt >= 18;
+            if let Some(dev_path) = find_duckypad_msc_block_device(disk_label, allow_whole_disk) {
+                if !settled_dev_once {
+                    settled_dev_once = true;
+                    // Give udev and udisksd a moment to finish probing the FAT32 partition before mounting
+                    std::thread::sleep(std::time::Duration::from_millis(350));
+                    if let Some(mounted) = find_mounted_duckypad_sd() {
+                        let dev = find_mount_block_device(&mounted).or(Some(dev_path));
+                        return Ok((mounted, dev));
+                    }
+                }
+
+                let dev_str = dev_path.to_string_lossy().to_string();
+                match run_storage_cmd(
+                    "udisksctl",
+                    &["mount", "--no-user-interaction", "-b", &dev_str],
+                ) {
+                    Ok(out) => {
+                        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                        if !stderr.is_empty() && !stderr.contains("AlreadyMounted") {
+                            last_udisks_err = format!("{} ({})", stderr, dev_path.display());
+                        }
+                        if let Some(parsed_mnt) = parse_udisks_mount_path(&stdout) {
+                            std::thread::sleep(std::time::Duration::from_millis(300));
+                            let dev = find_mount_block_device(&parsed_mnt).or(Some(dev_path));
+                            return Ok((parsed_mnt, dev));
+                        }
+                    }
+                    Err(e) => {
+                        last_udisks_err =
+                            format!("Failed invoking udisksctl on {}: {e}", dev_path.display());
+                    }
+                }
+
+                std::thread::sleep(std::time::Duration::from_millis(300));
                 if let Some(mounted) = find_mounted_duckypad_sd() {
+                    std::thread::sleep(std::time::Duration::from_millis(300));
                     let dev = find_mount_block_device(&mounted).or(Some(dev_path));
                     return Ok((mounted, dev));
                 }
+            } else {
+                std::thread::sleep(std::time::Duration::from_millis(250));
             }
-
-            let dev_str = dev_path.to_string_lossy().to_string();
-            match run_storage_cmd(
-                "udisksctl",
-                &["mount", "--no-user-interaction", "-b", &dev_str],
-            ) {
-                Ok(out) => {
-                    let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                    let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
-                    if !stderr.is_empty() && !stderr.contains("AlreadyMounted") {
-                        last_udisks_err = format!("{} ({})", stderr, dev_path.display());
-                    }
-                    if let Some(parsed_mnt) = parse_udisks_mount_path(&stdout) {
-                        std::thread::sleep(std::time::Duration::from_millis(300));
-                        let dev = find_mount_block_device(&parsed_mnt).or(Some(dev_path));
-                        return Ok((parsed_mnt, dev));
-                    }
-                }
-                Err(e) => {
-                    last_udisks_err =
-                        format!("Failed invoking udisksctl on {}: {e}", dev_path.display());
-                }
-            }
-
-            std::thread::sleep(std::time::Duration::from_millis(300));
-            if let Some(mounted) = find_mounted_duckypad_sd() {
-                std::thread::sleep(std::time::Duration::from_millis(300));
-                let dev = find_mount_block_device(&mounted).or(Some(dev_path));
-                return Ok((mounted, dev));
-            }
-        } else {
-            std::thread::sleep(std::time::Duration::from_millis(250));
         }
-    }
 
-    if last_udisks_err.is_empty() {
-        Err("Timed out waiting for duckyPad microSD partition to appear and mount in USB Mass Storage mode".to_string())
-    } else {
-        Err(format!(
-            "Timed out mounting duckyPad microSD in USB Mass Storage mode: {last_udisks_err}"
-        ))
-    }
+        if last_udisks_err.is_empty() {
+            Err("Timed out waiting for duckyPad microSD partition to appear and mount in USB Mass Storage mode".to_string())
+        } else {
+            Err(format!(
+                "Timed out mounting duckyPad microSD in USB Mass Storage mode: {last_udisks_err}"
+            ))
+        }
     }
 }
 
@@ -261,89 +261,89 @@ pub(crate) fn unmount_duckypad_sd_cleanly(
     }
     #[cfg(not(target_os = "windows"))]
     {
-    let block_dev = known_dev
-        .map(|p| p.to_path_buf())
-        .or_else(|| find_mount_block_device(mount_root));
+        let block_dev = known_dev
+            .map(|p| p.to_path_buf())
+            .or_else(|| find_mount_block_device(mount_root));
 
-    // Flush Linux filesystem buffers and allow USB 1.1 MSC pipeline to drain before unmounting
-    if let Err(e) = run_storage_cmd("sync", &[]) {
-        crate::bridge::device_controller::record_system_event(
-            "WARN",
-            "STORAGE",
-            format!("Failed running sync before unmount: {e}"),
-        );
-    }
-    std::thread::sleep(std::time::Duration::from_millis(600));
+        // Flush Linux filesystem buffers and allow USB 1.1 MSC pipeline to drain before unmounting
+        if let Err(e) = run_storage_cmd("sync", &[]) {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "STORAGE",
+                format!("Failed running sync before unmount: {e}"),
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(600));
 
-    for attempt in 0..24 {
+        for attempt in 0..24 {
+            if !is_mount_point_mounted(mount_root, block_dev.as_deref()) {
+                if let Err(e) = run_storage_cmd("sync", &[]) {
+                    crate::bridge::device_controller::record_system_event(
+                        "WARN",
+                        "STORAGE",
+                        format!("Failed running sync after unmount: {e}"),
+                    );
+                }
+                // Give the STM32 TinyUSB MSC driver and SD card flash controller 1 full second
+                // to finish internal FAT table / wear-leveling commits before software reset
+                std::thread::sleep(std::time::Duration::from_millis(1000));
+                return Ok(());
+            }
+
+            if let Some(ref dev_path) = block_dev {
+                let dev_str = dev_path.to_string_lossy().to_string();
+                if let Err(e) = run_storage_cmd(
+                    "udisksctl",
+                    &["unmount", "--no-user-interaction", "-b", &dev_str],
+                ) {
+                    crate::bridge::device_controller::record_system_event(
+                        "WARN",
+                        "STORAGE",
+                        format!(
+                            "Failed running udisksctl unmount on {}: {e}",
+                            dev_path.display()
+                        ),
+                    );
+                }
+            }
+
+            if attempt >= 3 && is_mount_point_mounted(mount_root, block_dev.as_deref()) {
+                let mnt_str = mount_root.to_string_lossy().to_string();
+                if let Err(e) = run_storage_cmd("umount", &[&mnt_str]) {
+                    crate::bridge::device_controller::record_system_event(
+                        "WARN",
+                        "STORAGE",
+                        format!("Failed running umount on {}: {e}", mount_root.display()),
+                    );
+                }
+            }
+
+            if let Err(e) = run_storage_cmd("sync", &[]) {
+                crate::bridge::device_controller::record_system_event(
+                    "WARN",
+                    "STORAGE",
+                    format!("Failed running sync during unmount retry: {e}"),
+                );
+            }
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
+
         if !is_mount_point_mounted(mount_root, block_dev.as_deref()) {
             if let Err(e) = run_storage_cmd("sync", &[]) {
                 crate::bridge::device_controller::record_system_event(
                     "WARN",
                     "STORAGE",
-                    format!("Failed running sync after unmount: {e}"),
+                    format!("Failed running final sync after unmount: {e}"),
                 );
             }
-            // Give the STM32 TinyUSB MSC driver and SD card flash controller 1 full second
-            // to finish internal FAT table / wear-leveling commits before software reset
             std::thread::sleep(std::time::Duration::from_millis(1000));
-            return Ok(());
+            Ok(())
+        } else {
+            Err(format!(
+                "Volume {} is still busy and could not be unmounted cleanly",
+                mount_root.display()
+            ))
         }
-
-        if let Some(ref dev_path) = block_dev {
-            let dev_str = dev_path.to_string_lossy().to_string();
-            if let Err(e) = run_storage_cmd(
-                "udisksctl",
-                &["unmount", "--no-user-interaction", "-b", &dev_str],
-            ) {
-                crate::bridge::device_controller::record_system_event(
-                    "WARN",
-                    "STORAGE",
-                    format!(
-                        "Failed running udisksctl unmount on {}: {e}",
-                        dev_path.display()
-                    ),
-                );
-            }
-        }
-
-        if attempt >= 3 && is_mount_point_mounted(mount_root, block_dev.as_deref()) {
-            let mnt_str = mount_root.to_string_lossy().to_string();
-            if let Err(e) = run_storage_cmd("umount", &[&mnt_str]) {
-                crate::bridge::device_controller::record_system_event(
-                    "WARN",
-                    "STORAGE",
-                    format!("Failed running umount on {}: {e}", mount_root.display()),
-                );
-            }
-        }
-
-        if let Err(e) = run_storage_cmd("sync", &[]) {
-            crate::bridge::device_controller::record_system_event(
-                "WARN",
-                "STORAGE",
-                format!("Failed running sync during unmount retry: {e}"),
-            );
-        }
-        std::thread::sleep(std::time::Duration::from_millis(300));
-    }
-
-    if !is_mount_point_mounted(mount_root, block_dev.as_deref()) {
-        if let Err(e) = run_storage_cmd("sync", &[]) {
-            crate::bridge::device_controller::record_system_event(
-                "WARN",
-                "STORAGE",
-                format!("Failed running final sync after unmount: {e}"),
-            );
-        }
-        std::thread::sleep(std::time::Duration::from_millis(1000));
-        Ok(())
-    } else {
-        Err(format!(
-            "Volume {} is still busy and could not be unmounted cleanly",
-            mount_root.display()
-        ))
-    }
     }
 }
 

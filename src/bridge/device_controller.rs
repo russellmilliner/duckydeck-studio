@@ -868,17 +868,11 @@ pub mod qobject {
 
         #[qinvokable]
         #[cxx_name = "setGoogleSearchPermission"]
-        fn set_google_search_permission(
-            self: Pin<&mut DeviceController>,
-            permitted: bool,
-        );
+        fn set_google_search_permission(self: Pin<&mut DeviceController>, permitted: bool);
 
         #[qinvokable]
         #[cxx_name = "createWizardProfile"]
-        fn create_wizard_profile(
-            self: Pin<&mut DeviceController>,
-            wizard_json: QString,
-        ) -> bool;
+        fn create_wizard_profile(self: Pin<&mut DeviceController>, wizard_json: QString) -> bool;
 
         #[qinvokable]
         #[cxx_name = "assignShortcutToKeySlot"]
@@ -2123,7 +2117,8 @@ impl qobject::DeviceController {
             && self.rust().profiles.iter().any(|p| p.number == active_num)
             && !self.auto_switch_error_message().is_empty()
         {
-            self.as_mut().set_auto_switch_error_message(QString::from(""));
+            self.as_mut()
+                .set_auto_switch_error_message(QString::from(""));
         }
         self.as_mut().refresh_color_palettes();
         self.as_mut().sync_tray_state();
@@ -6568,10 +6563,7 @@ impl qobject::DeviceController {
                 record_system_event(
                     "WARN",
                     "SYSTEM",
-                    format!(
-                        "Failed opening user guide {}: {e}",
-                        target_path.display()
-                    ),
+                    format!("Failed opening user guide {}: {e}", target_path.display()),
                 );
             }
         }
@@ -8055,11 +8047,7 @@ impl qobject::DeviceController {
         true
     }
 
-    pub fn search_app_shortcuts(
-        mut self: Pin<&mut Self>,
-        app_name: QString,
-        allow_google: bool,
-    ) {
+    pub fn search_app_shortcuts(mut self: Pin<&mut Self>, app_name: QString, allow_google: bool) {
         let app = app_name.to_string();
         self.as_mut().set_search_shortcuts_busy(true);
 
@@ -8068,17 +8056,16 @@ impl qobject::DeviceController {
             let results = crate::ai::web_shortcuts::search_app_shortcuts(&app, allow_google);
             let json = serde_json::to_string(&results).unwrap_or_else(|_| "[]".to_string());
             let _ = qt_thread.queue(move |mut ctrl| {
-                ctrl.as_mut().set_discovered_shortcuts_json(QString::from(&json));
+                ctrl.as_mut()
+                    .set_discovered_shortcuts_json(QString::from(&json));
                 ctrl.as_mut().set_search_shortcuts_busy(false);
             });
         });
     }
 
-    pub fn set_google_search_permission(
-        mut self: Pin<&mut Self>,
-        permitted: bool,
-    ) {
-        self.as_mut().set_google_search_shortcuts_permitted(permitted);
+    pub fn set_google_search_permission(mut self: Pin<&mut Self>, permitted: bool) {
+        self.as_mut()
+            .set_google_search_shortcuts_permitted(permitted);
         let rust = self.as_mut().rust_mut().get_mut();
         if let Ok(mut sw) = rust.switcher_state.lock() {
             sw.google_search_shortcuts_permitted = permitted;
@@ -8086,11 +8073,7 @@ impl qobject::DeviceController {
         }
     }
 
-    pub fn is_gaming_hold_script(
-        &self,
-        press_script: QString,
-        release_script: QString,
-    ) -> bool {
+    pub fn is_gaming_hold_script(&self, press_script: QString, release_script: QString) -> bool {
         crate::ai::web_shortcuts::is_gaming_hold_script(
             &press_script.to_string(),
             &release_script.to_string(),
@@ -8253,10 +8236,7 @@ impl qobject::DeviceController {
             if !sc_str.trim().is_empty() {
                 crate::ai::web_shortcuts::shortcut_to_gaming_hold_scripts(&sc_str, &act_str)
             } else if let Some(pair) = crate::ai::web_shortcuts::convert_scripts_for_gaming_hold(
-                &ds_str,
-                "",
-                true,
-                &act_str,
+                &ds_str, "", true, &act_str,
             ) {
                 pair
             } else {
@@ -8284,7 +8264,8 @@ impl qobject::DeviceController {
                             key_slot.label_line1 = l1.clone();
                         }
                         if key_slot.label_line2.trim().is_empty() {
-                            key_slot.label_line2 = format!("2x{}", l1.chars().take(3).collect::<String>());
+                            key_slot.label_line2 =
+                                format!("2x{}", l1.chars().take(3).collect::<String>());
                         }
                     }
                     3 => {
@@ -8293,7 +8274,8 @@ impl qobject::DeviceController {
                             key_slot.label_line1 = l1.clone();
                         }
                         if key_slot.label_line2.trim().is_empty() {
-                            key_slot.label_line2 = format!("3x{}", l1.chars().take(3).collect::<String>());
+                            key_slot.label_line2 =
+                                format!("3x{}", l1.chars().take(3).collect::<String>());
                         }
                     }
                     _ => {
@@ -8342,10 +8324,7 @@ impl qobject::DeviceController {
             };
             self.as_mut().set_status_message(QString::from(&format!(
                 "Assigned shortcut '{}' ({}){} to Key {}",
-                act_str,
-                sc_str,
-                click_badge,
-                slot_idx
+                act_str, sc_str, click_badge, slot_idx
             )));
         }
         updated
@@ -8496,13 +8475,25 @@ impl qobject::DeviceController {
             let mut triple_script = slot_item.triple_script;
             let mut release_script = slot_item.release_script;
 
-            if (l1.is_empty() || l2.is_empty()) && (!slot_item.action.is_empty() || !slot_item.shortcut.is_empty()) {
-                let (gen_l1, gen_l2) = crate::ai::web_shortcuts::make_smart_labels(&slot_item.action, &slot_item.shortcut);
-                if l1.is_empty() { l1 = gen_l1; }
-                if l2.is_empty() { l2 = gen_l2; }
+            if (l1.is_empty() || l2.is_empty())
+                && (!slot_item.action.is_empty() || !slot_item.shortcut.is_empty())
+            {
+                let (gen_l1, gen_l2) = crate::ai::web_shortcuts::make_smart_labels(
+                    &slot_item.action,
+                    &slot_item.shortcut,
+                );
+                if l1.is_empty() {
+                    l1 = gen_l1;
+                }
+                if l2.is_empty() {
+                    l2 = gen_l2;
+                }
             }
 
-            if slot_item.gaming_hold && double_script.trim().is_empty() && triple_script.trim().is_empty() {
+            if slot_item.gaming_hold
+                && double_script.trim().is_empty()
+                && triple_script.trim().is_empty()
+            {
                 if !slot_item.shortcut.trim().is_empty() {
                     let (p_ds, r_ds) = crate::ai::web_shortcuts::shortcut_to_gaming_hold_scripts(
                         &slot_item.shortcut,
@@ -8522,7 +8513,10 @@ impl qobject::DeviceController {
                     release_script = r_ds;
                 }
             } else if script.trim().is_empty() && !slot_item.shortcut.is_empty() {
-                script = crate::ai::web_shortcuts::shortcut_to_duckyscript(&slot_item.shortcut, &slot_item.action);
+                script = crate::ai::web_shortcuts::shortcut_to_duckyscript(
+                    &slot_item.shortcut,
+                    &slot_item.action,
+                );
             }
 
             if double_script.trim().is_empty() && !slot_item.double_shortcut.trim().is_empty() {
@@ -8571,13 +8565,21 @@ impl qobject::DeviceController {
         }
 
         // Auto-switch rule creation
-        let auto_switch_class = input.auto_switch_class.unwrap_or_default().trim().to_string();
+        let auto_switch_class = input
+            .auto_switch_class
+            .unwrap_or_default()
+            .trim()
+            .to_string();
         let auto_enabled = input.auto_switch_enabled.unwrap_or(true);
         if auto_enabled && !auto_switch_class.is_empty() {
             let rust = self.as_mut().rust_mut().get_mut();
             if let Ok(mut sw) = rust.switcher_state.lock() {
                 // If a rule for this class already exists, point it to this profile; otherwise append
-                if let Some(existing) = sw.rules.iter_mut().find(|r| r.resource_class.eq_ignore_ascii_case(&auto_switch_class)) {
+                if let Some(existing) = sw
+                    .rules
+                    .iter_mut()
+                    .find(|r| r.resource_class.eq_ignore_ascii_case(&auto_switch_class))
+                {
                     existing.target_profile = target_num;
                     existing.enabled = true;
                 } else {
@@ -8606,7 +8608,11 @@ impl qobject::DeviceController {
         self.as_mut().set_status_message(QString::from(&format!(
             "✓ Created profile '{}' (#{target_num}){}",
             clean_name,
-            if saved { " (saved to SD)" } else { " (sync needed)" }
+            if saved {
+                " (saved to SD)"
+            } else {
+                " (sync needed)"
+            }
         )));
 
         true

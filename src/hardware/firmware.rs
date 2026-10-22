@@ -86,8 +86,12 @@ pub async fn check_latest_duckypad_firmware(
             .unwrap_or(guide_url);
 
         let ver_opt = if is_pro {
-            if (name.starts_with("DDS_FW_") || name.starts_with("DPP_FW_")) && name.ends_with(".bin") {
-                let stripped = name.strip_prefix("DDS_FW_").or_else(|| name.strip_prefix("DPP_FW_"));
+            if (name.starts_with("DDS_FW_") || name.starts_with("DPP_FW_"))
+                && name.ends_with(".bin")
+            {
+                let stripped = name
+                    .strip_prefix("DDS_FW_")
+                    .or_else(|| name.strip_prefix("DPP_FW_"));
                 stripped
                     .and_then(|s| s.strip_suffix(".bin"))
                     .and_then(|s| s.split('_').next())
@@ -409,7 +413,11 @@ pub fn list_available_duckypad_pro_firmwares(current_version: &str) -> Vec<Firmw
             if (!is_dds && !is_dpp) || !fname.ends_with(".bin") {
                 continue;
             }
-            let prefix_len = if is_dds { "DDS_FW_".len() } else { "DPP_FW_".len() };
+            let prefix_len = if is_dds {
+                "DDS_FW_".len()
+            } else {
+                "DPP_FW_".len()
+            };
             let inner = &fname[prefix_len..fname.len() - ".bin".len()];
             let mut parts = inner.split('_');
             let Some(ver_str) = parts.next() else {
@@ -425,7 +433,10 @@ pub fn list_available_duckypad_pro_firmwares(current_version: &str) -> Vec<Firmw
             let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
             let is_studio_custom = is_dds
                 || is_bundled_studio_dir
-                || matches!(crc_str.as_str(), "b3291568" | "5d742340" | "bf177326" | "ad2acc81");
+                || matches!(
+                    crc_str.as_str(),
+                    "b3291568" | "5d742340" | "bf177326" | "ad2acc81"
+                );
             let is_official = !is_studio_custom;
             let (channel, release_date, notes) =
                 firmware_release_metadata(ver_str, is_studio_custom);
@@ -442,8 +453,7 @@ pub fn list_available_duckypad_pro_firmwares(current_version: &str) -> Vec<Firmw
                 .trim_start_matches(['v', 'V']);
             let is_installed = if is_studio_custom {
                 is_duckydeck_studio_firmware_version(current_version)
-                    && (curr_clean == ver_str
-                        || (ver_str == "1.0.0" && curr_clean == "3.4.0"))
+                    && (curr_clean == ver_str || (ver_str == "1.0.0" && curr_clean == "3.4.0"))
             } else {
                 !is_duckydeck_studio_firmware_version(current_version)
                     && current_version.trim().starts_with(ver_str)
@@ -567,7 +577,12 @@ pub async fn fetch_official_firmwares_from_site(
                 return;
             };
             let crc_str = parts.next().unwrap_or("").to_lowercase();
-            if crc_str.is_empty() || matches!(crc_str.as_str(), "b3291568" | "5d742340" | "bf177326" | "ad2acc81") {
+            if crc_str.is_empty()
+                || matches!(
+                    crc_str.as_str(),
+                    "b3291568" | "5d742340" | "bf177326" | "ad2acc81"
+                )
+            {
                 return;
             }
             let Some((maj, min, pat)) = parse_semver(ver_str) else {
@@ -760,9 +775,7 @@ pub async fn download_official_firmware_binary(
         || clean_name.contains('/')
         || clean_name.contains('\\')
     {
-        return Err(format!(
-            "Invalid firmware filename: '{clean_name}'"
-        ));
+        return Err(format!("Invalid firmware filename: '{clean_name}'"));
     }
     let dir = official_firmware_cache_dir();
     fs::create_dir_all(&dir).map_err(|e| {
@@ -774,7 +787,11 @@ pub async fn download_official_firmware_binary(
     let target_path = dir.join(clean_name);
 
     // Extract expected CRC32 from filename `(DDS|DPP)_FW_<ver>_<crc32>.bin`
-    let prefix_len = if is_dds { "DDS_FW_".len() } else { "DPP_FW_".len() };
+    let prefix_len = if is_dds {
+        "DDS_FW_".len()
+    } else {
+        "DPP_FW_".len()
+    };
     let inner = &clean_name[prefix_len..clean_name.len() - ".bin".len()];
     let expected_crc_hex = inner.split('_').nth(1).unwrap_or("").to_lowercase();
 
@@ -852,7 +869,9 @@ fn write_and_verify_firmware_on_sd(
         for entry in rd.flatten() {
             let p = entry.path();
             if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
-                if (name.starts_with("DDS_FW_") || name.starts_with("DPP_FW_")) && name.ends_with(".bin") {
+                if (name.starts_with("DDS_FW_") || name.starts_with("DPP_FW_"))
+                    && name.ends_with(".bin")
+                {
                     if let Err(e) = fs::remove_file(&p) {
                         crate::bridge::device_controller::record_system_event(
                             "WARN",

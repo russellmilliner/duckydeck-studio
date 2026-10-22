@@ -1747,33 +1747,33 @@ pub fn set_kde_autostart_enabled(enabled: bool) -> Result<PathBuf, String> {
 
     #[cfg(not(target_os = "windows"))]
     {
-    let path = autostart_desktop_path();
-    if enabled {
-        sync_local_desktop_and_icon(true);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed creating autostart directory: {e}"))?;
-        }
-        let exec_line = if Path::new("/.flatpak-info").exists() {
-            "flatpak run io.github.duckydeck.Studio --autostart --minimized --foreground"
-                .to_string()
-        } else if let Ok(appimage) = std::env::var("APPIMAGE") {
-            format!("\"{appimage}\" --autostart --minimized --foreground")
-        } else {
-            let exe_path = if let Some(local_bin) = crate::paths::home_dir()
-                .map(|h| h.join(".local/bin/duckydeck-studio"))
-                .filter(|p| p.exists())
-            {
-                local_bin.to_string_lossy().to_string()
+        let path = autostart_desktop_path();
+        if enabled {
+            sync_local_desktop_and_icon(true);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed creating autostart directory: {e}"))?;
+            }
+            let exec_line = if Path::new("/.flatpak-info").exists() {
+                "flatpak run io.github.duckydeck.Studio --autostart --minimized --foreground"
+                    .to_string()
+            } else if let Ok(appimage) = std::env::var("APPIMAGE") {
+                format!("\"{appimage}\" --autostart --minimized --foreground")
             } else {
-                std::env::current_exe()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|_| "duckydeck-studio".to_string())
+                let exe_path = if let Some(local_bin) = crate::paths::home_dir()
+                    .map(|h| h.join(".local/bin/duckydeck-studio"))
+                    .filter(|p| p.exists())
+                {
+                    local_bin.to_string_lossy().to_string()
+                } else {
+                    std::env::current_exe()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_else(|_| "duckydeck-studio".to_string())
+                };
+                format!("\"{exe_path}\" --autostart --minimized --foreground")
             };
-            format!("\"{exe_path}\" --autostart --minimized --foreground")
-        };
-        let desktop_entry = format!(
-            "[Desktop Entry]\n\
+            let desktop_entry = format!(
+                "[Desktop Entry]\n\
              Type=Application\n\
              Name=DuckyDeck Studio\n\
              Comment=KDE Plasma 6 Configurator & Auto-Switcher for duckyPad Pro\n\
@@ -1786,17 +1786,17 @@ pub fn set_kde_autostart_enabled(enabled: bool) -> Result<PathBuf, String> {
              X-KDE-StartupNotify=false\n\
              X-KDE-AutostartScript=false\n\
              X-KDE-autostart-after=panel\n"
-        );
-        fs::write(&path, desktop_entry)
-            .map_err(|e| format!("Failed writing {}: {e}", path.display()))?;
-        Ok(path)
-    } else {
-        if path.exists() {
-            fs::remove_file(&path)
-                .map_err(|e| format!("Failed removing {}: {e}", path.display()))?;
+            );
+            fs::write(&path, desktop_entry)
+                .map_err(|e| format!("Failed writing {}: {e}", path.display()))?;
+            Ok(path)
+        } else {
+            if path.exists() {
+                fs::remove_file(&path)
+                    .map_err(|e| format!("Failed removing {}: {e}", path.display()))?;
+            }
+            Ok(path)
         }
-        Ok(path)
-    }
     }
 }
 
@@ -2291,7 +2291,12 @@ pub struct KWinBridgeService {
 }
 
 impl KWinBridgeService {
-    pub(crate) fn handle_active_window(&mut self, resource_class: String, resource_name: String, caption: String) {
+    pub(crate) fn handle_active_window(
+        &mut self,
+        resource_class: String,
+        resource_name: String,
+        caption: String,
+    ) {
         let mut effective_class = resource_class.trim().to_string();
         if effective_class.is_empty() {
             effective_class = resource_name.trim().to_string();
@@ -2686,10 +2691,7 @@ mod win32_window {
         Ok(exe_path)
     }
 
-    pub fn apply_oled_topmost_and_geometry(
-        keep_above: bool,
-        geom: Option<(i32, i32, i32, i32)>,
-    ) {
+    pub fn apply_oled_topmost_and_geometry(keep_above: bool, geom: Option<(i32, i32, i32, i32)>) {
         const HWND_TOPMOST: isize = -1;
         const HWND_NOTOPMOST: isize = -2;
         const SWP_NOSIZE: u32 = 0x0001;
@@ -2754,8 +2756,8 @@ mod win32_window {
             }
             let mut path_buf = [0u16; 1024];
             let mut sz = path_buf.len() as u32;
-            let ok = QueryFullProcessImageNameW(hproc, 0, path_buf.as_mut_ptr(), &mut sz) != 0
-                && sz > 0;
+            let ok =
+                QueryFullProcessImageNameW(hproc, 0, path_buf.as_mut_ptr(), &mut sz) != 0 && sz > 0;
             CloseHandle(hproc);
             if !ok {
                 return false;
@@ -2775,7 +2777,11 @@ mod win32_window {
         unsafe {
             let root = {
                 let r = GetAncestor(hwnd, GA_ROOT);
-                if r != 0 { r } else { hwnd }
+                if r != 0 {
+                    r
+                } else {
+                    hwnd
+                }
             };
             let mut pid: u32 = 0;
             GetWindowThreadProcessId(root, &mut pid);
@@ -3097,100 +3103,100 @@ pub async fn run_kwin_auto_switcher(
 
     #[cfg(not(target_os = "windows"))]
     {
-    let pending_check = Arc::clone(&pending);
-    let service = KWinBridgeService {
-        state,
-        ui_event_tx,
-        pending,
-        settle_notify,
-    };
-    let conn = zbus::conn::Builder::session()?
-        .name("io.github.duckydeck.Studio")?
-        .serve_at("/KWinBridge", service)?
-        .build()
-        .await?;
+        let pending_check = Arc::clone(&pending);
+        let service = KWinBridgeService {
+            state,
+            ui_event_tx,
+            pending,
+            settle_notify,
+        };
+        let conn = zbus::conn::Builder::session()?
+            .name("io.github.duckydeck.Studio")?
+            .serve_at("/KWinBridge", service)?
+            .build()
+            .await?;
 
-    if let Ok(script_path) = write_kwin6_hook_script() {
-        if let Ok(kwin_scripting) = zbus::Proxy::new(
-            &conn,
-            "org.kde.KWin",
-            "/Scripting",
-            "org.kde.kwin.Scripting",
-        )
-        .await
-        {
-            let plugin_name = "duckydeck_kwin6_autoswitcher";
-            let fallback_name = format!("duckydeck_kwin6_autoswitcher_{}", std::process::id());
+        if let Ok(script_path) = write_kwin6_hook_script() {
+            if let Ok(kwin_scripting) = zbus::Proxy::new(
+                &conn,
+                "org.kde.KWin",
+                "/Scripting",
+                "org.kde.kwin.Scripting",
+            )
+            .await
+            {
+                let plugin_name = "duckydeck_kwin6_autoswitcher";
+                let fallback_name = format!("duckydeck_kwin6_autoswitcher_{}", std::process::id());
 
-            for _attempt in 0..8 {
-                {
-                    let _guard = KWIN_SCRIPT_LOCK.lock().await;
-                    let _: std::result::Result<bool, _> = kwin_scripting
-                        .call("unloadScript", &("duckydeck_oled_keep_above_oneshot",))
-                        .await;
-                    let _: std::result::Result<bool, _> =
-                        kwin_scripting.call("unloadScript", &(plugin_name,)).await;
-                    let _: std::result::Result<bool, _> = kwin_scripting
-                        .call("unloadScript", &(fallback_name.as_str(),))
-                        .await;
+                for _attempt in 0..8 {
+                    {
+                        let _guard = KWIN_SCRIPT_LOCK.lock().await;
+                        let _: std::result::Result<bool, _> = kwin_scripting
+                            .call("unloadScript", &("duckydeck_oled_keep_above_oneshot",))
+                            .await;
+                        let _: std::result::Result<bool, _> =
+                            kwin_scripting.call("unloadScript", &(plugin_name,)).await;
+                        let _: std::result::Result<bool, _> = kwin_scripting
+                            .call("unloadScript", &(fallback_name.as_str(),))
+                            .await;
 
-                    let mut script_id: i32 = kwin_scripting
-                        .call("loadScript", &(&script_path, plugin_name))
-                        .await
-                        .unwrap_or(-1);
-
-                    if script_id < 0 {
-                        script_id = kwin_scripting
-                            .call("loadScript", &(&script_path, fallback_name.as_str()))
+                        let mut script_id: i32 = kwin_scripting
+                            .call("loadScript", &(&script_path, plugin_name))
                             .await
                             .unwrap_or(-1);
-                    }
 
-                    if script_id >= 0 {
-                        let script_obj_path = format!("/Scripting/Script{script_id}");
-                        if let Ok(kwin_script) = zbus::Proxy::new(
-                            &conn,
-                            "org.kde.KWin",
-                            script_obj_path.as_str(),
-                            "org.kde.kwin.Script",
-                        )
-                        .await
-                        {
-                            if let Err(e) = kwin_script.call::<_, _, ()>("run", &()).await {
-                                crate::bridge::device_controller::record_system_event(
-                                    "WARN",
-                                    "KWIN",
-                                    format!("Failed running KWin auto-switcher script: {e}"),
-                                );
+                        if script_id < 0 {
+                            script_id = kwin_scripting
+                                .call("loadScript", &(&script_path, fallback_name.as_str()))
+                                .await
+                                .unwrap_or(-1);
+                        }
+
+                        if script_id >= 0 {
+                            let script_obj_path = format!("/Scripting/Script{script_id}");
+                            if let Ok(kwin_script) = zbus::Proxy::new(
+                                &conn,
+                                "org.kde.KWin",
+                                script_obj_path.as_str(),
+                                "org.kde.kwin.Script",
+                            )
+                            .await
+                            {
+                                if let Err(e) = kwin_script.call::<_, _, ()>("run", &()).await {
+                                    crate::bridge::device_controller::record_system_event(
+                                        "WARN",
+                                        "KWIN",
+                                        format!("Failed running KWin auto-switcher script: {e}"),
+                                    );
+                                }
                             }
                         }
                     }
-                }
 
-                // Wait up to 300ms for sendInitialTopWindow() to deliver the initial window over D-Bus.
-                // If an external tool (such as kdotool) caused a transient KWin scripts.size() ID collision,
-                // retry loading and running the hook script.
-                let mut received_initial = false;
-                for _ in 0..12 {
-                    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-                    if pending_check
-                        .lock()
-                        .map(|p| !p.raw_class.is_empty())
-                        .unwrap_or(false)
-                    {
-                        received_initial = true;
+                    // Wait up to 300ms for sendInitialTopWindow() to deliver the initial window over D-Bus.
+                    // If an external tool (such as kdotool) caused a transient KWin scripts.size() ID collision,
+                    // retry loading and running the hook script.
+                    let mut received_initial = false;
+                    for _ in 0..12 {
+                        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                        if pending_check
+                            .lock()
+                            .map(|p| !p.raw_class.is_empty())
+                            .unwrap_or(false)
+                        {
+                            received_initial = true;
+                            break;
+                        }
+                    }
+                    if received_initial {
                         break;
                     }
                 }
-                if received_initial {
-                    break;
-                }
             }
         }
-    }
 
-    std::future::pending::<()>().await;
-    Ok(())
+        std::future::pending::<()>().await;
+        Ok(())
     }
 }
 

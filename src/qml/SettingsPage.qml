@@ -1065,7 +1065,7 @@ Window {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
                         Layout.preferredWidth: 1
-                        text: qsTr("KDE Plasma 6 / Kirigami Configurator, DSVM v2 Compiler & Wayland Auto-Switcher for duckyPad Pro & duckyPad (2020)")
+                        text: qsTr("Linux (KDE Plasma 6 / Kirigami) & Windows 10/11 Configurator, DSVM v2 Compiler & Window Auto-Switcher for duckyPad Pro & duckyPad (2020)")
                         font.pointSize: 10 * root.fontScale
                         color: Kirigami.Theme.disabledTextColor
                         wrapMode: Text.WordWrap

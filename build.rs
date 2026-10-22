@@ -38,7 +38,10 @@ fn main() {
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
             .unwrap_or_default();
         let moc_bin = std::env::var("QT_MOC_EXECUTABLE").unwrap_or_else(|_| {
-            if let Ok(out) = Command::new(&qmake_cmd).args(["-query", "QT_HOST_LIBEXECS"]).output() {
+            if let Ok(out) = Command::new(&qmake_cmd)
+                .args(["-query", "QT_HOST_LIBEXECS"])
+                .output()
+            {
                 let dir = String::from_utf8_lossy(&out.stdout).trim().to_string();
                 let cand = PathBuf::from(&dir).join("moc");
                 if cand.exists() {
@@ -64,7 +67,10 @@ fn main() {
             .arg(&moc_out)
             .status()
             .expect("Failed to run Qt moc on src/cpp/kirigami_compat.h");
-        assert!(status.success(), "Qt moc failed on src/cpp/kirigami_compat.h");
+        assert!(
+            status.success(),
+            "Qt moc failed on src/cpp/kirigami_compat.h"
+        );
         Some(moc_out)
     } else {
         None
@@ -168,14 +174,7 @@ fn main() {
             }
         } else {
             for lib in [
-                "stdc++",
-                "mingw32",
-                "gcc_s",
-                "gcc",
-                "msvcrt",
-                "kernel32",
-                "user32",
-                "shell32",
+                "stdc++", "mingw32", "gcc_s", "gcc", "msvcrt", "kernel32", "user32", "shell32",
                 "advapi32",
             ] {
                 println!("cargo:rustc-link-arg=-l{lib}");

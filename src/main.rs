@@ -74,25 +74,25 @@ fn is_running_duckydeck_pid(pid: u32, self_pid: u32) -> bool {
     }
     #[cfg(not(target_os = "windows"))]
     {
-    let proc_dir = PathBuf::from(format!("/proc/{pid}"));
-    if !proc_dir.exists() {
-        return false;
-    }
-    if let Ok(exe_path) = fs::read_link(proc_dir.join("exe")) {
-        if let Some(name) = exe_path.file_name().and_then(|n| n.to_str()) {
-            let clean = name.trim_end_matches(" (deleted)");
-            if clean == "duckydeck-studio" {
+        let proc_dir = PathBuf::from(format!("/proc/{pid}"));
+        if !proc_dir.exists() {
+            return false;
+        }
+        if let Ok(exe_path) = fs::read_link(proc_dir.join("exe")) {
+            if let Some(name) = exe_path.file_name().and_then(|n| n.to_str()) {
+                let clean = name.trim_end_matches(" (deleted)");
+                if clean == "duckydeck-studio" {
+                    return true;
+                }
+            }
+        }
+        if let Ok(comm) = fs::read_to_string(proc_dir.join("comm")) {
+            let trimmed = comm.trim();
+            if trimmed == "duckydeck-studi" || trimmed == "duckydeck-studio" {
                 return true;
             }
         }
-    }
-    if let Ok(comm) = fs::read_to_string(proc_dir.join("comm")) {
-        let trimmed = comm.trim();
-        if trimmed == "duckydeck-studi" || trimmed == "duckydeck-studio" {
-            return true;
-        }
-    }
-    false
+        false
     }
 }
 
@@ -131,8 +131,12 @@ fn send_ipc_command_to_running_instance(cmd: &str) -> Result<Vec<u32>, String> {
         return Err("No running DuckyDeck Studio instance found.".to_string());
     }
     let ipc_file = runtime_dir_path().join("duckydeck-ipc.cmd");
-    fs::write(&ipc_file, cmd)
-        .map_err(|e| format!("Failed writing Windows IPC command file {}: {e}", ipc_file.display()))?;
+    fs::write(&ipc_file, cmd).map_err(|e| {
+        format!(
+            "Failed writing Windows IPC command file {}: {e}",
+            ipc_file.display()
+        )
+    })?;
     for _ in 0..20 {
         std::thread::sleep(std::time::Duration::from_millis(30));
         if !ipc_file.exists() {
