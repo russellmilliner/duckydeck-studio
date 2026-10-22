@@ -1,0 +1,608 @@
+#include "ssd1306.h"
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>  // For memcpy
+#include "driver/spi_master.h"
+#include "ui_task.h"
+#include "esp_log.h"
+#include "driver/gpio.h"
+
+const char *SSD1306_TAG = "SSD1306";
+
+#define SSD1306_WRITE_CMD           (0x00)
+#define SSD1306_WRITE_DAT           (0x40)
+
+spi_transaction_t my_transaction;
+
+static void ssd1306_write_data(const uint8_t *const data, const uint16_t data_len)
+{
+    gpio_set_level(OLED_DC, 1);
+    memset(&my_transaction, 0, sizeof(my_transaction));
+    my_transaction.length = data_len * 8;
+    my_transaction.tx_buffer = data;
+    spi_device_acquire_bus(my_spi_handle, portMAX_DELAY);
+    spi_device_polling_transmit(my_spi_handle, &my_transaction);
+    spi_device_release_bus(my_spi_handle);
+}
+
+static inline void ssd1306_write_cmd_byte(const uint8_t cmd)
+{
+    gpio_set_level(OLED_DC, 0);
+    memset(&my_transaction, 0, sizeof(my_transaction));
+    my_transaction.length = 8;
+    my_transaction.tx_buffer = &cmd;
+    spi_device_acquire_bus(my_spi_handle, portMAX_DELAY);
+    spi_device_polling_transmit(my_spi_handle, &my_transaction);
+    spi_device_release_bus(my_spi_handle);
+}
+
+// Screenbuffer & Performance Shadow Buffer for Dirty Page Tracking
+static uint8_t SSD1306_Buffer[SSD1306_BUFFER_SIZE];
+static uint8_t SSD1306_ShadowBuffer[SSD1306_BUFFER_SIZE];
+static uint16_t ssd1306_dirty_pages = 0xFFFF;
+static bool ssd1306_shadow_valid = false;
+
+void ssd1306_MarkAllDirty(void)
+{
+    ssd1306_dirty_pages = 0xFFFF;
+    ssd1306_shadow_valid = false;
+}
+
+// Screen object
+static SSD1306_t SSD1306;
+
+/* Initialize the oled screen */
+void ssd1306_init(void) {
+    // Init OLED
+    ssd1306_write_cmd_byte(0xAE); //display off
+    ssd1306_write_cmd_byte(0x20); //Set Memory Addressing Mode
+    ssd1306_write_cmd_byte(0x00); // 00b,Horizontal Addressing Mode; 01b,Vertical Addressing Mode;
+                                // 10b,Page Addressing Mode (RESET); 11b,Invalid
+
+    ssd1306_write_cmd_byte(0xB0); //Set Page Start Address for Page Addressing Mode,0-7
+
+#ifdef SSD1306_MIRROR_VERT
+    ssd1306_write_cmd_byte(0xC0); // Mirror vertically
+#else
+    ssd1306_write_cmd_byte(0xC8); //Set COM Output Scan Direction
+#endif
+
+    ssd1306_write_cmd_byte(0x00); //---set low column address
+    ssd1306_write_cmd_byte(0x10); //---set high column address
+
+    ssd1306_write_cmd_byte(0x40); //--set start line address - CHECK
+
+#ifdef SSD1306_MIRROR_HORIZ
+    ssd1306_write_cmd_byte(0xA0); // Mirror horizontally
+#else
+    ssd1306_write_cmd_byte(0xA1); //--set segment re-map 0 to 127 - CHECK
+#endif
+
+
+// Set multiplex ratio.
+#if (SSD1306_HEIGHT == 128)
+    // Found in the Luma Python lib for SH1106.
+    ssd1306_write_cmd_byte(0xFF);
+#else
+    ssd1306_write_cmd_byte(0xA8); //--set multiplex ratio(1 to 64) - CHECK
+#endif
+
+#if (SSD1306_HEIGHT == 32)
+    ssd1306_write_cmd_byte(0x1F); //
+#elif (SSD1306_HEIGHT == 64)
+    ssd1306_write_cmd_byte(0x3F); //
+#elif (SSD1306_HEIGHT == 128)
+    ssd1306_write_cmd_byte(0x3F); // Seems to work for 128px high displays too.
+#else
+#error "Only 32, 64, or 128 lines of height are supported!"
+#endif
+
+    ssd1306_write_cmd_byte(0xA4); //0xa4,Output follows RAM content;0xa5,Output ignores RAM content
+
+    ssd1306_write_cmd_byte(0xD3); //-set display offset - CHECK
+    ssd1306_write_cmd_byte(0x00); //-not offset
+
+    ssd1306_write_cmd_byte(0xD5); //--set display clock divide ratio/oscillator frequency
+    ssd1306_write_cmd_byte(0xF0); //--set divide ratio
+
+    ssd1306_write_cmd_byte(0xD9); //--set pre-charge period
+    ssd1306_write_cmd_byte(0x22); //
+
+    ssd1306_write_cmd_byte(0xDA); //--set com pins hardware configuration - CHECK
+#if (SSD1306_HEIGHT == 32)
+    ssd1306_write_cmd_byte(0x02);
+#elif (SSD1306_HEIGHT == 64)
+    ssd1306_write_cmd_byte(0x12);
+#elif (SSD1306_HEIGHT == 128)
+    ssd1306_write_cmd_byte(0x12);
+#else
+#error "Only 32, 64, or 128 lines of height are supported!"
+#endif
+
+    ssd1306_write_cmd_byte(0xDB); //--set vcomh
+    ssd1306_write_cmd_byte(0x20); //0x20,0.77xVcc
+
+    ssd1306_write_cmd_byte(0x8D); //--set DC-DC enable
+    ssd1306_write_cmd_byte(0x14); //
+
+    ssd1306_SetContrast(0xFF);
+    ssd1306_write_cmd_byte(0xAF); //display on
+
+    // Clear screen
+    ssd1306_Fill(Black);
+
+    // Set default values for screen object
+    SSD1306.CurrentX = 0;
+    SSD1306.CurrentY = 0;
+}
+
+void ssd1306_Fill(SSD1306_COLOR color)
+{
+    memset(SSD1306_Buffer, (color == Black) ? 0x00 : 0xFF, sizeof(SSD1306_Buffer));
+    ssd1306_dirty_pages = 0xFFFF;
+}
+
+/* Write only modified/dirty screenbuffer pages to the OLED over SPI DMA */
+void ssd1306_UpdateScreen(void)
+{
+    if(ssd1306_dirty_pages == 0) return;
+
+    for(uint8_t i = 0; i < SSD1306_HEIGHT/8; i++)
+    {
+        if((ssd1306_dirty_pages & (1 << i)) == 0) continue;
+
+        const uint8_t *curr = &SSD1306_Buffer[SSD1306_WIDTH*i];
+        uint8_t *shadow = &SSD1306_ShadowBuffer[SSD1306_WIDTH*i];
+        if(ssd1306_shadow_valid && memcmp(curr, shadow, SSD1306_WIDTH) == 0) continue;
+
+        memcpy(shadow, curr, SSD1306_WIDTH);
+        ssd1306_write_cmd_byte(0xB0 + i);
+        ssd1306_write_cmd_byte(0x10);
+        ssd1306_write_cmd_byte(0x00);
+        ssd1306_write_data(curr, SSD1306_WIDTH);
+    }
+    ssd1306_dirty_pages = 0;
+    ssd1306_shadow_valid = true;
+}
+
+/*
+#define SSD1306_NO_ROTATION 0
+#define SSD1306_ROTATE_CW90 1
+*/
+uint8_t ssd1306_current_rotation;
+void ssd1306_set_rotation_only_for_128x128_do_not_use_for_anything_else(uint8_t rot)
+{
+    ssd1306_current_rotation = rot;
+}
+/*
+ * Draw one pixel in the screenbuffer
+ * X => X Coordinate
+ * Y => Y Coordinate
+ * color => Pixel color
+ */
+void ssd1306_DrawPixel(uint8_t x, uint8_t y, SSD1306_COLOR color)
+{
+    // only for 128x128!!!!!!!!!!!!!!!!
+    // other sizes needs additional checks!!!
+    uint8_t newx = x;
+    uint8_t newy = y;
+
+    if(ssd1306_current_rotation == SSD1306_ROTATE_CW90)
+    {
+        newx = 127 - y;
+        newy = x;
+    }
+    else if(ssd1306_current_rotation == SSD1306_ROTATE_180)
+    {
+        newx = 127 - x;
+        newy = 127 - y;
+    }
+    if(ssd1306_current_rotation == SSD1306_ROTATE_CCW90)
+    {
+        newx = y;
+        newy = 127 - x;
+    }
+    
+    if(newx >= SSD1306_WIDTH || newy >= SSD1306_HEIGHT) {
+        // Don't write outside the buffer
+        return;
+    }
+   
+    // Draw in the right color & record dirty page
+    uint8_t page_idx = newy / 8;
+    ssd1306_dirty_pages |= (1 << page_idx);
+    if(color == White) {
+        SSD1306_Buffer[newx + page_idx * SSD1306_WIDTH] |= 1 << (newy % 8);
+    } else { 
+        SSD1306_Buffer[newx + page_idx * SSD1306_WIDTH] &= ~(1 << (newy % 8));
+    }
+}
+
+/*
+ * Draw 1 char to the screen buffer
+ * ch       => char om weg te schrijven
+ * Font     => Font waarmee we gaan schrijven
+ * color    => Black or White
+ */
+char ssd1306_WriteChar(char ch, FontDef Font, SSD1306_COLOR color) {
+    uint32_t i, b, j;
+    
+    // Check if character is valid
+    if (ch < 32 || ch > 126)
+        return 0;
+    
+    // Check remaining space on current line
+    if (SSD1306_WIDTH < (SSD1306.CurrentX + Font.FontWidth) ||
+        SSD1306_HEIGHT < (SSD1306.CurrentY + Font.FontHeight))
+    {
+        // Not enough space on current line
+        return 0;
+    }
+    
+    // Use the font to write
+    for(i = 0; i < Font.FontHeight; i++) {
+        b = Font.data[(ch - 32) * Font.FontHeight + i];
+        for(j = 0; j < Font.FontWidth; j++) {
+            if((b << j) & 0x8000)  {
+                ssd1306_DrawPixel(SSD1306.CurrentX + j, (SSD1306.CurrentY + i), (SSD1306_COLOR) color);
+            } else {
+                ssd1306_DrawPixel(SSD1306.CurrentX + j, (SSD1306.CurrentY + i), (SSD1306_COLOR)!color);
+            }
+        }
+    }
+    
+    // The current space is now taken
+    SSD1306.CurrentX += Font.FontWidth;
+    
+    // Return written char for validation
+    return ch;
+}
+
+#include "oled_icons.h"
+
+/* Write full string to screenbuffer (supports ASCII 32..126 and UTF-8 monochrome icons) */
+char ssd1306_WriteString(char* str, FontDef Font, SSD1306_COLOR color) {
+    const char* p = str;
+    while (*p) {
+        uint32_t cp = oled_utf8_next_codepoint(&p);
+        if (cp == 0) {
+            break;
+        }
+        if (cp >= 32 && cp <= 126) {
+            char ch = (char)cp;
+            if (ssd1306_WriteChar(ch, Font, color) != ch) {
+                return ch;
+            }
+        } else {
+            const oled_icon_entry_t* icon = oled_find_icon(cp);
+            if (icon != NULL) {
+                if (SSD1306_WIDTH < (SSD1306.CurrentX + Font.FontWidth) ||
+                    SSD1306_HEIGHT < (SSD1306.CurrentY + Font.FontHeight)) {
+                    return 0;
+                }
+                oled_draw_icon_glyph(icon, Font, color);
+            } else {
+                // Fallback for unknown non-ASCII codepoint
+                if (ssd1306_WriteChar('?', Font, color) != '?') {
+                    return '?';
+                }
+            }
+        }
+    }
+    
+    // Everything ok
+    return 0;
+}
+
+/* Position the cursor */
+void ssd1306_SetCursor(uint8_t x, uint8_t y)
+{
+    SSD1306.CurrentX = x;
+    SSD1306.CurrentY = y;
+}
+
+// Retrieve the current cursor position
+void ssd1306_GetCursor(uint8_t *x, uint8_t *y)
+{
+    if(x)
+        *x = SSD1306.CurrentX;
+    if(y)
+        *y = SSD1306.CurrentY;
+}
+
+/* Draw line by Bresenhem's algorithm */
+void ssd1306_Line(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, SSD1306_COLOR color) {
+    int32_t deltaX = abs(x2 - x1);
+    int32_t deltaY = abs(y2 - y1);
+    int32_t signX = ((x1 < x2) ? 1 : -1);
+    int32_t signY = ((y1 < y2) ? 1 : -1);
+    int32_t error = deltaX - deltaY;
+    int32_t error2;
+    
+    ssd1306_DrawPixel(x2, y2, color);
+
+    while((x1 != x2) || (y1 != y2)) {
+        ssd1306_DrawPixel(x1, y1, color);
+        error2 = error * 2;
+        if(error2 > -deltaY) {
+            error -= deltaY;
+            x1 += signX;
+        }
+        
+        if(error2 < deltaX) {
+            error += deltaX;
+            y1 += signY;
+        }
+    }
+    return;
+}
+
+/* Draw polyline */
+void ssd1306_Polyline(const SSD1306_VERTEX *par_vertex, uint16_t par_size, SSD1306_COLOR color) {
+    uint16_t i;
+    if(par_vertex == NULL) {
+        return;
+    }
+
+    for(i = 1; i < par_size; i++) {
+        ssd1306_Line(par_vertex[i - 1].x, par_vertex[i - 1].y, par_vertex[i].x, par_vertex[i].y, color);
+    }
+
+    return;
+}
+
+/* Convert Degrees to Radians */
+static float ssd1306_DegToRad(float par_deg) {
+    return par_deg * 3.14 / 180.0;
+}
+
+/* Normalize degree to [0;360] */
+static uint16_t ssd1306_NormalizeTo0_360(uint16_t par_deg) {
+    uint16_t loc_angle;
+    if(par_deg <= 360) {
+        loc_angle = par_deg;
+    } else {
+        loc_angle = par_deg % 360;
+        loc_angle = ((par_deg != 0)?par_deg:360);
+    }
+    return loc_angle;
+}
+
+/*
+ * DrawArc. Draw angle is beginning from 4 quart of trigonometric circle (3pi/2)
+ * start_angle in degree
+ * sweep in degree
+ */
+void ssd1306_DrawArc(uint8_t x, uint8_t y, uint8_t radius, uint16_t start_angle, uint16_t sweep, SSD1306_COLOR color) {
+    static const uint8_t CIRCLE_APPROXIMATION_SEGMENTS = 36;
+    float approx_degree;
+    uint32_t approx_segments;
+    uint8_t xp1,xp2;
+    uint8_t yp1,yp2;
+    uint32_t count = 0;
+    uint32_t loc_sweep = 0;
+    float rad;
+    
+    loc_sweep = ssd1306_NormalizeTo0_360(sweep);
+    
+    count = (ssd1306_NormalizeTo0_360(start_angle) * CIRCLE_APPROXIMATION_SEGMENTS) / 360;
+    approx_segments = (loc_sweep * CIRCLE_APPROXIMATION_SEGMENTS) / 360;
+    approx_degree = loc_sweep / (float)approx_segments;
+    while(count < approx_segments)
+    {
+        rad = ssd1306_DegToRad(count*approx_degree);
+        xp1 = x + (int8_t)(sin(rad)*radius);
+        yp1 = y + (int8_t)(cos(rad)*radius);    
+        count++;
+        if(count != approx_segments) {
+            rad = ssd1306_DegToRad(count*approx_degree);
+        } else {
+            rad = ssd1306_DegToRad(loc_sweep);
+        }
+        xp2 = x + (int8_t)(sin(rad)*radius);
+        yp2 = y + (int8_t)(cos(rad)*radius);    
+        ssd1306_Line(xp1,yp1,xp2,yp2,color);
+    }
+    
+    return;
+}
+
+/*
+ * Draw arc with radius line
+ * Angle is beginning from 4 quart of trigonometric circle (3pi/2)
+ * start_angle: start angle in degree
+ * sweep: finish angle in degree
+ */
+void ssd1306_DrawArcWithRadiusLine(uint8_t x, uint8_t y, uint8_t radius, uint16_t start_angle, uint16_t sweep, SSD1306_COLOR color) {
+    static const uint8_t CIRCLE_APPROXIMATION_SEGMENTS = 36;
+    float approx_degree;
+    uint32_t approx_segments;
+    uint8_t xp1 = 0;
+    uint8_t xp2 = 0;
+    uint8_t yp1 = 0;
+    uint8_t yp2 = 0;
+    uint32_t count = 0;
+    uint32_t loc_sweep = 0;
+    float rad;
+    
+    loc_sweep = ssd1306_NormalizeTo0_360(sweep);
+    
+    count = (ssd1306_NormalizeTo0_360(start_angle) * CIRCLE_APPROXIMATION_SEGMENTS) / 360;
+    approx_segments = (loc_sweep * CIRCLE_APPROXIMATION_SEGMENTS) / 360;
+    approx_degree = loc_sweep / (float)approx_segments;
+
+    rad = ssd1306_DegToRad(count*approx_degree);
+    uint8_t first_point_x = x + (int8_t)(sin(rad)*radius);
+    uint8_t first_point_y = y + (int8_t)(cos(rad)*radius);   
+    while (count < approx_segments) {
+        rad = ssd1306_DegToRad(count*approx_degree);
+        xp1 = x + (int8_t)(sin(rad)*radius);
+        yp1 = y + (int8_t)(cos(rad)*radius);    
+        count++;
+        if (count != approx_segments) {
+            rad = ssd1306_DegToRad(count*approx_degree);
+        } else {
+            rad = ssd1306_DegToRad(loc_sweep);
+        }
+        xp2 = x + (int8_t)(sin(rad)*radius);
+        yp2 = y + (int8_t)(cos(rad)*radius);    
+        ssd1306_Line(xp1,yp1,xp2,yp2,color);
+    }
+    
+    // Radius line
+    ssd1306_Line(x,y,first_point_x,first_point_y,color);
+    ssd1306_Line(x,y,xp2,yp2,color);
+    return;
+}
+
+/* Draw circle by Bresenhem's algorithm */
+void ssd1306_DrawCircle(uint8_t par_x,uint8_t par_y,uint8_t par_r,SSD1306_COLOR par_color) {
+    int32_t x = -par_r;
+    int32_t y = 0;
+    int32_t err = 2 - 2 * par_r;
+    int32_t e2;
+
+    if (par_x >= SSD1306_WIDTH || par_y >= SSD1306_HEIGHT) {
+        return;
+    }
+
+    do {
+        ssd1306_DrawPixel(par_x - x, par_y + y, par_color);
+        ssd1306_DrawPixel(par_x + x, par_y + y, par_color);
+        ssd1306_DrawPixel(par_x + x, par_y - y, par_color);
+        ssd1306_DrawPixel(par_x - x, par_y - y, par_color);
+        e2 = err;
+
+        if (e2 <= y) {
+            y++;
+            err = err + (y * 2 + 1);
+            if(-x == y && e2 <= x) {
+                e2 = 0;
+            }
+        }
+
+        if (e2 > x) {
+            x++;
+            err = err + (x * 2 + 1);
+        }
+    } while (x <= 0);
+
+    return;
+}
+
+void ssd1306_FillCircle(uint8_t par_x, uint8_t par_y, uint8_t par_r, SSD1306_COLOR par_color) {
+    int32_t x = -par_r;
+    int32_t y = 0;
+    int32_t err = 2 - 2 * par_r;
+    int32_t e2;
+
+    do {
+        int x_left = par_x + x;
+        int x_right = par_x - x;
+        
+        // Clip X bounds
+        if (x_left < 0) x_left = 0;
+        if (x_right >= SSD1306_WIDTH) x_right = SSD1306_WIDTH - 1;
+
+        // We need to draw two lines: one at upper Y, one at lower Y
+        int y_upper = par_y - y;
+        int y_lower = par_y + y;
+
+        // Draw Upper Line
+        if (y_upper >= 0 && y_upper < SSD1306_HEIGHT) {
+            for (int i = x_left; i <= x_right; i++) {
+                ssd1306_DrawPixel(i, y_upper, par_color);
+            }
+        }
+        
+        // Draw Lower Line (only if distinct from upper)
+        if (y_lower >= 0 && y_lower < SSD1306_HEIGHT && y_lower != y_upper) {
+            for (int i = x_left; i <= x_right; i++) {
+                ssd1306_DrawPixel(i, y_lower, par_color);
+            }
+        }
+
+        e2 = err;
+        if (e2 <= y) {
+            y++;
+            err = err + (y * 2 + 1);
+            if (-x == y && e2 <= x) e2 = 0;
+        }
+        if (e2 > x) {
+            x++;
+            err = err + (x * 2 + 1);
+        }
+    } while (x <= 0);
+}
+
+/* Draw a rectangle */
+void ssd1306_DrawRectangle(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, SSD1306_COLOR color) {
+    ssd1306_Line(x1,y1,x2,y1,color);
+    ssd1306_Line(x2,y1,x2,y2,color);
+    ssd1306_Line(x2,y2,x1,y2,color);
+    ssd1306_Line(x1,y2,x1,y1,color);
+}
+
+/* Draw a filled rectangle */
+void ssd1306_FillRectangle(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, SSD1306_COLOR color)
+{
+    uint8_t x_start = ((x1<=x2) ? x1 : x2);
+    uint8_t x_end   = ((x1<=x2) ? x2 : x1);
+    uint8_t y_start = ((y1<=y2) ? y1 : y2);
+    uint8_t y_end   = ((y1<=y2) ? y2 : y1);
+    for (uint8_t y= y_start; (y<= y_end)&&(y<SSD1306_HEIGHT); y++)
+        for (uint8_t x= x_start; (x<= x_end)&&(x<SSD1306_WIDTH); x++)
+            ssd1306_DrawPixel(x, y, color);
+}
+
+/* Draw a bitmap */
+void ssd1306_DrawBitmap(uint8_t x, uint8_t y, const unsigned char* bitmap, uint8_t w, uint8_t h, SSD1306_COLOR color) {
+    int16_t byteWidth = (w + 7) / 8; // Bitmap scanline pad = whole byte
+    uint8_t byte = 0;
+
+    if (x >= SSD1306_WIDTH || y >= SSD1306_HEIGHT) {
+        return;
+    }
+
+    for (uint8_t j = 0; j < h; j++, y++) {
+        for (uint8_t i = 0; i < w; i++) {
+            if (i & 7) {
+                byte <<= 1;
+            } else {
+                byte = (*(const unsigned char *)(&bitmap[j * byteWidth + i / 8]));
+            }
+
+            if (byte & 0x80) {
+                ssd1306_DrawPixel(x + i, y, color);
+            }
+        }
+    }
+    return;
+}
+
+uint8_t current_contrast;
+void ssd1306_SetContrast(const uint8_t value)
+{
+    if(value == current_contrast)
+        return;
+    ssd1306_write_cmd_byte(SSD1306_SETCONTRAST);
+    ssd1306_write_cmd_byte(value);
+    current_contrast = value;
+    // printf("OLED SC: %d\n", value);
+}
+
+#define SCREENSHOT_NAME_BUF_SIZE 32
+
+void ssd1306_take_screenshot(void)
+{
+    int random_number = rand() % 90000 + 10000;
+    char filename[SCREENSHOT_NAME_BUF_SIZE];
+    memset(filename, 0, SCREENSHOT_NAME_BUF_SIZE);
+    snprintf(filename, sizeof(filename), "/sdcard/%05d.bin", random_number);
+    FILE *file = fopen(filename, "wb");
+    if(file == NULL)
+        return;
+    fwrite(SSD1306_Buffer, sizeof(uint8_t), SSD1306_BUFFER_SIZE, file);
+    fclose(file);
+    printf("screenshot: %s\n", filename);
+}
