@@ -125,8 +125,8 @@ pub async fn check_latest_duckypad_firmware(
         let curr_studio = parse_semver(current_version.split_whitespace().next().unwrap_or(""))
             .map(|v| if v == (3, 4, 0) { (1, 0, 0) } else { v })
             .unwrap_or((1, 0, 0));
-        if curr_studio < (1, 1, 0) {
-            latest_version = "1.1.0".to_string();
+        if curr_studio < (1, 1, 1) {
+            latest_version = "1.1.1".to_string();
             true
         } else {
             remote_semver > (3, 3, 5)
@@ -274,7 +274,7 @@ pub fn is_duckydeck_studio_firmware_version(version: &str) -> bool {
         return true;
     }
     let clean = trimmed.trim_start_matches(['v', 'V']);
-    clean == "1.1.0" || clean == "1.0.1" || clean == "1.0.0" || clean == "3.4.0"
+    clean == "1.1.1" || clean == "1.1.0" || clean == "1.0.1" || clean == "1.0.0" || clean == "3.4.0"
 }
 
 pub fn compute_ieee_crc32(data: &[u8]) -> u32 {
@@ -311,10 +311,17 @@ fn firmware_release_metadata(
                 "DuckyDeck Studio custom firmware v1.0.1 (built on duckyPad Pro 3.3.5 / DSVM v2): fixes USB HID endpoint contention and stuck modifier/key states by waiting for USB endpoint readiness before sending custom HID reports and releasing held keyboard keys on profile switch and script abort/sleep; includes native 1-bit monochrome pixel-art OLED icons and 0°/90°/180°/270° OLED orientation.",
             );
         }
+        if version == "1.1.0" {
+            return (
+                "DuckyDeck Studio Custom (v1.1.0)",
+                "Oct 20, 2026",
+                "DuckyDeck Studio custom firmware v1.1.0 (built on duckyPad Pro 3.3.5 / DSVM v2): adds native Home Automation OLED icons, SSD1306 SPI DMA dirty page tracking for low-latency display updates, SWC_FADE_TO hardware smooth RGB fade opcode (89), sub-millisecond USB HID SOF dispatch spin-retry, and NVS wear-leveling cache for instantaneous profile switching without SD card write latency.",
+            );
+        }
         return (
-            "DuckyDeck Studio Custom (v1.1.0)",
-            "Oct 20, 2026",
-            "DuckyDeck Studio custom firmware v1.1.0 (built on duckyPad Pro 3.3.5 / DSVM v2): adds native Home Automation OLED icons, SSD1306 SPI DMA dirty page tracking for low-latency display updates, SWC_FADE_TO hardware smooth RGB fade opcode (89), sub-millisecond USB HID SOF dispatch spin-retry, and NVS wear-leveling cache for instantaneous profile switching without SD card write latency.",
+            "DuckyDeck Studio Custom (v1.1.1)",
+            "Oct 22, 2026",
+            "DuckyDeck Studio custom firmware v1.1.1 (built on duckyPad Pro 3.3.5 / DSVM v2): expands the native 1-bit monochrome pixel-art OLED icon library to 204 zero-duplicate icons (16×16, 10×10, 7×10, 6×8) across 14 categories including Web Browsers, Word, Excel, PowerPoint, Photoshop, FreeCAD/Fusion 360, and Home Automation, plus SWC_FADE_TO smooth RGB fade, SPI DMA dirty page tracking, sub-ms USB HID SOF spin-retry, and NVS profile cache.",
         );
     }
     match version {
@@ -346,9 +353,9 @@ fn firmware_release_metadata(
     }
 }
 
-const EMBEDDED_STUDIO_FW_FILENAME: &str = "DDS_FW_1.1.0_b3291568.bin";
+const EMBEDDED_STUDIO_FW_FILENAME: &str = "DDS_FW_1.1.1_eed0141e.bin";
 const EMBEDDED_STUDIO_FW_BYTES: &[u8] =
-    include_bytes!("../../firmware/releases/DDS_FW_1.1.0_b3291568.bin");
+    include_bytes!("../../firmware/releases/DDS_FW_1.1.1_eed0141e.bin");
 
 fn ensure_embedded_studio_firmware_cached() -> PathBuf {
     let user_fw_dir = crate::paths::data_dir().join("firmware");
@@ -435,7 +442,7 @@ pub fn list_available_duckypad_pro_firmwares(current_version: &str) -> Vec<Firmw
                 || is_bundled_studio_dir
                 || matches!(
                     crc_str.as_str(),
-                    "b3291568" | "5d742340" | "bf177326" | "ad2acc81"
+                    "eed0141e" | "b3291568" | "5d742340" | "bf177326" | "ad2acc81"
                 );
             let is_official = !is_studio_custom;
             let (channel, release_date, notes) =
@@ -580,7 +587,7 @@ pub async fn fetch_official_firmwares_from_site(
             if crc_str.is_empty()
                 || matches!(
                     crc_str.as_str(),
-                    "b3291568" | "5d742340" | "bf177326" | "ad2acc81"
+                    "eed0141e" | "b3291568" | "5d742340" | "bf177326" | "ad2acc81"
                 )
             {
                 return;
@@ -980,7 +987,7 @@ where
             .or_else(|| raw_name.strip_prefix("DPP_FW_"))
             .and_then(|s| s.strip_suffix(".bin"))
             .and_then(|s| s.split('_').next())
-            .unwrap_or("1.1.0")
+            .unwrap_or("1.1.1")
             .to_string();
         (ver.clone(), format!("{prefix}{ver}_{crc_hex}.bin"))
     };

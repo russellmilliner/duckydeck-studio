@@ -705,7 +705,7 @@ Window {
                         Layout.minimumWidth: 0
                         wrapMode: Text.WordWrap
                         font.pointSize: 10 * root.fontScale
-                        text: qsTr("DuckyDeck Studio includes its custom DuckyDeck Studio Firmware v1.1.0 (with Home Automation icons, smooth LED fade, 0°/90°/180°/270° OLED orientation, SPI DMA dirty page tracking, and sub-ms USB HID) and can fetch official dekuNukem firmware releases directly from github.com/dekuNukem/duckyPad-Pro.")
+                        text: qsTr("DuckyDeck Studio includes its custom DuckyDeck Studio Firmware v1.1.1 (with Home Automation icons, smooth LED fade, 0°/90°/180°/270° OLED orientation, SPI DMA dirty page tracking, and sub-ms USB HID) and can fetch official dekuNukem firmware releases directly from github.com/dekuNukem/duckyPad-Pro.")
                         color: Kirigami.Theme.textColor
                     }
                 }

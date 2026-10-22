@@ -4,11 +4,11 @@
 [![Windows 10/11 Setup v0.1.6](https://img.shields.io/badge/Windows_10%2F11_Setup-v0.1.6_(.exe)-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.6/DuckyDeck-Studio-Setup-v0.1.6-x86_64.exe)
 [![Windows Portable v0.1.6](https://img.shields.io/badge/Windows_Portable-v0.1.6_(.zip)-0284c7?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.6/duckydeck-studio-v0.1.6-windows-x86_64-portable.zip)
 [![Flatpak v0.1.6](https://img.shields.io/badge/Linux_Flatpak-v0.1.6-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.6-x86_64.flatpak)
-[![Firmware v1.1.0](https://img.shields.io/badge/Custom_Firmware-v1.1.0-10b981?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.1.0)
+[![Firmware v1.1.1](https://img.shields.io/badge/Custom_Firmware-v1.1.1-10b981?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.1.1)
 [![Website duckydeckstudio.com](https://img.shields.io/badge/Website-duckydeckstudio.com-0ea5e9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://duckydeckstudio.com)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-russellmilliner%2Fduckydeck--studio-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio)
 
-**Application Version:** `v0.1.6` (Custom Firmware `v1.1.0`, KDE Plasma 6 Applet `v1.0.2`)  
+**Application Version:** `v0.1.6` (Custom Firmware `v1.1.1`, KDE Plasma 6 Applet `v1.0.2`)  
 **Supported Platforms:** **Linux (`x86_64` — KDE Plasma 6 / Wayland & X11 / Flatpak)** and **Windows 10 & 11 (`x86_64` — Inno Setup `.exe` & Portable `.zip`)**  
 **Author:** Russell Milliner  
 **Official Website & User Guide:** [https://duckydeckstudio.com](https://duckydeckstudio.com)  
@@ -336,9 +336,9 @@ DuckyDeck Studio distinguishes between **Standalone Hardware-Portable Capabiliti
 
 ---
 
-## 9.6 Firmware Versioning (`v1.1.0`), DDS Prefix & Official Firmware Catalog Downloader (`src/hardware/firmware.rs`)
+## 9.6 Firmware Versioning (`v1.1.1`), DDS Prefix & Official Firmware Catalog Downloader (`src/hardware/firmware.rs`)
 
-- **DuckyDeck Studio Firmware (`v1.1.0`)**: Built from `firmware/duckyPad-Pro/firmware/` (`DDS_FW_1.1.0_b3291568.bin`, downloadable from the [GitHub Releases page](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.1.0)). Uses the distinct **`DDS_FW_`** prefix to cleanly separate DuckyDeck Studio firmware from official **`DPP_FW_`** builds. Identified over USB HID `GET_INFO` (`0x00`) via the `'D', 'D', 'S'` signature at bytes `20..22`. Adds 12 Home Automation OLED icons, SSD1306 SPI DMA dirty page tracking, smooth RGB LED fade opcode (`SWC_FADE_TO` / opcode `89`), sub-ms USB HID SOF dispatch spin-retry, NVS wear-leveling profile cache, `0°/90°/180°/270°` hardware OLED orientation, and 1-bit monochrome key icons.
+- **DuckyDeck Studio Firmware (`v1.1.1`)**: Built from `firmware/duckyPad-Pro/firmware/` (`DDS_FW_1.1.1_eed0141e.bin`, downloadable from the [GitHub Releases page](https://github.com/russellmilliner/duckydeck-studio/releases/tag/fw-v1.1.1)). Uses the distinct **`DDS_FW_`** prefix to cleanly separate DuckyDeck Studio firmware from official **`DPP_FW_`** builds. Identified over USB HID `GET_INFO` (`0x00`) via the `'D', 'D', 'S'` signature at bytes `20..22`. Adds 12 Home Automation OLED icons, SSD1306 SPI DMA dirty page tracking, smooth RGB LED fade opcode (`SWC_FADE_TO` / opcode `89`), sub-ms USB HID SOF dispatch spin-retry, NVS wear-leveling profile cache, `0°/90°/180°/270°` hardware OLED orientation, and 1-bit monochrome key icons.
 - **Official dekuNukem Firmware Catalog Downloader**: `fetch_official_firmwares_from_site()` in [`src/hardware/firmware.rs`](../src/hardware/firmware.rs) queries the official `dekuNukem/duckyPad-Pro` GitHub repository to list available `DPP_FW_<ver>_<crc32>.bin` releases inside the Firmware Manager window and verifies IEEE CRC32 checksums before staging.
 
 ---
@@ -362,7 +362,7 @@ DuckyDeck Studio embeds a bounded, stoppable/restartable HTTP/1.1 REST API serve
 - Built against `org.kde.Platform//6.11` and `org.kde.Sdk//6.11` with `rust-stable` and `llvm22` SDK extensions.
 - **USB HID & Block Device Discovery:** Uses `--device=all` and `--filesystem=/run/udev:ro` for direct `/dev/hidraw*` and `/dev/disk/by-label` / `/dev/disk/by-id` enumeration.
 - **USB Mass Storage (`udisksctl`) Host Bridging:** Inside Flatpak (`/.flatpak-info` present), [`src/hardware/msc.rs`](../src/hardware/msc.rs) invokes `udisksctl`, `umount`, `sync`, and host `/proc/mounts` checks via `flatpak-spawn --host` (`--talk-name=org.freedesktop.Flatpak` and `--system-talk-name=org.freedesktop.UDisks2`) while reading/writing mounted volumes via `--filesystem=/run/media:rw` and `--filesystem=/media:rw`.
-- **Bundled Custom Firmware Discovery:** [`src/hardware/firmware.rs`](../src/hardware/firmware.rs) scans `/app/share/duckydeck-studio/firmware`, `/app/share/duckydeck-studio/firmware/releases`, and embeds `DDS_FW_1.1.0_b3291568.bin` as a compile-time fallback so the DuckyDeck Studio `v1.1.0` firmware is always available in the Firmware Manager.
+- **Bundled Custom Firmware Discovery:** [`src/hardware/firmware.rs`](../src/hardware/firmware.rs) scans `/app/share/duckydeck-studio/firmware`, `/app/share/duckydeck-studio/firmware/releases`, and embeds `DDS_FW_1.1.1_eed0141e.bin` as a compile-time fallback so the DuckyDeck Studio `v1.1.1` firmware is always available in the Firmware Manager.
 
 ### 10.2 Windows `x86_64` Architecture, Kirigami Compatibility & Cross-Compilation (`scripts/build-windows.sh`)
 - **Toolchain & Target:** Cross-compiles from Linux to **`x86_64-pc-windows-gnullvm`** using `llvm-mingw` (`clang++` / `lld`) linked against **Qt 6.8.3 MinGW64**.

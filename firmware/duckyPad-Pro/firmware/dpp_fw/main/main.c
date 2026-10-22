@@ -201,11 +201,17 @@ Oct 20 2026
 Added native Home Automation OLED icons, SSD1306 SPI DMA dirty page tracking,
 SWC_FADE_TO hardware smooth RGB fade opcode (89), sub-millisecond USB HID SOF
 spin-retry, and NVS wear-leveling cache for instantaneous profile switching.
+
+DuckyDeck Studio Firmware 1.1.1 (based on duckyPad Pro 3.3.5 / DSVM v2)
+Oct 22 2026
+Expanded native 1-bit monochrome OLED icon library to 204 zero-duplicate icons
+(16x16, 10x10, 7x10, 6x8) across 14 categories including Web Browsers, Word,
+Excel, PowerPoint, Photoshop, FreeCAD/Fusion 360, and Home Automation.
 */
 
 uint8_t fw_version_major = 1;
 uint8_t fw_version_minor = 1;
-uint8_t fw_version_patch = 0;
+uint8_t fw_version_patch = 1;
 
 uint8_t dsvm_version = 2;
 

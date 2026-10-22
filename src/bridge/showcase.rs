@@ -1147,7 +1147,7 @@ pub fn create_showcase_instance() -> DeviceControllerRust {
             connected: true,
             udev_rule_missing: false,
             model_name: QString::from("duckyPad Pro"),
-            firmware_version: QString::from("1.1.0 (DuckyDeck Studio)"),
+            firmware_version: QString::from("1.1.1 (DuckyDeck Studio)"),
             serial_number: QString::from("DP24-8F4A1C9E"),
             active_profile: 1,
             active_profile_name: QString::from("Dolphin"),
@@ -1161,7 +1161,7 @@ pub fn create_showcase_instance() -> DeviceControllerRust {
             profiles_json: QString::from(&profiles_json),
             active_profile_slots_json: QString::from(&slots_json),
             status_message: QString::from(
-                "Connected to duckyPad Pro (FW v1.1.0 DuckyDeck Studio) — 8 profile(s) synced & verified",
+                "Connected to duckyPad Pro (FW v1.1.1 DuckyDeck Studio) — 8 profile(s) synced & verified",
             ),
             ai_busy: false,
             generated_script_preview: QString::from(
@@ -1184,13 +1184,13 @@ pub fn create_showcase_instance() -> DeviceControllerRust {
             app_theme_mode: QString::from("dark"),
             close_to_tray: true,
             system_dark_theme: true,
-            latest_firmware_version: QString::from("1.1.0"),
+            latest_firmware_version: QString::from("1.1.1"),
             firmware_update_available: false,
             firmware_check_busy: false,
             firmware_update_url: QString::from(
                 "https://dekuNukem.github.io/duckyPad-Pro/doc/fw_update.html",
             ),
-            firmware_check_summary: QString::from("DuckyDeck Studio Firmware v1.1.0 is up to date"),
+            firmware_check_summary: QString::from("DuckyDeck Studio Firmware v1.1.1 is up to date"),
             profile_sync_state: QString::from("synced"),
             profile_sync_detail: QString::from(
                 "All 8 profiles verified in sync with duckyPad Pro microSD [hash #8f4a1c9e]",

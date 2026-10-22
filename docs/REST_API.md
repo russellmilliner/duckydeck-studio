@@ -6,9 +6,9 @@
 [![Website duckydeckstudio.com](https://img.shields.io/badge/Website-duckydeckstudio.com-0ea5e9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://duckydeckstudio.com)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-russellmilliner%2Fduckydeck--studio-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio)
 
-DuckyDeck Studio (`v0.1.6` for **Linux** & **Windows 10/11**) includes a built-in, low-latency HTTP/1.1 REST API server (`src/api_server.rs`) that exposes full programmatic control over your **duckyPad Pro** (`0x0483:0xd11d`, Custom Firmware `v1.1.0`) and **duckyPad (2020)** (`0x0483:0xd11c`), profiles, mechanical key & rotary encoder slots, duckyScript 3 DSVM compiler, 32 Persistent Global Variables (`_GV0.._GV31`), live RGB LED overrides, and microSD synchronization.
+DuckyDeck Studio (`v0.1.6` for **Linux** & **Windows 10/11**) includes a built-in, low-latency HTTP/1.1 REST API server (`src/api_server.rs`) that exposes full programmatic control over your **duckyPad Pro** (`0x0483:0xd11d`, Custom Firmware `v1.1.1`) and **duckyPad (2020)** (`0x0483:0xd11c`), profiles, mechanical key & rotary encoder slots, duckyScript 3 DSVM compiler, 32 Persistent Global Variables (`_GV0.._GV31`), live RGB LED overrides, and microSD synchronization.
 
-- **Application Version**: `v0.1.6` (Custom Firmware `v1.1.0`)
+- **Application Version**: `v0.1.6` (Custom Firmware `v1.1.1`)
 - **Supported Platforms**: Linux (`KDE Plasma 6 / Wayland & X11 / Flatpak`) & Windows 10/11 (`x86_64`)
 - **Official Website & User Guide**: [https://duckydeckstudio.com](https://duckydeckstudio.com)
 - **System Architecture Reference**: [`docs/architecture.html`](architecture.html) ([https://duckydeckstudio.com/architecture.html](https://duckydeckstudio.com/architecture.html)) · [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)
@@ -137,8 +137,8 @@ curl -s -H "Authorization: Bearer $DUCKY_TOKEN" "$DUCKY_URL/api/v1/status"
   "sdSpaceUsedPercent": 7,
   "sdSyncBusy": false,
   "modelName": "duckyPad Pro",
-  "firmwareVersion": "1.1.0-studio",
-  "latestFirmwareVersion": "1.1.0",
+  "firmwareVersion": "1.1.1-studio",
+  "latestFirmwareVersion": "1.1.1",
   "firmwareUpdateAvailable": false,
   "serialNumber": "DP24A1B2",
   "activeProfile": 1,

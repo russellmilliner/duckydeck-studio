@@ -2,7 +2,7 @@ dependencies:
   espressif/tinyusb:
     dependencies: []
     source:
-      path: /home/millinr/Builds/Ducky/duckydeck-studio/firmware/duckyPad-Pro/firmware/dpp_fw/components/espressif__tinyusb
+      path: /home/millinr/Builds/duckydeck-studio/firmware/duckyPad-Pro/firmware/dpp_fw/components/espressif__tinyusb
       type: local
     version: 0.15.0~10
   idf:

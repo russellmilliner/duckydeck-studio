@@ -446,17 +446,17 @@ mod tests {
 
     #[test]
     fn test_firmware_catalog_and_crc32_integrity() {
-        let list = list_available_duckypad_pro_firmwares("1.1.0 (DuckyDeck Studio)");
+        let list = list_available_duckypad_pro_firmwares("1.1.1 (DuckyDeck Studio)");
         assert!(
             !list.is_empty(),
             "Expected at least 1 DuckyDeck Studio firmware release, got {}",
             list.len()
         );
-        // First entry should be v1.1.0 (DuckyDeck Studio Firmware)
+        // First entry should be v1.1.1 (DuckyDeck Studio Firmware)
         let studio_entries: Vec<&FirmwareVersionEntry> =
             list.iter().filter(|e| !e.is_official).collect();
         assert!(!studio_entries.is_empty());
-        assert_eq!(studio_entries[0].version, "1.1.0");
+        assert_eq!(studio_entries[0].version, "1.1.1");
         assert_eq!(studio_entries[0].vendor, "DuckyDeck Studio");
         assert!(studio_entries[0].supports_monochrome_icons);
         assert!(

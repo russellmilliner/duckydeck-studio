@@ -1431,14 +1431,14 @@ Window {
                     + " fallback=" + deviceController.defaultFallbackProfile
             )
 
-            // 13. DuckyDeck Studio custom firmware (DDS_FW_1.1.0_b3291568.bin) is available in the firmware catalog
+            // 13. DuckyDeck Studio custom firmware (DDS_FW_1.1.1_eed0141e.bin) is available in the firmware catalog
             var fwList = []
             try { fwList = JSON.parse(deviceController.listAvailableFirmwaresJson() || "[]") } catch (e) {}
             var studioFw = fwList.find(function(fw) {
                 return fw.is_official === false
                     && fw.supports_monochrome_icons === true
                     && fw.is_downloaded === true
-                    && (fw.filename === "DDS_FW_1.1.0_b3291568.bin" || fw.filename.indexOf("DDS_FW_1.1.0_") === 0)
+                    && (fw.filename === "DDS_FW_1.1.1_eed0141e.bin" || fw.filename.indexOf("DDS_FW_1.1.1_") === 0)
             })
             recordBehavior(
                 "duckydeck_studio_firmware_available_in_catalog",
