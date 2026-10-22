@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DuckyDeck Studio v0.1.6 — Windows 10/11 &amp; Linux Configurator for duckyPad Pro</title>
+  <style>
+    :root[data-theme="dark"] {
+      --bg-primary: #0d1017;
+      --bg-secondary: #151922;
+      --bg-tertiary: #1e2432;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --accent: #38bdf8;
+      --accent-soft: rgba(56, 189, 248, 0.14);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --purple: #a855f7;
+      --border: #283042;
+      --shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    }
+    :root[data-theme="light"] {
+      --bg-primary: #f8fafc;
+      --bg-secondary: #ffffff;
+      --bg-tertiary: #f1f5f9;
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --accent: #0284c7;
+      --accent-soft: rgba(2, 132, 199, 0.12);
+      --success: #059669;
+      --warning: #d97706;
+      --purple: #7e22ce;
+      --border: #e2e8f0;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.65;
+    }
+    .brand-badge {
+      font-size: 0.72rem;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-weight: 700;
+    }
+    .theme-btn {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 7px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    
+    .site-topbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 54px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 22px;
+      z-index: 200;
+      gap: 12px;
+    }
+    .site-topbar .top-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text-primary);
+      font-weight: 800;
+      font-size: 1.02rem;
+      white-space: nowrap;
+    }
+    .site-topbar .top-nav {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .site-topbar .top-link {
+      text-decoration: none;
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 6px 11px;
+      border-radius: 7px;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .site-topbar .top-link:hover {
+      color: var(--text-primary);
+      background: var(--bg-tertiary);
+    }
+    .site-topbar .top-link.active {
+      color: var(--accent);
+      background: var(--accent-soft);
+      border-color: rgba(56, 189, 248, 0.35);
+    }
+    .site-topbar .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sidebar {
+      top: 54px !important;
+      height: calc(100vh - 54px) !important;
+    }
+    .main-content {
+      margin-top: 54px !important;
+    }
+    section {
+      scroll-margin-top: 74px !important;
+    }
+    @media (max-width: 900px) {
+      .site-topbar {
+        position: static;
+        height: auto;
+        padding: 12px 16px;
+        flex-wrap: wrap;
+      }
+      .sidebar {
+        top: 0 !important;
+        height: auto !important;
+      }
+      .main-content {
+        margin-top: 0 !important;
+      }
+    }
+
+    .container {
+      max-width: 1180px;
+      margin: 54px auto 0;
+      padding: 42px 24px 72px;
+    }
+    .hero {
+      background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 44px 40px;
+      box-shadow: var(--shadow);
+      margin-bottom: 48px;
+      text-align: center;
+    }
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      padding: 5px 14px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      margin-bottom: 18px;
+    }
+    .hero h1 {
+      font-size: 2.55rem;
+      font-weight: 850;
+      letter-spacing: -0.025em;
+      line-height: 1.18;
+      margin-bottom: 16px;
+    }
+    .hero p.lead {
+      font-size: 1.12rem;
+      color: var(--text-secondary);
+      max-width: 820px;
+      margin: 0 auto 28px;
+    }
+    .cta-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 18px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 0.92rem;
+      text-decoration: none;
+      border: 1px solid var(--border);
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      transition: transform 0.12s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent);
+    }
+    .btn.primary {
+      background: #0078d4;
+      border-color: #38bdf8;
+      color: #ffffff;
+    }
+    .btn.linux {
+      background: #2563eb;
+      border-color: #60a5fa;
+      color: #ffffff;
+    }
+    .btn.firmware {
+      background: rgba(16, 185, 129, 0.16);
+      border-color: var(--success);
+      color: var(--success);
+    }
+    .btn.docs {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .section-header {
+      text-align: center;
+      margin: 56px 0 28px;
+    }
+    .section-header h2 {
+      font-size: 1.85rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .section-header p {
+      color: var(--text-secondary);
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 18px;
+    }
+    .card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+    }
+    .card h3 {
+      font-size: 1.14rem;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card p {
+      color: var(--text-secondary);
+      font-size: 0.94rem;
+      margin-bottom: 10px;
+    }
+    .card ul {
+      margin-left: 18px;
+      color: var(--text-secondary);
+      font-size: 0.91rem;
+    }
+    .card li {
+      margin-bottom: 6px;
+    }
+    .doc-card {
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: transform 0.14s ease, border-color 0.15s ease;
+    }
+    .doc-card:hover {
+      transform: translateY(-3px);
+      border-color: var(--accent);
+    }
+    .doc-card .go-link {
+      margin-top: 14px;
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--bg-secondary);
+      box-shadow: var(--shadow);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+    }
+    th, td {
+      padding: 13px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      background: var(--bg-tertiary);
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    td {
+      color: var(--text-secondary);
+    }
+    code {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.84em;
+      background: var(--bg-tertiary);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--accent);
+    }
+    .video-box {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      background: var(--bg-secondary);
+      box-shadow: var(--shadow);
+      margin-bottom: 28px;
+    }
+    .video-box video {
+      display: block;
+      width: 100%;
+      max-height: 620px;
+      background: #000;
+    }
+    .video-caption {
+      padding: 12px 18px;
+      background: var(--bg-tertiary);
+      border-top: 1px solid var(--border);
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .shot-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 18px;
+    }
+    .shot-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--bg-secondary);
+      box-shadow: var(--shadow);
+      transition: transform 0.14s ease, border-color 0.14s ease;
+    }
+    .shot-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent);
+    }
+    .shot-card img {
+      display: block;
+      width: 100%;
+      height: auto;
+      cursor: zoom-in;
+    }
+    .shot-caption {
+      padding: 10px 14px;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      background: var(--bg-tertiary);
+      border-top: 1px solid var(--border);
+    }
+    .footer {
+      margin-top: 64px;
+      padding-top: 28px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      color: var(--text-secondary);
+      font-size: 0.88rem;
+    }
+    .footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="site-topbar">
+    <a href="index.html" class="top-brand">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="26" height="26" style="flex-shrink:0;">
+          <rect x="8" y="8" width="112" height="112" rx="20" fill="#16181d" stroke="#38bdf8" stroke-width="4"/>
+          <rect x="20" y="22" width="18" height="18" rx="4" fill="#00aaff"/>
+          <rect x="42" y="22" width="18" height="18" rx="4" fill="#00aaff"/>
+          <rect x="64" y="22" width="18" height="18" rx="4" fill="#00aaff"/>
+          <rect x="20" y="44" width="18" height="18" rx="4" fill="#28dc64"/>
+          <rect x="42" y="44" width="18" height="18" rx="4" fill="#28dc64"/>
+          <rect x="64" y="44" width="18" height="18" rx="4" fill="#28dc64"/>
+          <rect x="20" y="66" width="18" height="18" rx="4" fill="#ffb400"/>
+          <rect x="42" y="66" width="18" height="18" rx="4" fill="#ffb400"/>
+          <rect x="64" y="66" width="18" height="18" rx="4" fill="#ffb400"/>
+          <rect x="20" y="88" width="18" height="18" rx="4" fill="#ff3c3c"/>
+          <rect x="42" y="88" width="18" height="18" rx="4" fill="#b450ff"/>
+          <rect x="64" y="88" width="18" height="18" rx="4" fill="#b450ff"/>
+          <circle cx="98" cy="31" r="10" fill="#262b36" stroke="#38bdf8" stroke-width="2.5"/>
+          <circle cx="98" cy="55" r="10" fill="#262b36" stroke="#38bdf8" stroke-width="2.5"/>
+          <rect x="86" y="72" width="24" height="34" rx="3" fill="#000000" stroke="#94a3b8" stroke-width="2"/>
+        </svg>
+      <span>DuckyDeck Studio</span>
+      <span class="brand-badge">v0.1.6</span>
+    </a>
+    <nav class="top-nav">
+      <a class="top-link active" href="index.html">🏠 Home</a>
+      <a class="top-link" href="user-guide.html">📖 User Guide</a>
+      <a class="top-link" href="oled-icons.html">🖼️ OLED Icons (204)</a>
+      <a class="top-link" href="rest-api.html">🔌 REST API</a>
+      <a class="top-link" href="architecture.html">🏗️ Architecture</a>
+    </nav>
+    <div class="top-actions">
+      <a class="top-link" href="https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.6" target="_blank" rel="noopener noreferrer">⬇ Releases</a>
+      <button class="theme-btn" style="padding:5px 10px;font-size:0.8rem;" onclick="toggleTheme()">🌓 Theme</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- Hero -->
+    <section class="hero" id="overview">
+      <div class="hero-eyebrow">🦆 Native Windows 10/11 &amp; Linux Studio for duckyPad Pro &amp; duckyPad (2020)</div>
+      <h1>Configure, Compile &amp; Automate Your duckyPad — Without Compromises</h1>
+      <p class="lead">
+        <strong>DuckyDeck Studio (<code>v0.1.6</code>)</strong> is an all-in-one native desktop configurator, <strong>DSVM v2 bytecode compiler</strong>,
+        <strong>Active-Window Auto-Switcher</strong>, and <strong>Smart Home / Host Automation Engine</strong> built in Rust &amp; Qt 6—paired with optional
+        <strong>Custom Firmware <code>v1.1.1</code></strong> unlocking <strong>204 monochrome pixel-art OLED icons</strong>, 4-way screen rotation, and 60 FPS hardware LED fades.
+      </p>
+
+      <div class="cta-row">
+        <a class="btn primary" href="https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.6/DuckyDeck-Studio-Setup-v0.1.6-x86_64.exe">🪟 Windows 10/11 Setup (.exe)</a>
+        <a class="btn" href="https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.6/duckydeck-studio-v0.1.6-windows-x86_64-portable.zip">📦 Windows Portable (.zip)</a>
+        <a class="btn linux" href="https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.6-x86_64.flatpak">🐧 Linux Flatpak (v0.1.6)</a>
+        <a class="btn firmware" href="https://duckydeckstudio.com/firmware/DDS_FW_1.1.1_eed0141e.bin">🔧 Custom Firmware v1.1.1 (.bin)</a>
+        <a class="btn docs" href="user-guide.html">📖 Read the Documentation →</a>
+      </div>
+
+      <p style="font-size:0.86rem;color:var(--text-secondary);margin-top:8px;">
+        100% compatible with existing microSD cards, <code>.dsb</code> scripts &amp; dekuNukem profiles &nbsp;•&nbsp;
+        <a href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">GitHub Repository</a> &nbsp;•&nbsp;
+        <a href="https://ko-fi.com/russellmilliner" target="_blank" rel="noopener noreferrer" style="color:#ff5e5b;font-weight:700;">☕ Support on Ko-fi</a>
+      </p>
+    </section>
+
+    <!-- What It Is -->
+    <div class="section-header" id="what-it-is">
+      <h2>What Is DuckyDeck Studio?</h2>
+      <p>
+        Created as a modern, single-binary replacement for the legacy Python Tkinter configurator and separate auto-switcher scripts, DuckyDeck Studio unites hardware programming and desktop automation in one fast native workspace.
+      </p>
+    </div>
+
+    <div class="grid-4">
+      <div class="card">
+        <h3>🎹 Visual Hardware Canvas &amp; IDE</h3>
+        <p>Interactive 4×5 RGB key matrix, dual rotary encoders, 32-channel expansion view, live 128×128 OLED simulator, and a built-in <strong>duckyScript 3 → DSVM v2</strong> compiler with real-time syntax checking.</p>
+      </div>
+      <div class="card">
+        <h3>🖼️ 204 Color &amp; Monochrome Icons</h3>
+        <p>Assign icons from 14 categories (Browsers, Word, Excel, PowerPoint, Photoshop, FreeCAD/Fusion 360, Home Automation, Dev, Media). Displays in color on your PC and crisp 1-bit pixel art on the physical OLED.</p>
+      </div>
+      <div class="card">
+        <h3>🪟 Native Window Auto-Switcher</h3>
+        <p>Automatically switches duckyPad profiles when you focus different apps or browser tabs on <strong>Windows 10/11</strong> (Win32) and <strong>Linux</strong> (KDE Plasma 6 Wayland D-Bus), with a 1-click crosshair window picker.</p>
+      </div>
+      <div class="card">
+        <h3>🚀 Host Launcher, Webhooks &amp; HA</h3>
+        <p>Launch desktop apps (<code>.lnk</code> / <code>.desktop</code>), trigger HTTP webhooks, and toggle <strong>Home Assistant</strong> entities directly over USB HID (<code>_GV31</code>) without burning keyboard shortcuts.</p>
+      </div>
+    </div>
+
+    <!-- How It Differs From Standard -->
+    <div class="section-header" id="how-it-differs">
+      <h2>How Is It Different From the Standard Configurator &amp; Firmware?</h2>
+      <p>
+        DuckyDeck Studio works out-of-the-box with stock <code>DPP_FW</code> firmware, and pairs with optional <strong>DuckyDeck Studio Firmware (<code>DDS_FW v1.1.1</code>)</strong> for hardware capabilities beyond standard firmware <code>3.3.5</code>.
+      </p>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Capability</th>
+            <th>Standard Setup (Python Configurator + Stock FW <code>3.3.5</code>)</th>
+            <th>DuckyDeck Studio (<code>v0.1.6</code>) + Custom Firmware (<code>DDS_FW v1.1.1</code>)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Desktop Architecture</strong></td>
+            <td>Separate Python 3 / Tkinter configurator + separate <code>duckypad_autoprofile.py</code> background script.</td>
+            <td>✅ <strong>Single Native Rust + Qt 6 Application</strong> on Windows 10/11 (<code>.exe</code>) &amp; Linux (Flatpak) with integrated System Tray daemon and zero Python dependencies.</td>
+          </tr>
+          <tr>
+            <td><strong>OLED Key Icons &amp; Labels</strong></td>
+            <td>ASCII characters only (<code>0x20..0x7E</code>, max 5 chars/line); emoji or Unicode symbols are stripped or corrupt multi-byte boundaries.</td>
+            <td>✅ <strong>204 Built-In Icons (Color UI + 1-Bit Monochrome Bitmaps)</strong>: Renders full-cell <code>16×16</code> icons, <code>10×10</code> top-icon + text captions, and inline glyphs on the hardware OLED while writing 4-char ASCII fallbacks for stock FW compatibility.</td>
+          </tr>
+          <tr>
+            <td><strong>OLED Screen Orientations</strong></td>
+            <td>2 orientations only: <code>0°</code> Portrait and <code>90°</code> Clockwise Landscape.</td>
+            <td>✅ <strong>Full 4-Way Rotation (<code>0°</code>, <code>90°</code>, <code>180°</code>, <code>270°</code>)</strong> on both the physical OLED screen and the floating Desktop OLED Companion Widget.</td>
+          </tr>
+          <tr>
+            <td><strong>Active-Window Auto-Switcher</strong></td>
+            <td>Requires running a separate Python app; limited Wayland support on modern Linux desktops.</td>
+            <td>✅ <strong>Built-In Cross-Platform Auto-Switcher</strong>: Native Win32 foreground tracking on Windows 10/11 &amp; KWin Wayland D-Bus on Linux, regex title matching, crosshair window picker, and protected Fallback Profile.</td>
+          </tr>
+          <tr>
+            <td><strong>Launching Apps &amp; Smart Home Control</strong></td>
+            <td>Must type OS shortcut combos (e.g., <code>GUI r</code>) that can collide with active applications or games.</td>
+            <td>✅ <strong>Zero-Conflict USB HID Triggers (<code>_GV31</code>)</strong>: Launch apps from Start Menu / XDG, fire HTTP/JSON webhooks, and browse/toggle <strong>Home Assistant</strong> entities directly.</td>
+          </tr>
+          <tr>
+            <td><strong>Hardware LED Transitions &amp; OLED Speed</strong></td>
+            <td>Stepwise RGB jumps only (<code>SWC_SET</code>); full 1024-byte SPI screen redraws; SD card FAT32 file writes on every profile switch (20–200 ms stall).</td>
+            <td>✅ <strong>Hardware 60 FPS <code>SWC_FADE_TO</code> Opcode (<code>89</code>)</strong>, SSD1306 SPI DMA dirty-page tracking, sub-ms USB HID spin-retry, and instant ESP32 NVS flash wear-leveling profile cache.</td>
+          </tr>
+          <tr>
+            <td><strong>Remote Control &amp; Automation API</strong></td>
+            <td>HID serial commands only.</td>
+            <td>✅ <strong>Embedded HTTP REST API Server (<code>/api/v1/*</code>)</strong> with Bearer auth &amp; OpenAPI 3.0.3 spec, plus outbound per-profile and global Profile Change Webhooks.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Documentation Area Hub -->
+    <div class="section-header" id="docs-hub">
+      <h2>📚 Documentation &amp; Reference Area</h2>
+      <p>Everything is organized into dedicated, fast-loading reference pages:</p>
+    </div>
+
+    <div class="grid-4">
+      <a class="card doc-card" href="user-guide.html">
+        <div>
+          <h3>📖 User Manual &amp; Guide</h3>
+          <p>Step-by-step installation for Windows 10/11 &amp; Linux, 3-column workspace tour, profile templates, DuckyScript 3 IDE, App Launcher, Webhooks, and Auto-Switcher setup.</p>
+        </div>
+        <div class="go-link">Open User Guide →</div>
+      </a>
+
+      <a class="card doc-card" href="oled-icons.html">
+        <div>
+          <h3>🖼️ OLED Icon Library (204)</h3>
+          <p>Interactive, searchable catalog of all 204 icons across 15 categories showing side-by-side <strong>Color Desktop UI</strong> and <strong>1-Bit Monochrome (<code>16×16</code> &amp; <code>10×10</code>)</strong> bitmaps.</p>
+        </div>
+        <div class="go-link">Browse All 204 Icons →</div>
+      </a>
+
+      <a class="card doc-card" href="rest-api.html">
+        <div>
+          <h3>🔌 HTTP REST API Reference</h3>
+          <p>Complete documentation for the built-in <code>/api/v1/*</code> HTTP server, Bearer token security, Home Assistant / webhook payloads, and OpenAPI / Swagger specs.</p>
+        </div>
+        <div class="go-link">View REST API Docs →</div>
+      </a>
+
+      <a class="card doc-card" href="architecture.html">
+        <div>
+          <h3>🏗️ System Architecture</h3>
+          <p>Deep-dive engineering reference covering the Rust + CXX-Qt 0.7 bridge, USB HID/MSC protocol, DSVM v2 bytecode compiler, and <code>DDS_FW v1.1.1</code> internals.</p>
+        </div>
+        <div class="go-link">Explore Architecture →</div>
+      </a>
+    </div>
+
+    <!-- Video & Screenshots -->
+    <div class="section-header" id="showcase">
+      <h2>🎬 Video Tour &amp; Application Screenshots</h2>
+      <p>Watch the 1080p walkthrough video or click any screenshot below to inspect the interface in full resolution.</p>
+    </div>
+
+    <div class="video-box">
+      <video controls preload="metadata" poster="screenshots/01-dolphin-overview.png">
+        <source src="duckydeck-studio-demo.mp4" type="video/mp4" />
+        Your browser does not support HTML5 video. <a href="duckydeck-studio-demo.mp4">Download the MP4 video</a>.
+      </video>
+      <div class="video-caption">
+        <span><strong>🎥 Full Walkthrough Video (1080p MP4)</strong> — Profile switching, Color Picker, Web API Builder, App Launcher, Auto-Switcher, and System Event Log.</span>
+        <a href="duckydeck-studio-demo.mp4" download style="color:var(--accent);font-weight:700;text-decoration:none;">⬇ Download MP4</a>
+      </div>
+    </div>
+
+    <div class="shot-grid">
+      <div class="shot-card">
+        <a href="screenshots/01-dolphin-overview.png" target="_blank"><img src="screenshots/01-dolphin-overview.png" alt="3-Column Workspace Overview" loading="lazy" /></a>
+        <div class="shot-caption"><strong>1. 3-Column Workspace &amp; DSVM v2 IDE</strong> — Profile sidebar, 20-key RGB matrix, 128×128 OLED preview, and live syntax compiler.</div>
+      </div>
+      <div class="shot-card">
+        <a href="screenshots/05-obs-studio-web-api.png" target="_blank"><img src="screenshots/05-obs-studio-web-api.png" alt="Web API &amp; Home Assistant Builder" loading="lazy" /></a>
+        <div class="shot-caption"><strong>2. Web API &amp; Home Assistant Builder</strong> — Trigger HTTP/JSON webhooks and Home Assistant services directly from any key.</div>
+      </div>
+      <div class="shot-card">
+        <a href="screenshots/09-app-launcher.png" target="_blank"><img src="screenshots/09-app-launcher.png" alt="Launch Application Builder" loading="lazy" /></a>
+        <div class="shot-caption"><strong>3. Launch Application Builder</strong> — Search installed Windows Start Menu / Linux desktop apps and assign 1-bit monochrome OLED icons.</div>
+      </div>
+      <div class="shot-card">
+        <a href="screenshots/04-color-picker-palette.png" target="_blank"><img src="screenshots/04-color-picker-palette.png" alt="Custom Color Picker &amp; Palettes" loading="lazy" /></a>
+        <div class="shot-caption"><strong>4. Key &amp; Profile Color Picker</strong> — 2D HSV square, RGB sliders, Saved Colors palette, and automatic Used Colors discovery.</div>
+      </div>
+      <div class="shot-card">
+        <a href="screenshots/10-wayland-auto-switcher.png" target="_blank"><img src="screenshots/10-wayland-auto-switcher.png" alt="Window Auto-Switcher Rules" loading="lazy" /></a>
+        <div class="shot-caption"><strong>5. Window Auto-Switcher</strong> — Automatic profile switching for active windows and browser tabs with crosshair window picker.</div>
+      </div>
+      <div class="shot-card">
+        <a href="screenshots/11-system-event-log.png" target="_blank"><img src="screenshots/11-system-event-log.png" alt="System Event Log" loading="lazy" /></a>
+        <div class="shot-caption"><strong>6. Live System Event Log</strong> — Filterable real-time diagnostics across USB HID, Auto-Switcher, Webhooks, App Launches, and SD Sync.</div>
+      </div>
+      <div class="shot-card">
+        <a href="screenshots/02-google-chrome.png" target="_blank"><img src="screenshots/02-google-chrome.png" alt="Google Chrome Profile" loading="lazy" /></a>
+        <div class="shot-caption"><strong>7. Web Browser Profile</strong> — Tab management, DevTools, bookmarks, and navigation macros with dedicated browser icons.</div>
+      </div>
+      <div class="shot-card">
+        <a href="screenshots/03-vscode-ide.png" target="_blank"><img src="screenshots/03-vscode-ide.png" alt="VS Code Developer Profile" loading="lazy" /></a>
+        <div class="shot-caption"><strong>8. VS Code &amp; IDE Profile</strong> — Build, debug, Git branch/push, terminal, and refactoring macros.</div>
+      </div>
+      <div class="shot-card">
+        <a href="screenshots/07-blender-3d.png" target="_blank"><img src="screenshots/07-blender-3d.png" alt="3D CAD &amp; Blender Profile" loading="lazy" /></a>
+        <div class="shot-caption"><strong>9. 3D CAD / Blender Profile</strong> — Viewport navigation, extrude/fillet/chamfer tools, and rendering shortcuts.</div>
+      </div>
+      <div class="shot-card">
+        <a href="screenshots/08-spotify-media.png" target="_blank"><img src="screenshots/08-spotify-media.png" alt="Media &amp; Audio Control Profile" loading="lazy" /></a>
+        <div class="shot-caption"><strong>10. Media &amp; Audio Profile</strong> — Transport controls, rotary encoder volume/scrubbing, and microphone mute toggles.</div>
+      </div>
+      <div class="shot-card">
+        <a href="screenshots/06-konsole-terminal.png" target="_blank"><img src="screenshots/06-konsole-terminal.png" alt="Terminal &amp; DevOps Profile" loading="lazy" /></a>
+        <div class="shot-caption"><strong>11. Terminal &amp; DevOps Profile</strong> — Split panes, SSH sessions, container commands, and shell snippets.</div>
+      </div>
+      <div class="shot-card">
+        <a href="screenshots/12-about-duckydeck.png" target="_blank"><img src="screenshots/12-about-duckydeck.png" alt="About DuckyDeck Studio" loading="lazy" /></a>
+        <div class="shot-caption"><strong>12. About &amp; Credits</strong> — Version metadata, firmware status, and special thanks to dekuNukem.</div>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <div>
+        <strong>DuckyDeck Studio v0.1.6</strong> (Custom Firmware <code>v1.1.1</code>) • Created by Russell Milliner • Licensed under GPL-3.0<br/>
+        Special thanks to <a href="https://github.com/dekuNukem" target="_blank" rel="noopener noreferrer">dekuNukem</a> for creating the <a href="https://www.duckypad.com" target="_blank" rel="noopener noreferrer">duckyPad &amp; duckyPad Pro</a> (<a href="https://www.tindie.com/stores/dekunukem/" target="_blank" rel="noopener noreferrer">Official Tindie Store</a>).
+      </div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;">
+        <a href="user-guide.html">User Guide</a>
+        <a href="oled-icons.html">OLED Icons (204)</a>
+        <a href="rest-api.html">REST API</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="https://github.com/russellmilliner/duckydeck-studio" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://ko-fi.com/russellmilliner" target="_blank" rel="noopener noreferrer">Ko-fi</a>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    function toggleTheme() {
+      const htmlEl = document.documentElement;
+      htmlEl.setAttribute("data-theme", htmlEl.getAttribute("data-theme") === "dark" ? "light" : "dark");
+    }
+  </script>
+</body>
+</html>

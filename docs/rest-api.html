@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HTTP REST API Reference (/api/v1/*) — DuckyDeck Studio v0.1.6</title>
+  <style>
+    :root[data-theme="dark"] {
+      --bg-primary: #0f1116;
+      --bg-secondary: #161920;
+      --bg-tertiary: #1e222d;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --accent: #38bdf8;
+      --accent-soft: rgba(56, 189, 248, 0.14);
+      --border: #262b38;
+      --code-bg: #0b0d12;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    }
+    :root[data-theme="light"] {
+      --bg-primary: #f8fafc;
+      --bg-secondary: #ffffff;
+      --bg-tertiary: #f1f5f9;
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --accent: #0284c7;
+      --accent-soft: rgba(2, 132, 199, 0.12);
+      --border: #e2e8f0;
+      --code-bg: #f1f5f9;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.65;
+      display: flex;
+      min-height: 100vh;
+    }
+    .brand-badge {
+      font-size: 0.72rem;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-weight: 700;
+    }
+    .theme-btn {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 7px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    
+    .site-topbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 54px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 22px;
+      z-index: 200;
+      gap: 12px;
+    }
+    .site-topbar .top-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text-primary);
+      font-weight: 800;
+      font-size: 1.02rem;
+      white-space: nowrap;
+    }
+    .site-topbar .top-nav {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .site-topbar .top-link {
+      text-decoration: none;
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 6px 11px;
+      border-radius: 7px;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .site-topbar .top-link:hover {
+      color: var(--text-primary);
+      background: var(--bg-tertiary);
+    }
+    .site-topbar .top-link.active {
+      color: var(--accent);
+      background: var(--accent-soft);
+      border-color: rgba(56, 189, 248, 0.35);
+    }
+    .site-topbar .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sidebar {
+      top: 54px !important;
+      height: calc(100vh - 54px) !important;
+    }
+    .main-content {
+      margin-top: 54px !important;
+    }
+    section {
+      scroll-margin-top: 74px !important;
+    }
+    @media (max-width: 900px) {
+      .site-topbar {
+        position: static;
+        height: auto;
+        padding: 12px 16px;
+        flex-wrap: wrap;
+      }
+      .sidebar {
+        top: 0 !important;
+        height: auto !important;
+      }
+      .main-content {
+        margin-top: 0 !important;
+      }
+    }
+
+    .sidebar {
+      width: 280px;
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border);
+      position: fixed;
+      left: 0;
+      display: flex;
+      flex-direction: column;
+      z-index: 100;
+    }
+    .nav-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 10px 24px;
+    }
+    .nav-group-title {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-secondary);
+      font-weight: 700;
+      padding: 10px 10px 4px;
+    }
+    .nav-link {
+      display: block;
+      padding: 7px 10px;
+      border-radius: 7px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.86rem;
+    }
+    .nav-link:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+    .main-content {
+      margin-left: 280px;
+      flex: 1;
+      max-width: 1060px;
+      padding: 36px 44px 80px;
+    }
+    h1 { font-size: 1.9rem; margin-bottom: 10px; }
+    h2 {
+      font-size: 1.4rem;
+      padding-bottom: 8px;
+      margin: 34px 0 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    p { color: var(--text-secondary); margin-bottom: 12px; }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 18px;
+      overflow-x: auto;
+      margin: 12px 0 18px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.85rem;
+      color: var(--text-primary);
+    }
+    code {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.84em;
+      background: var(--bg-tertiary);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--accent);
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin: 14px 0 22px;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; background: var(--bg-secondary); }
+    th, td { padding: 10px 13px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: var(--bg-tertiary); color: var(--text-primary); font-weight: 700; }
+    td { color: var(--text-secondary); }
+    @media (max-width: 900px) {
+      body { flex-direction: column; }
+      .sidebar { position: static; width: 100%; }
+      .main-content { margin-left: 0; padding: 24px 18px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="site-topbar">
+    <a href="index.html" class="top-brand">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="26" height="26" style="flex-shrink:0;">
+          <rect x="8" y="8" width="112" height="112" rx="20" fill="#16181d" stroke="#38bdf8" stroke-width="4"/>
+          <rect x="20" y="22" width="18" height="18" rx="4" fill="#00aaff"/>
+          <rect x="42" y="22" width="18" height="18" rx="4" fill="#00aaff"/>
+          <rect x="64" y="22" width="18" height="18" rx="4" fill="#00aaff"/>
+          <rect x="20" y="44" width="18" height="18" rx="4" fill="#28dc64"/>
+          <rect x="42" y="44" width="18" height="18" rx="4" fill="#28dc64"/>
+          <rect x="64" y="44" width="18" height="18" rx="4" fill="#28dc64"/>
+          <rect x="20" y="66" width="18" height="18" rx="4" fill="#ffb400"/>
+          <rect x="42" y="66" width="18" height="18" rx="4" fill="#ffb400"/>
+          <rect x="64" y="66" width="18" height="18" rx="4" fill="#ffb400"/>
+          <rect x="20" y="88" width="18" height="18" rx="4" fill="#ff3c3c"/>
+          <rect x="42" y="88" width="18" height="18" rx="4" fill="#b450ff"/>
+          <rect x="64" y="88" width="18" height="18" rx="4" fill="#b450ff"/>
+          <circle cx="98" cy="31" r="10" fill="#262b36" stroke="#38bdf8" stroke-width="2.5"/>
+          <circle cx="98" cy="55" r="10" fill="#262b36" stroke="#38bdf8" stroke-width="2.5"/>
+          <rect x="86" y="72" width="24" height="34" rx="3" fill="#000000" stroke="#94a3b8" stroke-width="2"/>
+        </svg>
+      <span>DuckyDeck Studio</span>
+      <span class="brand-badge">v0.1.6</span>
+    </a>
+    <nav class="top-nav">
+      <a class="top-link" href="index.html">🏠 Home</a>
+      <a class="top-link" href="user-guide.html">📖 User Guide</a>
+      <a class="top-link" href="oled-icons.html">🖼️ OLED Icons (204)</a>
+      <a class="top-link active" href="rest-api.html">🔌 REST API</a>
+      <a class="top-link" href="architecture.html">🏗️ Architecture</a>
+    </nav>
+    <div class="top-actions">
+      <a class="top-link" href="https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.6" target="_blank" rel="noopener noreferrer">⬇ Releases</a>
+      <button class="theme-btn" style="padding:5px 10px;font-size:0.8rem;" onclick="toggleTheme()">🌓 Theme</button>
+    </div>
+  </header>
+
+  <aside class="sidebar">
+    <nav class="nav-scroll">
+      <div class="nav-group-title">REST API Reference</div>
+      <a class="nav-link" href="#overview">🔌 Overview &amp; Specs</a>
+      <a class="nav-link" href="#auth">🔐 Authentication &amp; Security</a>
+      <a class="nav-link" href="#endpoints">📋 Endpoint Summary Table</a>
+      <a class="nav-link" href="#examples">💻 curl &amp; Automation Examples</a>
+      <a class="nav-link" href="#webhooks">🔔 Profile Change Webhooks</a>
+      <div class="nav-group-title">Machine-Readable Specs</div>
+      <a class="nav-link" href="openapi.yaml" target="_blank">📄 OpenAPI 3.0.3 (YAML)</a>
+      <a class="nav-link" href="openapi.json" target="_blank">📄 OpenAPI 3.0.3 (JSON)</a>
+      <a class="nav-link" href="swagger.json" target="_blank">📄 Swagger (JSON)</a>
+      <a class="nav-link" href="REST_API.md" target="_blank">📝 Raw Markdown (REST_API.md)</a>
+    </nav>
+  </aside>
+
+  <main class="main-content">
+    <section id="overview">
+      <h1>🔌 HTTP REST API &amp; Webhook Reference (<code>/api/v1/*</code>)</h1>
+      <p>
+        DuckyDeck Studio (<code>v0.1.6</code> for <strong>Windows 10/11</strong> &amp; <strong>Linux</strong>) includes an embedded, low-latency HTTP/1.1 REST API server
+        (<code>src/api_server.rs</code>) that exposes full programmatic control over your duckyPad Pro, profiles, keys, DuckyScript 3 compiler,
+        Persistent Global Variables (<code>_GV0.._GV31</code>), live RGB LEDs, and microSD card sync.
+      </p>
+      <p>
+        <strong>Machine-Readable Specifications:</strong>
+        <a href="openapi.yaml" style="color:var(--accent);"><code>openapi.yaml</code></a> &nbsp;•&nbsp;
+        <a href="openapi.json" style="color:var(--accent);"><code>openapi.json</code></a> &nbsp;•&nbsp;
+        <a href="swagger.json" style="color:var(--accent);"><code>swagger.json</code></a> &nbsp;•&nbsp;
+        <a href="REST_API.md" style="color:var(--accent);"><code>REST_API.md</code></a>
+      </p>
+    </section>
+
+    <section id="auth">
+      <h2>🔐 Authentication, Persistence &amp; Security</h2>
+      <p>
+        Enable the server in <strong>☰ → Settings → HTTP REST API Server</strong> (default listen address: <code>127.0.0.1:28491</code>, disabled by default).
+        Pass your 160-bit token (<code>ddk_...</code>) via either header:
+      </p>
+      <pre><code>Authorization: Bearer ddk_0123456789abcdef0123456789abcdef01234567
+# or
+X-API-Token: ddk_0123456789abcdef0123456789abcdef01234567</code></pre>
+      <p>
+        <strong>Credential Storage:</strong> Stored in the OS secret store (KDE Wallet / libsecret on Linux; <strong>Windows Credential Manager</strong> on Windows 10/11) with fallback to
+        <code>~/.config/duckydeck-studio/kwin_rules.json</code> (Linux) or <code>%APPDATA%\duckydeck-studio\kwin_rules.json</code> (Windows).
+      </p>
+    </section>
+
+    <section id="endpoints">
+      <h2>📋 Complete Endpoint Summary (<code>/api/v1/*</code>)</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Method &amp; Path</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>GET /api/v1/health</code></td><td>Unauthenticated liveness probe (<code>{"ok":true,"service":"duckydeck-studio","version":"0.1.6"}</code>).</td></tr>
+            <tr><td><code>GET /api/v1/openapi.json</code> | <code>/swagger.json</code> | <code>/openapi.yaml</code></td><td>Unauthenticated OpenAPI 3.0.3 / Swagger specification.</td></tr>
+            <tr><td><code>GET /api/v1/status</code></td><td>Full device connection, firmware (<code>v1.1.1</code>), active profile, SD sync, and auto-switcher state.</td></tr>
+            <tr><td><code>GET /api/v1/profiles</code></td><td>List all profiles and their properties.</td></tr>
+            <tr><td><code>POST /api/v1/profiles</code></td><td>Create a new profile (<code>{"name":"Streaming"}</code>) or duplicate an existing profile (<code>{"name":"Copy","duplicateFrom":1}</code>).</td></tr>
+            <tr><td><code>POST /api/v1/profiles/select</code></td><td>Select active profile and switch hardware (<code>{"profile":2,"switchHardware":true}</code>).</td></tr>
+            <tr><td><code>POST /api/v1/profiles/reorder</code></td><td>Move profile (<code>{"fromProfile":3,"toProfile":1}</code>) and update Auto-Switcher rules.</td></tr>
+            <tr><td><code>GET /api/v1/profiles/{num}</code></td><td>Get full profile details, webhook config, and all 26 slots.</td></tr>
+            <tr><td><code>PUT</code> | <code>PATCH /api/v1/profiles/{num}</code></td><td>Update profile properties (<code>name</code>, <code>bgColor</code>, <code>oledRotation</code>, <code>widgetRotation</code>, <code>webhook</code>).</td></tr>
+            <tr><td><code>DELETE /api/v1/profiles/{num}</code></td><td>Delete profile <code>{num}</code> (Fallback Profile is protected).</td></tr>
+            <tr><td><code>GET /api/v1/profiles/{num}/slots/{slot}</code></td><td>Get configuration and scripts for slot <code>1..26</code>.</td></tr>
+            <tr><td><code>PUT</code> | <code>POST</code> | <code>PATCH /api/v1/profiles/{num}/slots/{slot}</code></td><td>Program a slot's labels, icons, RGB color, DuckyScript 3 code, or host action.</td></tr>
+            <tr><td><code>POST /api/v1/profiles/{num}/slots/{slot}/trigger</code></td><td>Remotely execute the slot's configured host action (<code>@HOST_APP</code>, <code>@HA_ACTION</code>, <code>@WEBHOOK</code>).</td></tr>
+            <tr><td><code>POST /api/v1/dsvm/compile</code></td><td>Validate and compile DuckyScript 3 source into <code>.dsb</code> bytecode + IEEE CRC32.</td></tr>
+            <tr><td><code>GET</code> | <code>PUT</code> | <code>POST /api/v1/pgv</code></td><td>Read or write Persistent Global Variables (<code>_GV0.._GV31</code>).</td></tr>
+            <tr><td><code>POST /api/v1/leds</code></td><td>Live-override per-key RGB LEDs or restore profile colors (<code>{"restore":true}</code>).</td></tr>
+            <tr><td><code>POST /api/v1/sd/sync</code> | <code>/reload</code> | <code>/mount</code> | <code>/unmount</code></td><td>Sync <code>.dsb</code> bytecode &amp; profiles to microSD, reload, mount, or safely unmount.</td></tr>
+            <tr><td><code>POST /api/v1/device/sleep</code> | <code>/wake</code> | <code>/reboot</code> | <code>/sync-rtc</code></td><td>Sleep, wake, soft-reboot, or synchronize hardware RTC clock.</td></tr>
+            <tr><td><code>GET /api/v1/logs</code></td><td>Retrieve recent system, HID, script, and automation event logs.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="examples">
+      <h2>💻 Quick <code>curl</code> Examples</h2>
+      <pre><code>export DDK_TOKEN="ddk_your_token_here"
+export DDK_URL="http://127.0.0.1:28491/api/v1"
+
+# 1. Switch active profile on hardware to Profile 2
+curl -s -X POST "$DDK_URL/profiles/select" \
+  -H "Authorization: Bearer $DDK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"profile": 2, "switchHardware": true}'
+
+# 2. Program Profile 1, Key 1 with an OLED icon, label, color, and DuckyScript 3 macro
+curl -s -X PUT "$DDK_URL/profiles/1/slots/1" \
+  -H "Authorization: Bearer $DDK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "labelLine1": "🌐",
+    "labelLine2": "WEB",
+    "colorHex": "#00A8FF",
+    "scriptContent": "CTRL t\nDELAY 100\nSTRINGLN https://duckydeckstudio.com"
+  }'
+
+# 3. Live-override Key 1..3 RGB LEDs
+curl -s -X POST "$DDK_URL/leds" \
+  -H "Authorization: Bearer $DDK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"leds": [{"slot": 1, "colorHex": "#10b981"}, {"slot": 2, "colorHex": "#38bdf8"}]}'</code></pre>
+    </section>
+
+    <section id="webhooks">
+      <h2>🔔 Outbound Profile Change Webhooks</h2>
+      <p>
+        Configure per-profile webhooks in <strong>Profile Properties</strong> or a global webhook in <strong>Settings</strong> to notify Home Assistant, Node-RED, or custom servers whenever the active profile changes (supports template variables <code>{{profile_number}}</code>, <code>{{profile_name}}</code>, <code>{{previous_profile_number}}</code>, <code>{{source}}</code>, <code>{{device_serial}}</code>, and <code>{{timestamp}}</code>).
+      </p>
+    </section>
+  </main>
+
+  <script>
+    function toggleTheme() {
+      const htmlEl = document.documentElement;
+      htmlEl.setAttribute("data-theme", htmlEl.getAttribute("data-theme") === "dark" ? "light" : "dark");
+    }
+  </script>
+</body>
+</html>

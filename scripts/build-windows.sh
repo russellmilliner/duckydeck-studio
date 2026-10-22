@@ -145,8 +145,7 @@ EOF
 # Copy docs and firmware assets
 mkdir -p "$STAGE_DIR/docs" "$STAGE_DIR/firmware/releases"
 cp "$REPO_ROOT/README.md" "$STAGE_DIR/README.md"
-cp "$REPO_ROOT/docs/user-guide.html" "$STAGE_DIR/docs/"
-cp "$REPO_ROOT/docs/architecture.html" "$STAGE_DIR/docs/"
+cp "$REPO_ROOT/docs/"*.html "$STAGE_DIR/docs/"
 cp "$REPO_ROOT/firmware/releases/"*.bin "$STAGE_DIR/firmware/releases/"
 
 export WINEPREFIX="${WINEPREFIX:-$HOME/.local/share/llu-wintoolchain/wineprefix}"
