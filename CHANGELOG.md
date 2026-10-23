@@ -2,6 +2,11 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.9](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.9) — 2026-10-22
+
+### Changes
+- docs(changelog): add v0.1.8 dependency changelog (5c26a79)
+
 ## [v0.1.8](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.8) — 2026-10-22
 
 ### 📦 Bumped Dependencies (20 packages)

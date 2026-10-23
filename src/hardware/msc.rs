@@ -579,6 +579,9 @@ pub fn build_hid_file_command_packet(seq: u8, cmd: u8, payload: &[u8]) -> [u8; 6
     tx
 }
 
+const HID_CMD_LIST_FILES_V1: u8 = 0x0A;
+const HID_CMD_OP_RESUME_V1: u8 = 0x0C;
+
 fn hid_txrx(
     dev: &crate::hardware::storage::DuckyHidDevice,
     seq: &mut u8,
@@ -608,7 +611,81 @@ fn hid_txrx(
     Ok(rx)
 }
 
-fn hid_read_file_bytes(
+fn query_dp20_fw_mode(dev: &crate::hardware::storage::DuckyHidDevice, seq: &mut u8) -> (u8, bool, String) {
+    crate::hardware::storage::drain_pending_hid_reports(dev);
+    if let Ok(rx) = hid_txrx(dev, seq, 0x00, &[], 500) {
+        let major = rx[3];
+        let minor = rx[4];
+        let patch = rx[5];
+        let is_dds = rx[20] == b'D' && rx[21] == b'D' && rx[22] == b'S';
+        return (major, is_dds, format!("{major}.{minor}.{patch}"));
+    }
+    (1, false, String::new())
+}
+
+fn hid_list_dir_v1(
+    dev: &crate::hardware::storage::DuckyHidDevice,
+    seq: &mut u8,
+    remote_dir: &str,
+) -> Vec<(u8, String)> {
+    let mut out = Vec::new();
+    let mut payload = remote_dir.as_bytes().to_vec();
+    payload.push(0);
+    let Ok(mut rx) = hid_txrx(dev, seq, HID_CMD_LIST_FILES_V1, &payload, 1000) else {
+        return out;
+    };
+    for _ in 0..256 {
+        if rx[2] != 0 {
+            break;
+        }
+        let ftype = rx[3];
+        let raw = &rx[4..];
+        let nul = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
+        if nul > 0 {
+            let name = String::from_utf8_lossy(&raw[..nul]).trim().to_string();
+            if !name.is_empty() && !name.starts_with('.') {
+                out.push((ftype, name));
+            }
+        }
+        let Ok(next_rx) = hid_txrx(dev, seq, HID_CMD_OP_RESUME_V1, &[], 1000) else {
+            break;
+        };
+        rx = next_rx;
+    }
+    out
+}
+
+fn hid_read_file_bytes_v1(
+    dev: &crate::hardware::storage::DuckyHidDevice,
+    seq: &mut u8,
+    remote_path: &str,
+) -> Result<Vec<u8>, String> {
+    let mut payload = remote_path.as_bytes().to_vec();
+    payload.push(0);
+    let mut rx = hid_txrx(dev, seq, HID_CMD_READ_FILE, &payload, 1200)?;
+    let mut out = Vec::new();
+    for _ in 0..2048 {
+        if rx[2] != 0 {
+            break;
+        }
+        let raw = &rx[3..63];
+        let nul = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
+        if nul > 0 {
+            out.extend_from_slice(&raw[..nul]);
+        }
+        if nul < 60 {
+            let _ = hid_txrx(dev, seq, HID_CMD_OP_RESUME_V1, &[], 800);
+            break;
+        }
+        match hid_txrx(dev, seq, HID_CMD_OP_RESUME_V1, &[], 1200) {
+            Ok(next_rx) => rx = next_rx,
+            Err(_) => break,
+        }
+    }
+    Ok(out)
+}
+
+fn hid_read_file_bytes_evo(
     dev: &crate::hardware::storage::DuckyHidDevice,
     seq: &mut u8,
     remote_path: &str,
@@ -622,17 +699,41 @@ fn hid_read_file_bytes(
     )?;
     let mut out = Vec::new();
     for _ in 0..2048 {
-        let rx = hid_txrx(dev, seq, HID_CMD_READ_FILE, &[], 1200)?;
-        let chunk_len = (rx[1] as usize).min(60);
-        if chunk_len > 0 {
-            out.extend_from_slice(&rx[3..3 + chunk_len]);
-        }
-        if rx[2] == HID_STATUS_EOF || chunk_len == 0 {
+        let mut tx = [0u8; 64];
+        tx[0] = HID_REPORT_ID_OUT;
+        tx[1] = 0;
+        tx[2] = HID_CMD_READ_FILE;
+        dev.write(&tx)
+            .map_err(|e| format!("HID write error (READ_FILE): {e}"))?;
+        let mut rx = [0u8; 64];
+        let n = dev
+            .read_timeout(&mut rx, 1200)
+            .map_err(|e| format!("HID read error (READ_FILE): {e}"))?;
+        if n == 0 {
             break;
         }
+        let chunk_len = (rx[2] as usize).min(60);
+        if chunk_len == 0 {
+            break;
+        }
+        out.extend_from_slice(&rx[3..3 + chunk_len]);
     }
-    let _ = hid_txrx(dev, seq, HID_CMD_CLOSE_FILE, &[], 800);
     Ok(out)
+}
+
+fn hid_read_file_bytes_auto(
+    dev: &crate::hardware::storage::DuckyHidDevice,
+    seq: &mut u8,
+    remote_path: &str,
+    use_evo_protocol: bool,
+) -> Result<Vec<u8>, String> {
+    if use_evo_protocol {
+        hid_read_file_bytes_evo(dev, seq, remote_path)
+            .or_else(|_| hid_read_file_bytes_v1(dev, seq, remote_path))
+    } else {
+        hid_read_file_bytes_v1(dev, seq, remote_path)
+            .or_else(|_| hid_read_file_bytes_evo(dev, seq, remote_path))
+    }
 }
 
 fn hid_write_file_bytes(
@@ -649,7 +750,20 @@ fn hid_write_file_bytes(
         1500,
     )?;
     for chunk in content.chunks(60) {
-        let _ = hid_txrx(dev, seq, HID_CMD_WRITE_FILE, chunk, 1500)?;
+        let mut tx = [0u8; 64];
+        tx[0] = HID_REPORT_ID_OUT;
+        tx[1] = chunk.len() as u8;
+        tx[2] = HID_CMD_WRITE_FILE;
+        tx[3..3 + chunk.len()].copy_from_slice(chunk);
+        dev.write(&tx)
+            .map_err(|e| format!("HID write error (WRITE_FILE): {e}"))?;
+        let mut rx = [0u8; 64];
+        let n = dev
+            .read_timeout(&mut rx, 1500)
+            .map_err(|e| format!("HID read error (WRITE_FILE): {e}"))?;
+        if n == 0 || rx[2] == HID_STATUS_ERROR {
+            return Err("duckyPad reported HID error while writing file chunk".to_string());
+        }
     }
     let _ = hid_txrx(dev, seq, HID_CMD_CLOSE_FILE, &[], 1200)?;
     Ok(())
@@ -662,6 +776,15 @@ pub fn read_duckypad_2020_profiles_via_hid_with_progress<F>(
 where
     F: FnMut(i32, &str, &str),
 {
+    struct HidSyncGuard;
+    impl Drop for HidSyncGuard {
+        fn drop(&mut self) {
+            MSC_SYNC_IN_PROGRESS.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    MSC_SYNC_IN_PROGRESS.store(true, std::sync::atomic::Ordering::SeqCst);
+    let _hid_sync_guard = HidSyncGuard;
+
     let serial_opt = if serial.is_empty() || serial == "-" {
         None
     } else {
@@ -682,15 +805,18 @@ where
         .lock()
         .map_err(|_| "HID lock poisoned".to_string())?;
     let dev = open_duckypad_hid_for_serial(serial_opt)?;
+    let (fw_major, is_dds_fw, fw_ver_str) = query_dp20_fw_mode(&dev, &mut seq);
+    let use_evo_protocol = fw_major >= 2 || is_dds_fw;
 
-    // Discover profile folders via HID_CMD_DUMP_SD (or fallback to scanning profile1..profile32)
+    // Discover profile folders via HID_CMD_LIST_FILES (v1.x) or HID_CMD_DUMP_SD (EVO/DDS)
     on_progress(
         35,
         "Step 2/3: Scanning duckyPad (2020) microSD card over USB HID...",
         "• Querying profile directories and config.txt files over USB HID...",
     );
 
-    // Clear old profile directories in staging_dir before dumping fresh ones
+    // Clear old profile directories and stale profile_info.txt in staging_dir before dumping fresh ones
+    let _ = fs::remove_file(staging_dir.join("profile_info.txt"));
     if let Ok(entries) = fs::read_dir(&staging_dir) {
         for entry in entries.flatten() {
             let p = entry.path();
@@ -704,38 +830,62 @@ where
         }
     }
 
-    // Try reading profile_info.txt first if present
-    if let Ok(info_bytes) = hid_read_file_bytes(&dev, &mut seq, "/profile_info.txt") {
-        if !info_bytes.is_empty() {
-            let _ = fs::write(staging_dir.join("profile_info.txt"), &info_bytes);
+    let mut discovered_dirs: Vec<String> = Vec::new();
+    if !use_evo_protocol {
+        for (ftype, name) in hid_list_dir_v1(&dev, &mut seq, "") {
+            if ftype == 1
+                && parse_profile_folder_name(&name).is_some()
+                && !discovered_dirs.contains(&name)
+            {
+                discovered_dirs.push(name);
+            }
         }
     }
 
-    // Walk root entries using HID_CMD_DUMP_SD (0x20)
-    let mut discovered_dirs: Vec<String> = Vec::new();
-    let _ = hid_txrx(&dev, &mut seq, HID_CMD_DUMP_SD, &[1], 1200);
-    for _ in 0..256 {
-        let Ok(rx) = hid_txrx(&dev, &mut seq, HID_CMD_DUMP_SD, &[0], 1200) else {
-            break;
-        };
-        if rx[2] == HID_STATUS_EOF {
-            break;
+    if discovered_dirs.is_empty() {
+        // Walk root entries using EVO/DDS HID_CMD_DUMP_SD (0x20)
+        for _ in 0..512 {
+            let mut tx = [0u8; 64];
+            tx[0] = HID_REPORT_ID_OUT;
+            tx[1] = 0;
+            tx[2] = HID_CMD_DUMP_SD;
+            if dev.write(&tx).is_err() {
+                break;
+            }
+            let mut rx = [0u8; 64];
+            let Ok(n) = dev.read_timeout(&mut rx, 1200) else {
+                break;
+            };
+            if n == 0 || rx[1] == 4 || rx[2] == HID_STATUS_ERROR {
+                break;
+            }
+            if rx[1] == 1 {
+                let raw_slice = &rx[2..];
+                let nul_pos = raw_slice
+                    .iter()
+                    .position(|&b| b == 0)
+                    .unwrap_or(raw_slice.len());
+                if nul_pos > 0 {
+                    let name = String::from_utf8_lossy(&raw_slice[..nul_pos])
+                        .trim_start_matches('/')
+                        .trim()
+                        .to_string();
+                    if parse_profile_folder_name(&name).is_some()
+                        && !discovered_dirs.contains(&name)
+                    {
+                        discovered_dirs.push(name);
+                    }
+                }
+            }
         }
-        // In dp20_dumpsd.py, directory entries or filenames are null-terminated ASCII in rx[3..]
-        let raw_slice = &rx[3..];
-        let nul_pos = raw_slice
-            .iter()
-            .position(|&b| b == 0)
-            .unwrap_or(raw_slice.len());
-        if nul_pos == 0 {
-            break;
-        }
-        let name = String::from_utf8_lossy(&raw_slice[..nul_pos])
-            .trim_start_matches('/')
-            .trim()
-            .to_string();
-        if parse_profile_folder_name(&name).is_some() && !discovered_dirs.contains(&name) {
-            discovered_dirs.push(name);
+    }
+
+    // Try reading profile_info.txt if present
+    if let Ok(info_bytes) =
+        hid_read_file_bytes_auto(&dev, &mut seq, "/profile_info.txt", use_evo_protocol)
+    {
+        if !info_bytes.is_empty() {
+            let _ = fs::write(staging_dir.join("profile_info.txt"), &info_bytes);
         }
     }
 
@@ -759,7 +909,9 @@ where
 
     for (idx, folder) in discovered_dirs.iter().enumerate() {
         let remote_cfg = format!("/{folder}/config.txt");
-        let Ok(cfg_bytes) = hid_read_file_bytes(&dev, &mut seq, &remote_cfg) else {
+        let Ok(cfg_bytes) =
+            hid_read_file_bytes_auto(&dev, &mut seq, &remote_cfg, use_evo_protocol)
+        else {
             continue;
         };
         if cfg_bytes.is_empty() {
@@ -777,25 +929,57 @@ where
         );
 
         let cfg_text = String::from_utf8_lossy(&cfg_bytes);
-        for key_idx in 1..=15usize {
-            let z_prefix = format!("z{key_idx} ");
-            let sw_prefix = format!("SWCOLOR_{key_idx} ");
-            let maybe_configured = cfg_text
-                .lines()
-                .any(|l| l.starts_with(&z_prefix) || l.starts_with(&sw_prefix));
-            if !maybe_configured {
-                continue;
+        if !use_evo_protocol {
+            // On v1.x firmware, list the profile directory once to know exactly which key files exist
+            let dir_files: std::collections::HashSet<String> =
+                hid_list_dir_v1(&dev, &mut seq, folder)
+                    .into_iter()
+                    .filter(|(ft, _)| *ft == 0)
+                    .map(|(_, fname)| fname)
+                    .collect();
+            for key_idx in 1..=15usize {
+                for suffix in ["txt", "dsb", "release.txt", "release.dsb"] {
+                    let fname = if suffix.starts_with("release") {
+                        format!("key{key_idx}-{suffix}")
+                    } else {
+                        format!("key{key_idx}.{suffix}")
+                    };
+                    if !dir_files.is_empty() && !dir_files.contains(&fname) {
+                        continue;
+                    }
+                    let remote_file = format!("/{folder}/{fname}");
+                    if let Ok(bytes) =
+                        hid_read_file_bytes_auto(&dev, &mut seq, &remote_file, false)
+                    {
+                        if !bytes.is_empty() {
+                            let _ = fs::write(local_prof_dir.join(&fname), &bytes);
+                        }
+                    }
+                }
             }
-            for suffix in ["txt", "dsb", "release.txt", "release.dsb"] {
-                let fname = if suffix.starts_with("release") {
-                    format!("key{key_idx}-{suffix}")
-                } else {
-                    format!("key{key_idx}.{suffix}")
-                };
-                let remote_file = format!("/{folder}/{fname}");
-                if let Ok(bytes) = hid_read_file_bytes(&dev, &mut seq, &remote_file) {
-                    if !bytes.is_empty() {
-                        let _ = fs::write(local_prof_dir.join(&fname), &bytes);
+        } else {
+            for key_idx in 1..=15usize {
+                let z_prefix = format!("z{key_idx} ");
+                let sw_prefix = format!("SWCOLOR_{key_idx} ");
+                let maybe_configured = cfg_text
+                    .lines()
+                    .any(|l| l.starts_with(&z_prefix) || l.starts_with(&sw_prefix));
+                if !maybe_configured {
+                    continue;
+                }
+                for suffix in ["txt", "dsb", "release.txt", "release.dsb"] {
+                    let fname = if suffix.starts_with("release") {
+                        format!("key{key_idx}-{suffix}")
+                    } else {
+                        format!("key{key_idx}.{suffix}")
+                    };
+                    let remote_file = format!("/{folder}/{fname}");
+                    if let Ok(bytes) =
+                        hid_read_file_bytes_auto(&dev, &mut seq, &remote_file, true)
+                    {
+                        if !bytes.is_empty() {
+                            let _ = fs::write(local_prof_dir.join(&fname), &bytes);
+                        }
                     }
                 }
             }
@@ -811,8 +995,22 @@ where
                 .to_string(),
         );
     }
+    let meta = DuckySdDeviceMeta {
+        serial_number: serial.to_string(),
+        hw_model: DP_MODEL_OG_DUCKYPAD,
+        model_name: model_name_for_hw_model(DP_MODEL_OG_DUCKYPAD).to_string(),
+        firmware_version: fw_ver_str,
+        disk_label: crate::hardware::storage::format_disk_label_for_device(
+            DP_MODEL_OG_DUCKYPAD,
+            serial,
+        ),
+    };
     let fp = compute_profiles_fingerprint(&profiles);
-    sync_profiles_to_device_cache(serial, &profiles);
+    crate::hardware::profile::sync_profiles_to_device_cache_with_meta(
+        serial,
+        &profiles,
+        Some(&meta),
+    );
     mark_profiles_sd_synced(serial, &profiles);
     on_progress(
         100,
@@ -836,6 +1034,15 @@ pub fn write_duckypad_2020_profiles_via_hid_with_progress<F>(
 where
     F: FnMut(i32, &str, &str),
 {
+    struct HidSyncGuard;
+    impl Drop for HidSyncGuard {
+        fn drop(&mut self) {
+            MSC_SYNC_IN_PROGRESS.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    MSC_SYNC_IN_PROGRESS.store(true, std::sync::atomic::Ordering::SeqCst);
+    let _hid_sync_guard = HidSyncGuard;
+
     let serial_opt = if serial.is_empty() || serial == "-" {
         None
     } else {
@@ -880,37 +1087,58 @@ where
             .lock()
             .map_err(|_| "HID lock poisoned".to_string())?;
         let dev = open_duckypad_hid_for_serial(serial_opt)?;
+        let (fw_major, is_dds_fw, _) = query_dp20_fw_mode(&dev, &mut seq);
+        let use_pinfo_folders = fw_major >= 2 || is_dds_fw;
 
         // Write profile_info.txt
-        if let Ok(info_bytes) = fs::read(staging_dir.join("profile_info.txt")) {
-            let _ = hid_txrx(
-                &dev,
-                &mut seq,
-                HID_CMD_DELETE_FILE,
-                b"profile_info.txt",
-                800,
-            );
-            let _ = hid_write_file_bytes(&dev, &mut seq, "profile_info.txt", &info_bytes);
+        if use_pinfo_folders {
+            if let Ok(info_bytes) = fs::read(staging_dir.join("profile_info.txt")) {
+                let _ = hid_txrx(
+                    &dev,
+                    &mut seq,
+                    HID_CMD_DELETE_FILE,
+                    b"profile_info.txt",
+                    800,
+                );
+                let _ = hid_write_file_bytes(&dev, &mut seq, "profile_info.txt", &info_bytes);
+            }
         }
 
         for (idx, prof) in profiles.iter().enumerate() {
-            let folder = prof.folder_name_for_model(DP_MODEL_OG_DUCKYPAD);
-            let local_dir = staging_dir.join(&folder);
+            let local_folder = prof.folder_name_for_model(DP_MODEL_OG_DUCKYPAD);
+            let remote_folder = if use_pinfo_folders {
+                local_folder.clone()
+            } else {
+                format!("profile{}_{}", prof.number, prof.name)
+            };
+            let local_dir = staging_dir.join(&local_folder);
             if !local_dir.is_dir() {
                 continue;
             }
             let pct = 50 + ((idx + 1) * 35 / profiles.len().max(1)) as i32;
             on_progress(
                 pct.min(88),
-                &format!("Step 3/4: Writing {folder} over USB HID..."),
+                &format!("Step 3/4: Writing {remote_folder} over USB HID..."),
                 &format!(
                     "• Syncing profile #{} ({}) to duckyPad (2020)...",
                     prof.number, prof.name
                 ),
             );
 
-            let _ = hid_txrx(&dev, &mut seq, HID_CMD_DELETE_DIR, folder.as_bytes(), 1200);
-            let _ = hid_txrx(&dev, &mut seq, HID_CMD_CREATE_DIR, folder.as_bytes(), 1200);
+            let _ = hid_txrx(
+                &dev,
+                &mut seq,
+                HID_CMD_DELETE_DIR,
+                remote_folder.as_bytes(),
+                1200,
+            );
+            let _ = hid_txrx(
+                &dev,
+                &mut seq,
+                HID_CMD_CREATE_DIR,
+                remote_folder.as_bytes(),
+                1200,
+            );
 
             if let Ok(entries) = fs::read_dir(&local_dir) {
                 for entry in entries.flatten() {
@@ -922,7 +1150,7 @@ where
                         continue;
                     };
                     if let Ok(bytes) = fs::read(&path) {
-                        let remote_path = format!("{folder}/{fname}");
+                        let remote_path = format!("/{remote_folder}/{fname}");
                         hid_write_file_bytes(&dev, &mut seq, &remote_path, &bytes)?;
                     }
                 }
@@ -943,7 +1171,11 @@ where
         let _ = crate::kwin::auto_switcher::send_hid_switch_profile(restore_profile);
     }
 
-    sync_profiles_to_device_cache(serial, profiles);
+    crate::hardware::profile::sync_profiles_to_device_cache_with_meta(
+        serial,
+        profiles,
+        Some(&meta),
+    );
     mark_profiles_sd_synced(serial, profiles);
 
     let short_fp = &summary.validated_fingerprint[..8.min(summary.validated_fingerprint.len())];

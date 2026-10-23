@@ -194,6 +194,8 @@ pub struct PersistedSwitcherConfig {
     pub google_search_shortcuts_permitted: bool,
     #[serde(default = "default_multi_click_interval_ms")]
     pub multi_click_interval_ms: i32,
+    #[serde(default = "default_true")]
+    pub check_updates_on_startup: bool,
 }
 
 #[derive(Clone)]
@@ -230,6 +232,7 @@ pub struct SwitcherState {
     pub autoswitch_rule_editor_expanded: bool,
     pub google_search_shortcuts_permitted: bool,
     pub multi_click_interval_ms: i32,
+    pub check_updates_on_startup: bool,
     pub last_switched_profile: u8,
     pub picker_armed: bool,
     pub loaded_from_disk: bool,
@@ -304,6 +307,7 @@ impl Default for SwitcherState {
                 autoswitch_rule_editor_expanded: cfg.autoswitch_rule_editor_expanded,
                 google_search_shortcuts_permitted: cfg.google_search_shortcuts_permitted,
                 multi_click_interval_ms: cfg.multi_click_interval_ms.clamp(80, 1000),
+                check_updates_on_startup: cfg.check_updates_on_startup,
                 last_switched_profile: 0,
                 picker_armed: false,
                 loaded_from_disk: true,
@@ -368,6 +372,7 @@ impl Default for SwitcherState {
             autoswitch_rule_editor_expanded: true,
             google_search_shortcuts_permitted: false,
             multi_click_interval_ms: default_multi_click_interval_ms(),
+            check_updates_on_startup: true,
             last_switched_profile: 0,
             picker_armed: false,
             loaded_from_disk: false,
@@ -723,6 +728,7 @@ impl SwitcherState {
             autoswitch_rule_editor_expanded: self.autoswitch_rule_editor_expanded,
             google_search_shortcuts_permitted: self.google_search_shortcuts_permitted,
             multi_click_interval_ms: self.multi_click_interval_ms.clamp(80, 1000),
+            check_updates_on_startup: self.check_updates_on_startup,
         };
         let json = serde_json::to_string_pretty(&payload)
             .map_err(|e| format!("Failed serializing KWin rules: {e}"))?;
@@ -1509,6 +1515,43 @@ pub fn resolve_rule_icon(
     favicon_url: Option<&str>,
     target_profile_name: Option<&str>,
 ) -> String {
+    static RULE_ICON_CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, String>>,
+    > = std::sync::OnceLock::new();
+
+    let cache_key = format!(
+        "{}\x1f{}\x1f{}\x1f{}",
+        resource_class.trim(),
+        title_contains.unwrap_or("").trim(),
+        favicon_url.unwrap_or("").trim(),
+        target_profile_name.unwrap_or("").trim()
+    );
+    let cache =
+        RULE_ICON_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    if let Ok(guard) = cache.lock() {
+        if let Some(cached) = guard.get(&cache_key) {
+            return cached.clone();
+        }
+    }
+
+    let resolved = resolve_rule_icon_uncached(
+        resource_class,
+        title_contains,
+        favicon_url,
+        target_profile_name,
+    );
+    if let Ok(mut guard) = cache.lock() {
+        guard.insert(cache_key, resolved.clone());
+    }
+    resolved
+}
+
+fn resolve_rule_icon_uncached(
+    resource_class: &str,
+    title_contains: Option<&str>,
+    favicon_url: Option<&str>,
+    target_profile_name: Option<&str>,
+) -> String {
     if let Some(raw_fav) = favicon_url {
         let fav_trimmed = raw_fav.trim();
         if !fav_trimmed.is_empty() {
@@ -1565,6 +1608,10 @@ pub fn resolve_rule_icon(
 }
 
 pub fn resolve_app_icon_for_class(resource_class: &str) -> String {
+    static APP_ICON_CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, String>>,
+    > = std::sync::OnceLock::new();
+
     let trimmed = resource_class.trim();
     if trimmed.is_empty() {
         return String::new();
@@ -1573,10 +1620,26 @@ pub fn resolve_app_icon_for_class(resource_class: &str) -> String {
         return resolve_rule_icon(trimmed, None, None, None);
     }
     let lower = trimmed.to_ascii_lowercase();
+    let cache =
+        APP_ICON_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    if let Ok(guard) = cache.lock() {
+        if let Some(cached) = guard.get(&lower) {
+            return cached.clone();
+        }
+    }
+
+    let resolved = resolve_app_icon_for_class_uncached(trimmed, &lower);
+    if let Ok(mut guard) = cache.lock() {
+        guard.insert(lower, resolved.clone());
+    }
+    resolved
+}
+
+fn resolve_app_icon_for_class_uncached(trimmed: &str, lower: &str) -> String {
     let short_lower = lower
         .rsplit('.')
         .next()
-        .unwrap_or(lower.as_str())
+        .unwrap_or(lower)
         .to_string();
 
     let mut search_dirs = Vec::new();
@@ -3111,6 +3174,10 @@ mod win32_window {
     }
 
     pub fn inspect_hwnd(hwnd: isize) -> Option<(String, String, String)> {
+        static HWND_CLASS_CACHE: std::sync::OnceLock<
+            std::sync::Mutex<std::collections::HashMap<(isize, u32), (String, String)>>,
+        > = std::sync::OnceLock::new();
+
         if hwnd == 0 {
             return None;
         }
@@ -3139,6 +3206,17 @@ mod win32_window {
             } else {
                 String::new()
             };
+
+            let cache = HWND_CLASS_CACHE
+                .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+            if let Ok(guard) = cache.lock() {
+                if let Some((rc, rn)) = guard.get(&(root, pid)) {
+                    if rc.is_empty() && caption.is_empty() {
+                        return None;
+                    }
+                    return Some((rc.clone(), rn.clone(), caption));
+                }
+            }
 
             let mut class_buf = [0u16; 256];
             let class_len = GetClassNameW(root, class_buf.as_mut_ptr(), class_buf.len() as i32);
@@ -3180,6 +3258,12 @@ mod win32_window {
             } else {
                 resource_class.clone()
             };
+            if let Ok(mut guard) = cache.lock() {
+                if guard.len() >= 256 {
+                    guard.clear();
+                }
+                guard.insert((root, pid), (resource_class.clone(), resource_name.clone()));
+            }
             if resource_class.is_empty() && caption.is_empty() {
                 return None;
             }
@@ -3410,8 +3494,10 @@ pub async fn run_kwin_auto_switcher(
         let mut last_fg: Option<(String, String, String)> = None;
         let mut last_pt: Option<(i32, i32)> = None;
         let ipc_file = crate::paths::runtime_dir().join("duckydeck-ipc.cmd");
+        let mut tick_counter: u32 = 0;
         loop {
-            if ipc_file.is_file() {
+            tick_counter = tick_counter.wrapping_add(1);
+            if tick_counter.is_multiple_of(4) && ipc_file.is_file() {
                 if let Ok(raw_cmd) = fs::read_to_string(&ipc_file) {
                     let _ = fs::remove_file(&ipc_file);
                     let trimmed = raw_cmd.trim();

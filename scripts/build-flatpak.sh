@@ -23,7 +23,7 @@ flatpak build-init \
 
 CARGO_HOME_DIR="${CARGO_HOME:-$HOME/.cargo}"
 
-flatpak build \
+setsid --wait flatpak build \
   --share=network \
   --filesystem="$REPO_ROOT":ro \
   --filesystem="$CARGO_HOME_DIR":ro \
@@ -59,7 +59,7 @@ flatpak build \
     install -Dm644 '$REPO_ROOT/firmware/releases/DDS_FW_1.1.0_b3291568.bin' -t /app/share/duckydeck-studio/firmware/releases/
     install -Dm644 '$REPO_ROOT/firmware/releases/DDS_FW_1.0.1_bf177326.bin' -t /app/share/duckydeck-studio/firmware/releases/
     install -Dm644 '$REPO_ROOT/firmware/releases/DDS_FW_1.0.0_ad2acc81.bin' -t /app/share/duckydeck-studio/firmware/releases/
-  "
+  " < /dev/null
 
 flatpak build-finish "$WORK_DIR/build-dir" \
   --command=duckydeck-studio \

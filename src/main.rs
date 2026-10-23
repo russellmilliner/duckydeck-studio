@@ -26,6 +26,7 @@ pub mod ai {
 }
 pub mod api_server;
 pub mod paths;
+pub mod updater;
 pub mod vm;
 
 use duckydeck_core as _;
@@ -207,6 +208,8 @@ USAGE:
 STARTUP & INSTANCE OPTIONS:
     -h, --help                              Show this help message and exit
     -V, --version                           Print version information and exit
+    -u, --check-update                      Check GitHub Releases for a newer DuckyDeck Studio version
+        --self-update                       Download and install the latest DuckyDeck Studio release from GitHub
     -m, --minimize, --minimized, --tray     Start minimized in the KDE system tray (automatically
                                             detaches into the background and returns shell prompt)
         --foreground, --no-daemon           Keep process attached to terminal when using --minimize
@@ -1131,6 +1134,66 @@ fn main() {
             "-V" | "--version" => {
                 println!("DuckyDeck Studio v{APP_VERSION}");
                 std::process::exit(0);
+            }
+            "-u" | "--check-update" => {
+                match crate::updater::check_for_app_updates_blocking(APP_VERSION) {
+                    Ok(res) => {
+                        if res.update_available {
+                            println!(
+                                "Update available: DuckyDeck Studio v{} (installed: v{})",
+                                res.latest_version, res.current_version
+                            );
+                            println!("Release URL : {}", res.release_url);
+                            if !res.download_url.is_empty() {
+                                println!("Download URL: {}", res.download_url);
+                            }
+                        } else {
+                            println!(
+                                "DuckyDeck Studio v{} is up to date (latest: v{}).",
+                                res.current_version, res.latest_version
+                            );
+                        }
+                        std::process::exit(0);
+                    }
+                    Err(err) => {
+                        eprintln!("Update check failed: {err}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "--self-update" => {
+                match crate::updater::check_for_app_updates_blocking(APP_VERSION) {
+                    Ok(res) => {
+                        if !res.update_available {
+                            println!(
+                                "DuckyDeck Studio v{} is already up to date.",
+                                res.current_version
+                            );
+                            std::process::exit(0);
+                        }
+                        println!(
+                            "Downloading and installing DuckyDeck Studio v{}...",
+                            res.latest_version
+                        );
+                        match crate::updater::download_and_install_app_update_blocking(
+                            &res.download_url,
+                            &res.latest_version,
+                        ) {
+                            Ok(msg) => {
+                                println!("✓ {msg}");
+                                std::process::exit(0);
+                            }
+                            Err(err) => {
+                                eprintln!("Self-update failed: {err}");
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("Update check failed: {err}");
+                        std::process::exit(1);
+                    }
+                }
             }
             "-m" | "--minimize" | "--minimized" | "--tray" => {
                 start_minimized = true;

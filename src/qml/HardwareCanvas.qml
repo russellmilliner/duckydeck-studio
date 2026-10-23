@@ -302,11 +302,26 @@ Item {
         }
     }
 
+    readonly property bool hasAnyIdleAnimationConfigured: {
+        const profCfg = canvasRoot.profileAnimationConfig || {}
+        if (profCfg.enabled && (profCfg.trigger === "idle" || profCfg.trigger === "both")) {
+            return true
+        }
+        const keyCfgs = canvasRoot.keyAnimationConfigs || {}
+        for (let k in keyCfgs) {
+            const kc = keyCfgs[k]
+            if (kc && kc.enabled && (kc.trigger === "idle" || kc.trigger === "both")) {
+                return true
+            }
+        }
+        return false
+    }
+
     Timer {
         id: rgbAnimTimer
         interval: 55
         repeat: true
-        running: true
+        running: canvasRoot.visible && (canvasRoot.hasAnyIdleAnimationConfigured || canvasRoot.idleAnimationActive || (canvasRoot.activeKeyBursts && canvasRoot.activeKeyBursts.length > 0))
         onTriggered: {
             if (keyModel.count < 20) return
             const now = Date.now()
@@ -501,6 +516,7 @@ Item {
 
     property var profileLabels: []
     property var profileNumbers: []
+    property var profileRotations: []
     property int currentProfileIndex: 0
     property var expansionLabels: ({})
 
@@ -570,10 +586,17 @@ Item {
     function syncActiveProfileSelection() {
         if (!controller || !profileNumbers || profileNumbers.length === 0) return
         const idx = profileNumbers.indexOf(controller.activeProfile)
-        if (idx >= 0 && canvasRoot.currentProfileIndex !== idx) {
-            canvasRoot.currentProfileIndex = idx
+        if (idx >= 0) {
+            if (canvasRoot.currentProfileIndex !== idx) {
+                canvasRoot.currentProfileIndex = idx
+            }
+            if (profileRotations && idx < profileRotations.length) {
+                const rot = profileRotations[idx]
+                if (canvasRoot.activeProfileOledRotation !== rot) {
+                    canvasRoot.activeProfileOledRotation = rot
+                }
+            }
         }
-        canvasRoot.syncProfilesFromController()
     }
 
     function syncProfilesFromController() {
@@ -583,19 +606,23 @@ Item {
             if (!Array.isArray(arr)) return
             const labels = []
             const nums = []
+            const rots = []
             let activeIdx = 0
             let activeRot = 0
             for (let i = 0; i < arr.length; ++i) {
                 const p = arr[i]
+                const rot = p.oledRotation !== undefined ? p.oledRotation : (p.isLandscape ? 90 : 0)
                 nums.push(p.number)
                 labels.push("P" + p.number + ": " + p.name)
+                rots.push(rot)
                 if (p.number === controller.activeProfile) {
                     activeIdx = i
-                    activeRot = p.oledRotation !== undefined ? p.oledRotation : (p.isLandscape ? 90 : 0)
+                    activeRot = rot
                 }
             }
             canvasRoot.profileNumbers = nums
             canvasRoot.profileLabels = labels
+            canvasRoot.profileRotations = rots
             canvasRoot.currentProfileIndex = activeIdx
             canvasRoot.activeProfileOledRotation = activeRot
         } catch (e) {}

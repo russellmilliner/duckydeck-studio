@@ -1120,16 +1120,66 @@ Window {
                             font.pointSize: 10.5 * root.fontScale
                             color: Kirigami.Theme.disabledTextColor
                         }
-                        QQC2.Label {
-                            text: qsTr("v%1 (DSVM v2 Bytecode Compiler)").arg(deviceController.appVersion)
-                            font.family: "monospace"
-                            font.bold: true
-                            font.pointSize: 10.5 * root.fontScale
-                            color: Kirigami.Theme.textColor
+                        ColumnLayout {
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
                             Layout.preferredWidth: 1
-                            elide: Text.ElideRight
+                            spacing: 4
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                spacing: 8
+
+                                QQC2.Label {
+                                    text: qsTr("v%1 (DSVM v2 Bytecode Compiler)").arg(deviceController.appVersion)
+                                    font.family: "monospace"
+                                    font.bold: true
+                                    font.pointSize: 10.5 * root.fontScale
+                                    color: Kirigami.Theme.textColor
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 0
+                                    Layout.preferredWidth: 1
+                                    elide: Text.ElideRight
+                                }
+
+                                QQC2.Button {
+                                    icon.name: "view-refresh"
+                                    text: deviceController.appUpdateCheckBusy
+                                        ? qsTr("Checking...")
+                                        : qsTr("Check Updates")
+                                    enabled: !deviceController.appUpdateCheckBusy
+                                    implicitHeight: 26
+                                    font.pointSize: 10 * root.fontScale
+                                    onClicked: deviceController.checkAppUpdates(true)
+                                }
+
+                                QQC2.Button {
+                                    visible: deviceController.appUpdateAvailable
+                                    icon.name: "system-software-update"
+                                    font.bold: true
+                                    highlighted: true
+                                    enabled: !deviceController.appUpdateInstallBusy
+                                    implicitHeight: 26
+                                    font.pointSize: 10 * root.fontScale
+                                    text: deviceController.appUpdateInstallBusy
+                                        ? qsTr("Installing...")
+                                        : qsTr("⬇ Install v%1").arg(deviceController.latestAppVersion)
+                                    onClicked: deviceController.installAppUpdate()
+                                }
+                            }
+
+                            QQC2.Label {
+                                visible: deviceController.appUpdateStatus.length > 0
+                                text: deviceController.appUpdateStatus
+                                font.pointSize: 10 * root.fontScale
+                                color: deviceController.appUpdateAvailable
+                                    ? root.highContrastPositiveText
+                                    : Kirigami.Theme.disabledTextColor
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                            }
                         }
 
                         QQC2.Label {
@@ -3611,6 +3661,54 @@ Window {
                                 text: qsTr("Keep Running in Taskbar on Window Close")
                                 checked: deviceController.closeToTray
                                 onToggled: deviceController.setCloseToTrayEnabled(checked)
+                            }
+
+                            HighContrastCheckBox {
+                                font.pointSize: 10 * root.fontScale
+                                Layout.fillWidth: true
+                                text: qsTr("Automatically Check for DuckyDeck Studio Updates on Startup & Every 6 Hours")
+                                checked: deviceController.checkUpdatesOnStartup
+                                onToggled: deviceController.setCheckUpdatesOnStartupEnabled(checked)
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                QQC2.Button {
+                                    font.pointSize: 10 * root.fontScale
+                                    icon.name: "view-refresh"
+                                    enabled: !deviceController.appUpdateCheckBusy
+                                    text: deviceController.appUpdateCheckBusy
+                                        ? qsTr("Checking for Updates...")
+                                        : qsTr("Check for Updates Now")
+                                    onClicked: deviceController.checkAppUpdates(true)
+                                }
+
+                                QQC2.Button {
+                                    visible: deviceController.appUpdateAvailable
+                                    font.pointSize: 10 * root.fontScale
+                                    icon.name: "system-software-update"
+                                    font.bold: true
+                                    highlighted: true
+                                    enabled: !deviceController.appUpdateInstallBusy
+                                    text: deviceController.appUpdateInstallBusy
+                                        ? qsTr("Installing...")
+                                        : qsTr("⬇ Install v%1").arg(deviceController.latestAppVersion)
+                                    onClicked: deviceController.installAppUpdate()
+                                }
+
+                                QQC2.Label {
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WordWrap
+                                    font.pointSize: 10 * root.fontScale
+                                    color: deviceController.appUpdateAvailable
+                                        ? settingsDialog.highContrastPositiveText
+                                        : Kirigami.Theme.disabledTextColor
+                                    text: deviceController.appUpdateStatus.length > 0
+                                        ? deviceController.appUpdateStatus
+                                        : qsTr("Installed: v%1").arg(deviceController.appVersion)
+                                }
                             }
                         }
                     }

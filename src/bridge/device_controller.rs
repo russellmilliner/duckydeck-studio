@@ -21,6 +21,7 @@ pub mod qobject {
         fn duckydeck_quit_app();
         fn duckydeck_exit_app(exit_code: i32);
         fn duckydeck_restart_app();
+        fn duckydeck_show_tray_notification(title: &QString, message: &QString);
         fn duckydeck_extract_qrc_user_guide(dest_path: &QString) -> bool;
         fn duckydeck_dispatch_ipc_command(command: &QString);
         fn duckydeck_toggle_oled_widget();
@@ -140,6 +141,14 @@ pub mod qobject {
         #[qproperty(i32, active_hw_model)]
         #[qproperty(bool, is_duckypad_2020)]
         #[qproperty(i32, onboard_key_count)]
+        #[qproperty(bool, app_update_available)]
+        #[qproperty(QString, latest_app_version)]
+        #[qproperty(QString, app_update_url)]
+        #[qproperty(QString, app_update_download_url)]
+        #[qproperty(QString, app_update_status)]
+        #[qproperty(bool, app_update_check_busy)]
+        #[qproperty(bool, app_update_install_busy)]
+        #[qproperty(bool, check_updates_on_startup)]
         type DeviceController = super::DeviceControllerRust;
 
         #[qinvokable]
@@ -960,6 +969,25 @@ pub mod qobject {
             device_id: QString,
             degrees: i32,
         ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "checkAppUpdates"]
+        fn check_app_updates(self: Pin<&mut DeviceController>, manual: bool);
+
+        #[qinvokable]
+        #[cxx_name = "installAppUpdate"]
+        fn install_app_update(self: Pin<&mut DeviceController>);
+
+        #[qinvokable]
+        #[cxx_name = "openAppUpdatePage"]
+        fn open_app_update_page(self: &DeviceController);
+
+        #[qinvokable]
+        #[cxx_name = "setCheckUpdatesOnStartupEnabled"]
+        fn set_check_updates_on_startup_enabled(
+            self: Pin<&mut DeviceController>,
+            enabled: bool,
+        );
     }
 
     impl cxx_qt::Threading for DeviceController {}
@@ -1154,6 +1182,15 @@ pub struct DeviceControllerRust {
     pub(crate) active_hw_model: i32,
     pub(crate) is_duckypad_2020: bool,
     pub(crate) onboard_key_count: i32,
+    pub(crate) app_update_available: bool,
+    pub(crate) latest_app_version: QString,
+    pub(crate) app_update_url: QString,
+    pub(crate) app_update_download_url: QString,
+    pub(crate) app_update_status: QString,
+    pub(crate) app_update_check_busy: bool,
+    pub(crate) app_update_install_busy: bool,
+    pub(crate) check_updates_on_startup: bool,
+    pub(crate) notified_app_update_version: String,
     pub(crate) copied_key_slot: Option<DuckyKeySlot>,
     pub(crate) firmware_download_url: String,
     pub(crate) sd_root_path: Option<PathBuf>,
@@ -1374,6 +1411,7 @@ impl Default for DeviceControllerRust {
         let tray_mode = switcher.tray_icon_mode.clone();
         let app_theme = switcher.app_theme_mode.clone();
         let close_tray = switcher.close_to_tray;
+        let check_updates_startup = switcher.check_updates_on_startup;
         let google_shortcuts_permitted = switcher.google_search_shortcuts_permitted;
         let multi_click_ms = switcher.multi_click_interval_ms.clamp(80, 1000);
         let text_scale = switcher.ui_text_scale.clamp(75, 160);
@@ -1563,6 +1601,15 @@ impl Default for DeviceControllerRust {
             active_hw_model: init_hw_model as i32,
             is_duckypad_2020: is_dp20,
             onboard_key_count: onboard_keys,
+            app_update_available: false,
+            latest_app_version: QString::from(APP_VERSION),
+            app_update_url: QString::from(crate::updater::GITHUB_RELEASES_HTML_URL),
+            app_update_download_url: QString::from(""),
+            app_update_status: QString::from(""),
+            app_update_check_busy: false,
+            app_update_install_busy: false,
+            check_updates_on_startup: check_updates_startup,
+            notified_app_update_version: String::new(),
             copied_key_slot: None,
             firmware_download_url: String::new(),
             sd_root_path,
@@ -1935,7 +1982,14 @@ impl DeviceControllerRust {
 }
 
 impl qobject::DeviceController {
-    pub(crate) fn sync_tray_state(mut self: Pin<&mut Self>) {
+    pub(crate) fn sync_tray_state(self: Pin<&mut Self>) {
+        self.sync_tray_state_inner(false);
+    }
+
+    pub(crate) fn sync_tray_state_inner(mut self: Pin<&mut Self>, refresh_sd_space: bool) {
+        static LAST_OLED_STATE_JSON: std::sync::OnceLock<std::sync::Mutex<String>> =
+            std::sync::OnceLock::new();
+
         let mode_str = self.tray_icon_mode().to_string();
         let use_light_on_dark_icon = match mode_str.as_str() {
             "dark" => true,
@@ -1968,32 +2022,38 @@ impl qobject::DeviceController {
             "Selected Profile: #{prof_num}/{total_profiles} — {prof_name}"
         ));
 
-        let sd_mount_opt = if sd_path.is_empty() {
-            None
+        let cached_summary = self.sd_space_summary().to_string();
+        let (summary_text, tray_text) = if refresh_sd_space || cached_summary.is_empty() {
+            let sd_mount_opt = if sd_path.is_empty() {
+                None
+            } else {
+                Some(Path::new(&sd_path))
+            };
+            let sd_space = get_sd_card_space_info(&sn, sd_mount_opt);
+            if cached_summary != sd_space.summary_text {
+                self.as_mut()
+                    .set_sd_space_summary(QString::from(&sd_space.summary_text));
+            }
+            if self.sd_space_detail().to_string() != sd_space.detail_tooltip {
+                self.as_mut()
+                    .set_sd_space_detail(QString::from(&sd_space.detail_tooltip));
+            }
+            if *self.sd_space_used_percent() != sd_space.used_percent {
+                self.as_mut()
+                    .set_sd_space_used_percent(sd_space.used_percent);
+            }
+            (sd_space.summary_text, sd_space.tray_text)
         } else {
-            Some(Path::new(&sd_path))
+            let tray = format!("SD Space: {cached_summary}");
+            (cached_summary, tray)
         };
-        let sd_space = get_sd_card_space_info(&sn, sd_mount_opt);
-        if self.sd_space_summary().to_string() != sd_space.summary_text {
-            self.as_mut()
-                .set_sd_space_summary(QString::from(&sd_space.summary_text));
-        }
-        if self.sd_space_detail().to_string() != sd_space.detail_tooltip {
-            self.as_mut()
-                .set_sd_space_detail(QString::from(&sd_space.detail_tooltip));
-        }
-        if *self.sd_space_used_percent() != sd_space.used_percent {
-            self.as_mut()
-                .set_sd_space_used_percent(sd_space.used_percent);
-        }
-        let sd_space_header = QString::from(&format!("💾 {}", sd_space.tray_text));
+        let sd_space_header = QString::from(&format!("💾 {tray_text}"));
 
         let mut tooltip = format!(
             "DuckyDeck Studio — {model}\n\
              Selected Profile: #{prof_num} ({prof_name}) [{total_profiles} loaded]\n\
              Connection: {conn_badge}\n\
-             {}",
-            sd_space.tray_text
+             {tray_text}"
         );
         if fw != "-" || sn != "-" {
             tooltip.push_str(&format!("\nFirmware: v{fw} • Serial: {sn}"));
@@ -2061,7 +2121,7 @@ impl qobject::DeviceController {
             "widgetRotation": widget_rot,
             "effectiveWidgetRotation": eff_widget_rot,
             "totalProfiles": total_profiles,
-            "sdSpaceSummary": sd_space.summary_text,
+            "sdSpaceSummary": summary_text,
             "slots": slots_val,
         });
         if let Ok(test_state_path) = std::env::var("DUCKYDECK_UI_TEST_OLED_STATE_PATH") {
@@ -2080,25 +2140,104 @@ impl qobject::DeviceController {
                 }
             }
         } else if !is_demo_showcase_env() {
-            let state_dir = crate::paths::data_dir();
-            if let Err(e) = fs::create_dir_all(&state_dir) {
-                record_system_event(
-                    "WARN",
-                    "STORAGE",
-                    format!("Failed creating state dir {}: {e}", state_dir.display()),
-                );
-            }
             if let Ok(serialized) = serde_json::to_string(&oled_snapshot) {
-                let state_file = state_dir.join("oled_state.json");
-                if let Err(e) = fs::write(&state_file, serialized) {
-                    record_system_event(
-                        "WARN",
-                        "STORAGE",
-                        format!("Failed writing {}: {e}", state_file.display()),
-                    );
+                let cache = LAST_OLED_STATE_JSON
+                    .get_or_init(|| std::sync::Mutex::new(String::new()));
+                let changed = if let Ok(mut guard) = cache.lock() {
+                    if *guard == serialized {
+                        false
+                    } else {
+                        *guard = serialized.clone();
+                        true
+                    }
+                } else {
+                    true
+                };
+                if changed {
+                    let state_dir = crate::paths::data_dir();
+                    if let Err(e) = fs::create_dir_all(&state_dir) {
+                        record_system_event(
+                            "WARN",
+                            "STORAGE",
+                            format!("Failed creating state dir {}: {e}", state_dir.display()),
+                        );
+                    }
+                    let state_file = state_dir.join("oled_state.json");
+                    if let Err(e) = fs::write(&state_file, serialized) {
+                        record_system_event(
+                            "WARN",
+                            "STORAGE",
+                            format!("Failed writing {}: {e}", state_file.display()),
+                        );
+                    }
                 }
             }
         }
+    }
+
+    pub(crate) fn sync_active_profile_selection_only(mut self: Pin<&mut Self>) {
+        let active_num = *self.active_profile() as u8;
+        let (prof_name, prof_bg_hex, slots_json, profile_exists) = {
+            let rust = self.rust();
+            if let Some(prof) = rust
+                .profiles
+                .iter()
+                .find(|p| p.number == active_num)
+                .or_else(|| rust.profiles.first())
+            {
+                let has_pgv31 = prof.slots.values().any(|s| {
+                    s.on_press_script.contains("_GV31")
+                        || s.on_release_script.contains("_GV31")
+                        || crate::actions::web_api::has_web_api_config(&s.on_press_script)
+                        || crate::actions::web_api::has_web_api_config(&s.on_release_script)
+                        || crate::actions::app_launch::has_app_launch_config(&s.on_press_script)
+                        || crate::actions::app_launch::has_app_launch_config(&s.on_release_script)
+                });
+                crate::hardware::storage::ACTIVE_PROFILE_HAS_PGV31_TRIGGER
+                    .store(has_pgv31, std::sync::atomic::Ordering::SeqCst);
+                let bg_hex = format!(
+                    "#{:02x}{:02x}{:02x}",
+                    prof.bg_color[0], prof.bg_color[1], prof.bg_color[2]
+                );
+                (
+                    prof.name.clone(),
+                    bg_hex,
+                    DeviceControllerRust::serialize_profile_slots(prof),
+                    prof.number == active_num,
+                )
+            } else {
+                crate::hardware::storage::ACTIVE_PROFILE_HAS_PGV31_TRIGGER
+                    .store(false, std::sync::atomic::Ordering::SeqCst);
+                (
+                    "Default".to_string(),
+                    "#00aaff".to_string(),
+                    "[]".to_string(),
+                    false,
+                )
+            }
+        };
+
+        if self.active_profile_name().to_string() != prof_name {
+            self.as_mut()
+                .set_active_profile_name(QString::from(&prof_name));
+        }
+        if self.active_profile_bg_color().to_string() != prof_bg_hex {
+            self.as_mut()
+                .set_active_profile_bg_color(QString::from(&prof_bg_hex));
+        }
+        if self.active_profile_slots_json().to_string() != slots_json {
+            self.as_mut()
+                .set_active_profile_slots_json(QString::from(&slots_json));
+        }
+        if self.profile_sync_state().to_string() == "synced"
+            && profile_exists
+            && !self.auto_switch_error_message().is_empty()
+        {
+            self.as_mut()
+                .set_auto_switch_error_message(QString::from(""));
+        }
+        self.as_mut().sync_multi_device_oled_states();
+        self.as_mut().sync_tray_state_inner(false);
     }
 
     pub(crate) fn sync_active_profile_state(mut self: Pin<&mut Self>) {
@@ -2246,7 +2385,7 @@ impl qobject::DeviceController {
         }
         self.as_mut().sync_multi_device_oled_states();
         self.as_mut().refresh_color_palettes();
-        self.as_mut().sync_tray_state();
+        self.as_mut().sync_tray_state_inner(true);
     }
 
     pub fn sync_profiles_to_device_sd(mut self: Pin<&mut Self>) -> bool {
@@ -3380,7 +3519,7 @@ impl qobject::DeviceController {
             self.as_mut()
                 .set_active_window_class(QString::from(&bound_cls));
         }
-        self.as_mut().sync_active_profile_state();
+        self.as_mut().sync_active_profile_selection_only();
 
         if !is_demo_showcase_env()
             && *self.connected()
@@ -3429,7 +3568,7 @@ impl qobject::DeviceController {
             .map(|p| p.number as i32)
         {
             self.as_mut().set_active_profile(num);
-            self.as_mut().sync_active_profile_state();
+            self.as_mut().sync_active_profile_selection_only();
             self.as_mut().dispatch_profile_change_webhooks_if_changed(
                 prev_prof,
                 num.clamp(1, 64) as u8,
@@ -4835,7 +4974,11 @@ impl qobject::DeviceController {
         let web_api_qt_thread = self.qt_thread();
 
         std::thread::spawn(move || {
-            let Ok(rt) = tokio::runtime::Runtime::new() else {
+            let Ok(rt) = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()
+            else {
                 return;
             };
             rt.block_on(async move {
@@ -4894,6 +5037,8 @@ impl qobject::DeviceController {
                 tokio::spawn(async move {
                     let mut interval =
                         tokio::time::interval(std::time::Duration::from_millis(800));
+                    let mut last_mounts_hash: u64 = 0;
+                    let mut mounts_tick: u32 = 0;
                     loop {
                         interval.tick().await;
                         if crate::hardware::storage::MSC_SYNC_IN_PROGRESS
@@ -4902,14 +5047,14 @@ impl qobject::DeviceController {
                             crate::hardware::storage::invalidate_cached_hid_device();
                             continue;
                         }
-                        let hid_present = crate::hardware::storage::is_duckypad_hid_present();
+                        let new_connected_count =
+                            crate::hardware::storage::count_connected_duckypad_hid_nodes() as i32;
+                        let hid_present = new_connected_count > 0;
                         let hw_active_prof = if hid_present {
                             poll_hardware_active_profile()
                         } else {
                             None
                         };
-                        let new_connected_count =
-                            crate::hardware::storage::count_connected_duckypad_hid_nodes() as i32;
                         let selected_ser = crate::hardware::storage::get_selected_duckypad_serial();
                         let mut secondary_prof_changed = false;
                         for sec_dev in crate::kwin::auto_switcher::get_secondary_devices_snapshot()
@@ -4941,6 +5086,37 @@ impl qobject::DeviceController {
                                 }
                             }
                         }
+
+                        // Only scan for newly mounted SD cards when system mount table changes
+                        mounts_tick = mounts_tick.wrapping_add(1);
+                        let mut newly_mounted_sd: Option<PathBuf> = None;
+                        if mounts_tick == 1 || mounts_tick.is_multiple_of(3) {
+                            let cur_hash = {
+                                use std::hash::{Hash, Hasher};
+                                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                                #[cfg(target_os = "windows")]
+                                {
+                                    for letter in b'D'..=b'Z' {
+                                        let drive = PathBuf::from(format!("{}:\\", letter as char));
+                                        if drive.is_dir() {
+                                            letter.hash(&mut hasher);
+                                        }
+                                    }
+                                }
+                                #[cfg(not(target_os = "windows"))]
+                                {
+                                    if let Ok(mounts) = fs::read_to_string("/proc/mounts") {
+                                        mounts.hash(&mut hasher);
+                                    }
+                                }
+                                hasher.finish()
+                            };
+                            if cur_hash != last_mounts_hash {
+                                last_mounts_hash = cur_hash;
+                                newly_mounted_sd = find_mounted_duckypad_sd();
+                            }
+                        }
+
                         let _ = hotplug_qt_thread.queue(move |mut qobject| {
                             if crate::hardware::storage::MSC_SYNC_IN_PROGRESS
                                 .load(std::sync::atomic::Ordering::SeqCst)
@@ -4961,7 +5137,7 @@ impl qobject::DeviceController {
                                     qobject.as_mut().set_sd_mount_path(QString::from(""));
                                     sd_unmounted = true;
                                 }
-                            } else if let Some(mounted) = find_mounted_duckypad_sd() {
+                            } else if let Some(mounted) = newly_mounted_sd {
                                 let mounted_str = mounted.to_string_lossy().to_string();
                                 qobject.as_mut().rust_mut().get_mut().sd_root_path = Some(mounted);
                                 qobject.as_mut().set_sd_mount_path(QString::from(&mounted_str));
@@ -5023,7 +5199,7 @@ impl qobject::DeviceController {
                                             .map(|p| p.name.clone())
                                             .unwrap_or_else(|| format!("Profile {hw_prof}"));
                                         qobject.as_mut().set_active_profile(hw_prof as i32);
-                                        qobject.as_mut().sync_active_profile_state();
+                                        qobject.as_mut().sync_active_profile_selection_only();
                                         let msg = format!(
                                             "Followed hardware profile switch → Profile #{hw_prof} ({prof_name})"
                                         );
@@ -5165,16 +5341,19 @@ impl qobject::DeviceController {
             return;
         };
 
-        let serial = self.serial_number().to_string();
-        let sd_root = self.rust().sd_root_path.clone();
-        let not_in_synced_snapshot =
+        let not_in_synced_snapshot = if self.profile_sync_state().to_string() == "synced" {
+            false
+        } else {
+            let serial = self.serial_number().to_string();
+            let sd_root = self.rust().sd_root_path.clone();
             if let Some(snap) = load_sd_synced_snapshot(&serial, sd_root.as_deref()) {
                 !snap
                     .iter()
                     .any(|sp| sp.number == prof || sp.name.eq_ignore_ascii_case(&prof_name))
             } else {
                 false
-            };
+            }
+        };
 
         let is_unsynced = hid_rejected_not_on_device || not_in_synced_snapshot;
         let prev_prof = (*self.active_profile()).clamp(1, 64) as u8;
@@ -5191,7 +5370,7 @@ impl qobject::DeviceController {
             let err_changed = self.auto_switch_error_message().to_string() != err_short;
             if prev_prof != prof {
                 self.as_mut().set_active_profile(prof as i32);
-                self.as_mut().sync_active_profile_state();
+                self.as_mut().sync_active_profile_selection_only();
             }
             if err_changed {
                 self.as_mut()
@@ -5220,7 +5399,7 @@ impl qobject::DeviceController {
                 ),
             );
             self.as_mut().set_active_profile(prof as i32);
-            self.as_mut().sync_active_profile_state();
+            self.as_mut().sync_active_profile_selection_only();
             self.as_mut().sync_event_log_properties();
             self.as_mut().dispatch_profile_change_webhooks_if_changed(
                 prev_prof,
@@ -6174,6 +6353,161 @@ impl qobject::DeviceController {
             }
         }
         self.as_mut().set_close_to_tray(enabled);
+    }
+
+    pub fn set_check_updates_on_startup_enabled(mut self: Pin<&mut Self>, enabled: bool) {
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                sw.check_updates_on_startup = enabled;
+                if let Err(e) = sw.save_to_disk() {
+                    record_system_event(
+                        "WARN",
+                        "CONFIG",
+                        format!("Failed saving check_updates_on_startup setting: {e}"),
+                    );
+                }
+            }
+        }
+        self.as_mut().set_check_updates_on_startup(enabled);
+    }
+
+    pub fn check_app_updates(mut self: Pin<&mut Self>, manual: bool) {
+        if is_ui_test_suite_env() || *self.app_update_check_busy() {
+            return;
+        }
+        let curr_ver = self.app_version().to_string();
+        self.as_mut().set_app_update_check_busy(true);
+        if manual {
+            self.as_mut().set_app_update_status(QString::from(
+                "Checking GitHub Releases for DuckyDeck Studio updates...",
+            ));
+            self.as_mut()
+                .set_status_message(QString::from("Checking for DuckyDeck Studio updates..."));
+        }
+
+        let qt_thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let result = crate::updater::check_for_app_updates_blocking(&curr_ver);
+            let _ = qt_thread.queue(move |mut qobject| {
+                qobject.as_mut().set_app_update_check_busy(false);
+                match result {
+                    Ok(res) => {
+                        qobject
+                            .as_mut()
+                            .set_latest_app_version(QString::from(&res.latest_version));
+                        qobject
+                            .as_mut()
+                            .set_app_update_available(res.update_available);
+                        qobject
+                            .as_mut()
+                            .set_app_update_url(QString::from(&res.release_url));
+                        qobject
+                            .as_mut()
+                            .set_app_update_download_url(QString::from(&res.download_url));
+
+                        if res.update_available {
+                            let summary = format!(
+                                "DuckyDeck Studio v{} is available! (Installed: v{})",
+                                res.latest_version, res.current_version
+                            );
+                            qobject
+                                .as_mut()
+                                .set_app_update_status(QString::from(&summary));
+                            qobject.as_mut().set_status_message(QString::from(&summary));
+
+                            let already_notified = qobject.rust().notified_app_update_version
+                                == res.latest_version;
+                            if !already_notified {
+                                qobject
+                                    .as_mut()
+                                    .rust_mut()
+                                    .get_mut()
+                                    .notified_app_update_version = res.latest_version.clone();
+                                let title = QString::from("DuckyDeck Studio Update Available");
+                                let body = QString::from(&format!(
+                                    "Version {} is available on GitHub (installed: v{}). Open DuckyDeck Studio to install.",
+                                    res.latest_version, res.current_version
+                                ));
+                                qobject::duckydeck_show_tray_notification(&title, &body);
+                            }
+                        } else {
+                            let summary = format!(
+                                "DuckyDeck Studio v{} is up to date! (Latest release: v{})",
+                                res.current_version, res.latest_version
+                            );
+                            qobject
+                                .as_mut()
+                                .set_app_update_status(QString::from(&summary));
+                            if manual {
+                                qobject.as_mut().set_status_message(QString::from(&summary));
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        let msg = format!("App update check failed: {err}");
+                        qobject.as_mut().set_app_update_status(QString::from(&msg));
+                        if manual {
+                            qobject.as_mut().set_status_message(QString::from(&msg));
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    pub fn install_app_update(mut self: Pin<&mut Self>) {
+        if is_ui_test_suite_env() || *self.app_update_install_busy() {
+            return;
+        }
+        let dl_url = self.app_update_download_url().to_string();
+        let latest_ver = self.latest_app_version().to_string();
+        if dl_url.trim().is_empty() {
+            self.open_app_update_page();
+            return;
+        }
+
+        self.as_mut().set_app_update_install_busy(true);
+        let msg = format!("Downloading and installing DuckyDeck Studio v{latest_ver}...");
+        self.as_mut().set_app_update_status(QString::from(&msg));
+        self.as_mut().set_status_message(QString::from(&msg));
+
+        let qt_thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let result =
+                crate::updater::download_and_install_app_update_blocking(&dl_url, &latest_ver);
+            let _ = qt_thread.queue(move |mut qobject| {
+                qobject.as_mut().set_app_update_install_busy(false);
+                match result {
+                    Ok(done_msg) => {
+                        let full = format!("✓ {done_msg}");
+                        qobject.as_mut().set_app_update_status(QString::from(&full));
+                        qobject.as_mut().set_status_message(QString::from(&full));
+                    }
+                    Err(err) => {
+                        let full = format!("⚠ Update install failed: {err}");
+                        qobject.as_mut().set_app_update_status(QString::from(&full));
+                        qobject.as_mut().set_status_message(QString::from(&full));
+                    }
+                }
+            });
+        });
+    }
+
+    pub fn open_app_update_page(&self) {
+        let url = self.app_update_url().to_string();
+        let target = if url.trim().is_empty() {
+            crate::updater::GITHUB_RELEASES_HTML_URL
+        } else {
+            url.trim()
+        };
+        if let Err(e) = crate::paths::open_url_or_path_in_os(target) {
+            record_system_event(
+                "WARN",
+                "SYSTEM",
+                format!("Failed opening app update page {target}: {e}"),
+            );
+        }
     }
 
     pub fn notify_system_dark_theme(mut self: Pin<&mut Self>, is_dark: bool) {

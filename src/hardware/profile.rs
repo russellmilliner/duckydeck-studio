@@ -623,12 +623,21 @@ pub fn list_mounted_duckypad_sds() -> Vec<MountedDuckyPadSdInfo> {
             let Some(mnt_raw) = parts.next() else {
                 continue;
             };
+            let fstype = parts.next().unwrap_or("");
+            let is_fat_like = matches!(fstype, "vfat" | "msdos" | "exfat" | "fuseblk");
+            let is_network_fs = matches!(
+                fstype,
+                "cifs" | "smb3" | "smbfs" | "nfs" | "nfs4" | "fuse.sshfs" | "fuse.rclone"
+            );
+            if is_network_fs {
+                continue;
+            }
             let mnt = mnt_raw.replace("\\040", " ");
             if mnt.starts_with("/run/media/")
                 || mnt.starts_with("/media/")
-                || mnt.starts_with("/mnt/")
                 || mnt.starts_with("/run/host/run/media/")
                 || mnt.starts_with("/run/host/media/")
+                || (mnt.starts_with("/mnt/") && is_fat_like)
             {
                 let path = PathBuf::from(&mnt);
                 if path.is_dir() && !candidate_dirs.contains(&path) {
@@ -1778,6 +1787,9 @@ pub fn has_other_cached_devices(serial: &str) -> bool {
             let Some(folder_serial) = path.file_name().and_then(|s| s.to_str()) else {
                 continue;
             };
+            if folder_serial.starts_with("UNITTEST_") {
+                continue;
+            }
             let norm_folder = normalize_duckypad_serial(folder_serial);
             if norm_folder.is_empty() {
                 continue;
@@ -2195,17 +2207,10 @@ pub fn record_mounted_sd_space(serial: &str, mount_root: &Path) {
 }
 
 pub fn get_sd_card_space_info(serial: &str, sd_mount_path: Option<&Path>) -> SdCardSpaceInfo {
-    // 1. Check live mounted SD card path or auto-detected duckyPad mount for this serial
+    // 1. Check live mounted SD card path if currently mounted
     let live_mount = sd_mount_path
         .filter(|p| !p.as_os_str().is_empty() && p.is_dir())
-        .map(|p| p.to_path_buf())
-        .or_else(|| {
-            if !serial.is_empty() && serial != "-" {
-                find_mounted_duckypad_sd_for_device(Some(serial), None, None)
-            } else {
-                find_mounted_duckypad_sd()
-            }
-        });
+        .map(|p| p.to_path_buf());
 
     if let Some(ref mnt) = live_mount {
         if let Some((total_bytes, used_bytes, free_bytes)) = query_filesystem_space(mnt) {

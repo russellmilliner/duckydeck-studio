@@ -174,16 +174,17 @@ Window {
     }
 
     function extractLightingAnimFromScript(scriptText) {
-        const lines = String(scriptText || "").split("\n")
-        for (let i = 0; i < lines.length; ++i) {
-            const trimmed = lines[i].trim()
-            if (trimmed.indexOf("// @DUCKYDECK_ANIM ") === 0) {
-                try {
-                    const obj = JSON.parse(trimmed.slice(19).trim())
-                    if (obj && typeof obj === "object") return obj
-                } catch (e) {}
-            }
-        }
+        if (!scriptText) return null
+        const s = String(scriptText)
+        const markerIdx = s.indexOf("// @DUCKYDECK_ANIM ")
+        if (markerIdx < 0) return null
+        const lineEnd = s.indexOf("\n", markerIdx)
+        const jsonPart = (lineEnd >= 0 ? s.slice(markerIdx + 19, lineEnd) : s.slice(markerIdx + 19)).trim()
+        if (!jsonPart) return null
+        try {
+            const obj = JSON.parse(jsonPart)
+            if (obj && typeof obj === "object") return obj
+        } catch (e) {}
         return null
     }
 
@@ -364,24 +365,31 @@ Window {
     function syncLightingAnimationsForActiveProfile() {
         if (!hardwareCanvas) return
         const bKey = duckyColorPickerWindow.currentProfileAnimBucketKey()
-        const store = Object.assign({}, duckyColorPickerWindow.allProfileAnimationsStore || {})
+        const store = duckyColorPickerWindow.allProfileAnimationsStore || {}
+        let mutated = false
         if (!store[bKey]) {
-            store[bKey] = { profile: duckyColorPickerWindow.defaultLightingConfig(true), keys: {} }
+            store[bKey] = { profile: duckyColorPickerWindow.defaultLightingConfig(true), keys: {}, scanned: false }
+            mutated = true
         }
-        // Scan active profile slots for any embedded // @DUCKYDECK_ANIM metadata
-        if (deviceController) {
+        // Scan active profile slots once per profile bucket for any embedded // @DUCKYDECK_ANIM metadata
+        if (deviceController && !store[bKey].scanned) {
             for (let s = 1; s <= 20; ++s) {
                 const script = deviceController.getSlotScript(s, false)
-                const embedded = duckyColorPickerWindow.extractLightingAnimFromScript(script)
-                if (embedded && !store[bKey].keys[String(s)]) {
-                    store[bKey].keys[String(s)] = embedded
+                if (script && script.indexOf("// @DUCKYDECK_ANIM ") >= 0) {
+                    const embedded = duckyColorPickerWindow.extractLightingAnimFromScript(script)
+                    if (embedded && !store[bKey].keys[String(s)]) {
+                        store[bKey].keys[String(s)] = embedded
+                    }
                 }
             }
+            store[bKey].scanned = true
+            mutated = true
         }
-        duckyColorPickerWindow.allProfileAnimationsStore = store
-        hardwareCanvas.profileAnimationConfig = Object.assign(duckyColorPickerWindow.defaultLightingConfig(true), store[bKey].profile || {})
-        hardwareCanvas.keyAnimationConfigs = Object.assign({}, store[bKey].keys || {})
-        hardwareCanvas.syncSlotsFromController()
+        if (mutated) {
+            duckyColorPickerWindow.allProfileAnimationsStore = store
+        }
+        hardwareCanvas.profileAnimationConfig = store[bKey].profile || duckyColorPickerWindow.defaultLightingConfig(true)
+        hardwareCanvas.keyAnimationConfigs = store[bKey].keys || {}
     }
 
     function saveLightingAnimationConfig(scope, slotNum, cfg) {

@@ -1311,6 +1311,47 @@ Kirigami.ApplicationWindow {
                     deviceController.minimizeToTray()
                 }
             })
+        } else if (visibility === Window.Windowed || visibility === Window.Maximized) {
+            if (deviceController
+                && deviceController.checkUpdatesOnStartup
+                && !deviceController.isDemoShowcaseMode()
+                && !deviceController.isUiTestSuiteMode()) {
+                deviceController.checkAppUpdates(false)
+            }
+        }
+    }
+
+    property bool appUpdateBannerDismissed: false
+
+    Timer {
+        id: appUpdateStartupTimer
+        interval: 2500
+        repeat: false
+        running: false
+        onTriggered: {
+            if (deviceController
+                && deviceController.checkUpdatesOnStartup
+                && !deviceController.isDemoShowcaseMode()
+                && !deviceController.isUiTestSuiteMode()) {
+                deviceController.checkAppUpdates(false)
+            }
+        }
+    }
+
+    Timer {
+        id: appUpdatePeriodicTimer
+        interval: 21600000 // 6 hours
+        repeat: true
+        running: Boolean(
+            deviceController
+            && deviceController.checkUpdatesOnStartup
+            && !deviceController.isDemoShowcaseMode()
+            && !deviceController.isUiTestSuiteMode()
+        )
+        onTriggered: {
+            if (deviceController) {
+                deviceController.checkAppUpdates(false)
+            }
         }
     }
 
@@ -1367,6 +1408,11 @@ Kirigami.ApplicationWindow {
                 root.triggerSyncToDeviceSd()
             } else if (deviceController.showFirstRunDialog && !deviceController.isDemoShowcaseMode() && !deviceController.isUiTestSuiteMode()) {
                 firstRunSetupDialog.open()
+            }
+            if (deviceController.checkUpdatesOnStartup
+                && !deviceController.isDemoShowcaseMode()
+                && !deviceController.isUiTestSuiteMode()) {
+                appUpdateStartupTimer.start()
             }
         })
     }
@@ -2234,6 +2280,20 @@ Kirigami.ApplicationWindow {
         }
 
         QQC2.MenuItem {
+            icon.name: "system-software-update"
+            text: deviceController.appUpdateAvailable
+                ? qsTr("⬇ Update DuckyDeck Studio (v%1 Available)...").arg(deviceController.latestAppVersion)
+                : qsTr("Check for App Updates...")
+            onTriggered: {
+                if (deviceController.appUpdateAvailable) {
+                    aboutDialog.openAboutWindow()
+                } else {
+                    deviceController.checkAppUpdates(true)
+                }
+            }
+        }
+
+        QQC2.MenuItem {
             icon.name: "help-about"
             text: qsTr("About DuckyDeck Studio...")
             onTriggered: aboutDialog.openAboutWindow()
@@ -2447,6 +2507,70 @@ Kirigami.ApplicationWindow {
             anchors.fill: parent
             anchors.margins: Kirigami.Units.largeSpacing
             spacing: Kirigami.Units.mediumSpacing
+
+            Rectangle {
+                id: appUpdateBanner
+                visible: deviceController.appUpdateAvailable && !root.appUpdateBannerDismissed
+                Layout.fillWidth: true
+                implicitHeight: appUpdateBannerRow.implicitHeight + 16
+                radius: 6
+                color: Qt.tint(
+                    Kirigami.Theme.alternateBackgroundColor,
+                    Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.18)
+                )
+                border.color: Kirigami.Theme.highlightColor
+                border.width: 1
+
+                RowLayout {
+                    id: appUpdateBannerRow
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 10
+
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        font.bold: true
+                        font.pointSize: 10 * root.fontScale
+                        color: Kirigami.Theme.textColor
+                        text: deviceController.appUpdateStatus.length > 0
+                            ? deviceController.appUpdateStatus
+                            : qsTr("⬆ DuckyDeck Studio v%1 is available! (Installed: v%2)")
+                                .arg(deviceController.latestAppVersion)
+                                .arg(deviceController.appVersion)
+                    }
+
+                    QQC2.Button {
+                        font.pointSize: 10 * root.fontScale
+                        icon.name: "system-software-update"
+                        font.bold: true
+                        highlighted: true
+                        enabled: !deviceController.appUpdateInstallBusy
+                        text: deviceController.appUpdateInstallBusy
+                            ? qsTr("Installing...")
+                            : qsTr("⬇ Install v%1").arg(deviceController.latestAppVersion)
+                        onClicked: deviceController.installAppUpdate()
+                    }
+
+                    QQC2.Button {
+                        font.pointSize: 10 * root.fontScale
+                        icon.name: "internet-web-browser"
+                        text: qsTr("Release Notes")
+                        onClicked: deviceController.openAppUpdatePage()
+                    }
+
+                    QQC2.Button {
+                        font.pointSize: 10 * root.fontScale
+                        text: "✕"
+                        flat: true
+                        implicitWidth: 28
+                        onClicked: root.appUpdateBannerDismissed = true
+                        QQC2.ToolTip.delay: 500
+                        QQC2.ToolTip.visible: hovered
+                        QQC2.ToolTip.text: qsTr("Dismiss update banner")
+                    }
+                }
+            }
 
             UdevBanner {
                 controller: deviceController

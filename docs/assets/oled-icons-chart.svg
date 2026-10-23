@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1214" height="3016" viewBox="0 0 1214 3016">
   <rect width="1214" height="3016" rx="12" fill="#0b0e14"/>
-  <text x="24" y="34" fill="#f8fafc" font-family="sans-serif" font-size="20" font-weight="bold">DuckyDeck Studio v0.1.8 — Complete OLED Icon Library (204 Icons: Color UI vs. 1-Bit Monochrome OLED)</text>
+  <text x="24" y="34" fill="#f8fafc" font-family="sans-serif" font-size="20" font-weight="bold">DuckyDeck Studio v0.1.9 — Complete OLED Icon Library (204 Icons: Color UI vs. 1-Bit Monochrome OLED)</text>
   <text x="24" y="54" fill="#94a3b8" font-family="sans-serif" font-size="12">Left badge: Desktop UI Color Symbol/Emoji • Right badge: Hardware SSD1306 1-Bit Monochrome 16×16 Pixel-Art Bitmap (DDS_FW v1.1.2)</text>
   <text x="24" y="78" fill="#38bdf8" font-family="sans-serif" font-size="15" font-weight="bold">Web Browsers (16 icons)</text>
   <line x1="24" y1="84" x2="1190" y2="84" stroke="#1e293b" stroke-width="1.5"/>

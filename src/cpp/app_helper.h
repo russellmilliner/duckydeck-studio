@@ -719,6 +719,13 @@ public:
         }
     }
 
+    void showNotification(const QString& title, const QString& message) {
+        ensureInitialized();
+        if (m_tray && m_tray->isVisible()) {
+            m_tray->showMessage(title, message, m_tray->icon(), 8000);
+        }
+    }
+
     void sync(
         QObject* controller,
         bool useLightOnDarkIcon,
@@ -1026,6 +1033,22 @@ private:
         m_hideAction = m_menu->addAction(QStringLiteral("Minimize to Tray"));
         QObject::connect(m_hideAction, &QAction::triggered, []() {
             hide_main_window_to_tray();
+        });
+
+        QAction* checkUpdateAction = m_menu->addAction(
+            QIcon::fromTheme(QStringLiteral("system-software-update")),
+            QStringLiteral("Check for Updates...")
+        );
+        QObject::connect(checkUpdateAction, &QAction::triggered, [this]() {
+            show_main_window();
+            if (m_controller) {
+                QMetaObject::invokeMethod(
+                    m_controller,
+                    "checkAppUpdates",
+                    Qt::QueuedConnection,
+                    Q_ARG(bool, true)
+                );
+            }
         });
 
         QAction* aboutAction =
@@ -1747,6 +1770,21 @@ inline void duckydeck_exit_app(int32_t exit_code) {
 
 inline void duckydeck_restart_app() {
     duckydeck::restart_duckydeck_application();
+}
+
+inline void duckydeck_show_tray_notification(const QString& title, const QString& message) {
+    const QString t = title;
+    const QString m = message;
+    if (QCoreApplication::instance()
+        && QThread::currentThread() != QCoreApplication::instance()->thread()) {
+        QMetaObject::invokeMethod(
+            QCoreApplication::instance(),
+            [t, m]() { duckydeck::TrayManager::instance().showNotification(t, m); },
+            Qt::QueuedConnection
+        );
+        return;
+    }
+    duckydeck::TrayManager::instance().showNotification(t, m);
 }
 
 inline bool duckydeck_extract_qrc_user_guide(const QString& dest_path) {

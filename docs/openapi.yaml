@@ -1,9 +1,9 @@
 openapi: 3.0.3
 info:
   title: DuckyDeck Studio HTTP REST API
-  version: 0.1.8
+  version: 0.1.9
   description: |
-    Local and LAN HTTP REST API for **DuckyDeck Studio** (`v0.1.8`), a native Linux (KDE Plasma 6 / Kirigami) & Windows 10/11 (Rust + CXX-Qt + Qt 6) configurator and automation daemon for the **duckyPad Pro** (`0x0483:0xd11d`) and **duckyPad (2020)** (`0x0483:0xd11c`).
+    Local and LAN HTTP REST API for **DuckyDeck Studio** (`v0.1.9`), a native Linux (KDE Plasma 6 / Kirigami) & Windows 10/11 (Rust + CXX-Qt + Qt 6) configurator and automation daemon for the **duckyPad Pro** (`0x0483:0xd11d`) and **duckyPad (2020)** (`0x0483:0xd11c`).
 
     - **Website & User Guide**: [https://duckydeckstudio.com](https://duckydeckstudio.com)
     - **GitHub Repository**: [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)
@@ -74,7 +74,7 @@ paths:
                     example: duckydeck-studio
                   version:
                     type: string
-                    example: 0.1.8
+                    example: 0.1.9
                   authRequired:
                     type: boolean
                     example: true
@@ -1138,7 +1138,7 @@ components:
           example: true
         version:
           type: string
-          example: 0.1.8
+          example: 0.1.9
         connected:
           type: boolean
           example: true

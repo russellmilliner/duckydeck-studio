@@ -365,6 +365,20 @@ pub fn parse_hid_query_info_response(
     })
 }
 
+pub fn reverse_hex_byte_pairs_4b(serial: &str) -> Option<String> {
+    let bytes = serial.as_bytes();
+    if bytes.len() == 8 && bytes.iter().all(|b| b.is_ascii_hexdigit()) {
+        let mut out = String::with_capacity(8);
+        out.push_str(&serial[6..8]);
+        out.push_str(&serial[4..6]);
+        out.push_str(&serial[2..4]);
+        out.push_str(&serial[0..2]);
+        Some(out)
+    } else {
+        None
+    }
+}
+
 pub fn serial_matches_target(candidate_serial_or_uniq: &str, target_serial: &str) -> bool {
     let target = normalize_duckypad_serial(target_serial);
     let cand = normalize_duckypad_serial(candidate_serial_or_uniq);
@@ -373,6 +387,22 @@ pub fn serial_matches_target(candidate_serial_or_uniq: &str, target_serial: &str
     }
     if cand == target {
         return true;
+    }
+    if let Some(rev_cand) = reverse_hex_byte_pairs_4b(&cand) {
+        if rev_cand == target {
+            return true;
+        }
+        if target.len() >= 4 && (rev_cand.ends_with(&target) || target.ends_with(&rev_cand)) {
+            return true;
+        }
+    }
+    if let Some(rev_target) = reverse_hex_byte_pairs_4b(&target) {
+        if cand == rev_target {
+            return true;
+        }
+        if cand.len() >= 4 && (cand.ends_with(&rev_target) || rev_target.ends_with(&cand)) {
+            return true;
+        }
     }
     if cand.len() >= 4 && target.len() >= 4 && (cand.ends_with(&target) || target.ends_with(&cand))
     {

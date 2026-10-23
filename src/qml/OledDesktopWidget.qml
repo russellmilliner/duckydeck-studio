@@ -51,6 +51,7 @@ Window {
     property string lastExternalWindowTitle: ""
     property string lastExternalWindowClass: ""
     property int currentExtraTitleHeight: 0
+    property real userBaseHeight: 382
     property int lockedTopY: -1
     property bool isAdjustingExpansion: false
 
@@ -60,14 +61,20 @@ Window {
         }
     }
 
+    onHeightChanged: {
+        if (!isAdjustingExpansion) {
+            const titleAllowance = showWindowTitle ? (baseTitleBarHeight + sectionGap + currentExtraTitleHeight) : 0
+            userBaseHeight = Math.max(240, height - titleAllowance)
+        }
+    }
+
     function updateTitleExpansion() {
         if (!showWindowTitle) {
             if (currentExtraTitleHeight !== 0) {
-                const diff = -currentExtraTitleHeight
                 currentExtraTitleHeight = 0
                 isAdjustingExpansion = true
                 const savedY = lockedTopY >= 0 ? lockedTopY : y
-                height = Math.max(minimumHeight, height + diff)
+                height = Math.max(minimumHeight, Math.round(userBaseHeight))
                 if (savedY >= 0 && y !== savedY) {
                     y = savedY
                 }
@@ -79,12 +86,12 @@ Window {
         const textH = windowTitleText.contentHeight
         const needed = Math.max(baseTitleBarHeight, Math.round(textH + 8))
         const newExtra = Math.max(0, needed - baseTitleBarHeight)
-        if (newExtra !== currentExtraTitleHeight) {
-            const diff = newExtra - currentExtraTitleHeight
-            currentExtraTitleHeight = newExtra
+        const targetHeight = Math.max(minimumHeight, Math.round(userBaseHeight + baseTitleBarHeight + sectionGap + newExtra))
+        if (newExtra !== currentExtraTitleHeight || height !== targetHeight) {
             isAdjustingExpansion = true
+            currentExtraTitleHeight = newExtra
             const savedY = lockedTopY >= 0 ? lockedTopY : y
-            height = Math.max(minimumHeight, height + diff)
+            height = targetHeight
             if (savedY >= 0 && y !== savedY) {
                 y = savedY
             }
@@ -138,17 +145,15 @@ Window {
         isAdjustingExpansion = true
         const savedY = lockedTopY >= 0 ? lockedTopY : y
         if (showWindowTitle) {
-            const delta = baseTitleBarHeight + sectionGap
-            height = Math.max(minimumHeight, height + delta)
+            height = Math.max(minimumHeight, Math.round(userBaseHeight + baseTitleBarHeight + sectionGap + currentExtraTitleHeight))
             if (savedY >= 0 && y !== savedY) {
                 y = savedY
             }
             isAdjustingExpansion = false
             Qt.callLater(updateTitleExpansion)
         } else {
-            const delta = baseTitleBarHeight + sectionGap + currentExtraTitleHeight
             currentExtraTitleHeight = 0
-            height = Math.max(minimumHeight, height - delta)
+            height = Math.max(minimumHeight, Math.round(userBaseHeight))
             if (savedY >= 0 && y !== savedY) {
                 y = savedY
             }
@@ -245,8 +250,8 @@ Window {
     readonly property int currentTitleBarHeight: showWindowTitle ? (baseTitleBarHeight + currentExtraTitleHeight) : 0
     readonly property int windowTitleReserved: showWindowTitle ? (baseTitleBarHeight + sectionGap) : 0
 
-    // Pure top-down geometry calculations (based on baseWindowHeight so title expansion doesn't loop)
-    readonly property real baseWindowHeight: Math.max(240, height - currentExtraTitleHeight)
+    // Pure top-down geometry calculations (based on userBaseHeight so title expansion never loops)
+    readonly property real baseWindowHeight: Math.max(240, userBaseHeight)
     readonly property real uiScale: Math.max(0.85, Math.min(width / 260.0, baseWindowHeight / 366.0))
     readonly property int outerPad: Math.max(6, Math.round(8 * uiScale))
     readonly property int sectionGap: Math.max(4, Math.round(6 * uiScale))
@@ -256,7 +261,7 @@ Window {
         : Math.max(70, Math.round(78 * uiScale))
     readonly property int windowTitleFontPx: Math.max(10, Math.round(10 * uiScale))
     readonly property int availOledWidth: Math.max(120, width - outerPad * 2)
-    readonly property int availOledHeight: Math.max(120, baseWindowHeight - outerPad * 2 - headerBarHeight - footerBarHeight - windowTitleReserved - sectionGap * 2)
+    readonly property int availOledHeight: Math.max(120, baseWindowHeight - outerPad * 2 - headerBarHeight - footerBarHeight - sectionGap * 2)
     readonly property int oledSide: Math.max(120, Math.min(availOledWidth, availOledHeight))
     readonly property real currentScaleMultiplier: Math.max(0.8, Math.min(3.0, oledSide / 128.0))
 
@@ -359,6 +364,18 @@ Window {
         return c.length > 0 ? c : fallback
     }
 
+    readonly property var emptySlotObj: ({ slot: 0, l1: "", l2: "", wl1: "", wl2: "", r: 0, g: 170, b: 255, hasScript: false })
+    property bool syncQueued: false
+
+    function scheduleSyncFromController() {
+        if (syncQueued) return
+        syncQueued = true
+        Qt.callLater(function() {
+            syncQueued = false
+            oledWidgetWindow.syncFromController()
+        })
+    }
+
     function slotDataFor(slotNum) {
         if (slotItems && slotNum >= 1 && slotNum <= slotItems.length) {
             const direct = slotItems[slotNum - 1]
@@ -371,7 +388,7 @@ Window {
                 }
             }
         }
-        return { slot: slotNum, l1: "", l2: "", wl1: "", wl2: "", r: 0, g: 170, b: 255, hasScript: false }
+        return emptySlotObj
     }
 
     function applySlotsArray(arr) {
@@ -475,26 +492,30 @@ Window {
     function applyScalePreset(mult) {
         const clamped = Math.max(0.8, Math.min(3.0, mult))
         const targetOled = Math.round(128 * clamped)
+        const nextBaseH = Math.max(240, targetOled + Math.round(140 * Math.max(1.0, clamped * 0.75)))
+        oledWidgetWindow.isAdjustingExpansion = true
+        oledWidgetWindow.userBaseHeight = nextBaseH
         oledWidgetWindow.width = Math.max(minimumWidth, targetOled + 32)
-        oledWidgetWindow.height = Math.max(minimumHeight, targetOled + Math.round(140 * Math.max(1.0, clamped * 0.75)) + (showWindowTitle ? baseTitleBarHeight + sectionGap + currentExtraTitleHeight : 0))
+        oledWidgetWindow.height = Math.max(minimumHeight, nextBaseH + (showWindowTitle ? baseTitleBarHeight + sectionGap + currentExtraTitleHeight : 0))
+        oledWidgetWindow.isAdjustingExpansion = false
     }
 
     Connections {
         target: oledWidgetWindow.controller
         function onActiveProfileSlotsJsonChanged() {
-            oledWidgetWindow.syncFromController()
+            oledWidgetWindow.scheduleSyncFromController()
         }
         function onActiveProfileChanged() {
-            oledWidgetWindow.syncFromController()
+            oledWidgetWindow.scheduleSyncFromController()
         }
         function onActiveProfileNameChanged() {
-            oledWidgetWindow.syncFromController()
+            oledWidgetWindow.scheduleSyncFromController()
         }
         function onProfilesJsonChanged() {
-            oledWidgetWindow.syncFromController()
+            oledWidgetWindow.scheduleSyncFromController()
         }
         function onMultiDeviceOledStatesJsonChanged() {
-            oledWidgetWindow.syncFromController()
+            oledWidgetWindow.scheduleSyncFromController()
         }
         function onActiveWindowTitleChanged() {
             oledWidgetWindow.refreshExternalWindowInfo()
@@ -1813,57 +1834,20 @@ Window {
                                     }
                                     return r * pCols + c + 1
                                 }
-                                readonly property string l1: {
+                                readonly property var slotData: {
                                     const _rev = oledWidgetWindow.dataRevision
                                     const _items = oledWidgetWindow.slotItems
                                     const _rot = currentRot
-                                    return oledWidgetWindow.slotDataFor(slotNum).l1 || ""
+                                    return oledWidgetWindow.slotDataFor(slotNum)
                                 }
-                                readonly property string l2: {
-                                    const _rev = oledWidgetWindow.dataRevision
-                                    const _items = oledWidgetWindow.slotItems
-                                    const _rot = currentRot
-                                    return oledWidgetWindow.slotDataFor(slotNum).l2 || ""
-                                }
-                                readonly property string wl1: {
-                                    const _rev = oledWidgetWindow.dataRevision
-                                    const _items = oledWidgetWindow.slotItems
-                                    const _rot = currentRot
-                                    return (oledWidgetWindow.slotDataFor(slotNum).wl1 || "").trim()
-                                }
-                                readonly property string wl2: {
-                                    const _rev = oledWidgetWindow.dataRevision
-                                    const _items = oledWidgetWindow.slotItems
-                                    const _rot = currentRot
-                                    return (oledWidgetWindow.slotDataFor(slotNum).wl2 || "").trim()
-                                }
-                                readonly property int slotR: {
-                                    const _rev = oledWidgetWindow.dataRevision
-                                    const _items = oledWidgetWindow.slotItems
-                                    const _rot = currentRot
-                                    const d = oledWidgetWindow.slotDataFor(slotNum)
-                                    return d.r !== undefined ? d.r : 0
-                                }
-                                readonly property int slotG: {
-                                    const _rev = oledWidgetWindow.dataRevision
-                                    const _items = oledWidgetWindow.slotItems
-                                    const _rot = currentRot
-                                    const d = oledWidgetWindow.slotDataFor(slotNum)
-                                    return d.g !== undefined ? d.g : 170
-                                }
-                                readonly property int slotB: {
-                                    const _rev = oledWidgetWindow.dataRevision
-                                    const _items = oledWidgetWindow.slotItems
-                                    const _rot = currentRot
-                                    const d = oledWidgetWindow.slotDataFor(slotNum)
-                                    return d.b !== undefined ? d.b : 255
-                                }
-                                readonly property bool slotHasScript: {
-                                    const _rev = oledWidgetWindow.dataRevision
-                                    const _items = oledWidgetWindow.slotItems
-                                    const _rot = currentRot
-                                    return !!oledWidgetWindow.slotDataFor(slotNum).hasScript
-                                }
+                                readonly property string l1: slotData.l1 || ""
+                                readonly property string l2: slotData.l2 || ""
+                                readonly property string wl1: (slotData.wl1 || "").trim()
+                                readonly property string wl2: (slotData.wl2 || "").trim()
+                                readonly property int slotR: slotData.r !== undefined ? slotData.r : 0
+                                readonly property int slotG: slotData.g !== undefined ? slotData.g : 170
+                                readonly property int slotB: slotData.b !== undefined ? slotData.b : 255
+                                readonly property bool slotHasScript: !!slotData.hasScript
                                 readonly property string disp1: wl1.length > 0
                                     ? wl1
                                     : oledWidgetWindow.sliceOledLabel(l1, isLandscapeCell ? 4 : 5)
