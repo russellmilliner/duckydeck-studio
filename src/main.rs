@@ -1,6 +1,7 @@
 pub mod actions {
     pub mod app_launch;
     pub mod desktop_apps;
+    pub mod esp32_ha_server;
     pub mod web_api;
 }
 pub mod bridge {
@@ -1161,40 +1162,38 @@ fn main() {
                     }
                 }
             }
-            "--self-update" => {
-                match crate::updater::check_for_app_updates_blocking(APP_VERSION) {
-                    Ok(res) => {
-                        if !res.update_available {
-                            println!(
-                                "DuckyDeck Studio v{} is already up to date.",
-                                res.current_version
-                            );
+            "--self-update" => match crate::updater::check_for_app_updates_blocking(APP_VERSION) {
+                Ok(res) => {
+                    if !res.update_available {
+                        println!(
+                            "DuckyDeck Studio v{} is already up to date.",
+                            res.current_version
+                        );
+                        std::process::exit(0);
+                    }
+                    println!(
+                        "Downloading and installing DuckyDeck Studio v{}...",
+                        res.latest_version
+                    );
+                    match crate::updater::download_and_install_app_update_blocking(
+                        &res.download_url,
+                        &res.latest_version,
+                    ) {
+                        Ok(msg) => {
+                            println!("✓ {msg}");
                             std::process::exit(0);
                         }
-                        println!(
-                            "Downloading and installing DuckyDeck Studio v{}...",
-                            res.latest_version
-                        );
-                        match crate::updater::download_and_install_app_update_blocking(
-                            &res.download_url,
-                            &res.latest_version,
-                        ) {
-                            Ok(msg) => {
-                                println!("✓ {msg}");
-                                std::process::exit(0);
-                            }
-                            Err(err) => {
-                                eprintln!("Self-update failed: {err}");
-                                std::process::exit(1);
-                            }
+                        Err(err) => {
+                            eprintln!("Self-update failed: {err}");
+                            std::process::exit(1);
                         }
                     }
-                    Err(err) => {
-                        eprintln!("Update check failed: {err}");
-                        std::process::exit(1);
-                    }
                 }
-            }
+                Err(err) => {
+                    eprintln!("Update check failed: {err}");
+                    std::process::exit(1);
+                }
+            },
             "-m" | "--minimize" | "--minimized" | "--tray" => {
                 start_minimized = true;
             }

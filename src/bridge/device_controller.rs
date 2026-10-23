@@ -139,8 +139,14 @@ pub mod qobject {
         #[qproperty(QString, multi_device_oled_states_json)]
         #[qproperty(i32, connected_device_count)]
         #[qproperty(i32, active_hw_model)]
-        #[qproperty(bool, is_duckypad_2020)]
+        #[qproperty(bool, is_duckypad_2020, cxx_name = "isDuckyPad2020")]
         #[qproperty(i32, onboard_key_count)]
+        #[qproperty(QString, custom_device_name, cxx_name = "customDeviceName")]
+        #[qproperty(bool, esp32_ha_detected)]
+        #[qproperty(QString, esp32_ha_device_serial)]
+        #[qproperty(bool, esp32_ha_server_running)]
+        #[qproperty(i32, esp32_ha_server_port)]
+        #[qproperty(QString, esp32_ha_server_url)]
         #[qproperty(bool, app_update_available)]
         #[qproperty(QString, latest_app_version)]
         #[qproperty(QString, app_update_url)]
@@ -984,10 +990,31 @@ pub mod qobject {
 
         #[qinvokable]
         #[cxx_name = "setCheckUpdatesOnStartupEnabled"]
-        fn set_check_updates_on_startup_enabled(
+        fn set_check_updates_on_startup_enabled(self: Pin<&mut DeviceController>, enabled: bool);
+
+        #[qinvokable]
+        #[cxx_name = "startEsp32HaWebServer"]
+        fn start_esp32_ha_web_server(self: Pin<&mut DeviceController>, port: i32) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "stopEsp32HaWebServer"]
+        fn stop_esp32_ha_web_server(self: Pin<&mut DeviceController>) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "toggleEsp32HaWebServer"]
+        fn toggle_esp32_ha_web_server(self: Pin<&mut DeviceController>) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "openEsp32HaWebUi"]
+        fn open_esp32_ha_web_ui(self: Pin<&mut DeviceController>) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "assignCustomDeviceName"]
+        fn assign_custom_device_name(
             self: Pin<&mut DeviceController>,
-            enabled: bool,
-        );
+            serial: &QString,
+            name: &QString,
+        ) -> bool;
     }
 
     impl cxx_qt::Threading for DeviceController {}
@@ -996,7 +1023,7 @@ pub mod qobject {
 use core::pin::Pin;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
-use hidapi::{HidApi, HidDevice};
+use hidapi::HidDevice;
 use serde_json::json;
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
@@ -1034,7 +1061,7 @@ use crate::hardware::storage::{
     write_duckypad_pro_profiles_via_msc_with_progress, write_profiles_to_sd_root_for_model,
     AppLaunchConfig, DuckyKeySlot, DuckyProfile, DuckySdDeviceMeta, DuckypadEvdevListener,
     GlobalMacroEvdevRecorder, ProfileWebhookConfig, WebApiConfig, DP_MODEL_DUCKYPAD_PRO,
-    DP_MODEL_OG_DUCKYPAD, DUCKYPAD_VID, HID_CMD_SET_LED_SINGLE, HID_REPORT_ID_OUT, MAX_INPUT_SLOTS,
+    DP_MODEL_OG_DUCKYPAD, HID_CMD_SET_LED_SINGLE, HID_REPORT_ID_OUT, MAX_INPUT_SLOTS,
     PID_DUCKYPAD_2020, PID_DUCKYPAD_PRO,
 };
 use crate::kwin::auto_switcher::{
@@ -1182,6 +1209,12 @@ pub struct DeviceControllerRust {
     pub(crate) active_hw_model: i32,
     pub(crate) is_duckypad_2020: bool,
     pub(crate) onboard_key_count: i32,
+    pub(crate) custom_device_name: QString,
+    pub(crate) esp32_ha_detected: bool,
+    pub(crate) esp32_ha_device_serial: QString,
+    pub(crate) esp32_ha_server_running: bool,
+    pub(crate) esp32_ha_server_port: i32,
+    pub(crate) esp32_ha_server_url: QString,
     pub(crate) app_update_available: bool,
     pub(crate) latest_app_version: QString,
     pub(crate) app_update_url: QString,
@@ -1395,6 +1428,38 @@ impl Default for DeviceControllerRust {
             serde_json::to_string(&targets).unwrap_or_else(|_| "[]".to_string());
         let is_dp20 = init_hw_model == DP_MODEL_OG_DUCKYPAD;
         let onboard_keys = onboard_key_count_for_model(init_hw_model) as i32;
+        let init_custom_device_name =
+            crate::hardware::profile::get_custom_duckypad_name(&sn_str).unwrap_or_default();
+        let esp32_target_serial =
+            if connected && crate::hardware::profile::is_esp32_ha_configured_profiles(&profiles) {
+                Some(sn_str.clone())
+            } else {
+                targets
+                    .iter()
+                    .find(|t| t.is_esp32_ha_configured && t.usb_connected)
+                    .map(|t| t.serial_number.clone())
+            };
+        let esp32_ha_detected = esp32_target_serial.is_some();
+        let esp32_ha_device_serial = esp32_target_serial.unwrap_or_default();
+        let esp32_cfg_exists = crate::paths::config_dir()
+            .join("esp32_ha_bridge.json")
+            .exists();
+        let esp32_cfg = crate::actions::esp32_ha_server::load_esp32_ha_bridge_config();
+        let esp32_ha_server_port = (esp32_cfg.port.max(1024)) as i32;
+        if esp32_ha_detected && (esp32_cfg.enabled || !esp32_cfg_exists) {
+            let _ = crate::actions::esp32_ha_server::start_esp32_ha_web_server(
+                esp32_cfg.port.max(1024),
+                if esp32_ha_device_serial.is_empty() {
+                    None
+                } else {
+                    Some(esp32_ha_device_serial.clone())
+                },
+            );
+        } else if !esp32_ha_detected {
+            crate::actions::esp32_ha_server::stop_esp32_ha_server();
+        }
+        let esp32_ha_server_running = crate::actions::esp32_ha_server::is_esp32_ha_server_running();
+        let esp32_ha_server_url = crate::actions::esp32_ha_server::esp32_ha_server_url();
 
         let auto_enabled = switcher.enabled;
         let max_init_prof = profiles.len().max(1) as u8;
@@ -1601,6 +1666,12 @@ impl Default for DeviceControllerRust {
             active_hw_model: init_hw_model as i32,
             is_duckypad_2020: is_dp20,
             onboard_key_count: onboard_keys,
+            custom_device_name: QString::from(&init_custom_device_name),
+            esp32_ha_detected,
+            esp32_ha_device_serial: QString::from(&esp32_ha_device_serial),
+            esp32_ha_server_running,
+            esp32_ha_server_port,
+            esp32_ha_server_url: QString::from(&esp32_ha_server_url),
             app_update_available: false,
             latest_app_version: QString::from(APP_VERSION),
             app_update_url: QString::from(crate::updater::GITHUB_RELEASES_HTML_URL),
@@ -2141,8 +2212,8 @@ impl qobject::DeviceController {
             }
         } else if !is_demo_showcase_env() {
             if let Ok(serialized) = serde_json::to_string(&oled_snapshot) {
-                let cache = LAST_OLED_STATE_JSON
-                    .get_or_init(|| std::sync::Mutex::new(String::new()));
+                let cache =
+                    LAST_OLED_STATE_JSON.get_or_init(|| std::sync::Mutex::new(String::new()));
                 let changed = if let Ok(mut guard) = cache.lock() {
                     if *guard == serialized {
                         false
@@ -2384,6 +2455,7 @@ impl qobject::DeviceController {
                 .set_auto_switch_error_message(QString::from(""));
         }
         self.as_mut().sync_multi_device_oled_states();
+        self.as_mut().sync_esp32_ha_state();
         self.as_mut().refresh_color_palettes();
         self.as_mut().sync_tray_state_inner(true);
     }
@@ -3035,6 +3107,226 @@ impl qobject::DeviceController {
         ok
     }
 
+    pub(crate) fn sync_esp32_ha_state(mut self: Pin<&mut Self>) {
+        if is_demo_showcase_env() {
+            return;
+        }
+        let active_serial = normalize_duckypad_serial(&self.serial_number().to_string());
+        let active_custom_name =
+            crate::hardware::profile::get_custom_duckypad_name(&active_serial).unwrap_or_default();
+        if self.custom_device_name().to_string() != active_custom_name {
+            self.as_mut()
+                .set_custom_device_name(QString::from(&active_custom_name));
+        }
+
+        let active_is_esp32 = *self.connected()
+            && crate::hardware::profile::is_esp32_ha_configured_profiles(&self.rust().profiles);
+
+        let mut detected_serial: Option<String> = if active_is_esp32 && !active_serial.is_empty() {
+            Some(active_serial)
+        } else {
+            None
+        };
+
+        if detected_serial.is_none() {
+            for sec in crate::kwin::auto_switcher::get_secondary_devices_snapshot() {
+                if sec.usb_connected
+                    && crate::hardware::profile::is_esp32_ha_configured_profiles(&sec.profiles)
+                {
+                    detected_serial = Some(sec.serial.clone());
+                    break;
+                }
+            }
+        }
+
+        if detected_serial.is_none() {
+            if let Ok(targets) = serde_json::from_str::<
+                Vec<crate::hardware::profile::ManageableDuckyPadTarget>,
+            >(&self.available_devices_json().to_string())
+            {
+                if let Some(found) = targets
+                    .iter()
+                    .find(|t| t.is_esp32_ha_configured && t.usb_connected)
+                {
+                    detected_serial = Some(found.serial_number.clone());
+                }
+            }
+        }
+
+        let detected = detected_serial.is_some();
+        let serial_str = detected_serial.unwrap_or_default();
+        if *self.esp32_ha_detected() != detected {
+            self.as_mut().set_esp32_ha_detected(detected);
+        }
+        if self.esp32_ha_device_serial().to_string() != serial_str {
+            self.as_mut()
+                .set_esp32_ha_device_serial(QString::from(&serial_str));
+        }
+
+        if !detected {
+            if crate::actions::esp32_ha_server::is_esp32_ha_server_running() {
+                crate::actions::esp32_ha_server::stop_esp32_ha_server();
+                record_system_event(
+                    "INFO",
+                    "WEB_API",
+                    "ESP32-HA Web Server stopped (no ESP32-HA duckyPad connected)",
+                );
+            }
+        } else if !crate::actions::esp32_ha_server::is_esp32_ha_server_running() {
+            let esp32_cfg_exists = crate::paths::config_dir()
+                .join("esp32_ha_bridge.json")
+                .exists();
+            let esp32_cfg = crate::actions::esp32_ha_server::load_esp32_ha_bridge_config();
+            if esp32_cfg.enabled || !esp32_cfg_exists {
+                let _ = crate::actions::esp32_ha_server::start_esp32_ha_web_server(
+                    esp32_cfg.port.max(1024),
+                    if serial_str.is_empty() {
+                        None
+                    } else {
+                        Some(serial_str.clone())
+                    },
+                );
+            }
+        }
+
+        let running = crate::actions::esp32_ha_server::is_esp32_ha_server_running();
+        let port = crate::actions::esp32_ha_server::esp32_ha_server_port() as i32;
+        let url = crate::actions::esp32_ha_server::esp32_ha_server_url();
+        if *self.esp32_ha_server_running() != running {
+            self.as_mut().set_esp32_ha_server_running(running);
+        }
+        if port > 0 && *self.esp32_ha_server_port() != port {
+            self.as_mut().set_esp32_ha_server_port(port);
+        }
+        if self.esp32_ha_server_url().to_string() != url {
+            self.as_mut().set_esp32_ha_server_url(QString::from(&url));
+        }
+    }
+
+    pub fn assign_custom_device_name(
+        mut self: Pin<&mut Self>,
+        serial: &QString,
+        name: &QString,
+    ) -> bool {
+        let req_serial = normalize_duckypad_serial(&serial.to_string());
+        let target_serial = if !req_serial.is_empty() {
+            req_serial
+        } else {
+            normalize_duckypad_serial(&self.serial_number().to_string())
+        };
+        if target_serial.is_empty() || target_serial == "-" {
+            let msg = "No duckyPad serial number available to name";
+            self.as_mut().set_status_message(QString::from(msg));
+            return false;
+        }
+        match crate::hardware::profile::set_custom_duckypad_name(&target_serial, &name.to_string())
+        {
+            Ok(saved) => {
+                let _ = self.as_mut().refresh_available_devices_state();
+                let msg = if saved.is_empty() {
+                    format!("Cleared custom name for duckyPad (SN: {target_serial})")
+                } else {
+                    format!("Named duckyPad (SN: {target_serial}) → \"{saved}\"")
+                };
+                record_system_event("INFO", "DEVICE", &msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&msg));
+                true
+            }
+            Err(e) => {
+                let msg = format!("Failed naming duckyPad: {e}");
+                record_system_event("WARN", "DEVICE", &msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&msg));
+                false
+            }
+        }
+    }
+
+    pub fn start_esp32_ha_web_server(mut self: Pin<&mut Self>, port: i32) -> bool {
+        let target_port = if (1024..=65535).contains(&port) {
+            port as u16
+        } else {
+            let cur = *self.esp32_ha_server_port();
+            if (1024..=65535).contains(&cur) {
+                cur as u16
+            } else {
+                crate::actions::esp32_ha_server::DEFAULT_ESP32_HA_WEB_PORT
+            }
+        };
+        let target_serial = {
+            let s = self.esp32_ha_device_serial().to_string();
+            if !s.trim().is_empty() {
+                Some(s)
+            } else {
+                let cur_sn = normalize_duckypad_serial(&self.serial_number().to_string());
+                if !cur_sn.is_empty() {
+                    Some(cur_sn)
+                } else {
+                    None
+                }
+            }
+        };
+        match crate::actions::esp32_ha_server::start_esp32_ha_web_server(target_port, target_serial)
+        {
+            Ok(url) => {
+                self.as_mut().sync_esp32_ha_state();
+                let msg = format!("ESP32-HA Web Server started at {url}");
+                record_system_event("INFO", "WEB_API", &msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&msg));
+                true
+            }
+            Err(err) => {
+                self.as_mut().sync_esp32_ha_state();
+                let msg = format!("Failed starting ESP32-HA Web Server: {err}");
+                record_system_event("ERROR", "WEB_API", &msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&msg));
+                false
+            }
+        }
+    }
+
+    pub fn stop_esp32_ha_web_server(mut self: Pin<&mut Self>) -> bool {
+        crate::actions::esp32_ha_server::stop_esp32_ha_web_server();
+        self.as_mut().sync_esp32_ha_state();
+        let msg = "ESP32-HA Web Server stopped";
+        record_system_event("INFO", "WEB_API", msg);
+        self.as_mut().sync_event_log_properties();
+        self.as_mut().set_status_message(QString::from(msg));
+        true
+    }
+
+    pub fn toggle_esp32_ha_web_server(mut self: Pin<&mut Self>) -> bool {
+        if crate::actions::esp32_ha_server::is_esp32_ha_server_running() {
+            self.as_mut().stop_esp32_ha_web_server()
+        } else {
+            let port = *self.esp32_ha_server_port();
+            self.as_mut().start_esp32_ha_web_server(port)
+        }
+    }
+
+    pub fn open_esp32_ha_web_ui(mut self: Pin<&mut Self>) -> bool {
+        if !crate::actions::esp32_ha_server::is_esp32_ha_server_running() {
+            let port = *self.esp32_ha_server_port();
+            if !self.as_mut().start_esp32_ha_web_server(port) {
+                return false;
+            }
+        }
+        let url = crate::actions::esp32_ha_server::esp32_ha_server_url();
+        if let Err(e) = crate::paths::open_url_or_path_in_os(&url) {
+            let msg = format!("Failed opening ESP32-HA Web UI ({url}): {e}");
+            record_system_event("WARN", "WEB_API", &msg);
+            self.as_mut().sync_event_log_properties();
+            self.as_mut().set_status_message(QString::from(&msg));
+            return false;
+        }
+        let msg = format!("Opened ESP32-HA Web UI ({url})");
+        self.as_mut().set_status_message(QString::from(&msg));
+        true
+    }
+
     pub(crate) fn refresh_available_devices_state(mut self: Pin<&mut Self>) -> String {
         if is_demo_showcase_env() {
             self.as_mut().sync_multi_device_oled_states();
@@ -3051,6 +3343,7 @@ impl qobject::DeviceController {
                 .set_available_devices_json(QString::from(&json_str));
         }
         self.as_mut().sync_multi_device_oled_states();
+        self.as_mut().sync_esp32_ha_state();
         json_str
     }
 
@@ -3267,9 +3560,40 @@ impl qobject::DeviceController {
                 let _ = self
                     .as_mut()
                     .load_sd_directory(QString::from(&target.sd_mount_path));
-            } else if let Some(loaded) =
-                load_profiles_for_connected_device(target.pid, &target.serial_number)
-            {
+            } else {
+                let loaded_opt =
+                    load_profiles_for_connected_device(target.pid, &target.serial_number)
+                        .or_else(|| {
+                            crate::kwin::auto_switcher::get_secondary_device_runtime(
+                                &target.serial_number,
+                            )
+                            .and_then(|sec| (!sec.profiles.is_empty()).then_some(sec.profiles))
+                        })
+                        .or_else(|| {
+                            if target.usb_connected
+                                && target.pid == PID_DUCKYPAD_PRO
+                                && !target.disk_label.is_empty()
+                            {
+                                read_duckypad_pro_profiles_via_msc(
+                                    &target.disk_label,
+                                    &target.serial_number,
+                                    target.active_profile,
+                                )
+                                .ok()
+                            } else {
+                                None
+                            }
+                        });
+                let loaded = loaded_opt.unwrap_or_else(|| {
+                    crate::hardware::profile::create_default_profiles_for_device(
+                        target.pid,
+                        &target.serial_number,
+                    )
+                });
+                crate::kwin::auto_switcher::update_secondary_device_profiles(
+                    &target.serial_number,
+                    loaded.clone(),
+                );
                 let (dev_enabled, dev_default, dev_rules) =
                     crate::kwin::auto_switcher::load_device_rules_for_serial(
                         &target.serial_number,
@@ -5049,7 +5373,7 @@ impl qobject::DeviceController {
                         }
                         let new_connected_count =
                             crate::hardware::storage::count_connected_duckypad_hid_nodes() as i32;
-                        let hid_present = new_connected_count > 0;
+                        let hid_present = crate::hardware::storage::is_duckypad_hid_present();
                         let hw_active_prof = if hid_present {
                             poll_hardware_active_profile()
                         } else {
@@ -5113,7 +5437,11 @@ impl qobject::DeviceController {
                             };
                             if cur_hash != last_mounts_hash {
                                 last_mounts_hash = cur_hash;
-                                newly_mounted_sd = find_mounted_duckypad_sd();
+                                newly_mounted_sd = find_mounted_duckypad_sd_for_device(
+                                    selected_ser.as_deref(),
+                                    None,
+                                    None,
+                                );
                             }
                         }
 
@@ -5168,8 +5496,10 @@ impl qobject::DeviceController {
                                 }
                                 qobject.as_mut().sync_active_profile_state();
                                 qobject.as_mut().sync_tray_state();
+                                let _ = qobject.as_mut().refresh_available_devices_state();
                             } else if !was_connected && hid_present {
                                 qobject.as_mut().refresh_device();
+                                let _ = qobject.as_mut().refresh_available_devices_state();
                             } else if was_connected && hid_present {
                                 if let Some(hw_prof) = hw_active_prof {
                                     let now_ms = crate::kwin::auto_switcher::current_epoch_ms();
@@ -7342,13 +7672,11 @@ impl qobject::DeviceController {
     }
 
     fn open_duckypad() -> Result<(HidDevice, u16), String> {
-        let api = HidApi::new().map_err(|e| format!("HID init error: {e}"))?;
-        for pid in [PID_DUCKYPAD_PRO, PID_DUCKYPAD_2020] {
-            if let Ok(dev) = api.open(DUCKYPAD_VID, pid) {
-                return Ok((dev, pid));
-            }
-        }
-        Err("No duckyPad Pro (0xd11d) or duckyPad 2020 (0xd11c) found".to_string())
+        let dev = crate::hardware::storage::open_duckypad_hid()?;
+        let pid = crate::hardware::storage::find_duckypad_hidraw_node()
+            .map(|(_, p, _)| p)
+            .unwrap_or(PID_DUCKYPAD_PRO);
+        Ok((dev, pid))
     }
 
     fn has_permission_denied_hidraw() -> bool {

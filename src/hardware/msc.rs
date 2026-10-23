@@ -12,7 +12,7 @@ use crate::hardware::storage::{
     DP_MODEL_OG_DUCKYPAD, HID_CMD_CLOSE_FILE, HID_CMD_CREATE_DIR, HID_CMD_DELETE_DIR,
     HID_CMD_DELETE_FILE, HID_CMD_DUMP_SD, HID_CMD_OPEN_FILE_FOR_READING,
     HID_CMD_OPEN_FILE_FOR_WRITING, HID_CMD_READ_FILE, HID_CMD_SOFTWARE_RESET, HID_CMD_WRITE_FILE,
-    HID_IO_LOCK, HID_REPORT_ID_OUT, HID_STATUS_EOF, HID_STATUS_ERROR, MSC_SYNC_IN_PROGRESS,
+    HID_IO_LOCK, HID_REPORT_ID_OUT, HID_STATUS_ERROR, MSC_SYNC_IN_PROGRESS,
 };
 
 pub fn run_storage_cmd(program: &str, args: &[&str]) -> std::io::Result<std::process::Output> {
@@ -611,7 +611,10 @@ fn hid_txrx(
     Ok(rx)
 }
 
-fn query_dp20_fw_mode(dev: &crate::hardware::storage::DuckyHidDevice, seq: &mut u8) -> (u8, bool, String) {
+fn query_dp20_fw_mode(
+    dev: &crate::hardware::storage::DuckyHidDevice,
+    seq: &mut u8,
+) -> (u8, bool, String) {
     crate::hardware::storage::drain_pending_hid_reports(dev);
     if let Ok(rx) = hid_txrx(dev, seq, 0x00, &[], 500) {
         let major = rx[3];
@@ -909,8 +912,7 @@ where
 
     for (idx, folder) in discovered_dirs.iter().enumerate() {
         let remote_cfg = format!("/{folder}/config.txt");
-        let Ok(cfg_bytes) =
-            hid_read_file_bytes_auto(&dev, &mut seq, &remote_cfg, use_evo_protocol)
+        let Ok(cfg_bytes) = hid_read_file_bytes_auto(&dev, &mut seq, &remote_cfg, use_evo_protocol)
         else {
             continue;
         };
@@ -948,8 +950,7 @@ where
                         continue;
                     }
                     let remote_file = format!("/{folder}/{fname}");
-                    if let Ok(bytes) =
-                        hid_read_file_bytes_auto(&dev, &mut seq, &remote_file, false)
+                    if let Ok(bytes) = hid_read_file_bytes_auto(&dev, &mut seq, &remote_file, false)
                     {
                         if !bytes.is_empty() {
                             let _ = fs::write(local_prof_dir.join(&fname), &bytes);
@@ -974,8 +975,7 @@ where
                         format!("key{key_idx}.{suffix}")
                     };
                     let remote_file = format!("/{folder}/{fname}");
-                    if let Ok(bytes) =
-                        hid_read_file_bytes_auto(&dev, &mut seq, &remote_file, true)
+                    if let Ok(bytes) = hid_read_file_bytes_auto(&dev, &mut seq, &remote_file, true)
                     {
                         if !bytes.is_empty() {
                             let _ = fs::write(local_prof_dir.join(&fname), &bytes);

@@ -508,7 +508,19 @@ pub fn hid_keyname_lookup(name: &str) -> Option<(u8, u8)> {
         "MK_NEXT" => (0x01, KEY_TYPE_MEDIA),
         "MK_PP" => (0x10, KEY_TYPE_MEDIA),
         "MK_STOP" => (0x04, KEY_TYPE_MEDIA),
-        _ => return None,
+        _ => {
+            let upper = name.to_ascii_uppercase();
+            let raw_num = upper
+                .strip_prefix("VK_")
+                .or_else(|| upper.strip_prefix("HID_"))
+                .or_else(|| upper.strip_prefix("KEYCODE_"))?;
+            let code = if let Some(hex) = raw_num.strip_prefix("0X") {
+                u8::from_str_radix(hex, 16).ok()?
+            } else {
+                raw_num.parse::<u8>().ok()?
+            };
+            (code, KEY_TYPE_SPECIAL)
+        }
     })
 }
 
@@ -1596,7 +1608,35 @@ fn preprocess_all(
     let mut expanded = Vec::new();
     for mut line_obj in second_pass_listing {
         let first_word = line_obj.content.split(' ').next().unwrap_or("");
-        if hid_keyname_lookup(first_word).is_some() {
+        if first_word == "EMUK" {
+            let emuk_keys: Vec<&str> = line_obj
+                .content
+                .split(' ')
+                .skip(1)
+                .filter(|s| !s.is_empty())
+                .collect();
+            if emuk_keys.is_empty() || emuk_keys.len() > MAX_COMBO {
+                return Err(CompileResult::err(
+                    line_obj.orig_lnum_sf1.unsigned_abs(),
+                    &line_obj.content,
+                    "Invalid EMUK arguments",
+                ));
+            }
+            for &k in &emuk_keys {
+                if hid_keyname_lookup(k).is_none() && k.len() != 1 {
+                    return Err(CompileResult::err(
+                        line_obj.orig_lnum_sf1.unsigned_abs(),
+                        &line_obj.content,
+                        "Invalid EMUK character",
+                    ));
+                }
+                expanded.push(DsLine {
+                    content: format!("KEYDOWN {k}"),
+                    orig_lnum_sf1: line_obj.orig_lnum_sf1,
+                    indent_level: line_obj.indent_level,
+                });
+            }
+        } else if hid_keyname_lookup(first_word).is_some() {
             let combo_keys: Vec<&str> = line_obj
                 .content
                 .split(' ')

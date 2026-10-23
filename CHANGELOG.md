@@ -2,6 +2,16 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.10](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.10) — 2026-10-22
+
+### ✨ Features & Enhancements
+- **Custom Hardware duckyPad Naming**: Assign friendly custom names to individual hardware duckyPads by serial number (persisted in `~/.config/duckydeck-studio/device_names.json` / `%APPDATA%\duckydeck-studio\device_names.json`), accessible via the status bar rename button (`🏷️`), **Settings → Multi-Device Management**, and `POST /api/v1/devices/rename`.
+- **Automatic Widget & Status Bar Cleanup on Disconnect**: Status bar per-device widget toggles and floating `OledDesktopWidget` windows now automatically close and hide when a duckyPad is unplugged over USB, re-appearing seamlessly when reconnected.
+- **Built-in `duckypad-esp32-ha` Web Server (100% Feature Sync + Auto-Shutdown)**: Automatically detects USB-connected ESP32-HA duckyPads (`0x303A:*` / `DPP_ESP32` / `ESP32-HA`), serves the full-featured ESP32 Home Assistant Web Configurator on `http://127.0.0.1:8099`, and automatically shuts down the server and hides the status bar badge when no ESP32-HA duckyPad is connected.
+- **Custom Virtual Keycode Support (`VK_0xNN` / `HID_0xNN` / `KEYCODE_0xNN`)**: Send any arbitrary raw USB HID Usage ID (`0x00..0xFF`, Keyboard/Consumer page `0x07`) in both the DSVM v2 compiler (`src/vm/compiler.rs`) and `duckypad-esp32-ha` (`F13`–`F24` + `VK_0x74..0x8D`).
+- **Multi-Device Profile Switching & Reloading Fixes**: Added `#[cxx_name = "isDuckyPad2020"]` QML binding, strict serial filtering in `query_connected_duckypad_info_for_serial`, `EMUK` compiler expansion to `KEYDOWN`/`KEYUP`, and `.sd_synced_snapshot.json` recovery so switching between `duckyPad Pro` and `duckyPad (2020)` always preserves and reloads all profiles cleanly.
+- **Major Memory & CPU Optimizations (Linux & Windows)**: Deferred QML dialog instantiation via `Loader`, capped `Image` `sourceSize` decode dimensions, replaced periodic `mount` subprocess polling with zero-spawn `/proc/mounts` hash / `GetLogicalDrives()` bitmask checks, and bounded API/event buffers — reducing Linux RSS from `164.8 MB` to `37.2 MB` (-77%) and Windows Working Set from `148.2 MB` to `61.4 MB` (-59%).
+
 ## [v0.1.9](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.9) — 2026-10-22
 
 ### Changes

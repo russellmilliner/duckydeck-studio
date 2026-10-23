@@ -482,8 +482,13 @@ pub fn find_duckypad_hidraw_node_for_serial(
 
 pub fn find_duckypad_hidraw_node() -> Option<(std::path::PathBuf, u16, Option<String>)> {
     let selected = get_selected_duckypad_serial();
-    find_duckypad_hidraw_node_for_serial(selected.as_deref())
-        .or_else(|| find_duckypad_hidraw_node_for_serial(None))
+    if let Some(ref sel) = selected {
+        let clean = normalize_duckypad_serial(sel);
+        if !clean.is_empty() && clean != "-" {
+            return find_duckypad_hidraw_node_for_serial(Some(&clean));
+        }
+    }
+    find_duckypad_hidraw_node_for_serial(None)
 }
 
 fn query_info_from_open_hid_device(
@@ -825,6 +830,31 @@ pub fn open_duckypad_hid() -> Result<HidDevice, String> {
 }
 
 pub fn is_duckypad_hid_present() -> bool {
+    let selected = get_selected_duckypad_serial();
+    if let Some(ref sel) = selected {
+        let clean = normalize_duckypad_serial(sel);
+        if !clean.is_empty() && clean != "-" {
+            if find_duckypad_hidraw_node_for_serial(Some(&clean)).is_some() {
+                return true;
+            }
+            #[cfg(target_os = "windows")]
+            if let Ok(api) = HidApi::new() {
+                if api.device_list().any(|d| {
+                    d.vendor_id() == DUCKYPAD_VID
+                        && (d.product_id() == PID_DUCKYPAD_PRO
+                            || d.product_id() == PID_DUCKYPAD_2020)
+                        && (d.usage() == 0 || d.usage() == 58)
+                        && d.serial_number()
+                            .map(|sn| serial_matches_target(sn, &clean))
+                            .unwrap_or(false)
+                }) {
+                    return true;
+                }
+            }
+            invalidate_cached_hid_device();
+            return false;
+        }
+    }
     if !find_all_duckypad_hidraw_nodes().is_empty() {
         return true;
     }
@@ -859,6 +889,9 @@ pub fn query_connected_duckypad_info_for_serial(
         {
             return Ok(matched.clone());
         }
+        return Err(format!(
+            "Requested duckyPad (SN: {req}) is not currently connected on USB HID"
+        ));
     }
     Ok(all.into_iter().next().unwrap())
 }

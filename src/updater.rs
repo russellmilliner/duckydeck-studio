@@ -252,8 +252,12 @@ pub async fn download_and_install_app_update_async(
         .await
         .map_err(|e| format!("Failed reading downloaded asset bytes: {e}"))?;
 
-    fs::write(&pkg_path, &bytes)
-        .map_err(|e| format!("Failed writing update package to {}: {e}", pkg_path.display()))?;
+    fs::write(&pkg_path, &bytes).map_err(|e| {
+        format!(
+            "Failed writing update package to {}: {e}",
+            pkg_path.display()
+        )
+    })?;
 
     let ver_clean = latest_version.trim_start_matches(['v', 'V']);
 
@@ -375,12 +379,8 @@ pub async fn download_and_install_app_update_async(
                     let _ = fs::set_permissions(&staged_bin, perms);
                 }
             }
-            fs::rename(&staged_bin, &target_bin).map_err(|e| {
-                format!(
-                    "Failed replacing binary at {}: {e}",
-                    target_bin.display()
-                )
-            })?;
+            fs::rename(&staged_bin, &target_bin)
+                .map_err(|e| format!("Failed replacing binary at {}: {e}", target_bin.display()))?;
 
             return Ok(format!(
                 "Installed DuckyDeck Studio v{ver_clean} to {}. Restart DuckyDeck Studio to apply.",

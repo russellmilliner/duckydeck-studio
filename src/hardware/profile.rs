@@ -1703,6 +1703,24 @@ pub fn load_all_sd_profiles(sd_root: &Path) -> io::Result<Vec<DuckyProfile>> {
 
     profiles.sort_by_key(|p| p.number);
 
+    if profiles.is_empty() {
+        let snap_path = sd_root.join(".sd_synced_snapshot.json");
+        if snap_path.is_file() {
+            if let Ok(raw) = fs::read_to_string(&snap_path) {
+                if let Ok(mut snap_profiles) = serde_json::from_str::<Vec<DuckyProfile>>(&raw) {
+                    if !snap_profiles.is_empty() {
+                        snap_profiles.sort_by_key(|p| p.number);
+                        // Also materialize the profile folders on disk if this is a cache directory
+                        for prof in &snap_profiles {
+                            let _ = prof.save_to_sd_root(sd_root);
+                        }
+                        profiles = snap_profiles;
+                    }
+                }
+            }
+        }
+    }
+
     let sd_rules_file = sd_root.join(crate::kwin::auto_switcher::SD_RULES_FILENAME);
     if sd_rules_file.is_file() {
         let global_cache = profile_cache_dir();
@@ -3221,18 +3239,147 @@ pub fn sync_profiles_to_device_cache_with_meta(
 pub struct ManageableDuckyPadTarget {
     pub id: String,
     pub serial_number: String,
+    #[serde(default)]
+    pub custom_name: String,
     pub hw_model: u8,
     pub pid: u16,
     pub model_name: String,
     pub firmware_version: String,
     pub disk_label: String,
+    pub display_label: String,
     pub usb_connected: bool,
     pub active_profile: u8,
     pub is_busy: bool,
     pub sd_mounted: bool,
     pub sd_mount_path: String,
     pub cached_profile_count: usize,
+    pub has_cached_profiles: bool,
+    pub is_esp32_ha_configured: bool,
     pub is_selected: bool,
+}
+
+fn device_names_config_path() -> PathBuf {
+    crate::paths::config_dir().join("device_names.json")
+}
+
+pub fn load_custom_duckypad_names() -> BTreeMap<String, String> {
+    for path in [
+        device_names_config_path(),
+        crate::paths::host_config_dir().join("device_names.json"),
+    ] {
+        if path.is_file() {
+            if let Ok(raw) = fs::read_to_string(&path) {
+                if let Ok(map) = serde_json::from_str::<BTreeMap<String, String>>(&raw) {
+                    return map;
+                }
+            }
+        }
+    }
+    BTreeMap::new()
+}
+
+pub fn get_custom_duckypad_name(serial: &str) -> Option<String> {
+    let clean = normalize_duckypad_serial(serial);
+    if clean.is_empty() || clean == "-" {
+        return None;
+    }
+    let map = load_custom_duckypad_names();
+    if let Some(name) = map.get(&clean).map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        return Some(name.to_string());
+    }
+    for (k, v) in &map {
+        if serial_matches_target(k, &clean) && !v.trim().is_empty() {
+            return Some(v.trim().to_string());
+        }
+    }
+    None
+}
+
+pub fn set_custom_duckypad_name(serial: &str, name: &str) -> Result<String, String> {
+    let clean = normalize_duckypad_serial(serial);
+    if clean.is_empty() || clean == "-" {
+        return Err("Cannot name a duckyPad without a valid serial number".to_string());
+    }
+    let trimmed = name.trim().to_string();
+    let mut map = load_custom_duckypad_names();
+    // Remove any existing alias keys matching this serial
+    let matching_keys: Vec<String> = map
+        .keys()
+        .filter(|k| serial_matches_target(k, &clean))
+        .cloned()
+        .collect();
+    for k in matching_keys {
+        map.remove(&k);
+    }
+    if !trimmed.is_empty() {
+        map.insert(clean, trimmed.clone());
+    }
+    let cfg_dir = crate::paths::config_dir();
+    let _ = fs::create_dir_all(&cfg_dir);
+    let json = serde_json::to_string_pretty(&map).map_err(|e| e.to_string())?;
+    fs::write(device_names_config_path(), &json).map_err(|e| e.to_string())?;
+    let host_cfg = crate::paths::host_config_dir();
+    if host_cfg != cfg_dir && host_cfg.is_dir() {
+        let _ = fs::write(host_cfg.join("device_names.json"), &json);
+    }
+    Ok(trimmed)
+}
+
+pub fn format_duckypad_display_label(
+    custom_name: &str,
+    model_name: &str,
+    serial: &str,
+    suffix: Option<&str>,
+) -> String {
+    let base = if !serial.is_empty() && serial != "-" {
+        format!("{model_name} ({serial})")
+    } else {
+        model_name.to_string()
+    };
+    let with_name = if !custom_name.trim().is_empty() {
+        format!("{} — {base}", custom_name.trim())
+    } else {
+        base
+    };
+    if let Some(suf) = suffix.filter(|s| !s.is_empty()) {
+        format!("{with_name} {suf}")
+    } else {
+        with_name
+    }
+}
+
+/// Returns `true` if the given profile list is configured for the `duckypad-esp32-ha` bridge
+/// (e.g. `HA_Page1`..`HA_PageN` or `EMUK a`..`EMUK z` / single-letter `STRING a`..`STRING z` bridge scripts).
+pub fn is_esp32_ha_configured_profiles(profiles: &[DuckyProfile]) -> bool {
+    if profiles.is_empty() {
+        return false;
+    }
+    for prof in profiles {
+        let lower_name = prof.name.to_ascii_lowercase();
+        if lower_name.starts_with("ha_page")
+            || lower_name.starts_with("homeassist")
+            || lower_name.starts_with("ha_")
+        {
+            return true;
+        }
+        let mut bridge_key_matches = 0usize;
+        for (&slot_num, slot) in &prof.slots {
+            if !(1..=26).contains(&slot_num) {
+                continue;
+            }
+            let expected_ch = (b'a' + (slot_num as u8 - 1)) as char;
+            let script = slot.on_press_script.trim();
+            if script.eq_ignore_ascii_case(&format!("EMUK {expected_ch}"))
+                || script.eq_ignore_ascii_case(&format!("STRING {expected_ch}"))
+            {
+                bridge_key_matches += 1;
+            }
+        }
+        if bridge_key_matches >= 3 {
+            return true;
+        }
+    }
+    false
 }
 
 /// Discovers all duckyPad units available to manage:
@@ -3275,28 +3422,42 @@ pub fn list_manageable_duckypad_targets() -> Vec<ManageableDuckyPadTarget> {
         } else {
             (false, String::new())
         };
-        let cached_count = load_cached_profiles_for_serial(&sn)
-            .map(|v| v.len())
-            .unwrap_or(0);
+        let cached_profiles = load_cached_profiles_for_serial_for_model(&sn, Some(dev.hw_model));
+        let cached_count = cached_profiles.as_ref().map(|v| v.len()).unwrap_or(0);
+        let is_esp32_ha = cached_profiles
+            .as_deref()
+            .map(is_esp32_ha_configured_profiles)
+            .unwrap_or_else(|| {
+                crate::kwin::auto_switcher::get_secondary_device_runtime(&sn)
+                    .map(|sec| is_esp32_ha_configured_profiles(&sec.profiles))
+                    .unwrap_or(false)
+            });
         let is_selected = selected_serial
             .as_deref()
             .map(|sel| serial_matches_target(&id, sel))
             .unwrap_or(false);
+        let custom_name = get_custom_duckypad_name(&sn).unwrap_or_default();
+        let display_label =
+            format_duckypad_display_label(&custom_name, dev.model_name(), &sn, None);
 
         targets.push(ManageableDuckyPadTarget {
             id: id.clone(),
             serial_number: if sn.is_empty() { "-".to_string() } else { sn },
+            custom_name,
             hw_model: dev.hw_model,
             pid: dev.pid,
             model_name: dev.model_name().to_string(),
             firmware_version: dev.fw_version.clone(),
             disk_label: dev.disk_label.clone(),
+            display_label,
             usb_connected: true,
             active_profile: dev.active_profile,
             is_busy: false,
             sd_mounted,
             sd_mount_path,
             cached_profile_count: cached_count,
+            has_cached_profiles: cached_count > 0,
+            is_esp32_ha_configured: is_esp32_ha,
             is_selected,
         });
     }
@@ -3334,11 +3495,28 @@ pub fn list_manageable_duckypad_targets() -> Vec<ManageableDuckyPadTarget> {
         } else {
             PID_DUCKYPAD_PRO
         };
-        let profile_count = load_all_sd_profiles(&sd.path).map(|v| v.len()).unwrap_or(0);
+        let sd_profiles = load_all_sd_profiles(&sd.path).ok();
+        let profile_count = sd_profiles.as_ref().map(|v| v.len()).unwrap_or(0);
+        let is_esp32_ha = sd_profiles
+            .as_deref()
+            .map(is_esp32_ha_configured_profiles)
+            .unwrap_or(false);
         let is_selected = selected_serial
             .as_deref()
             .map(|sel| sel.eq_ignore_ascii_case(&id) || serial_matches_target(&sn, sel))
             .unwrap_or(false);
+        let disk_lbl = sd
+            .disk_label
+            .clone()
+            .unwrap_or_else(|| format_disk_label_for_device(sd.hw_model, &sn));
+        let custom_name = get_custom_duckypad_name(&sn).unwrap_or_default();
+        let sn_or_lbl = if !sn.is_empty() {
+            sn.as_str()
+        } else {
+            disk_lbl.as_str()
+        };
+        let display_label =
+            format_duckypad_display_label(&custom_name, &sd.model_name, sn_or_lbl, Some("[SD]"));
 
         targets.push(ManageableDuckyPadTarget {
             id,
@@ -3347,6 +3525,7 @@ pub fn list_manageable_duckypad_targets() -> Vec<ManageableDuckyPadTarget> {
             } else {
                 sn.clone()
             },
+            custom_name,
             hw_model: sd.hw_model,
             pid,
             model_name: sd.model_name.clone(),
@@ -3354,16 +3533,16 @@ pub fn list_manageable_duckypad_targets() -> Vec<ManageableDuckyPadTarget> {
                 .firmware_version
                 .clone()
                 .unwrap_or_else(|| "-".to_string()),
-            disk_label: sd
-                .disk_label
-                .clone()
-                .unwrap_or_else(|| format_disk_label_for_device(sd.hw_model, &sn)),
+            disk_label: disk_lbl,
+            display_label,
             usb_connected: false,
             active_profile: sd.last_profile.unwrap_or(1),
             is_busy: false,
             sd_mounted: true,
             sd_mount_path: sd.path.display().to_string(),
             cached_profile_count: profile_count,
+            has_cached_profiles: profile_count > 0,
+            is_esp32_ha_configured: is_esp32_ha,
             is_selected,
         });
     }
@@ -3400,6 +3579,7 @@ pub fn list_manageable_duckypad_targets() -> Vec<ManageableDuckyPadTarget> {
             if profiles.is_empty() {
                 continue;
             }
+            let is_esp32_ha = is_esp32_ha_configured_profiles(&profiles);
             let meta = read_duckypad_device_meta(&p);
             let hw_model = meta
                 .as_ref()
@@ -3425,21 +3605,29 @@ pub fn list_manageable_duckypad_targets() -> Vec<ManageableDuckyPadTarget> {
                 .as_deref()
                 .map(|sel| serial_matches_target(&sn, sel))
                 .unwrap_or(false);
+            let model_str = model_name_for_hw_model(hw_model).to_string();
+            let custom_name = get_custom_duckypad_name(&sn).unwrap_or_default();
+            let display_label =
+                format_duckypad_display_label(&custom_name, &model_str, &sn, Some("[Cached]"));
 
             targets.push(ManageableDuckyPadTarget {
                 id: sn.clone(),
                 serial_number: sn,
+                custom_name,
                 hw_model,
                 pid,
-                model_name: model_name_for_hw_model(hw_model).to_string(),
+                model_name: model_str,
                 firmware_version: fw,
                 disk_label,
+                display_label,
                 usb_connected: false,
                 active_profile: 1,
                 is_busy: false,
                 sd_mounted: false,
                 sd_mount_path: String::new(),
                 cached_profile_count: profiles.len(),
+                has_cached_profiles: true,
+                is_esp32_ha_configured: is_esp32_ha,
                 is_selected,
             });
         }
@@ -3547,23 +3735,42 @@ pub fn discover_dekunukem_profile_backups() -> Vec<(PathBuf, String, usize)> {
 }
 
 pub fn load_cached_profiles_for_serial(serial: &str) -> Option<Vec<DuckyProfile>> {
-    let clean: String = serial
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
-        .collect();
+    load_cached_profiles_for_serial_for_model(serial, None)
+}
+
+pub fn load_cached_profiles_for_serial_for_model(
+    serial: &str,
+    expected_hw_model: Option<u8>,
+) -> Option<Vec<DuckyProfile>> {
+    let clean = normalize_duckypad_serial(serial);
     if clean.is_empty() || clean == "-" {
         return None;
     }
-    for dev_cache in [
-        profile_cache_dir_for_serial(&clean),
-        crate::paths::host_data_dir()
-            .join("device_profiles")
-            .join(&clean),
-    ] {
-        if dev_cache.is_dir() {
-            if let Ok(profiles) = load_all_sd_profiles(&dev_cache) {
-                if !profiles.is_empty() {
-                    return Some(profiles);
+    let mut candidate_serials = vec![clean.clone()];
+    if let Some(rev) = crate::hardware::storage::reverse_hex_byte_pairs_4b(&clean) {
+        if rev != clean {
+            candidate_serials.push(rev);
+        }
+    }
+    for cand in candidate_serials {
+        for dev_cache in [
+            profile_cache_dir_for_serial(&cand),
+            crate::paths::host_data_dir()
+                .join("device_profiles")
+                .join(&cand),
+        ] {
+            if dev_cache.is_dir() {
+                if let Some(exp_model) = expected_hw_model {
+                    if let Some(meta) = read_duckypad_device_meta(&dev_cache) {
+                        if meta.hw_model > 0 && meta.hw_model != exp_model {
+                            continue;
+                        }
+                    }
+                }
+                if let Ok(profiles) = load_all_sd_profiles(&dev_cache) {
+                    if !profiles.is_empty() {
+                        return Some(profiles);
+                    }
                 }
             }
         }
@@ -3597,17 +3804,17 @@ pub fn create_default_profiles_for_device(pid: u16, serial: &str) -> Vec<DuckyPr
 }
 
 pub fn load_profiles_for_connected_device(pid: u16, serial: &str) -> Option<Vec<DuckyProfile>> {
-    if let Some(profiles) = load_cached_profiles_for_serial(serial) {
+    let hw_model = if pid == PID_DUCKYPAD_2020 {
+        DP_MODEL_OG_DUCKYPAD
+    } else {
+        DP_MODEL_DUCKYPAD_PRO
+    };
+    if let Some(profiles) = load_cached_profiles_for_serial_for_model(serial, Some(hw_model)) {
         return Some(profiles);
     }
 
     let clean_serial = normalize_duckypad_serial(serial);
     if !clean_serial.is_empty() {
-        let hw_model = if pid == PID_DUCKYPAD_2020 {
-            DP_MODEL_OG_DUCKYPAD
-        } else {
-            DP_MODEL_DUCKYPAD_PRO
-        };
         let mounted = list_mounted_duckypad_sds();
         if let Some(sd) = find_mounted_duckypad_sd_for_device_in_list(
             &mounted,
@@ -3617,7 +3824,42 @@ pub fn load_profiles_for_connected_device(pid: u16, serial: &str) -> Option<Vec<
         ) {
             if let Ok(profiles) = load_all_sd_profiles(&sd.path) {
                 if !profiles.is_empty() {
-                    sync_profiles_to_device_cache(&clean_serial, &profiles);
+                    let meta = DuckySdDeviceMeta {
+                        serial_number: clean_serial.clone(),
+                        hw_model,
+                        model_name: model_name_for_hw_model(hw_model).to_string(),
+                        firmware_version: sd.firmware_version.unwrap_or_default(),
+                        disk_label: sd.disk_label.unwrap_or_else(|| {
+                            format_disk_label_for_device(hw_model, &clean_serial)
+                        }),
+                    };
+                    sync_profiles_to_device_cache_with_meta(&clean_serial, &profiles, Some(&meta));
+                    mark_profiles_sd_synced(&clean_serial, &profiles);
+                    return Some(profiles);
+                }
+            }
+        }
+
+        // For duckyPad (2020), we can read its profiles directly over USB HID without mounting MSC!
+        if pid == PID_DUCKYPAD_2020 {
+            if let Ok(profiles) =
+                crate::hardware::msc::read_duckypad_2020_profiles_via_hid_with_progress(
+                    &clean_serial,
+                    |_, _, _| {},
+                )
+            {
+                if !profiles.is_empty() {
+                    let meta = DuckySdDeviceMeta {
+                        serial_number: clean_serial.clone(),
+                        hw_model: DP_MODEL_OG_DUCKYPAD,
+                        model_name: "duckyPad (2020)".to_string(),
+                        firmware_version: String::new(),
+                        disk_label: format_disk_label_for_device(
+                            DP_MODEL_OG_DUCKYPAD,
+                            &clean_serial,
+                        ),
+                    };
+                    sync_profiles_to_device_cache_with_meta(&clean_serial, &profiles, Some(&meta));
                     mark_profiles_sd_synced(&clean_serial, &profiles);
                     return Some(profiles);
                 }
@@ -3625,14 +3867,17 @@ pub fn load_profiles_for_connected_device(pid: u16, serial: &str) -> Option<Vec<
         }
 
         // If another duckyPad is already cached in `device_profiles/`, do NOT copy that other
-        // device's global `profile_cache/` into this second duckyPad! Initialize a separate
-        // isolated profile set for this device and mark its baseline synced so it does not
-        // emit false "profile not synced" alerts.
+        // device's global `profile_cache/` into this second duckyPad!
+        // For duckyPad (2020), initialize a default profile if HID read returned nothing;
+        // for duckyPad Pro, return `None` so the caller reads its real profiles via MSC!
         if has_other_cached_devices(&clean_serial) {
-            let defaults = create_default_profiles_for_device(pid, &clean_serial);
-            sync_profiles_to_device_cache(&clean_serial, &defaults);
-            mark_profiles_sd_synced(&clean_serial, &defaults);
-            return Some(defaults);
+            if pid == PID_DUCKYPAD_2020 {
+                let defaults = create_default_profiles_for_device(pid, &clean_serial);
+                sync_profiles_to_device_cache(&clean_serial, &defaults);
+                mark_profiles_sd_synced(&clean_serial, &defaults);
+                return Some(defaults);
+            }
+            return None;
         }
     }
 
@@ -3641,6 +3886,15 @@ pub fn load_profiles_for_connected_device(pid: u16, serial: &str) -> Option<Vec<
         crate::paths::host_data_dir().join("profile_cache"),
     ] {
         if global_cache.is_dir() {
+            if let Some(meta) = read_duckypad_device_meta(&global_cache) {
+                if (meta.hw_model > 0 && meta.hw_model != hw_model)
+                    || (!meta.serial_number.is_empty()
+                        && !clean_serial.is_empty()
+                        && !serial_matches_target(&meta.serial_number, &clean_serial))
+                {
+                    continue;
+                }
+            }
             if let Ok(profiles) = load_all_sd_profiles(&global_cache) {
                 if !profiles.is_empty() {
                     sync_profiles_to_device_cache(serial, &profiles);

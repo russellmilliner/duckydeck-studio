@@ -136,6 +136,7 @@ Kirigami.ApplicationWindow {
             { name: "WebApiDestinationsDialog", win: webApiDestinationsDialog, openFn: function() { webApiDestinationsDialog.openForDestination("", "POST", "", "") } },
             { name: "NewProfileGroupDialog", win: newProfileGroupDialog, openFn: function() { newProfileGroupDialog.openWithDefaults() } },
             { name: "RenameProfileDialog", win: renameProfileDialog, openFn: function() { renameProfileDialog.openWithProfile(1, "Default") } },
+            { name: "RenameDeviceDialog", win: renameDeviceDialog, openFn: function() { renameDeviceDialog.openForDevice("BD762874", "duckyPad Pro", "") } },
             { name: "DeleteProfileDialog", win: deleteProfileDialog, openFn: function() { deleteProfileDialog.open() } },
             { name: "UnsyncedChangesDialog", win: unsyncedChangesDialog, openFn: function() { unsyncedChangesDialog.open() } },
             { name: "SdSyncDialog", win: sdSyncDialog, openFn: function() { sdSyncDialog.open() } },
@@ -1487,6 +1488,17 @@ Kirigami.ApplicationWindow {
                 root.refreshEventLogModel()
             }
         }
+        onConnectedChanged: {
+            if (!deviceController.connected
+                && root.connectedDevicesList.length === 0
+                && !deviceController.isUiTestSuiteMode()
+                && !deviceController.isDemoShowcaseMode()) {
+                if (oledDesktopWidget.visible) {
+                    oledDesktopWidget.hide()
+                    oledDesktopWidget.visible = false
+                }
+            }
+        }
     }
 
     FolderDialog {
@@ -1903,15 +1915,22 @@ Kirigami.ApplicationWindow {
     property var openDeviceWidgetIds: ({})
     readonly property var openDeviceWidgetIdList: Object.keys(openDeviceWidgetIds)
 
-    function isDeviceOledWidgetOpen(devId) {
+    function isDeviceOledWidgetOpen(devId, isSelectedDev) {
         const clean = String(devId || "").trim()
         if (!clean) return oledDesktopWidget.visible
+        if (isSelectedDev && oledDesktopWidget.visible && !root.openDeviceWidgetIds[clean]) {
+            return true
+        }
         return !!root.openDeviceWidgetIds[clean]
     }
 
-    function toggleDeviceOledWidget(devId, devLabel) {
+    function toggleDeviceOledWidget(devId, devLabel, isSelectedDev) {
         const clean = String(devId || "").trim()
         if (!clean) {
+            deviceController.toggleOledDesktopWidget()
+            return
+        }
+        if (isSelectedDev && oledDesktopWidget.visible && !root.openDeviceWidgetIds[clean]) {
             deviceController.toggleOledDesktopWidget()
             return
         }
@@ -1931,6 +1950,107 @@ Kirigami.ApplicationWindow {
             return Array.isArray(parsed) ? parsed : []
         } catch (e) {
             return []
+        }
+    }
+
+    readonly property var connectedDevicesList: {
+        const list = root.availableDevicesList
+        const out = []
+        for (let i = 0; i < list.length; ++i) {
+            if (list[i] && list[i].usbConnected) {
+                out.push(list[i])
+            }
+        }
+        return out
+    }
+
+    onConnectedDevicesListChanged: {
+        const connectedMap = {}
+        for (let i = 0; i < root.connectedDevicesList.length; ++i) {
+            const d = root.connectedDevicesList[i]
+            if (d && d.id) {
+                connectedMap[String(d.id)] = true
+            }
+        }
+        const openKeys = Object.keys(root.openDeviceWidgetIds || {})
+        let changed = false
+        const copy = Object.assign({}, root.openDeviceWidgetIds)
+        for (let j = 0; j < openKeys.length; ++j) {
+            const k = openKeys[j]
+            if (!connectedMap[k]) {
+                delete copy[k]
+                changed = true
+            }
+        }
+        if (changed) {
+            root.openDeviceWidgetIds = copy
+        }
+        if (root.connectedDevicesList.length === 0
+            && (!deviceController || (!deviceController.connected && !deviceController.isUiTestSuiteMode() && !deviceController.isDemoShowcaseMode()))) {
+            if (oledDesktopWidget.visible) {
+                oledDesktopWidget.hide()
+                oledDesktopWidget.visible = false
+            }
+        }
+    }
+
+    QQC2.Dialog {
+        id: renameDeviceDialog
+        readonly property bool closableWithEscape: true
+        property string targetSerial: ""
+        property string targetModelName: ""
+        enter: null
+        exit: null
+        Shortcut {
+            sequence: "Escape"
+            context: Qt.WindowShortcut
+            enabled: renameDeviceDialog.visible
+            onActivated: renameDeviceDialog.close()
+        }
+        anchors.centerIn: parent
+        modal: true
+        width: 440
+        title: qsTr("Name Hardware duckyPad")
+        standardButtons: QQC2.Dialog.Save | QQC2.Dialog.Cancel
+
+        function openForDevice(serialNum, modelLabel, currentCustomName) {
+            renameDeviceDialog.targetSerial = String(serialNum || (deviceController ? deviceController.serialNumber : "")).trim()
+            renameDeviceDialog.targetModelName = String(modelLabel || (deviceController ? deviceController.modelName : "duckyPad")).trim()
+            renameDeviceInput.text = String(currentCustomName !== undefined ? currentCustomName : (deviceController ? deviceController.customDeviceName : ""))
+            renameDeviceDialog.open()
+            Qt.callLater(function() {
+                renameDeviceInput.forceActiveFocus()
+                renameDeviceInput.selectAll()
+            })
+        }
+
+        ColumnLayout {
+            width: parent.width
+            spacing: 10
+
+            QQC2.Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                font.pointSize: 10 * root.fontScale
+                color: Kirigami.Theme.textColor
+                text: qsTr("Assign a friendly name to %1 (SN: %2). Leave blank to use the default hardware model and serial label.")
+                    .arg(renameDeviceDialog.targetModelName || "duckyPad")
+                    .arg(renameDeviceDialog.targetSerial || "-")
+            }
+
+            QQC2.TextField {
+                id: renameDeviceInput
+                Layout.fillWidth: true
+                font.pointSize: 10.5 * root.fontScale
+                placeholderText: qsTr("e.g. Desk Pro, Stream Deck, Home Assistant Pad...")
+                onAccepted: renameDeviceDialog.accept()
+            }
+        }
+
+        onAccepted: {
+            if (deviceController && renameDeviceDialog.targetSerial.length > 0 && renameDeviceDialog.targetSerial !== "-") {
+                deviceController.assignCustomDeviceName(renameDeviceDialog.targetSerial, renameDeviceInput.text.trim())
+            }
         }
     }
 
@@ -1985,30 +2105,78 @@ Kirigami.ApplicationWindow {
             }
         }
 
+        QQC2.MenuItem {
+            visible: deviceController && deviceController.serialNumber && deviceController.serialNumber !== "-"
+            icon.name: "edit-rename"
+            text: deviceController && deviceController.customDeviceName && deviceController.customDeviceName.length > 0
+                ? qsTr("✏️ Rename This duckyPad (\"%1\")...").arg(deviceController.customDeviceName)
+                : qsTr("✏️ Give This duckyPad a Name (SN: %1)...").arg(deviceController ? deviceController.serialNumber : "")
+            onTriggered: {
+                if (deviceController) {
+                    renameDeviceDialog.openForDevice(
+                        deviceController.serialNumber,
+                        deviceController.modelName,
+                        deviceController.customDeviceName
+                    )
+                }
+            }
+        }
+
         QQC2.MenuSeparator {
-            visible: root.availableDevicesList.length > 0
+            visible: root.connectedDevicesList.length > 0
         }
 
         QQC2.MenuItem {
-            visible: root.availableDevicesList.length > 0
+            visible: root.connectedDevicesList.length > 0
             enabled: false
             font.bold: true
-            text: qsTr("Desktop OLED Widgets (Per duckyPad)")
+            text: qsTr("Desktop OLED Widgets (Connected duckyPads)")
         }
 
         Repeater {
-            model: root.availableDevicesList
+            model: root.connectedDevicesList
             delegate: QQC2.MenuItem {
                 required property var modelData
-                readonly property bool widgetOpen: root.isDeviceOledWidgetOpen(modelData.id)
+                readonly property bool widgetOpen: root.isDeviceOledWidgetOpen(modelData.id, !!modelData.isSelected)
                 icon.name: "view-fullscreen"
                 font.bold: widgetOpen
                 text: (widgetOpen ? "✓ 🖥️ " : "    🖥️ ")
                     + qsTr("OLED Widget: %1").arg(modelData.displayLabel || modelData.id)
                 onTriggered: {
-                    const shortBadge = (modelData.hwModel === 20 ? "DP20·" : "DP24·")
-                        + String(modelData.serialNumber || modelData.id).slice(-4)
-                    root.toggleDeviceOledWidget(modelData.id, shortBadge)
+                    const shortBadge = modelData.customName && modelData.customName.length > 0
+                        ? modelData.customName
+                        : ((modelData.hwModel === 20 ? "DP20·" : "DP24·")
+                            + String(modelData.serialNumber || modelData.id).slice(-4))
+                    root.toggleDeviceOledWidget(modelData.id, shortBadge, !!modelData.isSelected)
+                }
+            }
+        }
+
+        QQC2.MenuSeparator {
+            visible: deviceController && deviceController.esp32HaDetected
+        }
+
+        QQC2.MenuItem {
+            visible: deviceController && deviceController.esp32HaDetected
+            icon.name: "network-server"
+            font.bold: deviceController && deviceController.esp32HaServerRunning
+            text: deviceController && deviceController.esp32HaServerRunning
+                ? qsTr("✓ 🌐 Stop ESP32-HA Web Server (:%1)").arg(deviceController.esp32HaServerPort)
+                : qsTr("🌐 Start ESP32-HA Web Server (:%1)").arg(deviceController ? deviceController.esp32HaServerPort : 8099)
+            onTriggered: {
+                if (deviceController) {
+                    deviceController.toggleEsp32HaWebServer()
+                }
+            }
+        }
+
+        QQC2.MenuItem {
+            visible: deviceController && deviceController.esp32HaDetected
+            icon.name: "internet-web-browser"
+            text: qsTr("↗ Open ESP32-HA Web UI in Browser (%1)").arg(deviceController ? deviceController.esp32HaServerUrl : "http://127.0.0.1:8099")
+            onTriggered: {
+                if (deviceController) {
+                    deviceController.openEsp32HaWebUi()
                 }
             }
         }
@@ -6080,13 +6248,15 @@ Kirigami.ApplicationWindow {
         }
     }
 
-    // Bottom Status Bar (2-Line Layout: Line 1 = Connection, Sync & Live Status; Line 2 = Firmware Version, SD Card Space & OLED Widget Toggle)
+    // Bottom Status Bar (2- or 3-Line Layout: Line 1 = Connection, Sync & Live Status; Line 2 = Firmware Version, SD Card Space & OLED Widget Toggle; Line 3 = Per-Device OLED Widgets & ESP32-HA Web Server)
     footer: Rectangle {
         id: bottomStatusBar
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
         Kirigami.Theme.inherit: false
+        readonly property bool hasMultiWidgetOrEsp32Row: root.connectedDevicesList.length > 1
+            || (deviceController && deviceController.esp32HaDetected)
         width: parent.width
-        implicitHeight: Math.round(72 * root.statusBarScale)
+        implicitHeight: Math.round((hasMultiWidgetOrEsp32Row ? 106 : 72) * root.statusBarScale)
         color: Kirigami.Theme.alternateBackgroundColor
 
         Rectangle {
@@ -6150,11 +6320,17 @@ Kirigami.ApplicationWindow {
                                 const multiSuffix = deviceController.connectedDeviceCount > 1
                                     ? qsTr(" (1/%1)").arg(deviceController.connectedDeviceCount)
                                     : ""
+                                const customName = deviceController && deviceController.customDeviceName
+                                    ? String(deviceController.customDeviceName).trim()
+                                    : ""
+                                const modelDisplay = customName.length > 0
+                                    ? qsTr("%1 (%2)").arg(customName).arg(deviceController.modelName)
+                                    : deviceController.modelName
                                 const base = deviceController.connected
-                                    ? qsTr("USB HID Connected — %1%2").arg(deviceController.modelName).arg(multiSuffix)
+                                    ? qsTr("USB HID Connected — %1%2").arg(modelDisplay).arg(multiSuffix)
                                     : (deviceController.sdMountPath.length > 0
-                                        ? qsTr("SD Card Mode — %1").arg(deviceController.modelName)
-                                        : qsTr("Disconnected (%1)").arg(deviceController.modelName))
+                                        ? qsTr("SD Card Mode — %1").arg(modelDisplay)
+                                        : qsTr("Disconnected (%1)").arg(modelDisplay))
                                 return base + " ▾"
                             }
                             font.bold: true
@@ -6453,9 +6629,12 @@ Kirigami.ApplicationWindow {
                     Layout.fillWidth: true
                 }
 
-                // Desktop OLED Widget Toggle Badge
+                // Desktop OLED Widget Toggle Badge (hidden when no duckyPad is connected)
                 Rectangle {
                     id: oledWidgetStatusBtn
+                    visible: (deviceController && deviceController.connected)
+                        || root.connectedDevicesList.length > 0
+                        || (deviceController && (deviceController.isUiTestSuiteMode() || deviceController.isDemoShowcaseMode()))
                     readonly property int activeWidgetCount: (oledDesktopWidget.visible ? 1 : 0) + root.openDeviceWidgetIdList.length
                     radius: 4
                     color: activeWidgetCount > 0
@@ -6521,6 +6700,240 @@ Kirigami.ApplicationWindow {
                     QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: oledWidgetBtnMouse.containsMouse
                     QQC2.ToolTip.text: qsTr("Toggle the floating Desktop OLED Widget (Right-click to toggle individual widgets per duckyPad)")
+                }
+            }
+
+            Rectangle {
+                visible: bottomStatusBar.hasMultiWidgetOrEsp32Row
+                Layout.fillWidth: true
+                height: 1
+                color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast * 0.65)
+            }
+
+            // Status Bar Line 3: Per-Device OLED Widget Items (when >1 connected widget available) & ESP32-HA Web Server Controls
+            RowLayout {
+                id: multiWidgetStatusBarRow
+                visible: bottomStatusBar.hasMultiWidgetOrEsp32Row
+                Layout.fillWidth: true
+                spacing: 8
+
+                QQC2.Label {
+                    visible: root.connectedDevicesList.length > 1
+                    text: qsTr("Widgets:")
+                    font.bold: true
+                    font.pointSize: 9.5 * root.fontScale
+                    color: Kirigami.Theme.disabledTextColor
+                }
+
+                Repeater {
+                    model: root.connectedDevicesList.length > 1 ? root.connectedDevicesList : []
+                    delegate: Rectangle {
+                        id: perDevWidgetStatusBtn
+                        required property var modelData
+                        required property int index
+                        readonly property bool widgetOpen: root.isDeviceOledWidgetOpen(modelData.id, !!modelData.isSelected)
+                        readonly property bool isManaged: !!modelData.isSelected
+                        readonly property string shortSerial: String(modelData.serialNumber || modelData.id).slice(-4)
+                        readonly property string modelShort: modelData.customName && modelData.customName.length > 0
+                            ? modelData.customName
+                            : (modelData.hwModel === 20 ? "duckyPad 2020" : "duckyPad Pro")
+                        objectName: "statusBarWidgetItem_" + String(modelData.id || index)
+                        radius: 4
+                        color: widgetOpen
+                            ? Qt.alpha(Kirigami.Theme.positiveTextColor, perDevWidgetMouse.containsMouse ? 0.26 : 0.18)
+                            : (isManaged
+                                ? Qt.alpha(Kirigami.Theme.highlightColor, perDevWidgetMouse.containsMouse ? 0.22 : 0.12)
+                                : (perDevWidgetMouse.containsMouse
+                                    ? Qt.alpha(Kirigami.Theme.textColor, 0.12)
+                                    : Kirigami.Theme.backgroundColor))
+                        border.color: widgetOpen
+                            ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.6)
+                            : (isManaged
+                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.5)
+                                : Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast))
+                        border.width: 1
+                        implicitWidth: perDevWidgetBtnRow.implicitWidth + 14
+                        implicitHeight: Math.round(25 * root.statusBarScale)
+
+                        RowLayout {
+                            id: perDevWidgetBtnRow
+                            anchors.centerIn: parent
+                            spacing: 5
+
+                            Rectangle {
+                                width: 8
+                                height: 8
+                                radius: 4
+                                color: perDevWidgetStatusBtn.widgetOpen
+                                    ? Kirigami.Theme.positiveTextColor
+                                    : (modelData.usbConnected
+                                        ? Kirigami.Theme.highlightColor
+                                        : Kirigami.Theme.disabledTextColor)
+                            }
+
+                            Image {
+                                source: "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/oled-widget-icon.svg"
+                                Layout.preferredWidth: Math.round(14 * root.statusBarScale)
+                                Layout.preferredHeight: Math.round(14 * root.statusBarScale)
+                                sourceSize.width: 28
+                                sourceSize.height: 28
+                                fillMode: Image.PreserveAspectFit
+                            }
+
+                            QQC2.Label {
+                                text: {
+                                    const espTag = modelData.isEsp32HaConfigured ? " [ESP32-HA]" : ""
+                                    const profPart = modelData.usbConnected
+                                        ? qsTr(" • P#%1").arg(modelData.activeProfile || 1)
+                                        : ""
+                                    const stateTag = perDevWidgetStatusBtn.widgetOpen ? qsTr(" • Active") : ""
+                                    return qsTr("%1 (%2)%3%4%5")
+                                        .arg(perDevWidgetStatusBtn.modelShort)
+                                        .arg(perDevWidgetStatusBtn.shortSerial)
+                                        .arg(espTag)
+                                        .arg(profPart)
+                                        .arg(stateTag)
+                                }
+                                font.bold: perDevWidgetStatusBtn.widgetOpen || perDevWidgetStatusBtn.isManaged
+                                font.pointSize: 9.5 * root.fontScale
+                                color: Kirigami.Theme.textColor
+                            }
+                        }
+
+                        MouseArea {
+                            id: perDevWidgetMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: (mouse) => {
+                                if (mouse.button === Qt.RightButton) {
+                                    if (deviceController && modelData.id) {
+                                        if (deviceController.selectManagedDevice(modelData.id)) {
+                                            root.syncSidebarProfilesFromController()
+                                            hardwareCanvas.syncProfilesFromController()
+                                            hardwareCanvas.syncSlotsFromController()
+                                            root.refreshSelectedSlotFromController()
+                                        }
+                                    }
+                                } else {
+                                    const shortBadge = modelData.customName && modelData.customName.length > 0
+                                        ? modelData.customName
+                                        : ((modelData.hwModel === 20 ? "DP20·" : "DP24·")
+                                            + perDevWidgetStatusBtn.shortSerial)
+                                    root.toggleDeviceOledWidget(modelData.id, shortBadge, !!modelData.isSelected)
+                                }
+                            }
+                        }
+
+                        QQC2.ToolTip.delay: 400
+                        QQC2.ToolTip.visible: perDevWidgetMouse.containsMouse
+                        QQC2.ToolTip.text: qsTr("Left-click: Toggle Desktop OLED Widget for %1\nRight-click: Switch Studio to manage this duckyPad")
+                            .arg(modelData.displayLabel || modelData.id)
+                    }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+                // ESP32-HA Web Server Status & Toggle Badge (only visible when an ESP32-HA duckyPad is connected on USB)
+                Rectangle {
+                    id: esp32HaStatusBarBadge
+                    objectName: "esp32HaStatusBarBadge"
+                    visible: deviceController && deviceController.esp32HaDetected
+                    radius: 4
+                    color: deviceController && deviceController.esp32HaServerRunning
+                        ? Qt.alpha(Kirigami.Theme.positiveTextColor, esp32HaStatusMouse.containsMouse ? 0.26 : 0.18)
+                        : Qt.alpha("#0ea5e9", esp32HaStatusMouse.containsMouse ? 0.26 : 0.16)
+                    border.color: deviceController && deviceController.esp32HaServerRunning
+                        ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.6)
+                        : Qt.alpha("#38bdf8", 0.55)
+                    border.width: 1
+                    implicitWidth: esp32HaBadgeRow.implicitWidth + 16
+                    implicitHeight: Math.round(25 * root.statusBarScale)
+
+                    RowLayout {
+                        id: esp32HaBadgeRow
+                        anchors.centerIn: parent
+                        spacing: 6
+
+                        Rectangle {
+                            width: 8
+                            height: 8
+                            radius: 4
+                            color: deviceController && deviceController.esp32HaServerRunning
+                                ? Kirigami.Theme.positiveTextColor
+                                : "#38bdf8"
+                        }
+
+                        QQC2.Label {
+                            text: deviceController && deviceController.esp32HaServerRunning
+                                ? qsTr("🌐 ESP32-HA Web Server: Running (:%1)").arg(deviceController.esp32HaServerPort)
+                                : qsTr("🌐 ESP32-HA Detected — Start Web Server (:%1)").arg(deviceController ? deviceController.esp32HaServerPort : 8099)
+                            font.bold: true
+                            font.pointSize: 9.5 * root.fontScale
+                            color: Kirigami.Theme.textColor
+                        }
+                    }
+
+                    MouseArea {
+                        id: esp32HaStatusMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (deviceController) {
+                                deviceController.toggleEsp32HaWebServer()
+                            }
+                        }
+                    }
+
+                    QQC2.ToolTip.delay: 400
+                    QQC2.ToolTip.visible: esp32HaStatusMouse.containsMouse
+                    QQC2.ToolTip.text: deviceController && deviceController.esp32HaServerRunning
+                        ? qsTr("ESP32-HA Bridge Web Server is running at %1\nClick to stop the server").arg(deviceController.esp32HaServerUrl)
+                        : qsTr("duckyPad configured for duckypad-esp32-ha detected (SN: %1)\nClick to start the built-in ESP32-HA Web Server").arg(deviceController ? deviceController.esp32HaDeviceSerial : "")
+                }
+
+                // Open ESP32-HA Web UI in Browser Button
+                Rectangle {
+                    id: esp32HaOpenWebUiBtn
+                    objectName: "esp32HaOpenWebUiBtn"
+                    visible: deviceController && deviceController.esp32HaDetected
+                    radius: 4
+                    color: esp32HaOpenMouse.containsMouse
+                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.26)
+                        : Kirigami.Theme.backgroundColor
+                    border.color: Qt.alpha(Kirigami.Theme.highlightColor, 0.55)
+                    border.width: 1
+                    implicitWidth: esp32HaOpenLabel.implicitWidth + 14
+                    implicitHeight: Math.round(25 * root.statusBarScale)
+
+                    QQC2.Label {
+                        id: esp32HaOpenLabel
+                        anchors.centerIn: parent
+                        text: qsTr("↗ Open Web UI")
+                        font.bold: true
+                        font.pointSize: 9.5 * root.fontScale
+                        color: Kirigami.Theme.textColor
+                    }
+
+                    MouseArea {
+                        id: esp32HaOpenMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (deviceController) {
+                                deviceController.openEsp32HaWebUi()
+                            }
+                        }
+                    }
+
+                    QQC2.ToolTip.delay: 400
+                    QQC2.ToolTip.visible: esp32HaOpenMouse.containsMouse
+                    QQC2.ToolTip.text: qsTr("Start (if needed) and open the ESP32-HA Web Configurator (%1) in your browser").arg(deviceController ? deviceController.esp32HaServerUrl : "http://127.0.0.1:8099")
                 }
             }
         }
@@ -6677,6 +7090,7 @@ Kirigami.ApplicationWindow {
     OledDesktopWidget {
         id: oledDesktopWidget
         controller: deviceController
+        targetDeviceLabel: deviceController ? deviceController.customDeviceName : ""
         selectedSlot: root.selectedSlotNumber
         keyEditorOpen: root.hasSelectedSlot
         onRequestOpenMainWindow: {

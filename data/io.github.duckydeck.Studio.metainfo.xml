@@ -34,6 +34,11 @@
   <url type="bugtracker">https://github.com/russellmilliner/duckydeck-studio/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.1.10" date="2026-10-22">
+      <description>
+        <p>Multi-device profile reloading &amp; switching fixes (strict serial HID matching, EMUK expansion, SD snapshot recovery), custom per-hardware duckyPad naming (GUI + REST API), auto-closing per-device status bar &amp; desktop OLED widgets on disconnect, built-in duckypad-esp32-ha web server in 100% feature sync with auto-shutdown when no ESP32 duckyPad is connected, custom virtual keycode support (VK_0xNN / HID_0xNN / KEYCODE_0xNN), and major Linux &amp; Windows memory/CPU optimizations (reducing RSS by over 75%).</p>
+      </description>
+    </release>
     <release version="0.1.9" date="2026-10-22">
       <description>
         <p>Add automatic GitHub release version checking (startup, 6-hour periodic timer, window restore) and one-click self-update installer across Linux and Windows</p>

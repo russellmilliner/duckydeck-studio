@@ -3326,18 +3326,59 @@ Window {
                                                     return parts.join("  •  ")
                                                 }
                                             }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 6
+
+                                                QQC2.Label {
+                                                    text: qsTr("Custom Name:")
+                                                    font.pointSize: 9.5 * root.fontScale
+                                                    color: Kirigami.Theme.disabledTextColor
+                                                }
+
+                                                QQC2.TextField {
+                                                    id: customDevNameInput
+                                                    Layout.preferredWidth: 180
+                                                    font.pointSize: 9.5 * root.fontScale
+                                                    placeholderText: qsTr("e.g. Office Pro, HA Pad...")
+                                                    text: modelData.customName || ""
+                                                    onAccepted: {
+                                                        if (deviceController && modelData.serialNumber && modelData.serialNumber !== "-") {
+                                                            deviceController.assignCustomDeviceName(modelData.serialNumber, customDevNameInput.text)
+                                                        }
+                                                    }
+                                                }
+
+                                                QQC2.Button {
+                                                    font.pointSize: 9.5 * root.fontScale
+                                                    text: qsTr("Save Name")
+                                                    enabled: modelData.serialNumber && modelData.serialNumber !== "-"
+                                                        && customDevNameInput.text.trim() !== String(modelData.customName || "").trim()
+                                                    onClicked: {
+                                                        if (deviceController && modelData.serialNumber && modelData.serialNumber !== "-") {
+                                                            deviceController.assignCustomDeviceName(modelData.serialNumber, customDevNameInput.text)
+                                                        }
+                                                    }
+                                                }
+
+                                                Item { Layout.fillWidth: true }
+                                            }
                                         }
 
                                         QQC2.Button {
+                                            visible: !!modelData.usbConnected
                                             font.pointSize: 10 * root.fontScale
-                                            readonly property bool devWidgetOpen: root ? root.isDeviceOledWidgetOpen(modelData.id) : false
+                                            readonly property bool devWidgetOpen: root ? root.isDeviceOledWidgetOpen(modelData.id, !!modelData.isSelected) : false
                                             highlighted: devWidgetOpen
                                             text: devWidgetOpen ? qsTr("🖥️ Widget Active") : qsTr("🖥️ OLED Widget")
                                             onClicked: {
                                                 if (root && modelData.id) {
-                                                    const shortBadge = (modelData.hwModel === 20 ? "DP20·" : "DP24·")
-                                                        + String(modelData.serialNumber || modelData.id).slice(-4)
-                                                    root.toggleDeviceOledWidget(modelData.id, shortBadge)
+                                                    const shortBadge = modelData.customName && modelData.customName.length > 0
+                                                        ? modelData.customName
+                                                        : ((modelData.hwModel === 20 ? "DP20·" : "DP24·")
+                                                            + String(modelData.serialNumber || modelData.id).slice(-4))
+                                                    root.toggleDeviceOledWidget(modelData.id, shortBadge, !!modelData.isSelected)
                                                 }
                                             }
                                             QQC2.ToolTip.delay: 500
@@ -3362,6 +3403,93 @@ Window {
                                                         }
                                                     }
                                                 }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Built-in ESP32-HA Bridge Web Server Controls
+                            Rectangle {
+                                visible: deviceController && deviceController.esp32HaDetected
+                                Layout.fillWidth: true
+                                implicitHeight: esp32HaSettingsRow.implicitHeight + 16
+                                radius: 6
+                                color: deviceController && deviceController.esp32HaServerRunning
+                                    ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.14)
+                                    : Qt.alpha("#0ea5e9", 0.12)
+                                border.color: deviceController && deviceController.esp32HaServerRunning
+                                    ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.5)
+                                    : Qt.alpha("#38bdf8", 0.45)
+                                border.width: 1
+
+                                RowLayout {
+                                    id: esp32HaSettingsRow
+                                    anchors.fill: parent
+                                    anchors.margins: 8
+                                    spacing: 10
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+
+                                        QQC2.Label {
+                                            Layout.fillWidth: true
+                                            font.bold: true
+                                            font.pointSize: 10 * root.fontScale
+                                            color: Kirigami.Theme.textColor
+                                            text: deviceController && deviceController.esp32HaServerRunning
+                                                ? qsTr("🌐 duckypad-esp32-ha Bridge Web Server — Running at %1").arg(deviceController.esp32HaServerUrl)
+                                                : qsTr("🌐 duckypad-esp32-ha Bridge Detected (SN: %1)").arg(deviceController ? deviceController.esp32HaDeviceSerial : "DP20")
+                                        }
+
+                                        QQC2.Label {
+                                            Layout.fillWidth: true
+                                            wrapMode: Text.WordWrap
+                                            font.pointSize: 9.5 * root.fontScale
+                                            color: Kirigami.Theme.disabledTextColor
+                                            text: qsTr("Host a built-in ESP32-HA style Web Configurator for editing Home Assistant bridge profiles, key labels, OLED brightness/sleep, and synced SD configuration.")
+                                        }
+                                    }
+
+                                    QQC2.SpinBox {
+                                        id: esp32HaPortSpin
+                                        from: 1024
+                                        to: 65535
+                                        stepSize: 1
+                                        editable: true
+                                        value: deviceController ? deviceController.esp32HaServerPort : 8099
+                                        font.pointSize: 10 * root.fontScale
+                                        textFromValue: function(value) { return ":" + value }
+                                        valueFromText: function(text) { return parseInt(String(text).replace(/[^0-9]/g, ""), 10) || 8099 }
+                                    }
+
+                                    QQC2.Button {
+                                        font.pointSize: 10 * root.fontScale
+                                        highlighted: !(deviceController && deviceController.esp32HaServerRunning)
+                                        text: deviceController && deviceController.esp32HaServerRunning
+                                            ? qsTr("⏹ Stop Server")
+                                            : qsTr("▶ Start Server")
+                                        onClicked: {
+                                            if (deviceController) {
+                                                if (deviceController.esp32HaServerRunning) {
+                                                    deviceController.stopEsp32HaWebServer()
+                                                } else {
+                                                    deviceController.startEsp32HaWebServer(esp32HaPortSpin.value)
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    QQC2.Button {
+                                        font.pointSize: 10 * root.fontScale
+                                        text: qsTr("↗ Open Web UI")
+                                        onClicked: {
+                                            if (deviceController) {
+                                                if (!deviceController.esp32HaServerRunning) {
+                                                    deviceController.startEsp32HaWebServer(esp32HaPortSpin.value)
+                                                }
+                                                deviceController.openEsp32HaWebUi()
                                             }
                                         }
                                     }

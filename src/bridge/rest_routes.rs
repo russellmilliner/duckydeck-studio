@@ -260,8 +260,155 @@ pub fn handle_rest_api_request_impl(
             "statusMessage": controller.status_message().to_string(),
             "restApiStatus": current_rest_api_status(),
             "profileCount": profiles_val.as_array().map(|a| a.len()).unwrap_or(0),
+            "isDuckyPad2020": *controller.is_duckypad_2020(),
+            "activeHwModel": *controller.active_hw_model(),
+            "esp32HaDetected": *controller.esp32_ha_detected(),
+            "esp32HaDeviceSerial": controller.esp32_ha_device_serial().to_string(),
+            "esp32HaServerRunning": *controller.esp32_ha_server_running(),
+            "esp32HaServerPort": *controller.esp32_ha_server_port(),
+            "esp32HaServerUrl": controller.esp32_ha_server_url().to_string(),
         });
         return (200, resp.to_string());
+    }
+
+    // 1b. GET /api/v1/devices & POST /api/v1/devices/select & POST /api/v1/esp32-ha/{start,stop}
+    if m == "GET" && clean_path == "/api/v1/devices" {
+        controller.as_mut().refresh_available_devices_state();
+        let devices_val: serde_json::Value =
+            serde_json::from_str(&controller.available_devices_json().to_string())
+                .unwrap_or_else(|_| serde_json::json!([]));
+        let oled_states_val: serde_json::Value =
+            serde_json::from_str(&controller.multi_device_oled_states_json().to_string())
+                .unwrap_or_else(|_| serde_json::json!([]));
+        return (
+            200,
+            serde_json::json!({
+                "ok": true,
+                "selectedSerial": controller.serial_number().to_string(),
+                "customDeviceName": controller.custom_device_name().to_string(),
+                "modelName": controller.model_name().to_string(),
+                "isDuckyPad2020": *controller.is_duckypad_2020(),
+                "connectedDeviceCount": *controller.connected_device_count(),
+                "devices": devices_val,
+                "multiDeviceOledStates": oled_states_val,
+                "esp32HaDetected": *controller.esp32_ha_detected(),
+                "esp32HaDeviceSerial": controller.esp32_ha_device_serial().to_string(),
+                "esp32HaServerRunning": *controller.esp32_ha_server_running(),
+                "esp32HaServerPort": *controller.esp32_ha_server_port(),
+                "esp32HaServerUrl": controller.esp32_ha_server_url().to_string(),
+            })
+            .to_string(),
+        );
+    }
+
+    if m == "POST" && clean_path == "/api/v1/devices/select" {
+        let body_val: serde_json::Value =
+            serde_json::from_str(body).unwrap_or_else(|_| serde_json::json!({}));
+        let target_id = body_val
+            .get("serial")
+            .or_else(|| body_val.get("id"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if target_id.is_empty() {
+            return (
+                400,
+                serde_json::json!({"ok": false, "error": "Missing 'serial' or 'id' field"})
+                    .to_string(),
+            );
+        }
+        let ok = controller
+            .as_mut()
+            .select_managed_device(cxx_qt_lib::QString::from(&target_id));
+        let profiles_val: serde_json::Value =
+            serde_json::from_str(&controller.profiles_json().to_string())
+                .unwrap_or_else(|_| serde_json::json!([]));
+        return (
+            if ok { 200 } else { 404 },
+            serde_json::json!({
+                "ok": ok,
+                "serialNumber": controller.serial_number().to_string(),
+                "customDeviceName": controller.custom_device_name().to_string(),
+                "modelName": controller.model_name().to_string(),
+                "isDuckyPad2020": *controller.is_duckypad_2020(),
+                "activeProfile": *controller.active_profile(),
+                "activeProfileName": controller.active_profile_name().to_string(),
+                "profileCount": profiles_val.as_array().map(|a| a.len()).unwrap_or(0),
+                "profiles": profiles_val,
+            })
+            .to_string(),
+        );
+    }
+
+    if m == "POST" && clean_path == "/api/v1/devices/rename" {
+        let body_val: serde_json::Value =
+            serde_json::from_str(body).unwrap_or_else(|_| serde_json::json!({}));
+        let target_serial = body_val
+            .get("serial")
+            .or_else(|| body_val.get("id"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let custom_name = body_val
+            .get("name")
+            .or_else(|| body_val.get("customName"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let ok = controller.as_mut().assign_custom_device_name(
+            &cxx_qt_lib::QString::from(&target_serial),
+            &cxx_qt_lib::QString::from(&custom_name),
+        );
+        let devices_val: serde_json::Value =
+            serde_json::from_str(&controller.available_devices_json().to_string())
+                .unwrap_or_else(|_| serde_json::json!([]));
+        return (
+            if ok { 200 } else { 400 },
+            serde_json::json!({
+                "ok": ok,
+                "serialNumber": if target_serial.is_empty() {
+                    controller.serial_number().to_string()
+                } else {
+                    target_serial
+                },
+                "customName": custom_name,
+                "devices": devices_val,
+            })
+            .to_string(),
+        );
+    }
+
+    if m == "POST" && clean_path == "/api/v1/esp32-ha/start" {
+        let body_val: serde_json::Value =
+            serde_json::from_str(body).unwrap_or_else(|_| serde_json::json!({}));
+        let port = body_val.get("port").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+        let ok = controller.as_mut().start_esp32_ha_web_server(port);
+        return (
+            if ok { 200 } else { 500 },
+            serde_json::json!({
+                "ok": ok,
+                "running": *controller.esp32_ha_server_running(),
+                "port": *controller.esp32_ha_server_port(),
+                "url": controller.esp32_ha_server_url().to_string(),
+                "deviceSerial": controller.esp32_ha_device_serial().to_string(),
+            })
+            .to_string(),
+        );
+    }
+
+    if m == "POST" && clean_path == "/api/v1/esp32-ha/stop" {
+        let ok = controller.as_mut().stop_esp32_ha_web_server();
+        return (
+            200,
+            serde_json::json!({
+                "ok": ok,
+                "running": *controller.esp32_ha_server_running(),
+            })
+            .to_string(),
+        );
     }
 
     // 2. GET /api/v1/profiles

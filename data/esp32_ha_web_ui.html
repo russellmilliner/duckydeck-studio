@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>duckyPad 2020 & Pro — ESP32-S3 Home Assistant Bridge & Configurator</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --card-alt: #263349;
+    --border: #334155;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --accent: #0ea5e9;
+    --green: #10b981;
+    --amber: #f59e0b;
+    --red: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+  }
+  .container { max-width: 1120px; margin: 0 auto; }
+  .header {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;
+    display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;
+  }
+  .title-group h1 { margin: 0; font-size: 20px; display: flex; align-items: center; gap: 10px; }
+  .title-group p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .badge {
+    padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 700;
+    background: var(--card-alt); border: 1px solid var(--border);
+  }
+  .badge.ok { background: rgba(16,185,129,0.18); border-color: var(--green); color: #6ee7b7; }
+  .badge.warn { background: rgba(245,158,11,0.18); border-color: var(--amber); color: #fcd34d; }
+  .badge.info { background: rgba(14,165,233,0.18); border-color: var(--accent); color: #7dd3fc; }
+
+  .toolbar {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 18px; margin-bottom: 16px;
+    display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;
+  }
+  .btn-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button, select {
+    background: var(--card-alt); color: var(--text); border: 1px solid var(--border);
+    padding: 8px 13px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: 0.15s;
+  }
+  button:hover, select:hover { border-color: var(--accent); background: #2d3d56; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { background: #0284c7; }
+  button.success { background: var(--green); border-color: var(--green); color: #052e16; }
+  button.success:hover { background: #059669; color: #fff; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  #syncBanner {
+    display: none; background: #172554; border: 1px solid var(--accent);
+    border-radius: 10px; padding: 12px 16px; margin-bottom: 16px;
+  }
+  .progress-track {
+    width: 100%; height: 10px; background: #0f172a; border-radius: 999px;
+    overflow: hidden; margin-top: 8px;
+  }
+  .progress-bar { height: 100%; background: var(--green); width: 0%; transition: width 0.2s; }
+
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: center; }
+  .tab {
+    padding: 10px 18px; border-radius: 10px; font-weight: 700; font-size: 14px;
+    background: var(--card); border: 1px solid var(--border); cursor: pointer;
+  }
+  .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { background: rgba(239,68,68,0.18); border-color: var(--red); color: #fca5a5; }
+  button.danger:hover { background: var(--red); color: #fff; }
+
+  .prof-bar {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 18px; margin-bottom: 16px;
+    display: flex; flex-wrap: wrap; gap: 18px; align-items: center;
+  }
+  .field { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  input[type="text"] {
+    background: #0f172a; color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 9px; font-size: 13px; font-family: monospace;
+  }
+  input[type="color"] {
+    background: none; border: 1px solid var(--border); border-radius: 6px;
+    width: 34px; height: 28px; cursor: pointer; padding: 0;
+  }
+
+  .grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+    max-width: 820px; margin: 0 auto 24px;
+  }
+  .grid.pro-grid {
+    grid-template-columns: repeat(4, 1fr);
+    max-width: 1100px;
+  }
+  @media (max-width: 760px) { .grid, .grid.pro-grid { grid-template-columns: 1fr; } }
+
+  .enc-section {
+    max-width: 1100px; margin: 0 auto 28px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px;
+  }
+  .enc-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 12px;
+  }
+  @media (max-width: 760px) { .enc-grid { grid-template-columns: 1fr; } }
+  .enc-card {
+    background: var(--card-alt); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .enc-action-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: rgba(15,23,42,0.55); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 12px;
+  }
+
+  .key-card {
+    background: var(--card); border: 2px solid var(--border);
+    border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .key-top { display: flex; justify-content: space-between; align-items: center; }
+  .key-num { font-size: 12px; font-weight: 700; color: var(--muted); }
+  .oled-preview {
+    background: #000; color: #fff; border: 1px solid #475569; border-radius: 6px;
+    padding: 6px 8px; font-family: "Courier New", monospace; font-weight: 700;
+    font-size: 14px; text-align: center; line-height: 1.25; min-height: 44px;
+    display: flex; flex-direction: column; justify-content: center; letter-spacing: 0.5px;
+  }
+  .key-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .key-inputs input { width: 100%; text-align: center; }
+  .key-bottom {
+    display: flex; justify-content: space-between; align-items: center; gap: 6px;
+    padding-top: 4px; border-top: 1px solid var(--border); font-size: 12px;
+  }
+  .mini-btn { padding: 4px 8px; font-size: 11px; border-radius: 6px; }
+  .sc-box {
+    background: rgba(15,23,42,0.65); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .sc-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 11px; font-weight: 700; color: var(--muted);
+  }
+  .sc-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .sc-chip {
+    font-size: 10px; padding: 2px 6px; border-radius: 999px;
+    background: var(--card-alt); border: 1px solid var(--border);
+    color: #bae6fd; cursor: pointer; font-family: monospace;
+  }
+  .sc-chip:hover { border-color: var(--accent); background: #1e3a8a; }
+  .sc-row {
+    display: flex; align-items: center; gap: 5px;
+  }
+  .sc-row input[type="text"] {
+    flex: 1; min-width: 0; padding: 4px 6px; font-size: 12px;
+  }
+  .sc-row input[type="color"] {
+    width: 28px; height: 24px; flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="title-group">
+      <h1 id="pageTitle">🦆 duckyPad 2020 & Pro — ESP32-S3 Home Assistant Bridge</h1>
+      <p>Over-USB SD Card Profile Programmer, OLED Label Editor, Rotary Encoder & Live MQTT Controller</p>
+    </div>
+    <div class="badges">
+      <span id="usbBadge" class="badge warn">USB: Checking...</span>
+      <span id="profBadge" class="badge info">Active Profile: -</span>
+      <span id="sleepBadge" class="badge">OLED: -</span>
+      <span id="eventBadge" class="badge info">Last Event: none</span>
+      <button class="mini-btn" onclick="toggleNetPanel()">⚙️ Wi-Fi & MQTT</button>
+    </div>
+  </div>
+
+  <div id="netPanel" class="prof-bar" style="display:none;border-color:var(--accent);">
+    <div class="field">
+      <label><b>Wi-Fi SSID:</b></label>
+      <input type="text" id="netSsid" maxlength="32" style="width:160px" placeholder="wifi_fo_fum">
+    </div>
+    <div class="field">
+      <label><b>Wi-Fi Password:</b></label>
+      <input type="password" id="netPass" maxlength="63" style="width:160px;background:#0f172a;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 9px;font-size:13px;" placeholder="(unchanged if blank)">
+    </div>
+    <div class="field">
+      <label><b>MQTT Broker URI:</b></label>
+      <input type="text" id="netMqtt" maxlength="95" style="width:230px" placeholder="mqtt://mqtt.milliner.me:1883">
+    </div>
+    <button class="primary" onclick="saveNetConfig()">💾 Save Wi-Fi / MQTT & Reboot ESP32</button>
+  </div>
+
+  <div id="syncBanner">
+    <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;">
+      <span id="syncText">Writing files to duckyPad SD card over USB HID...</span>
+      <span id="syncPct">0%</span>
+    </div>
+    <div class="progress-track"><div id="syncBar" class="progress-bar"></div></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="btn-group">
+      <span style="font-size:12px;color:var(--muted);font-weight:700;">Model Layout:</span>
+      <select id="modelModeSelect" onchange="onModelModeChange(this.value)">
+        <option value="auto">Auto (Connected USB)</option>
+        <option value="2020">duckyPad (2020) — 15 Keys (3×5)</option>
+        <option value="pro">duckyPad Pro — 20 Keys (4×5) + 2 Encoders</option>
+      </select>
+      <span style="font-size:12px;color:var(--muted);font-weight:700;margin-left:6px;">Switch:</span>
+      <span id="switchProfBtns" style="display:inline-flex;flex-wrap:wrap;gap:6px;"></span>
+      <button onclick="sendCtrl('prev_profile', 0)">◀ Prev</button>
+      <button onclick="sendCtrl('next_profile', 0)">Next ▶</button>
+      <button onclick="sendCtrl('wake', 0)">☀️ Wake</button>
+      <button onclick="sendCtrl('sleep', 0)">🌙 Sleep</button>
+    </div>
+    <div class="btn-group">
+      <button id="btnSaveFast" class="primary" onclick="saveProfiles('config')">
+        💾 Save Labels & Colors to duckyPad (Fast)
+      </button>
+      <button id="btnSaveFull" class="success" onclick="saveProfiles('full')">
+        🚀 Initialize All Profiles + Keys on SD Card
+      </button>
+    </div>
+  </div>
+
+  <div id="tabsBar" class="tabs"></div>
+
+  <div class="prof-bar">
+    <div class="field">
+      <label><b>Folder Suffix:</b> <code id="profPrefix">profile1_</code></label>
+      <input type="text" id="profName" maxlength="12" style="width:130px" oninput="onProfMetaChange()">
+    </div>
+    <div class="field">
+      <label><b>Background LED Color:</b></label>
+      <input type="color" id="profBgColor" oninput="onProfMetaChange()">
+    </div>
+    <div class="field">
+      <label><b>Key-Down LED Color:</b></label>
+      <input type="color" id="profKdColor" oninput="onProfMetaChange()">
+    </div>
+    <button id="btnDeleteProf" class="danger" onclick="deleteCurrentProfile()">🗑️ Delete Profile</button>
+    <div style="margin-left:auto;font-size:12px;color:var(--muted);">
+      Tip: Bind a key to an <b>HA Entity ID</b> (e.g. <code>light.office</code> or <code>sensor.temp</code>) and use <code>{s}</code> in Label (e.g. <code>Ofc:{s}</code> or <code>{s}F</code>)!
+    </div>
+  </div>
+
+  <div id="keyGrid" class="grid"></div>
+
+  <div id="encSection" class="enc-section" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+      <div style="font-size:15px;font-weight:700;">🎛️ duckyPad Pro Rotary Encoders (Inputs 21–26)</div>
+      <div style="font-size:12px;color:var(--muted);">
+        MQTT Topics: <code>duckypad/encoder/1/action</code> &amp; <code>duckypad/encoder/2/action</code> (<code>cw</code>, <code>ccw</code>, <code>press</code>, <code>long_press</code>, <code>release</code>)
+      </div>
+    </div>
+    <div id="encGrid" class="enc-grid"></div>
+  </div>
+</div>
+
+<script>
+let state = { profiles: [] };
+let curTab = 0;
+let detectedHwRev = 20; // 20 = duckyPad (2020), 24 = duckyPad Pro
+let modelMode = "auto"; // "auto" | "2020" | "pro"
+
+function isProLayout() {
+  if (modelMode === "pro") return true;
+  if (modelMode === "2020") return false;
+  return detectedHwRev === 24;
+}
+
+function onModelModeChange(val) {
+  modelMode = val;
+  sendCtrl("set_model_mode", val);
+  renderTabsAndSwitchers();
+  renderCurrentTab();
+}
+
+function rgbToHex(r, g, b) {
+  return "#" + [r, g, b].map(x => Number(x || 0).toString(16).padStart(2, "0")).join("");
+}
+function hexToRgb(hex) {
+  hex = (hex || "#000000").replace("#", "");
+  return [
+    parseInt(hex.substring(0, 2), 16) || 0,
+    parseInt(hex.substring(2, 4), 16) || 0,
+    parseInt(hex.substring(4, 6), 16) || 0
+  ];
+}
+
+const ENC_DEFS = [
+  { idx: 20, kNum: 21, enc: 1, act: "CW ↻",   ev: "re1_cw",   defL1: "RE1_CW",  defL2: "Upper+" },
+  { idx: 21, kNum: 22, enc: 1, act: "CCW ↺",  ev: "re1_ccw",  defL1: "RE1_CCW", defL2: "Upper-" },
+  { idx: 22, kNum: 23, enc: 1, act: "Push ⏺", ev: "re1_push", defL1: "RE1_BTN", defL2: "UpPush" },
+  { idx: 23, kNum: 24, enc: 2, act: "CW ↻",   ev: "re2_cw",   defL1: "RE2_CW",  defL2: "Lower+" },
+  { idx: 24, kNum: 25, enc: 2, act: "CCW ↺",  ev: "re2_ccw",  defL1: "RE2_CCW", defL2: "Lower-" },
+  { idx: 25, kNum: 26, enc: 2, act: "Push ⏺", ev: "re2_push", defL1: "RE2_BTN", defL2: "LoPush" }
+];
+
+function ensureProfile26Slots(p, pNum) {
+  if (!p.keys) p.keys = [];
+  while (p.keys.length < 26) {
+    const k = p.keys.length + 1;
+    const ed = ENC_DEFS.find(e => e.kNum === k);
+    p.keys.push({
+      l1: ed ? ed.defL1 : `P${pNum}_K${k}`,
+      l2: ed ? ed.defL2 : `Key_${k}`,
+      custom: false,
+      col: [...(p.bg || [16, 48, 36])],
+      entity: "",
+      live: ed ? ed.defL1 : `P${pNum}_K${k}`,
+      sc: []
+    });
+  }
+}
+
+async function loadProfiles() {
+  const res = await fetch("/api/profiles");
+  state = await res.json();
+  if (state.hw_rev) {
+    detectedHwRev = state.hw_rev;
+  }
+  if (state.model_mode) {
+    modelMode = state.model_mode;
+    const sel = document.getElementById("modelModeSelect");
+    if (sel) sel.value = modelMode;
+  }
+  state.profiles.forEach((p, i) => ensureProfile26Slots(p, i + 1));
+  if (curTab >= state.profiles.length) {
+    curTab = Math.max(0, state.profiles.length - 1);
+  }
+  renderTabsAndSwitchers();
+  renderCurrentTab();
+}
+
+function renderTabsAndSwitchers() {
+  const tabsBar = document.getElementById("tabsBar");
+  const swBtns = document.getElementById("switchProfBtns");
+  const pro = isProLayout();
+  tabsBar.innerHTML = "";
+  swBtns.innerHTML = "";
+
+  state.profiles.forEach((p, idx) => {
+    const tab = document.createElement("div");
+    tab.id = "tab" + idx;
+    tab.className = (idx === curTab) ? "tab active" : "tab";
+    const folderLabel = pro ? `profile_${p.name}` : `profile${idx + 1}_${p.name}`;
+    tab.textContent = `Profile ${idx + 1} (${folderLabel})`;
+    tab.onclick = () => selectTab(idx);
+    tabsBar.appendChild(tab);
+
+    const b = document.createElement("button");
+    b.textContent = `P${idx + 1}: ${p.name}`;
+    b.onclick = () => sendCtrl("goto_profile", idx + 1);
+    swBtns.appendChild(b);
+  });
+
+  if (state.profiles.length < 10) {
+    const addBtn = document.createElement("button");
+    addBtn.className = "primary";
+    addBtn.textContent = "➕ Add Profile";
+    addBtn.onclick = addNewProfile;
+    tabsBar.appendChild(addBtn);
+  }
+
+  const delBtn = document.getElementById("btnDeleteProf");
+  if (delBtn) {
+    delBtn.disabled = (state.profiles.length <= 1);
+  }
+}
+
+function selectTab(idx) {
+  curTab = idx;
+  renderTabsAndSwitchers();
+  renderCurrentTab();
+}
+
+async function addNewProfile() {
+  if (state.profiles.length >= 10) {
+    alert("Maximum of 10 profiles reached.");
+    return;
+  }
+  const newNum = state.profiles.length + 1;
+  const defName = prompt(`Enter folder suffix for Profile ${newNum} (max 12 chars, letters/numbers/_):`, `HA_Page${newNum}`);
+  if (defName === null) return;
+  const cleanName = defName.replace(/[^A-Za-z0-9_-]/g, "").substring(0, 12) || `HA_Page${newNum}`;
+  const palettes = [
+    [[16,48,36], [0,255,128]],
+    [[16,36,64], [0,180,255]],
+    [[48,20,56], [255,140,0]],
+    [[56,28,16], [255,200,0]],
+    [[20,52,52], [0,255,220]],
+    [[52,16,32], [255,64,128]]
+  ];
+  const pal = palettes[(newNum - 1) % palettes.length];
+  const newProf = {
+    name: cleanName,
+    bg: [...pal[0]],
+    kd: [...pal[1]],
+    keys: []
+  };
+  ensureProfile26Slots(newProf, newNum);
+  state.profiles.push(newProf);
+  curTab = state.profiles.length - 1;
+  renderTabsAndSwitchers();
+  renderCurrentTab();
+  await saveProfiles("structure");
+}
+
+async function deleteCurrentProfile() {
+  if (state.profiles.length <= 1) {
+    alert("At least 1 profile must remain on the duckyPad.");
+    return;
+  }
+  const p = state.profiles[curTab];
+  if (!confirm(`Delete Profile ${curTab + 1} (${p.name}) from the duckyPad SD card and re-index remaining profiles?`)) {
+    return;
+  }
+  state.profiles.splice(curTab, 1);
+  if (curTab >= state.profiles.length) {
+    curTab = state.profiles.length - 1;
+  }
+  renderTabsAndSwitchers();
+  renderCurrentTab();
+  await saveProfiles("structure");
+}
+
+function onProfMetaChange() {
+  const p = state.profiles[curTab];
+  if (!p) return;
+  p.name = document.getElementById("profName").value.replace(/[^A-Za-z0-9_-]/g, "") || ("HA_Page" + (curTab + 1));
+  p.bg = hexToRgb(document.getElementById("profBgColor").value);
+  p.kd = hexToRgb(document.getElementById("profKdColor").value);
+  renderTabsAndSwitchers();
+  updateCardBorders();
+}
+
+let haEntityStatesCache = {};
+
+function suggestColorForState(val) {
+  const v = (val || "").toLowerCase();
+  if (["on","open","unlocked","home","playing","active","true","cleaning"].includes(v)) return [0, 255, 100];
+  if (["off","closed","locked","not_home","paused","idle","standby","false","docked"].includes(v)) return [255, 40, 40];
+  if (["heat","heating","triggered","jammed","error"].includes(v)) return [255, 110, 0];
+  if (["cool","cooling"].includes(v)) return [0, 170, 255];
+  if (["unavailable","unknown"].includes(v)) return [90, 90, 110];
+  return [0, 180, 255];
+}
+
+function renderStateColorBox(idx) {
+  const p = state.profiles[curTab];
+  const k = p.keys[idx];
+  const kNum = idx + 1;
+  if (!k.sc) k.sc = [];
+  const box = document.getElementById(`sc_box_${idx}`);
+  if (!box) return;
+
+  const cached = k.entity ? haEntityStatesCache[k.entity] : null;
+  const statesList = (cached && cached.states) ? cached.states : [];
+  const curStateStr = (cached && cached.current_state) ? ` (now: ${cached.current_state})` : "";
+
+  let dlHtml = `<datalist id="ha_dl_${idx}">`;
+  statesList.forEach(s => { dlHtml += `<option value="${s}">`; });
+  dlHtml += `</datalist>`;
+
+  let chipsHtml = "";
+  if (statesList.length > 0) {
+    chipsHtml = `<div class="sc-chips">` +
+      statesList.map(s => `<span class="sc-chip" title="Click to add color rule for '${s}'" onclick="addStateColorRule(${idx}, '${s}')">+ ${s}</span>`).join("") +
+      `</div>`;
+  }
+
+  let rowsHtml = k.sc.map((rule, rIdx) => {
+    const rHex = rgbToHex(rule.col[0], rule.col[1], rule.col[2]);
+    return `
+      <div class="sc-row">
+        <input type="text" list="ha_dl_${idx}" maxlength="15" placeholder="State (e.g. on, >75)" value="${rule.v || ""}" oninput="onStateColorEdit(${idx}, ${rIdx}, 'v', this.value)">
+        <input type="color" value="${rHex}" oninput="onStateColorEdit(${idx}, ${rIdx}, 'col', this.value)">
+        <button class="mini-btn" title="Preview this color on duckyPad Key ${kNum}" onclick="previewRgb(${kNum}, ${rule.col[0]}, ${rule.col[1]}, ${rule.col[2]})">💡</button>
+        <button class="mini-btn danger" title="Remove rule" onclick="removeStateColorRule(${idx}, ${rIdx})">✕</button>
+      </div>
+    `;
+  }).join("");
+
+  box.innerHTML = `
+    ${dlHtml}
+    <div class="sc-head">
+      <span>🎨 State → LED Colors${curStateStr}</span>
+      <div style="display:flex;gap:4px;">
+        <button class="mini-btn" title="Fetch available states from Home Assistant" onclick="fetchHaStatesForKey(${idx})">🔄 HA States</button>
+        ${k.sc.length < 6 ? `<button class="mini-btn primary" title="Add custom state color field" onclick="addStateColorRule(${idx}, '')">➕ Add</button>` : ""}
+      </div>
+    </div>
+    ${chipsHtml}
+    ${rowsHtml}
+  `;
+}
+
+async function fetchHaStatesForKey(idx) {
+  const k = state.profiles[curTab].keys[idx];
+  const ent = (k.entity || "").trim();
+  if (!ent) {
+    alert("Enter a Home Assistant Entity ID (e.g. light.office) on this key first.");
+    return;
+  }
+  try {
+    const res = await fetch(`/api/ha_entity?id=${encodeURIComponent(ent)}`);
+    const data = await res.json();
+    if (data && data.states) {
+      haEntityStatesCache[ent] = data;
+      renderStateColorBox(idx);
+    }
+  } catch (e) {}
+}
+
+function addStateColorRule(idx, presetVal) {
+  const k = state.profiles[curTab].keys[idx];
+  if (!k.sc) k.sc = [];
+  if (presetVal) {
+    const existing = k.sc.find(r => (r.v || "").toLowerCase() === presetVal.toLowerCase());
+    if (existing) return;
+  }
+  if (k.sc.length >= 6) {
+    alert("Maximum of 6 state color rules per key.");
+    return;
+  }
+  k.sc.push({
+    v: presetVal || "",
+    col: suggestColorForState(presetVal)
+  });
+  renderStateColorBox(idx);
+  updateCardBorders();
+}
+
+function removeStateColorRule(idx, rIdx) {
+  const k = state.profiles[curTab].keys[idx];
+  if (!k.sc) return;
+  k.sc.splice(rIdx, 1);
+  renderStateColorBox(idx);
+  updateCardBorders();
+}
+
+function onStateColorEdit(idx, rIdx, field, val) {
+  const k = state.profiles[curTab].keys[idx];
+  if (!k.sc || !k.sc[rIdx]) return;
+  if (field === "v") {
+    k.sc[rIdx].v = val.replace(/[|\s]+/g, "").substring(0, 15);
+  } else if (field === "col") {
+    k.sc[rIdx].col = hexToRgb(val);
+    renderStateColorBox(idx);
+    updateCardBorders();
+  }
+}
+
+function renderEncoders(p) {
+  const encSection = document.getElementById("encSection");
+  const encGrid = document.getElementById("encGrid");
+  if (!isProLayout()) {
+    encSection.style.display = "none";
+    return;
+  }
+  encSection.style.display = "block";
+  encGrid.innerHTML = "";
+
+  [1, 2].forEach(encNum => {
+    const card = document.createElement("div");
+    card.className = "enc-card";
+    const title = encNum === 1 ? "🎛️ Upper Rotary Encoder (RE1)" : "🎛️ Lower Rotary Encoder (RE2)";
+    const defs = ENC_DEFS.filter(e => e.enc === encNum);
+    let rowsHtml = defs.map(ed => {
+      const k = p.keys[ed.idx] || { l1: ed.defL1, l2: ed.defL2 };
+      return `
+        <div class="enc-action-row">
+          <div style="min-width:135px;">
+            <b>${ed.act}</b> <span style="color:var(--muted);">(Key ${ed.kNum})</span><br>
+            <code style="font-size:11px;color:#38bdf8;">p${curTab + 1}_${ed.ev}</code>
+          </div>
+          <div style="display:flex;gap:6px;flex:1;max-width:220px;">
+            <input type="text" maxlength="7" style="width:50%;text-align:center;" placeholder="Line 1" value="${k.l1 || ""}" oninput="onKeyEdit(${ed.idx}, 'l1', this.value)">
+            <input type="text" maxlength="7" style="width:50%;text-align:center;" placeholder="Line 2" value="${k.l2 || ""}" oninput="onKeyEdit(${ed.idx}, 'l2', this.value)">
+          </div>
+          <button class="mini-btn" title="Send ${ed.act} event to Home Assistant" onclick="testHaKey(${curTab + 1}, ${ed.kNum})">⚡ Test HA</button>
+        </div>
+      `;
+    }).join("");
+
+    card.innerHTML = `<div style="font-weight:700;font-size:13px;">${title}</div>${rowsHtml}`;
+    encGrid.appendChild(card);
+  });
+}
+
+function renderCurrentTab() {
+  const p = state.profiles[curTab];
+  if (!p) return;
+  ensureProfile26Slots(p, curTab + 1);
+  const pro = isProLayout();
+  const mechCount = pro ? 20 : 15;
+
+  document.getElementById("profPrefix").textContent = (pro || state.use_pinfo) ? "profile_" : `profile${curTab + 1}_`;
+  document.getElementById("profName").value = p.name;
+  document.getElementById("profBgColor").value = rgbToHex(p.bg[0], p.bg[1], p.bg[2]);
+  document.getElementById("profKdColor").value = rgbToHex(p.kd[0], p.kd[1], p.kd[2]);
+
+  const grid = document.getElementById("keyGrid");
+  grid.className = pro ? "grid pro-grid" : "grid";
+  grid.innerHTML = "";
+
+  for (let idx = 0; idx < mechCount; idx++) {
+    const k = p.keys[idx];
+    if (!k.sc) k.sc = [];
+    const kNum = idx + 1;
+    const card = document.createElement("div");
+    card.className = "key-card";
+    card.id = `kcard_${idx}`;
+    const colHex = rgbToHex(k.col[0], k.col[1], k.col[2]);
+    const oledTop = k.live || k.l1 || "";
+    const oledBot = k.entity ? `🔗 ${k.entity}` : (k.l2 || "");
+    card.innerHTML = `
+      <div class="key-top">
+        <span class="key-num">KEY ${kNum} (p${curTab + 1}_k${kNum})</span>
+        <button class="mini-btn" title="Send press+release to Home Assistant" onclick="testHaKey(${curTab + 1}, ${kNum})">⚡ Test HA</button>
+      </div>
+      <div class="oled-preview" id="oled_${idx}">
+        <div id="oled_l1_${idx}">${oledTop}</div>
+        <div id="oled_l2_${idx}" style="color:${k.entity ? '#38bdf8' : '#cbd5e1'};font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${oledBot}</div>
+      </div>
+      <div class="key-inputs">
+        <input type="text" maxlength="7" title="Static label (max 7 chars on 2020 / 5 chars on Pro) or template with {s} (e.g. Ofc:{s} or {s}F)" placeholder="Label / {s}" value="${k.l1 || ""}" oninput="onKeyEdit(${idx}, 'l1', this.value)">
+        <input type="text" maxlength="7" title="Line 2" placeholder="Line 2" value="${k.l2 || ""}" oninput="onKeyEdit(${idx}, 'l2', this.value)">
+      </div>
+      <div style="display:flex;gap:4px;">
+        <input type="text" maxlength="47" style="flex:1;min-width:0;font-size:12px;" title="Optional Home Assistant Entity ID whose state will populate this key's OLED label & LED color" placeholder="HA Entity ID (e.g. light.office)" value="${k.entity || ""}" oninput="onKeyEdit(${idx}, 'entity', this.value)" onchange="if(this.value.includes('.')) fetchHaStatesForKey(${idx})">
+      </div>
+      <div class="sc-box" id="sc_box_${idx}"></div>
+      <div class="key-bottom">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+          <input type="checkbox" ${k.custom ? "checked" : ""} onchange="onKeyEdit(${idx}, 'custom', this.checked)">
+          Default RGB
+        </label>
+        <div style="display:flex;align-items:center;gap:5px;">
+          <input type="color" value="${colHex}" oninput="onKeyEdit(${idx}, 'col', this.value)">
+          <button class="mini-btn" title="Preview LED on duckyPad" onclick="previewLed(${kNum}, ${idx})">💡</button>
+        </div>
+      </div>
+    `;
+    grid.appendChild(card);
+    renderStateColorBox(idx);
+    if (k.entity && !haEntityStatesCache[k.entity]) {
+      fetchHaStatesForKey(idx);
+    }
+  }
+  renderEncoders(p);
+  updateCardBorders();
+}
+
+function onKeyEdit(idx, field, val) {
+  const k = state.profiles[curTab].keys[idx];
+  if (!k) return;
+  if (field === "l1") {
+    k.l1 = val.replace(/\s+/g, "_").substring(0, 7);
+    const el1 = document.getElementById(`oled_l1_${idx}`);
+    if (el1) el1.textContent = k.l1;
+  } else if (field === "l2") {
+    k.l2 = val.replace(/\s+/g, "_").substring(0, 7);
+    const el2 = document.getElementById(`oled_l2_${idx}`);
+    if (el2 && !k.entity) {
+      el2.textContent = k.l2;
+    }
+  } else if (field === "entity") {
+    k.entity = val.trim().replace(/[|\s]+/g, "");
+    const el2 = document.getElementById(`oled_l2_${idx}`);
+    if (el2) {
+      el2.textContent = k.entity ? `🔗 ${k.entity}` : (k.l2 || "");
+      el2.style.color = k.entity ? "#38bdf8" : "#cbd5e1";
+    }
+  } else if (field === "custom") {
+    k.custom = !!val;
+    updateCardBorders();
+  } else if (field === "col") {
+    k.col = hexToRgb(val);
+    k.custom = true;
+    renderCurrentTab();
+  }
+}
+
+function updateCardBorders() {
+  const p = state.profiles[curTab];
+  if (!p) return;
+  p.keys.forEach((k, idx) => {
+    const card = document.getElementById(`kcard_${idx}`);
+    if (!card) return;
+    const rgb = k.live_col ? k.live_col : (k.custom ? k.col : p.bg);
+    card.style.borderColor = rgbToHex(rgb[0], rgb[1], rgb[2]);
+  });
+}
+
+async function previewRgb(kNum, r, g, b) {
+  await fetch("/api/control", {
+    method: "POST",
+    body: `set_rgb|${kNum}|${r}|${g}|${b}`
+  });
+  pollStatus();
+}
+
+async function previewLed(kNum, idx) {
+  const p = state.profiles[curTab];
+  const k = p.keys[idx];
+  const rgb = k.custom ? k.col : p.bg;
+  await previewRgb(kNum, rgb[0], rgb[1], rgb[2]);
+}
+
+async function testHaKey(profNum, kNum) {
+  await fetch("/api/control", {
+    method: "POST",
+    body: `test_key|${profNum}|${kNum}`
+  });
+}
+
+async function sendCtrl(cmd, arg) {
+  await fetch("/api/control", {
+    method: "POST",
+    body: `${cmd}|${arg}`
+  });
+}
+
+async function saveProfiles(mode) {
+  const pro = isProLayout();
+  if (mode === "full") {
+    const desc = pro ? "20 keys + 2 rotary encoders (key1..key26.dsb)" : "15 keys (key1..key15.txt/.dsb)";
+    if (!confirm(`Write all ${state.profiles.length} profiles (config.txt + ${desc}) to the duckyPad SD card over USB and reload?`)) {
+      return;
+    }
+  }
+  let lines = [`MODE|${mode}`, `COUNT|${state.profiles.length}`];
+  state.profiles.forEach((p, pIdx) => {
+    ensureProfile26Slots(p, pIdx + 1);
+    lines.push(`P|${pIdx}|${p.name}|${p.bg[0]}|${p.bg[1]}|${p.bg[2]}|${p.kd[0]}|${p.kd[1]}|${p.kd[2]}`);
+    p.keys.forEach((k, kIdx) => {
+      lines.push(`K|${pIdx}|${kIdx}|${k.l1 || "-"}|${k.l2 || "-"}|${k.custom ? 1 : 0}|${k.col[0]}|${k.col[1]}|${k.col[2]}|${k.entity || "-"}`);
+      if (k.sc && k.sc.length > 0) {
+        k.sc.forEach((rule, rIdx) => {
+          if (rule.v && rule.v.trim()) {
+            lines.push(`S|${pIdx}|${kIdx}|${rIdx}|${rule.v.trim()}|${rule.col[0]}|${rule.col[1]}|${rule.col[2]}`);
+          }
+        });
+      }
+    });
+  });
+
+  document.getElementById("btnSaveFast").disabled = true;
+  document.getElementById("btnSaveFull").disabled = true;
+  await fetch("/api/profiles", {
+    method: "POST",
+    body: lines.join("\n")
+  });
+  pollStatus();
+}
+
+let wasSyncing = false;
+async function pollStatus() {
+  try {
+    const res = await fetch("/api/status");
+    const st = await res.json();
+    const usbEl = document.getElementById("usbBadge");
+    if (st.hw_rev && st.hw_rev !== detectedHwRev) {
+      detectedHwRev = st.hw_rev;
+      if (modelMode === "auto") {
+        renderTabsAndSwitchers();
+        renderCurrentTab();
+      }
+    }
+    if (st.connected) {
+      usbEl.className = "badge ok";
+      usbEl.textContent = `USB: ${st.model} (FW ${st.fw})`;
+    } else {
+      usbEl.className = "badge warn";
+      usbEl.textContent = "USB: Disconnected";
+    }
+    document.getElementById("profBadge").textContent = `Active Profile: ${st.profile}`;
+    document.getElementById("sleepBadge").textContent = st.sleeping ? "OLED: Sleeping" : "OLED: Awake";
+    document.getElementById("eventBadge").textContent = `Last Event: ${st.last_event || "none"}`;
+
+    const banner = document.getElementById("syncBanner");
+    if (st.sync_busy) {
+      wasSyncing = true;
+      banner.style.display = "block";
+      document.getElementById("syncText").textContent = st.sync_msg || "Syncing to duckyPad SD card...";
+      document.getElementById("syncPct").textContent = `${st.sync_pct}%`;
+      document.getElementById("syncBar").style.width = `${st.sync_pct}%`;
+      document.getElementById("btnSaveFast").disabled = true;
+      document.getElementById("btnSaveFull").disabled = true;
+    } else {
+      banner.style.display = "none";
+      document.getElementById("btnSaveFast").disabled = false;
+      document.getElementById("btnSaveFull").disabled = false;
+      if (wasSyncing) {
+        wasSyncing = false;
+        loadProfiles();
+      }
+    }
+  } catch (e) {}
+}
+
+async function toggleNetPanel() {
+  const el = document.getElementById("netPanel");
+  if (el.style.display === "none") {
+    try {
+      const res = await fetch("/api/network");
+      const net = await res.json();
+      document.getElementById("netSsid").value = net.ssid || "";
+      document.getElementById("netMqtt").value = net.mqtt_uri || "";
+      document.getElementById("netPass").value = "";
+    } catch (e) {}
+    el.style.display = "flex";
+  } else {
+    el.style.display = "none";
+  }
+}
+
+async function saveNetConfig() {
+  const ssid = document.getElementById("netSsid").value.trim();
+  const pass = document.getElementById("netPass").value;
+  const mqtt = document.getElementById("netMqtt").value.trim();
+  if (!ssid) {
+    alert("Wi-Fi SSID cannot be empty.");
+    return;
+  }
+  if (!confirm(`Save Wi-Fi SSID '${ssid}' and reboot ESP32-S3?`)) return;
+  await fetch("/api/network", {
+    method: "POST",
+    body: `SSID|${ssid}\nPASS|${pass}\nMQTT|${mqtt}\n`
+  });
+  alert("Saved! ESP32-S3 is rebooting to apply new Wi-Fi/MQTT settings.");
+}
+
+loadProfiles();
+setInterval(pollStatus, 1000);
+</script>
+</body>
+</html>

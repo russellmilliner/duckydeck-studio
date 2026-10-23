@@ -1,7 +1,7 @@
 ; Inno Setup script for DuckyDeck Studio (Windows x64).
 
 #ifndef AppVersion
-  #define AppVersion "0.1.9"
+  #define AppVersion "0.1.10"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\..\target\windows-dist\bundle"

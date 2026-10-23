@@ -1636,11 +1636,7 @@ pub fn resolve_app_icon_for_class(resource_class: &str) -> String {
 }
 
 fn resolve_app_icon_for_class_uncached(trimmed: &str, lower: &str) -> String {
-    let short_lower = lower
-        .rsplit('.')
-        .next()
-        .unwrap_or(lower)
-        .to_string();
+    let short_lower = lower.rsplit('.').next().unwrap_or(lower).to_string();
 
     let mut search_dirs = Vec::new();
     let data_home = crate::paths::xdg_data_home();
@@ -2442,6 +2438,37 @@ pub fn get_secondary_devices_snapshot() -> Vec<SecondaryDeviceRuntime> {
     list
 }
 
+pub fn get_secondary_device_runtime(serial: &str) -> Option<SecondaryDeviceRuntime> {
+    let clean = crate::hardware::storage::normalize_duckypad_serial(serial);
+    if clean.is_empty() {
+        return None;
+    }
+    let mutex = SECONDARY_DEVICES_STATE
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let guard = mutex.lock().ok()?;
+    guard
+        .values()
+        .find(|d| crate::hardware::storage::serial_matches_target(&d.serial, &clean))
+        .cloned()
+}
+
+pub fn update_secondary_device_profiles(serial: &str, profiles: Vec<DuckyProfile>) {
+    let clean = crate::hardware::storage::normalize_duckypad_serial(serial);
+    if clean.is_empty() {
+        return;
+    }
+    let mutex = SECONDARY_DEVICES_STATE
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    if let Ok(mut guard) = mutex.lock() {
+        if let Some(entry) = guard
+            .values_mut()
+            .find(|d| crate::hardware::storage::serial_matches_target(&d.serial, &clean))
+        {
+            entry.profiles = profiles;
+        }
+    }
+}
+
 pub fn update_secondary_device_runtime(runtime: SecondaryDeviceRuntime) {
     let clean = crate::hardware::storage::normalize_duckypad_serial(&runtime.serial);
     if clean.is_empty() {
@@ -2538,6 +2565,18 @@ pub fn sync_secondary_connected_devices(
             existing.disk_label = dev.disk_label.clone();
             if dev.active_profile > 0 {
                 existing.active_profile = dev.active_profile;
+            }
+            if existing.profiles.len() <= 1 {
+                if let Some(cached) =
+                    crate::hardware::profile::load_cached_profiles_for_serial_for_model(
+                        &sn,
+                        Some(dev.hw_model),
+                    )
+                {
+                    if cached.len() > existing.profiles.len() {
+                        existing.profiles = cached;
+                    }
+                }
             }
             continue;
         }
