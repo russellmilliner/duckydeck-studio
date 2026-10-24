@@ -7,9 +7,12 @@ import org.kde.kirigami as Kirigami
 Window {
     id: oledWidgetWindow
     objectName: "duckydeckOledWidgetWindow"
-    title: alwaysOnTop
-        ? qsTr("duckyPad OLED — P%1: %2").arg(activeProfile).arg(activeProfileName)
-        : qsTr("duckyPad OLED — P%1: %2 [Unpinned]").arg(activeProfile).arg(activeProfileName)
+    title: {
+        let suffix = ""
+        if (!alwaysOnTop) suffix += " [Unpinned]"
+        if (!onAllDesktops) suffix += " [SingleDesktop]"
+        return qsTr("duckyPad OLED — P%1: %2%3").arg(activeProfile).arg(activeProfileName).arg(suffix)
+    }
     width: 284
     height: 412 // 382 base + ~30 for 1-line title footer (expands down for multi-line titles, contracts for short)
     minimumWidth: 184
@@ -25,6 +28,7 @@ Window {
         || (targetDeviceState !== null && !!targetDeviceState.isSelected)
     property int selectedSlot: 0
     property bool alwaysOnTop: true
+    property bool onAllDesktops: true
     property bool framelessMode: true
     property bool showRgbDots: true
     property bool showSizeSlider: false
@@ -198,6 +202,13 @@ Window {
         pinIconCanvas.requestPaint()
     }
 
+    onOnAllDesktopsChanged: {
+        if (controller) {
+            controller.setOledWidgetKeepAbove(alwaysOnTop)
+        }
+        allDesktopsIconCanvas.requestPaint()
+    }
+
     onVisibilityChanged: (vis) => {
         if (alwaysOnTop && vis === Window.Minimized) {
             Qt.callLater(function() {
@@ -210,13 +221,14 @@ Window {
     }
 
     onVisibleChanged: {
-        if (transientParent !== null) {
-            transientParent = null
-        }
         if (visible) {
             syncFromController()
             if (controller) {
-                controller.restoreOledWidgetPlacement(alwaysOnTop)
+                if (targetDeviceId.length === 0) {
+                    controller.restoreOledWidgetPlacement(alwaysOnTop)
+                } else {
+                    controller.setOledWidgetKeepAbove(alwaysOnTop)
+                }
             }
             Qt.callLater(updateTitleExpansion)
         } else {
@@ -575,7 +587,7 @@ Window {
                 anchors.fill: parent
                 anchors.leftMargin: 6
                 anchors.rightMargin: 4
-                spacing: 5
+                spacing: 4
 
                 // DuckyDeck Studio Application Icon
                 Image {
@@ -713,7 +725,8 @@ Window {
                 // Always-on-Top Pin Icon Button
                 QQC2.ToolButton {
                     id: pinTopBtn
-                    Layout.preferredWidth: Math.max(24, Math.round(24 * oledWidgetWindow.uiScale))
+                    objectName: "oledWidgetPinToggle"
+                    Layout.preferredWidth: Math.max(21, Math.round(22 * oledWidgetWindow.uiScale))
                     Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
                     implicitWidth: Layout.preferredWidth
                     implicitHeight: Layout.preferredHeight
@@ -794,10 +807,75 @@ Window {
                         : qsTr("Always on Top: OFF (Click to keep above all windows)")
                 }
 
+                // Show on All Virtual Desktops Toggle Button
+                QQC2.ToolButton {
+                    id: allDesktopsBtn
+                    objectName: "oledWidgetAllDesktopsToggle"
+                    Layout.preferredWidth: Math.max(21, Math.round(22 * oledWidgetWindow.uiScale))
+                    Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
+                    implicitWidth: Layout.preferredWidth
+                    implicitHeight: Layout.preferredHeight
+                    padding: 0
+                    onClicked: {
+                        oledWidgetWindow.onAllDesktops = !oledWidgetWindow.onAllDesktops
+                    }
+                    contentItem: Item {
+                        Canvas {
+                            id: allDesktopsIconCanvas
+                            width: 16
+                            height: 16
+                            anchors.centerIn: parent
+                            scale: Math.max(0.85, Math.min(1.35, oledWidgetWindow.uiScale * 0.92))
+                            onPaint: {
+                                const ctx = getContext("2d")
+                                ctx.reset()
+                                const allDesk = oledWidgetWindow.onAllDesktops
+                                const activeCol = allDesk ? "#38bdf8" : "#cbd5e1"
+                                const dimCol = "#64748b"
+                                ctx.lineWidth = 1.35
+                                ctx.lineJoin = "round"
+
+                                const cells = [
+                                    { x: 2.0, y: 2.0, active: true },
+                                    { x: 9.0, y: 2.0, active: allDesk },
+                                    { x: 2.0, y: 9.0, active: allDesk },
+                                    { x: 9.0, y: 9.0, active: allDesk }
+                                ]
+                                for (let i = 0; i < cells.length; ++i) {
+                                    const c = cells[i]
+                                    ctx.strokeStyle = c.active ? activeCol : dimCol
+                                    ctx.fillStyle = c.active
+                                        ? (allDesk ? Qt.rgba(0.22, 0.74, 0.97, 0.45) : "#cbd5e1")
+                                        : "transparent"
+                                    ctx.beginPath()
+                                    ctx.rect(c.x, c.y, 5.0, 5.0)
+                                    if (c.active) {
+                                        ctx.fill()
+                                    }
+                                    ctx.stroke()
+                                }
+                            }
+                        }
+                    }
+                    background: Rectangle {
+                        radius: 4
+                        color: oledWidgetWindow.onAllDesktops
+                            ? Qt.rgba(0.22, 0.74, 0.97, 0.22)
+                            : (allDesktopsBtn.hovered ? "#25334a" : "#1a2333")
+                        border.width: 1
+                        border.color: oledWidgetWindow.onAllDesktops ? "#38bdf8" : "#344663"
+                    }
+                    QQC2.ToolTip.delay: 500
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.text: oledWidgetWindow.onAllDesktops
+                        ? qsTr("On All Desktops: ON (Visible across all virtual desktops · Click for current desktop only)")
+                        : qsTr("On All Desktops: OFF (Current virtual desktop only · Click to show on all desktops)")
+                }
+
                 // Window Transparency Slider Toggle Button
                 QQC2.ToolButton {
                     id: transparencyToggleBtn
-                    Layout.preferredWidth: Math.max(24, Math.round(24 * oledWidgetWindow.uiScale))
+                    Layout.preferredWidth: Math.max(21, Math.round(22 * oledWidgetWindow.uiScale))
                     Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
                     implicitWidth: Layout.preferredWidth
                     implicitHeight: Layout.preferredHeight
@@ -872,7 +950,7 @@ Window {
                 QQC2.ToolButton {
                     id: windowTitleToggleBtn
                     objectName: "oledWidgetWindowTitleToggle"
-                    Layout.preferredWidth: Math.max(24, Math.round(24 * oledWidgetWindow.uiScale))
+                    Layout.preferredWidth: Math.max(21, Math.round(22 * oledWidgetWindow.uiScale))
                     Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
                     implicitWidth: Layout.preferredWidth
                     implicitHeight: Layout.preferredHeight
@@ -938,7 +1016,7 @@ Window {
                 // Scale / Size Slider Toggle Button with Resize Icon
                 QQC2.ToolButton {
                     id: scaleToggleBtn
-                    Layout.preferredWidth: Math.max(24, Math.round(24 * oledWidgetWindow.uiScale))
+                    Layout.preferredWidth: Math.max(21, Math.round(22 * oledWidgetWindow.uiScale))
                     Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
                     implicitWidth: Layout.preferredWidth
                     implicitHeight: Layout.preferredHeight
@@ -1006,7 +1084,7 @@ Window {
                 // Desktop Widget Orientation Cycle Button (0° -> 90° -> 180° -> 270° -> 0°)
                 QQC2.ToolButton {
                     id: oledRotCycleBtn
-                    Layout.preferredWidth: Math.max(30, Math.round(32 * oledWidgetWindow.uiScale))
+                    Layout.preferredWidth: Math.max(28, Math.round(29 * oledWidgetWindow.uiScale))
                     Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
                     implicitWidth: Layout.preferredWidth
                     implicitHeight: Layout.preferredHeight
@@ -1049,7 +1127,7 @@ Window {
                 // Restore Window Titlebar / Frameless Mode Toggle Button with Window Icon
                 QQC2.ToolButton {
                     id: titlebarToggleBtn
-                    Layout.preferredWidth: Math.max(24, Math.round(24 * oledWidgetWindow.uiScale))
+                    Layout.preferredWidth: Math.max(21, Math.round(22 * oledWidgetWindow.uiScale))
                     Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
                     implicitWidth: Layout.preferredWidth
                     implicitHeight: Layout.preferredHeight

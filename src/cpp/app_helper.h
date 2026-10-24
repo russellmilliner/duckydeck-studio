@@ -109,6 +109,7 @@ struct OledWidgetGeometryState {
     int height = 356;
     int transparencyPercent = 0;
     bool alwaysOnTop = true;
+    bool onAllDesktops = true;
     bool framelessMode = true;
     bool showRgbDots = true;
     QString screenName;
@@ -158,6 +159,7 @@ inline OledWidgetGeometryState load_oled_widget_geometry() {
     st.transparencyPercent =
         std::clamp(obj.value(QStringLiteral("transparency_percent")).toInt(0), 0, 75);
     st.alwaysOnTop = obj.value(QStringLiteral("always_on_top")).toBool(true);
+    st.onAllDesktops = obj.value(QStringLiteral("on_all_desktops")).toBool(true);
     st.framelessMode = obj.value(QStringLiteral("frameless_mode")).toBool(true);
     st.showRgbDots = obj.value(QStringLiteral("show_rgb_dots")).toBool(true);
     st.screenName = obj.value(QStringLiteral("screen_name")).toString().trimmed();
@@ -185,6 +187,7 @@ inline void save_oled_widget_geometry(const OledWidgetGeometryState& st) {
         std::clamp(st.transparencyPercent, 0, 75)
     );
     obj.insert(QStringLiteral("always_on_top"), st.alwaysOnTop);
+    obj.insert(QStringLiteral("on_all_desktops"), st.onAllDesktops);
     obj.insert(QStringLiteral("frameless_mode"), st.framelessMode);
     obj.insert(QStringLiteral("show_rgb_dots"), st.showRgbDots);
     obj.insert(QStringLiteral("screen_name"), st.screenName);
@@ -206,6 +209,10 @@ inline void sync_oled_widget_props_from_window(QWindow* win, OledWidgetGeometryS
     const QVariant aot = win->property("alwaysOnTop");
     if (aot.isValid()) {
         st.alwaysOnTop = aot.toBool();
+    }
+    const QVariant oad = win->property("onAllDesktops");
+    if (oad.isValid()) {
+        st.onAllDesktops = oad.toBool();
     }
     const QVariant fm = win->property("framelessMode");
     if (fm.isValid()) {
@@ -302,7 +309,7 @@ inline void ensure_oled_window_hooks(QWindow* win) {
     if (!win) {
         return;
     }
-    if (win->transientParent() != nullptr) {
+    if (win->transientParent() != nullptr && !win->isVisible()) {
         win->setTransientParent(nullptr);
     }
     if (win->property("_duckydeck_oled_hooked").toBool()) {
@@ -314,17 +321,20 @@ inline void ensure_oled_window_hooks(QWindow* win) {
     const OledWidgetGeometryState initialLoaded = load_oled_widget_geometry();
     win->setProperty("transparencyPercent", std::clamp(initialLoaded.transparencyPercent, 0, 75));
     win->setProperty("alwaysOnTop", initialLoaded.alwaysOnTop);
+    win->setProperty("onAllDesktops", initialLoaded.onAllDesktops);
     win->setProperty("framelessMode", initialLoaded.framelessMode);
     win->setProperty("showRgbDots", initialLoaded.showRgbDots);
     win->setProperty("_duckydeck_props_restored", true);
 
     QScreen* initialScreen = nullptr;
     const QRect initialTarget = resolve_oled_widget_target_rect(initialLoaded, &initialScreen);
-    if (initialScreen) {
+    if (initialScreen && !win->isVisible() && win->handle() == nullptr && win->screen() != initialScreen) {
         win->setScreen(initialScreen);
     }
     win->resize(initialTarget.width(), initialTarget.height());
-    win->setPosition(initialTarget.x(), initialTarget.y());
+    if (QGuiApplication::platformName() != QStringLiteral("wayland") || !win->isVisible()) {
+        win->setPosition(initialTarget.x(), initialTarget.y());
+    }
 
     QObject::connect(win, &QWindow::windowStateChanged, win, [win](Qt::WindowState state) {
         if ((state & Qt::WindowMinimized) && win->property("alwaysOnTop").toBool()) {
@@ -438,12 +448,18 @@ inline QRect restore_oled_widget_geometry_now() {
     resolved.height = target.height();
     if (QWindow* win = find_oled_widget_window()) {
         sync_oled_widget_props_from_window(win, resolved);
-        win->setTransientParent(nullptr);
-        if (targetScreen) {
+        if (win->transientParent() != nullptr && !win->isVisible()) {
+            win->setTransientParent(nullptr);
+        }
+        if (targetScreen && !win->isVisible() && win->handle() == nullptr && win->screen() != targetScreen) {
             win->setScreen(targetScreen);
         }
-        win->resize(target.width(), target.height());
-        win->setPosition(target.x(), target.y());
+        if (win->width() != target.width() || win->height() != target.height()) {
+            win->resize(target.width(), target.height());
+        }
+        if (QGuiApplication::platformName() != QStringLiteral("wayland") || !win->isVisible()) {
+            win->setPosition(target.x(), target.y());
+        }
     }
     save_oled_widget_geometry(resolved);
     return target;
@@ -586,18 +602,23 @@ inline bool is_main_window_shown() {
 
 inline void show_oled_widget_window() {
     if (QWindow* win = find_oled_widget_window()) {
-        win->setTransientParent(nullptr);
+        if (!win->isVisible() && win->transientParent() != nullptr) {
+            win->setTransientParent(nullptr);
+        }
         win->setIcon(oled_widget_icon());
         const QRect target = restore_oled_widget_geometry_now();
         win->setWindowStates(win->windowStates() & ~Qt::WindowMinimized);
-        win->resize(target.width(), target.height());
-        win->setPosition(target.x(), target.y());
+        if (win->width() != target.width() || win->height() != target.height()) {
+            win->resize(target.width(), target.height());
+        }
+        if (QGuiApplication::platformName() != QStringLiteral("wayland")) {
+            win->setPosition(target.x(), target.y());
+        }
         win->showNormal();
         win->show();
-        win->resize(target.width(), target.height());
-        win->setPosition(target.x(), target.y());
         win->raise();
         win->requestActivate();
+        win->requestUpdate();
     }
 }
 

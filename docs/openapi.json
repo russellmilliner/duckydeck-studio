@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "DuckyDeck Studio HTTP REST API",
-    "version": "0.1.10",
-    "description": "Local and LAN HTTP REST API for **DuckyDeck Studio** (`v0.1.10`), a native Linux (KDE Plasma 6 / Kirigami) & Windows 10/11 (Rust + CXX-Qt + Qt 6) configurator and automation daemon for the **duckyPad Pro** (`0x0483:0xd11d`) and **duckyPad (2020)** (`0x0483:0xd11c`).\n\n- **Website & User Guide**: [https://duckydeckstudio.com](https://duckydeckstudio.com)\n- **GitHub Repository**: [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)\n\n### Authentication\nWhen **Require API Token Authentication** is enabled (recommended and on by default), every request except `GET /api/v1/health`, `GET /api/v1/openapi.json`, `GET /api/v1/swagger.json`, and `GET /api/v1/openapi.yaml` must include the API token via either:\n- `Authorization: Bearer <token>`\n- `X-API-Token: <token>`\n\nToken comparison uses a constant-time byte comparison to prevent timing side-channel attacks.\n",
+    "version": "0.1.11",
+    "description": "Local and LAN HTTP REST API for **DuckyDeck Studio** (`v0.1.11`), a native Linux (KDE Plasma 6 / Kirigami) & Windows 10/11 (Rust + CXX-Qt + Qt 6) configurator and automation daemon for the **duckyPad Pro** (`0x0483:0xd11d`) and **duckyPad (2020)** (`0x0483:0xd11c`).\n\n- **Website & User Guide**: [https://duckydeckstudio.com](https://duckydeckstudio.com)\n- **GitHub Repository**: [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)\n\n### Authentication\nWhen **Require API Token Authentication** is enabled (recommended and on by default), every request except `GET /api/v1/health`, `GET /api/v1/openapi.json`, `GET /api/v1/swagger.json`, and `GET /api/v1/openapi.yaml` must include the API token via either:\n- `Authorization: Bearer <token>`\n- `X-API-Token: <token>`\n\nToken comparison uses a constant-time byte comparison to prevent timing side-channel attacks.\n",
     "contact": {
       "name": "DuckyDeck Studio Documentation",
       "url": "https://duckydeckstudio.com"
@@ -102,7 +102,7 @@
                     },
                     "version": {
                       "type": "string",
-                      "example": "0.1.10"
+                      "example": "0.1.11"
                     },
                     "authRequired": {
                       "type": "boolean",
@@ -1832,7 +1832,7 @@
           },
           "version": {
             "type": "string",
-            "example": "0.1.10"
+            "example": "0.1.11"
           },
           "connected": {
             "type": "boolean",

@@ -34,6 +34,11 @@
   <url type="bugtracker">https://github.com/russellmilliner/duckydeck-studio/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.1.11" date="2026-10-23">
+      <description>
+        <p>Add On All Desktops toggle button to Desktop OLED Widget and fix multi-monitor Wayland placement</p>
+      </description>
+    </release>
     <release version="0.1.10" date="2026-10-22">
       <description>
         <p>Multi-device profile reloading &amp; switching fixes (strict serial HID matching, EMUK expansion, SD snapshot recovery), custom per-hardware duckyPad naming (GUI + REST API), auto-closing per-device status bar &amp; desktop OLED widgets on disconnect, built-in duckypad-esp32-ha web server in 100% feature sync with auto-shutdown when no ESP32 duckyPad is connected, custom virtual keycode support (VK_0xNN / HID_0xNN / KEYCODE_0xNN), and major Linux &amp; Windows memory/CPU optimizations (reducing RSS by over 75%).</p>

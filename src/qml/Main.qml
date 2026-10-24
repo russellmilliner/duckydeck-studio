@@ -1490,6 +1490,7 @@ Kirigami.ApplicationWindow {
         }
         onConnectedChanged: {
             if (!deviceController.connected
+                && !deviceController.sdSyncBusy
                 && root.connectedDevicesList.length === 0
                 && !deviceController.isUiTestSuiteMode()
                 && !deviceController.isDemoShowcaseMode()) {
@@ -1918,8 +1919,8 @@ Kirigami.ApplicationWindow {
     function isDeviceOledWidgetOpen(devId, isSelectedDev) {
         const clean = String(devId || "").trim()
         if (!clean) return oledDesktopWidget.visible
-        if (isSelectedDev && oledDesktopWidget.visible && !root.openDeviceWidgetIds[clean]) {
-            return true
+        if (isSelectedDev && !root.openDeviceWidgetIds[clean]) {
+            return oledDesktopWidget.visible
         }
         return !!root.openDeviceWidgetIds[clean]
     }
@@ -1930,7 +1931,7 @@ Kirigami.ApplicationWindow {
             deviceController.toggleOledDesktopWidget()
             return
         }
-        if (isSelectedDev && oledDesktopWidget.visible && !root.openDeviceWidgetIds[clean]) {
+        if (isSelectedDev && !root.openDeviceWidgetIds[clean]) {
             deviceController.toggleOledDesktopWidget()
             return
         }
@@ -1986,7 +1987,7 @@ Kirigami.ApplicationWindow {
             root.openDeviceWidgetIds = copy
         }
         if (root.connectedDevicesList.length === 0
-            && (!deviceController || (!deviceController.connected && !deviceController.isUiTestSuiteMode() && !deviceController.isDemoShowcaseMode()))) {
+            && (!deviceController || (!deviceController.connected && !deviceController.sdSyncBusy && !deviceController.isUiTestSuiteMode() && !deviceController.isDemoShowcaseMode()))) {
             if (oledDesktopWidget.visible) {
                 oledDesktopWidget.hide()
                 oledDesktopWidget.visible = false
@@ -7107,14 +7108,22 @@ Kirigami.ApplicationWindow {
             id: secondaryOledWidget
             required property string modelData
             required property int index
+            property bool initializedVisible: false
             controller: deviceController
             targetDeviceId: modelData
             targetDeviceLabel: String(root.openDeviceWidgetIds[modelData] || "")
             visible: true
             x: oledDesktopWidget.x + (index + 1) * 304
             y: oledDesktopWidget.y
+            Component.onCompleted: {
+                secondaryOledWidget.show()
+                secondaryOledWidget.raise()
+                secondaryOledWidget.initializedVisible = true
+            }
             onVisibleChanged: {
-                if (!visible && root.openDeviceWidgetIds[modelData]) {
+                if (visible) {
+                    secondaryOledWidget.initializedVisible = true
+                } else if (secondaryOledWidget.initializedVisible && root.openDeviceWidgetIds[modelData]) {
                     const copy = Object.assign({}, root.openDeviceWidgetIds)
                     delete copy[modelData]
                     root.openDeviceWidgetIds = copy

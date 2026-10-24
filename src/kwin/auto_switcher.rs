@@ -2854,7 +2854,6 @@ impl KWinBridgeService {
     }
 
     fn notify_oled_widget_mapped(&mut self, is_pinned: bool) {
-        crate::bridge::device_controller::qobject::duckydeck_restore_oled_widget_geometry();
         apply_kwin_oled_keep_above(is_pinned, true);
     }
 
@@ -3013,6 +3012,8 @@ mod win32_window {
         pub fn WindowFromPoint(Point: POINT) -> isize;
         pub fn GetAncestor(hwnd: isize, gaFlags: u32) -> isize;
         pub fn GetAsyncKeyState(vKey: i32) -> i16;
+        pub fn GetWindowLongPtrW(hWnd: isize, nIndex: i32) -> isize;
+        pub fn SetWindowLongPtrW(hWnd: isize, nIndex: i32, dwNewLong: isize) -> isize;
     }
 
     #[link(name = "kernel32")]
@@ -3134,12 +3135,19 @@ mod win32_window {
         Ok(exe_path)
     }
 
-    pub fn apply_oled_topmost_and_geometry(keep_above: bool, geom: Option<(i32, i32, i32, i32)>) {
+    pub fn apply_oled_topmost_and_geometry(
+        keep_above: bool,
+        on_all_desktops: bool,
+        geom: Option<(i32, i32, i32, i32)>,
+    ) {
         const HWND_TOPMOST: isize = -1;
         const HWND_NOTOPMOST: isize = -2;
         const SWP_NOSIZE: u32 = 0x0001;
         const SWP_NOMOVE: u32 = 0x0002;
         const SWP_NOACTIVATE: u32 = 0x0010;
+        const SWP_FRAMECHANGED: u32 = 0x0020;
+        const GWL_EXSTYLE: i32 = -20;
+        const WS_EX_TOOLWINDOW: isize = 0x0000_0080;
 
         let self_pid = std::process::id();
         // SAFETY: FindWindowExW / GetWindowThreadProcessId / GetWindowTextW / SetWindowPos are standard Win32 user32 calls.
@@ -3164,13 +3172,32 @@ mod win32_window {
                     .to_string_lossy()
                     .to_string();
                 if title.starts_with("duckyPad OLED") {
-                    let insert_after = if keep_above {
+                    let want_all_desktops =
+                        on_all_desktops && !title.contains("[SingleDesktop]");
+                    let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+                    let next_ex = if want_all_desktops {
+                        ex_style | WS_EX_TOOLWINDOW
+                    } else {
+                        ex_style & !WS_EX_TOOLWINDOW
+                    };
+                    if next_ex != ex_style {
+                        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, next_ex);
+                    }
+                    let insert_after = if keep_above && !title.contains("[Unpinned]") {
                         HWND_TOPMOST
                     } else {
                         HWND_NOTOPMOST
                     };
                     if let Some((gx, gy, gw, gh)) = geom {
-                        SetWindowPos(hwnd, insert_after, gx, gy, gw, gh, SWP_NOACTIVATE);
+                        SetWindowPos(
+                            hwnd,
+                            insert_after,
+                            gx,
+                            gy,
+                            gw,
+                            gh,
+                            SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                        );
                     } else {
                         SetWindowPos(
                             hwnd,
@@ -3179,7 +3206,7 @@ mod win32_window {
                             0,
                             0,
                             0,
-                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
                         );
                     }
                 }
@@ -3717,7 +3744,9 @@ function checkOledKeepAbove(win) {{
     if (isOledWidgetWindow(win)) {{
         var cap = win.caption ? win.caption.toString() : "";
         var isPinned = (cap.indexOf("[Unpinned]") === -1);
+        var isAllDesktops = (cap.indexOf("[SingleDesktop]") === -1);
         win.keepAbove = isPinned;
+        win.onAllDesktops = isAllDesktops;
         win.skipTaskbar = isPinned;
         win.skipPager = isPinned;
         if (isPinned && win.minimized) {{
@@ -3726,18 +3755,42 @@ function checkOledKeepAbove(win) {{
         if (!isWindowHooked(win)) {{
             hookedWindows.push(win);
             try {{
+                if (win.closed) {{
+                    win.closed.connect(function() {{
+                        var idx = hookedWindows.indexOf(win);
+                        if (idx !== -1) {{
+                            hookedWindows.splice(idx, 1);
+                        }}
+                    }});
+                }}
+                var trackedOledX = initialSavedOledRect ? initialSavedOledRect.x : Math.round(win.frameGeometry.x);
                 var trackedOledTopY = initialSavedOledRect ? initialSavedOledRect.y : Math.round(win.frameGeometry.y);
+                var trackedOledW = initialSavedOledRect ? initialSavedOledRect.width : Math.round(win.frameGeometry.width);
+                var trackedOledH = initialSavedOledRect ? initialSavedOledRect.height : Math.round(win.frameGeometry.height);
                 var isAdjustingOledGeometry = false;
                 if (initialSavedOledRect) {{
-                    win.frameGeometry = {{
-                        x: initialSavedOledRect.x,
-                        y: initialSavedOledRect.y,
-                        width: initialSavedOledRect.width,
-                        height: initialSavedOledRect.height
-                    }};
+                    isAdjustingOledGeometry = true;
+                    try {{
+                        win.frameGeometry = {{
+                            x: initialSavedOledRect.x,
+                            y: initialSavedOledRect.y,
+                            width: initialSavedOledRect.width,
+                            height: initialSavedOledRect.height
+                        }};
+                    }} catch (e) {{}}
+                    isAdjustingOledGeometry = false;
+                    trackedOledX = initialSavedOledRect.x;
                     trackedOledTopY = initialSavedOledRect.y;
-                    initialSavedOledRect = null;
+                    trackedOledW = initialSavedOledRect.width;
+                    trackedOledH = initialSavedOledRect.height;
                 }}
+                if (isAllDesktops) {{
+                    win.onAllDesktops = false;
+                    win.onAllDesktops = true;
+                }} else {{
+                    win.onAllDesktops = false;
+                }}
+                win.keepAbove = isPinned;
                 callDBus(
                     "io.github.duckydeck.Studio",
                     "/KWinBridge",
@@ -3763,7 +3816,10 @@ function checkOledKeepAbove(win) {{
                 if (win.moveResizedChanged) {{
                     win.moveResizedChanged.connect(function() {{
                         if (win.frameGeometry && (win.move || win.resize)) {{
+                            trackedOledX = Math.round(win.frameGeometry.x);
                             trackedOledTopY = Math.round(win.frameGeometry.y);
+                            trackedOledW = Math.round(win.frameGeometry.width);
+                            trackedOledH = Math.round(win.frameGeometry.height);
                         }}
                     }});
                 }}
@@ -3777,7 +3833,8 @@ function checkOledKeepAbove(win) {{
                             var curW = Math.round(win.frameGeometry.width);
                             var curH = Math.round(win.frameGeometry.height);
 
-                            if (win.move || win.resize) {{
+                            var onlyHeightChanged = (curX === trackedOledX && curW === trackedOledW && curH !== trackedOledH);
+                            if (win.move || win.resize || !onlyHeightChanged) {{
                                 trackedOledTopY = curY;
                             }} else if (trackedOledTopY !== null && Math.abs(curY - trackedOledTopY) >= 1) {{
                                 isAdjustingOledGeometry = true;
@@ -3794,6 +3851,16 @@ function checkOledKeepAbove(win) {{
                             }} else if (trackedOledTopY === null) {{
                                 trackedOledTopY = curY;
                             }}
+
+                            trackedOledX = curX;
+                            trackedOledW = curW;
+                            trackedOledH = curH;
+                            initialSavedOledRect = {{
+                                x: curX,
+                                y: curY,
+                                width: curW,
+                                height: curH
+                            }};
 
                             callDBus(
                                 "io.github.duckydeck.Studio",
@@ -4101,11 +4168,25 @@ fn load_saved_oled_geometry_tuple() -> Option<(i32, i32, i32, i32)> {
     Some((x, y, w, h))
 }
 
+fn load_saved_oled_on_all_desktops() -> bool {
+    let path = crate::paths::config_dir().join("oled_widget_geometry.json");
+    let Ok(raw) = fs::read_to_string(path) else {
+        return true;
+    };
+    let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return true;
+    };
+    val.get("on_all_desktops")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true)
+}
+
 #[cfg(not(target_os = "windows"))]
 static KWIN_SCRIPT_LOCK: std::sync::LazyLock<tokio::sync::Mutex<()>> =
     std::sync::LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 pub fn apply_kwin_oled_keep_above(keep_above: bool, restore_geometry: bool) {
+    let on_all_desktops = load_saved_oled_on_all_desktops();
     #[cfg(target_os = "windows")]
     {
         let geom_opt = if restore_geometry {
@@ -4113,7 +4194,7 @@ pub fn apply_kwin_oled_keep_above(keep_above: bool, restore_geometry: bool) {
         } else {
             None
         };
-        win32_window::apply_oled_topmost_and_geometry(keep_above, geom_opt);
+        win32_window::apply_oled_topmost_and_geometry(keep_above, on_all_desktops, geom_opt);
         return;
     }
     #[cfg(not(target_os = "windows"))]
@@ -4150,6 +4231,7 @@ pub fn apply_kwin_oled_keep_above(keep_above: bool, restore_geometry: bool) {
                 .to_string_lossy()
                 .to_string();
             let flag_str = if keep_above { "true" } else { "false" };
+            let all_desk_str = if on_all_desktops { "true" } else { "false" };
             let geom_js = if let Some((gx, gy, gw, gh)) = geom_opt {
                 format!("w.frameGeometry = {{ x: {gx}, y: {gy}, width: {gw}, height: {gh} }};")
             } else {
@@ -4163,13 +4245,21 @@ if (list) {{
         var w = list[i];
         var cap = w && w.caption ? w.caption.toString() : "";
         if (cap.indexOf("duckyPad OLED —") === 0) {{
-            w.keepAbove = {flag_str};
-            w.skipTaskbar = {flag_str};
-            w.skipPager = {flag_str};
-            if ({flag_str} && w.minimized) {{
+            var isPinned = (cap.indexOf("[Unpinned]") === -1) && {flag_str};
+            var isAllDesktops = (cap.indexOf("[SingleDesktop]") === -1) && {all_desk_str};
+            if (isPinned && w.minimized) {{
                 w.minimized = false;
             }}
             {geom_js}
+            if (isAllDesktops) {{
+                w.onAllDesktops = false;
+                w.onAllDesktops = true;
+            }} else {{
+                w.onAllDesktops = false;
+            }}
+            w.keepAbove = isPinned;
+            w.skipTaskbar = isPinned;
+            w.skipPager = isPinned;
         }}
     }}
 }}
