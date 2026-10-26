@@ -1794,6 +1794,14 @@ Window {
                     wrapMode: TextEdit.Wrap
                     font.family: "monospace"
                     font.pointSize: 10 * root.fontScale
+                    implicitWidth: Math.max(
+                        contentWidth + leftPadding + rightPadding,
+                        implicitBackgroundWidth + leftInset + rightInset
+                    )
+                    implicitHeight: Math.max(
+                        contentHeight + topPadding + bottomPadding,
+                        implicitBackgroundHeight + topInset + bottomInset
+                    )
                     color: Kirigami.Theme.textColor
                     selectionColor: Kirigami.Theme.highlightColor
                     selectedTextColor: Kirigami.Theme.highlightedTextColor

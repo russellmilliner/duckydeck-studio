@@ -1204,7 +1204,9 @@ Window {
                 && scriptEditorVerticalScrollBar.contentItem
                 && scriptEditorVerticalScrollBar.contentItem.visible
             )
-            var scriptScrollableOk = scriptScrollView.contentHeight > scriptScrollView.height && scriptEditorVerticalScrollBar.size < 1.0
+            var scriptScrollableOk = scriptScrollView.contentHeight > 500
+                && scriptScrollView.contentHeight > scriptScrollView.height
+                && scriptEditorVerticalScrollBar.size < 1.0
             scriptScrollView.contentY = Math.max(20, scriptScrollView.contentHeight - scriptScrollView.height)
             var scrolledPos = scriptEditorVerticalScrollBar.position
             scriptScrollView.contentY = 0

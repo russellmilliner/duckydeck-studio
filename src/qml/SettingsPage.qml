@@ -3313,7 +3313,7 @@ Window {
                                                 Layout.fillWidth: true
                                                 elide: Text.ElideRight
                                                 font.family: "monospace"
-                                                font.pointSize: 9.5 * root.fontScale
+                                                font.pointSize: 10 * root.fontScale
                                                 color: Kirigami.Theme.disabledTextColor
                                                 text: {
                                                     const parts = []
@@ -3333,14 +3333,15 @@ Window {
 
                                                 QQC2.Label {
                                                     text: qsTr("Custom Name:")
-                                                    font.pointSize: 9.5 * root.fontScale
+                                                    font.pointSize: 10 * root.fontScale
                                                     color: Kirigami.Theme.disabledTextColor
                                                 }
 
                                                 QQC2.TextField {
                                                     id: customDevNameInput
                                                     Layout.preferredWidth: 180
-                                                    font.pointSize: 9.5 * root.fontScale
+                                                    implicitHeight: Math.max(28, Math.round(28 * root.fontScale))
+                                                    font.pointSize: 10 * root.fontScale
                                                     placeholderText: qsTr("e.g. Office Pro, HA Pad...")
                                                     text: modelData.customName || ""
                                                     onAccepted: {
@@ -3351,7 +3352,7 @@ Window {
                                                 }
 
                                                 QQC2.Button {
-                                                    font.pointSize: 9.5 * root.fontScale
+                                                    font.pointSize: 10 * root.fontScale
                                                     text: qsTr("Save Name")
                                                     enabled: modelData.serialNumber && modelData.serialNumber !== "-"
                                                         && customDevNameInput.text.trim() !== String(modelData.customName || "").trim()

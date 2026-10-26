@@ -284,6 +284,8 @@ Kirigami.ApplicationWindow {
         root.editingReleaseScript = (newPhase === 3)
         root.loadingSlotData = true
         scriptEditor.text = root.scriptForCurrentPhase()
+        scriptScrollView.contentY = 0
+        scriptScrollView.contentX = 0
         root.showWebApiBuilder = false
         root.showAppLaunchBuilder = false
         root.inspectorMode = "code"
@@ -556,17 +558,19 @@ Kirigami.ApplicationWindow {
         // Variables & Math
         { token: "VAR", category: "Variables & Math", badge: "VAR", syntax: "VAR $<name> = <expr>", insertText: "VAR $count = 0", summary: "Declare and initialize a 32-bit user variable ($ is optional)." },
         { token: "DEFINE", category: "Variables & Math", badge: "VAR", syntax: "DEFINE <NAME> <replacement>", insertText: "DEFINE MY_DELAY 50", summary: "Define a compile-time text replacement macro." },
-        { token: "DPDSSTDLIB", category: "Variables & Math", badge: "FUNC", syntax: "DPDSSTDLIB", insertText: "DPDSSTDLIB", summary: "Import the standard library functions: WAITKEY(k), MEMSET(a,v,n), ABS(n), MIN(a,b), MAX(a,b)." },
+        { token: "USE_STDLIB", category: "Variables & Math", badge: "FUNC", syntax: "USE_STDLIB", insertText: "USE_STDLIB", summary: "Import the standard library functions: WAITKEY(k), MEMSET(a,v,n), ABS(n), MIN(a,b), MAX(a,b)." },
+        { token: "DPDSSTDLIB", category: "Variables & Math", badge: "FUNC", syntax: "DPDSSTDLIB", insertText: "DPDSSTDLIB", summary: "Alias for USE_STDLIB — import standard library functions: WAITKEY(k), MEMSET(a,v,n), ABS(n), MIN(a,b), MAX(a,b)." },
         { token: "RANDINT", category: "Variables & Math", badge: "FUNC", syntax: "RANDINT(<min>, <max>)", insertText: "RANDINT(1, 100)", summary: "Return a random signed integer between min and max (inclusive)." },
         { token: "RANDUINT", category: "Variables & Math", badge: "FUNC", syntax: "RANDUINT(<min>, <max>)", insertText: "RANDUINT(0, 100)", summary: "Return a random unsigned integer between min and max (inclusive)." },
         { token: "RANDCHR", category: "Variables & Math", badge: "FUNC", syntax: "RANDCHR(<bitmask>)", insertText: "RANDCHR(0x103)", summary: "Type/print a random character (or use RANDOM_LETTER, RANDOM_NUMBER, RANDOM_CHAR)." },
         { token: "RANDOM_LETTER", category: "Variables & Math", badge: "FUNC", syntax: "RANDOM_LETTER", insertText: "RANDOM_LETTER", summary: "Type a random uppercase or lowercase ASCII letter." },
         { token: "RANDOM_NUMBER", category: "Variables & Math", badge: "FUNC", syntax: "RANDOM_NUMBER", insertText: "RANDOM_NUMBER", summary: "Type a random digit (0–9)." },
         { token: "RANDOM_CHAR", category: "Variables & Math", badge: "FUNC", syntax: "RANDOM_CHAR", insertText: "RANDOM_CHAR", summary: "Type a random printable ASCII character." },
-        { token: "WAITKEY", category: "Variables & Math", badge: "FUNC", syntax: "WAITKEY(<key_id>)", insertText: "WAITKEY(1)", summary: "Block until the specified key_id (1..20) is pressed (requires DPDSSTDLIB)." },
-        { token: "ABS", category: "Variables & Math", badge: "FUNC", syntax: "ABS(<n>)", insertText: "ABS(", summary: "Return absolute value of n (requires DPDSSTDLIB)." },
-        { token: "MIN", category: "Variables & Math", badge: "FUNC", syntax: "MIN(<a>, <b>)", insertText: "MIN(", summary: "Return the smaller of a and b (requires DPDSSTDLIB)." },
-        { token: "MAX", category: "Variables & Math", badge: "FUNC", syntax: "MAX(<a>, <b>)", insertText: "MAX(", summary: "Return the larger of a and b (requires DPDSSTDLIB)." },
+        { token: "WAITKEY", category: "Variables & Math", badge: "FUNC", syntax: "WAITKEY(<key_id>)", insertText: "WAITKEY(1)", summary: "Block until the specified key_id (1..20) is pressed (requires USE_STDLIB)." },
+        { token: "MEMSET", category: "Variables & Math", badge: "FUNC", syntax: "MEMSET(<addr>, <val>, <len>)", insertText: "MEMSET(", summary: "Fill len bytes at memory address addr with val (requires USE_STDLIB)." },
+        { token: "ABS", category: "Variables & Math", badge: "FUNC", syntax: "ABS(<n>)", insertText: "ABS(", summary: "Return absolute value of n (requires USE_STDLIB)." },
+        { token: "MIN", category: "Variables & Math", badge: "FUNC", syntax: "MIN(<a>, <b>)", insertText: "MIN(", summary: "Return the smaller of a and b (requires USE_STDLIB)." },
+        { token: "MAX", category: "Variables & Math", badge: "FUNC", syntax: "MAX(<a>, <b>)", insertText: "MAX(", summary: "Return the larger of a and b (requires USE_STDLIB)." },
         { token: "$_GV0", category: "Variables & Math", badge: "VAR", syntax: "$_GV0 .. $_GV31", insertText: "$_GV0 = 0", summary: "Persistent Global Variable (0..31) shared across profiles and saved to SD/flash." },
         { token: "$_DEFAULTDELAY", category: "Variables & Math", badge: "VAR", syntax: "$_DEFAULTDELAY", insertText: "$_DEFAULTDELAY = 20", summary: "Read/write the default delay (ms) between commands." },
         { token: "$_DEFAULTCHARDELAY", category: "Variables & Math", badge: "VAR", syntax: "$_DEFAULTCHARDELAY", insertText: "$_DEFAULTCHARDELAY = 20", summary: "Read/write the delay (ms) between typed characters." },
@@ -1149,6 +1153,8 @@ Kirigami.ApplicationWindow {
         root.loadWebApiBuilderFromScript(scriptEditor.text)
         root.loadAppLaunchBuilderFromScript(scriptEditor.text)
         if (isDifferentSlotOrProfile) {
+            scriptScrollView.contentY = 0
+            scriptScrollView.contentX = 0
             root.captureSlotSnapshot()
         }
         root.loadingSlotData = false
@@ -5877,6 +5883,14 @@ Kirigami.ApplicationWindow {
                                     topPadding: 6
                                     bottomPadding: 6
                                     rightPadding: 16
+                                    implicitWidth: Math.max(
+                                        contentWidth + leftPadding + rightPadding,
+                                        implicitBackgroundWidth + leftInset + rightInset
+                                    )
+                                    implicitHeight: Math.max(
+                                        contentHeight + topPadding + bottomPadding,
+                                        implicitBackgroundHeight + topInset + bottomInset
+                                    )
                                     background: Rectangle { color: "transparent" }
                                     color: Kirigami.Theme.textColor
                                     selectionColor: Kirigami.Theme.highlightColor

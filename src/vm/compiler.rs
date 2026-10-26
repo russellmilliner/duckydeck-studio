@@ -320,10 +320,6 @@ FUN MEMSET(addr, value, length)
 END_FUN
 
 FUN ABS(n)
-    IF _UNSIGNED_MATH == 1
-        RETURN n
-    END_IF
-    
     IF n < 0
         RETURN n * -1
     END_IF
@@ -889,6 +885,7 @@ fn needs_rstrip(first_word: &str) -> bool {
 
 fn default_defines() -> HashMap<String, String> {
     let mut d = HashMap::new();
+    d.insert("USE_STDLIB".into(), "DPDSSTDLIB".into());
     d.insert("RANDOM_LOWERCASE_LETTER".into(), "RANDCHR(0x101)".into());
     d.insert("RANDOM_UPPERCASE_LETTER".into(), "RANDCHR(0x102)".into());
     d.insert("RANDOM_LETTER".into(), "RANDCHR(0x103)".into());
@@ -1099,7 +1096,7 @@ fn single_pass(
             .iter()
             .any(|&(s, e)| e.is_none_or(|end| lnum > s && lnum < end));
 
-        if first_word != "DEFINE" && !in_rem && !in_strlen && !in_str {
+        if lnum > 0 && first_word != "DEFINE" && !in_rem && !in_strlen && !in_str {
             match replace_define(&this_line, define_dict) {
                 Ok(rep) => this_line = rep,
                 Err(e) => return Err(CompileResult::err(lnum_usize, &this_line, e)),
@@ -1423,8 +1420,23 @@ fn preprocess_all(
             continue;
         }
 
-        let first_word = line_obj.content.split(' ').next().unwrap_or("");
-        if first_word == "DPDSSTDLIB" {
+        let first_word = line_obj.content.split_whitespace().next().unwrap_or("");
+        let clean_for_kw = line_obj
+            .content
+            .split("//")
+            .next()
+            .unwrap_or(&line_obj.content)
+            .trim();
+        let expanded_for_kw = if lnum > 0 && first_word != "DEFINE" {
+            replace_define(clean_for_kw, &mut all_def_dict)
+                .unwrap_or_else(|_| clean_for_kw.to_string())
+        } else {
+            clean_for_kw.to_string()
+        };
+        let expanded_first_word = expanded_for_kw.split_whitespace().next().unwrap_or("");
+        if matches!(first_word, "DPDSSTDLIB" | "USE_STDLIB")
+            || matches!(expanded_first_word, "DPDSSTDLIB" | "USE_STDLIB")
+        {
             if !imported_stdlib {
                 imported_stdlib = true;
                 if let Some(ref stdlib) = stdlib_lines {
@@ -1541,8 +1553,10 @@ fn preprocess_all(
             line_obj.content = this_line.clone();
         }
         if first_word != "DEFINE" {
-            line_obj.content = replace_define(&line_obj.content, &mut all_def_dict)
-                .map_err(|e| CompileResult::err(lnum_usize, &this_line, e))?;
+            if lnum > 0 {
+                line_obj.content = replace_define(&line_obj.content, &mut all_def_dict)
+                    .map_err(|e| CompileResult::err(lnum_usize, &this_line, e))?;
+            }
         } else {
             continue;
         }
@@ -3997,5 +4011,36 @@ mod tests {
         let deep_parens = format!("VAR x = {}1{}\n", "(".repeat(500), ")".repeat(500));
         let res_parens = compile_duckyscript_to_dsb(&deep_parens, false, false);
         assert!(!res_parens.is_success);
+    }
+
+    #[test]
+    fn test_use_stdlib_and_dpdsstdlib_functions() {
+        let script_use_stdlib = "\
+USE_STDLIB
+DEFINE n 10
+DEFINE a 20
+VAR x = ABS(-42)
+VAR y = MIN(x, 100)
+VAR z = MAX(y, -5)
+MEMSET(0xf800, 0, 8)
+VAR k = WAITKEY(1)
+";
+        let res = compile_duckyscript_to_dsb(script_use_stdlib, false, false);
+        assert!(
+            res.is_success,
+            "USE_STDLIB script should compile cleanly, got error on line {}: {}",
+            res.error_line_number_starting_from_1, res.error_comment
+        );
+
+        let script_dpdsstdlib = "\
+DPDSSTDLIB
+VAR x = ABS(-42)
+";
+        let res_dp = compile_duckyscript_to_dsb(script_dpdsstdlib, false, false);
+        assert!(
+            res_dp.is_success,
+            "DPDSSTDLIB script should compile cleanly, got error: {}",
+            res_dp.error_comment
+        );
     }
 }

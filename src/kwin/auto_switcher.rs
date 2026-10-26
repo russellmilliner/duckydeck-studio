@@ -3172,8 +3172,7 @@ mod win32_window {
                     .to_string_lossy()
                     .to_string();
                 if title.starts_with("duckyPad OLED") {
-                    let want_all_desktops =
-                        on_all_desktops && !title.contains("[SingleDesktop]");
+                    let want_all_desktops = on_all_desktops && !title.contains("[SingleDesktop]");
                     let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
                     let next_ex = if want_all_desktops {
                         ex_style | WS_EX_TOOLWINDOW

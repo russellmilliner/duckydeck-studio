@@ -584,15 +584,18 @@ Window {
             }
 
             RowLayout {
+                id: headerRowLayout
+                readonly property real btnScale: Math.min(1.0, oledWidgetWindow.uiScale)
+                readonly property bool compactPills: topHeaderBar.width < 340
                 anchors.fill: parent
-                anchors.leftMargin: 6
+                anchors.leftMargin: 5
                 anchors.rightMargin: 4
-                spacing: 4
+                spacing: compactPills ? 2 : 3
 
                 // DuckyDeck Studio Application Icon
                 Image {
                     id: appIcon
-                    width: Math.max(16, Math.round(16 * oledWidgetWindow.uiScale))
+                    width: Math.max(15, Math.round(16 * headerRowLayout.btnScale))
                     height: width
                     Layout.preferredWidth: width
                     Layout.preferredHeight: height
@@ -620,7 +623,7 @@ Window {
                 }
 
                 Rectangle {
-                    Layout.preferredWidth: Math.max(7, Math.round(8 * oledWidgetWindow.uiScale))
+                    Layout.preferredWidth: Math.max(7, Math.round(8 * headerRowLayout.btnScale))
                     Layout.preferredHeight: Layout.preferredWidth
                     Layout.alignment: Qt.AlignVCenter
                     width: Layout.preferredWidth
@@ -646,11 +649,12 @@ Window {
 
                 // Multi-Device Identification Pill (shown when multiple duckyPads are connected or bound to a specific device)
                 Rectangle {
+                    id: devBadgePill
                     visible: oledWidgetWindow.targetDeviceLabel.length > 0
                         || oledWidgetWindow.targetDeviceId.length > 0
                         || (oledWidgetWindow.controller && oledWidgetWindow.controller.connectedDeviceCount > 1)
-                    Layout.preferredHeight: Math.max(16, Math.round(18 * oledWidgetWindow.uiScale))
-                    Layout.preferredWidth: devBadgeLabel.implicitWidth + 10
+                    Layout.preferredHeight: Math.max(16, Math.round(18 * headerRowLayout.btnScale))
+                    Layout.preferredWidth: devBadgeLabel.implicitWidth + (headerRowLayout.compactPills ? 6 : 10)
                     radius: height / 2
                     color: oledWidgetWindow.isDuckyPad2020
                         ? Qt.rgba(0.66, 0.33, 0.97, 0.22)
@@ -663,6 +667,9 @@ Window {
                         id: devBadgeLabel
                         anchors.centerIn: parent
                         text: {
+                            if (headerRowLayout.compactPills && oledWidgetWindow.autoSwitchPaused) {
+                                return oledWidgetWindow.isDuckyPad2020 ? "DP20" : "DP24"
+                            }
                             if (oledWidgetWindow.targetDeviceLabel.length > 0) {
                                 return oledWidgetWindow.targetDeviceLabel
                             }
@@ -675,7 +682,7 @@ Window {
                             return (oledWidgetWindow.isDuckyPad2020 ? "DP20" : "DP24") + suffix
                         }
                         font.bold: true
-                        font.pixelSize: Math.max(8, Math.round(9 * oledWidgetWindow.uiScale))
+                        font.pixelSize: Math.max(8, Math.round(9 * headerRowLayout.btnScale))
                         font.family: "monospace"
                         color: oledWidgetWindow.isDuckyPad2020 ? "#c084fc" : "#38bdf8"
                     }
@@ -684,8 +691,8 @@ Window {
                 // Auto-Switcher Paused / Disabled Indicator Pill
                 Rectangle {
                     visible: oledWidgetWindow.autoSwitchPaused
-                    Layout.preferredHeight: Math.max(16, Math.round(18 * oledWidgetWindow.uiScale))
-                    Layout.preferredWidth: pausedLabel.implicitWidth + 10
+                    Layout.preferredHeight: Math.max(16, Math.round(18 * headerRowLayout.btnScale))
+                    Layout.preferredWidth: pausedLabel.implicitWidth + (headerRowLayout.compactPills ? 6 : 10)
                     radius: height / 2
                     color: Qt.rgba(0.96, 0.62, 0.04, 0.22)
                     border.width: 1
@@ -695,9 +702,9 @@ Window {
                     QQC2.Label {
                         id: pausedLabel
                         anchors.centerIn: parent
-                        text: qsTr("PAUSED")
+                        text: (headerRowLayout.compactPills && devBadgePill.visible) ? "⏸" : qsTr("PAUSED")
                         font.bold: true
-                        font.pixelSize: Math.max(8, Math.round(9 * oledWidgetWindow.uiScale))
+                        font.pixelSize: Math.max(8, Math.round(9 * headerRowLayout.btnScale))
                         font.family: "monospace"
                         color: "#f59e0b"
                     }
@@ -726,8 +733,8 @@ Window {
                 QQC2.ToolButton {
                     id: pinTopBtn
                     objectName: "oledWidgetPinToggle"
-                    Layout.preferredWidth: Math.max(21, Math.round(22 * oledWidgetWindow.uiScale))
-                    Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
+                    Layout.preferredWidth: Math.max(20, Math.round(21 * headerRowLayout.btnScale))
+                    Layout.preferredHeight: Math.max(20, Math.round(20 * headerRowLayout.btnScale))
                     implicitWidth: Layout.preferredWidth
                     implicitHeight: Layout.preferredHeight
                     padding: 0
@@ -740,7 +747,7 @@ Window {
                             width: 16
                             height: 16
                             anchors.centerIn: parent
-                            scale: Math.max(0.85, Math.min(1.35, oledWidgetWindow.uiScale * 0.92))
+                            scale: Math.max(0.85, Math.min(1.1, headerRowLayout.btnScale * 0.92))
                             onPaint: {
                                 const ctx = getContext("2d")
                                 ctx.reset()
@@ -811,8 +818,8 @@ Window {
                 QQC2.ToolButton {
                     id: allDesktopsBtn
                     objectName: "oledWidgetAllDesktopsToggle"
-                    Layout.preferredWidth: Math.max(21, Math.round(22 * oledWidgetWindow.uiScale))
-                    Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
+                    Layout.preferredWidth: Math.max(20, Math.round(21 * headerRowLayout.btnScale))
+                    Layout.preferredHeight: Math.max(20, Math.round(20 * headerRowLayout.btnScale))
                     implicitWidth: Layout.preferredWidth
                     implicitHeight: Layout.preferredHeight
                     padding: 0
@@ -825,7 +832,7 @@ Window {
                             width: 16
                             height: 16
                             anchors.centerIn: parent
-                            scale: Math.max(0.85, Math.min(1.35, oledWidgetWindow.uiScale * 0.92))
+                            scale: Math.max(0.85, Math.min(1.1, headerRowLayout.btnScale * 0.92))
                             onPaint: {
                                 const ctx = getContext("2d")
                                 ctx.reset()
@@ -875,8 +882,8 @@ Window {
                 // Window Transparency Slider Toggle Button
                 QQC2.ToolButton {
                     id: transparencyToggleBtn
-                    Layout.preferredWidth: Math.max(21, Math.round(22 * oledWidgetWindow.uiScale))
-                    Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
+                    Layout.preferredWidth: Math.max(20, Math.round(21 * headerRowLayout.btnScale))
+                    Layout.preferredHeight: Math.max(20, Math.round(20 * headerRowLayout.btnScale))
                     implicitWidth: Layout.preferredWidth
                     implicitHeight: Layout.preferredHeight
                     padding: 0
@@ -895,7 +902,7 @@ Window {
                             width: 16
                             height: 16
                             anchors.centerIn: parent
-                            scale: Math.max(0.85, Math.min(1.35, oledWidgetWindow.uiScale * 0.92))
+                            scale: Math.max(0.85, Math.min(1.1, headerRowLayout.btnScale * 0.92))
                             onPaint: {
                                 const ctx = getContext("2d")
                                 ctx.reset()
@@ -950,8 +957,8 @@ Window {
                 QQC2.ToolButton {
                     id: windowTitleToggleBtn
                     objectName: "oledWidgetWindowTitleToggle"
-                    Layout.preferredWidth: Math.max(21, Math.round(22 * oledWidgetWindow.uiScale))
-                    Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
+                    Layout.preferredWidth: Math.max(20, Math.round(21 * headerRowLayout.btnScale))
+                    Layout.preferredHeight: Math.max(20, Math.round(20 * headerRowLayout.btnScale))
                     implicitWidth: Layout.preferredWidth
                     implicitHeight: Layout.preferredHeight
                     padding: 0
@@ -964,7 +971,7 @@ Window {
                             width: 16
                             height: 16
                             anchors.centerIn: parent
-                            scale: Math.max(0.85, Math.min(1.35, oledWidgetWindow.uiScale * 0.92))
+                            scale: Math.max(0.85, Math.min(1.1, headerRowLayout.btnScale * 0.92))
                             onPaint: {
                                 const ctx = getContext("2d")
                                 ctx.reset()
@@ -1016,8 +1023,8 @@ Window {
                 // Scale / Size Slider Toggle Button with Resize Icon
                 QQC2.ToolButton {
                     id: scaleToggleBtn
-                    Layout.preferredWidth: Math.max(21, Math.round(22 * oledWidgetWindow.uiScale))
-                    Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
+                    Layout.preferredWidth: Math.max(20, Math.round(21 * headerRowLayout.btnScale))
+                    Layout.preferredHeight: Math.max(20, Math.round(20 * headerRowLayout.btnScale))
                     implicitWidth: Layout.preferredWidth
                     implicitHeight: Layout.preferredHeight
                     padding: 0
@@ -1037,7 +1044,7 @@ Window {
                             width: 16
                             height: 16
                             anchors.centerIn: parent
-                            scale: Math.max(0.85, Math.min(1.35, oledWidgetWindow.uiScale * 0.92))
+                            scale: Math.max(0.85, Math.min(1.1, headerRowLayout.btnScale * 0.92))
                             onPaint: {
                                 const ctx = getContext("2d")
                                 ctx.reset()
@@ -1084,8 +1091,8 @@ Window {
                 // Desktop Widget Orientation Cycle Button (0° -> 90° -> 180° -> 270° -> 0°)
                 QQC2.ToolButton {
                     id: oledRotCycleBtn
-                    Layout.preferredWidth: Math.max(28, Math.round(29 * oledWidgetWindow.uiScale))
-                    Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
+                    Layout.preferredWidth: Math.max(26, Math.round(27 * headerRowLayout.btnScale))
+                    Layout.preferredHeight: Math.max(20, Math.round(20 * headerRowLayout.btnScale))
                     implicitWidth: Layout.preferredWidth
                     implicitHeight: Layout.preferredHeight
                     padding: 0
@@ -1107,7 +1114,7 @@ Window {
                         color: oledWidgetWindow.profileOledRotation !== 0 ? "#38bdf8" : "#cbd5e1"
                         font.family: "monospace"
                         font.bold: true
-                        font.pointSize: Math.max(10, Math.round(10 * oledWidgetWindow.uiScale))
+                        font.pointSize: Math.max(10, Math.round(10 * headerRowLayout.btnScale))
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
@@ -1127,8 +1134,8 @@ Window {
                 // Restore Window Titlebar / Frameless Mode Toggle Button with Window Icon
                 QQC2.ToolButton {
                     id: titlebarToggleBtn
-                    Layout.preferredWidth: Math.max(21, Math.round(22 * oledWidgetWindow.uiScale))
-                    Layout.preferredHeight: Math.max(20, Math.round(20 * oledWidgetWindow.uiScale))
+                    Layout.preferredWidth: Math.max(20, Math.round(21 * headerRowLayout.btnScale))
+                    Layout.preferredHeight: Math.max(20, Math.round(20 * headerRowLayout.btnScale))
                     implicitWidth: Layout.preferredWidth
                     implicitHeight: Layout.preferredHeight
                     padding: 0
@@ -1141,7 +1148,7 @@ Window {
                             width: 16
                             height: 16
                             anchors.centerIn: parent
-                            scale: Math.max(0.85, Math.min(1.35, oledWidgetWindow.uiScale * 0.92))
+                            scale: Math.max(0.85, Math.min(1.1, headerRowLayout.btnScale * 0.92))
                             onPaint: {
                                 const ctx = getContext("2d")
                                 ctx.reset()

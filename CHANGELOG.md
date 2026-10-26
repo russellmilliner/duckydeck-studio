@@ -2,6 +2,21 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.12](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.12) — 2026-10-26
+
+### 🐛 Bug Fixes ([Issue #2](https://github.com/russellmilliner/duckydeck-studio/issues/2))
+- **DuckyScript 3 `USE_STDLIB` & `ABS()` Support (`src/vm/compiler.rs`)**:
+  - Registered `"USE_STDLIB" -> "DPDSSTDLIB"` in `default_defines()` and updated `preprocess_all()` to expand and recognize both `USE_STDLIB` and `DPDSSTDLIB` directives (including lines with trailing comments/whitespace).
+  - Removed obsolete DSVM v1 `IF _UNSIGNED_MATH == 1` branch from `FUN ABS(n)` in `default_stdlib_lines()` so scripts calling `ABS()` compile cleanly on DSVM v2 without `Unknown symbol "_UNSIGNED_MATH"` errors.
+  - Isolated negative-line-number stdlib definitions (`lnum < 0`) from user `DEFINE` macro replacement in `preprocess_all()` and `single_pass()` so user macros (e.g. `DEFINE n 10` or `DEFINE a 20`) cannot corrupt stdlib parameter identifiers (`ABS(n)`, `MIN(a, b)`, `MAX(a, b)`, `WAITKEY(key_id)`, `MEMSET(addr, value, length)`).
+  - Added `USE_STDLIB` and `MEMSET` to the IDE command reference & autocomplete catalog (`src/qml/Main.qml`) and syntax highlighting (`data/syntax/duckyscript3.xml`).
+- **IDE Script Editor & SD Sync Log Scrolling (`src/qml/Main.qml`, `src/qml/SdSyncDialog.qml`)**:
+  - Added explicit `implicitWidth` and `implicitHeight` bindings to `scriptEditor` and `syncLogArea` (`T.TextArea` attached via `T.TextArea.flickable` to `QQC2.ScrollView`) so `QQuickTextAreaPrivate::resizeFlickableContent()` updates `scriptScrollView.contentHeight` dynamically as multi-line scripts grow, enabling smooth mouse wheel, touchpad, scrollbar drag, and cursor scrolling across Wayland compositors (including Niri and KWin).
+  - Reset `scriptScrollView.contentY = 0` and `scriptScrollView.contentX = 0` when switching slots or click phases (`On Press` / `Double Click` / `Long Press`).
+- **Desktop OLED Widget Compact Header & Multi-Device Settings Font Sizing (`src/qml/OledDesktopWidget.qml`, `src/qml/SettingsPage.qml`)**:
+  - Compacted `OledDesktopWidget` top header pills and tool buttons when both multi-device and `PAUSED` badges are visible simultaneously so controls never overflow narrow widget widths.
+  - Standardized connected-device custom name controls in `SettingsPage.qml` to `10pt` scaled minimum font size.
+
 ## [v0.1.11-deps](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.11-deps) — 2026-10-24
 
 ### 📦 Bumped Dependencies (4 packages)

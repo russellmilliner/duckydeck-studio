@@ -12,6 +12,7 @@ repository = "https://github.com/russellmilliner/duckydeck-studio"
 name = "duckydeck_core"
 path = "src/lib.rs"
 test = false
+doctest = false
 
 [[bin]]
 name = "duckydeck-studio"

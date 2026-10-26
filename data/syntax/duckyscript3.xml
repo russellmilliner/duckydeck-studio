@@ -28,6 +28,8 @@
     <list name="declarations">
       <item>VAR</item>
       <item>DEFINE</item>
+      <item>USE_STDLIB</item>
+      <item>DPDSSTDLIB</item>
     </list>
 
     <list name="commands">
@@ -50,8 +52,14 @@
       <item>BCLR</item>
       <item>EMUK</item>
       <item>RANDINT</item>
+      <item>RANDUINT</item>
       <item>RANDCHR</item>
       <item>PUTS</item>
+      <item>WAITKEY</item>
+      <item>MEMSET</item>
+      <item>ABS</item>
+      <item>MIN</item>
+      <item>MAX</item>
     </list>
 
     <list name="oled_commands">
