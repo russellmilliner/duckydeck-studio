@@ -34,6 +34,11 @@
   <url type="bugtracker">https://github.com/russellmilliner/duckydeck-studio/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.1.13" date="2026-10-30">
+      <description>
+        <p>Fix 2020 duckyPad SD card auto-mounting &amp; profile folder naming, release DDS20_FW v1.1.3 firmware, and auto-close Key Editor on sync</p>
+      </description>
+    </release>
     <release version="0.1.12" date="2026-10-26">
       <description>
         <p>Fix USE_STDLIB / ABS() in DSVM v2 compiler and IDE script editor scrolling (#2)</p>

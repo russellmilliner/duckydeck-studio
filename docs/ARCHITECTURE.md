@@ -1,22 +1,22 @@
 # <img src="../data/icons/io.github.duckydeck.Studio.svg" width="36" height="36" align="top" alt="DuckyDeck Studio Icon" /> DuckyDeck Studio — Architecture & Design Developer Documentation
 
-[![Version v0.1.12](https://img.shields.io/badge/Version-v0.1.12-38bdf8?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.12)
-[![Windows 10/11 Setup v0.1.12](https://img.shields.io/badge/Windows_10%2F11_Setup-v0.1.12_(.exe)-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.12/DuckyDeck-Studio-Setup-v0.1.12-x86_64.exe)
-[![Windows Portable v0.1.12](https://img.shields.io/badge/Windows_Portable-v0.1.12_(.zip)-0284c7?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.12/duckydeck-studio-v0.1.12-windows-x86_64-portable.zip)
-[![Flatpak v0.1.12](https://img.shields.io/badge/Linux_Flatpak-v0.1.12-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.12-x86_64.flatpak)
-[![Firmware v1.1.2](https://img.shields.io/badge/Custom_Firmware-v1.1.2-10b981?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.12)
+[![Version v0.1.13](https://img.shields.io/badge/Version-v0.1.13-38bdf8?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.13)
+[![Windows 10/11 Setup v0.1.13](https://img.shields.io/badge/Windows_10%2F11_Setup-v0.1.13_(.exe)-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.13/DuckyDeck-Studio-Setup-v0.1.13-x86_64.exe)
+[![Windows Portable v0.1.13](https://img.shields.io/badge/Windows_Portable-v0.1.13_(.zip)-0284c7?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.13/duckydeck-studio-v0.1.13-windows-x86_64-portable.zip)
+[![Flatpak v0.1.13](https://img.shields.io/badge/Linux_Flatpak-v0.1.13-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.13-x86_64.flatpak)
+[![Firmware v1.1.2](https://img.shields.io/badge/Custom_Firmware-v1.1.2-10b981?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.13)
 [![Website duckydeckstudio.com](https://img.shields.io/badge/Website-duckydeckstudio.com-0ea5e9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://duckydeckstudio.com)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-russellmilliner%2Fduckydeck--studio-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio)
 
-**Application Version:** `v0.1.12` (Custom Firmware `v1.1.2`, KDE Plasma 6 Applet `v1.0.2`)  
+**Application Version:** `v0.1.13` (Custom Firmware `v1.1.2`, KDE Plasma 6 Applet `v1.0.2`)  
 **Supported Platforms:** **Linux (`x86_64` — KDE Plasma 6 / Wayland & X11 / Flatpak)** and **Windows 10 & 11 (`x86_64` — Inno Setup `.exe` & Portable `.zip`)**  
 **Author:** Russell Milliner  
 **Official Website & User Guide:** [https://duckydeckstudio.com](https://duckydeckstudio.com)  
 **HTML Architecture Reference:** [`docs/architecture.html`](architecture.html) ([https://duckydeckstudio.com/architecture.html](https://duckydeckstudio.com/architecture.html))  
 **GitHub Repository & Releases:** [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)  
-**Windows Setup Installer (`.exe`):** [`DuckyDeck-Studio-Setup-v0.1.12-x86_64.exe`](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.12/DuckyDeck-Studio-Setup-v0.1.12-x86_64.exe)  
-**Windows Portable Archive (`.zip`):** [`duckydeck-studio-v0.1.12-windows-x86_64-portable.zip`](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.12/duckydeck-studio-v0.1.12-windows-x86_64-portable.zip)  
-**Linux Flatpak Release Bundle:** [`duckydeck-studio-v0.1.12-x86_64.flatpak`](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.12-x86_64.flatpak)  
+**Windows Setup Installer (`.exe`):** [`DuckyDeck-Studio-Setup-v0.1.13-x86_64.exe`](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.13/DuckyDeck-Studio-Setup-v0.1.13-x86_64.exe)  
+**Windows Portable Archive (`.zip`):** [`duckydeck-studio-v0.1.13-windows-x86_64-portable.zip`](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.13/duckydeck-studio-v0.1.13-windows-x86_64-portable.zip)  
+**Linux Flatpak Release Bundle:** [`duckydeck-studio-v0.1.13-x86_64.flatpak`](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.13-x86_64.flatpak)  
 **REST API Reference:** [`docs/REST_API.md`](REST_API.md) ([https://duckydeckstudio.com/REST_API.md](https://duckydeckstudio.com/REST_API.md))  
 **OLED Icon Library Reference (Color & 1-Bit Monochrome):** [`docs/OLED_ICONS.md`](OLED_ICONS.md) · [`docs/assets/oled-icons-chart.svg`](assets/oled-icons-chart.svg)  
 **Support:** [☕ Buy Me a Coffee on Ko-fi (https://ko-fi.com/russellmilliner)](https://ko-fi.com/russellmilliner)  
@@ -26,7 +26,7 @@
 
 ## 1. System Overview & Design Philosophy
 
-**DuckyDeck Studio** (`v0.1.12`) is a native **Linux (KDE Plasma 6 / Wayland & X11)** and **Windows 10/11 (`x86_64`)** desktop configurator, **DSVM v2 bytecode compiler**, **Window-Aware Auto-Switcher**, and **host automation daemon** for the **duckyPad Pro (`0x0483:0xd11d`)** and **duckyPad 2020 (`0x0483:0xd11c`)**.
+**DuckyDeck Studio** (`v0.1.13`) is a native **Linux (KDE Plasma 6 / Wayland & X11)** and **Windows 10/11 (`x86_64`)** desktop configurator, **DSVM v2 bytecode compiler**, **Window-Aware Auto-Switcher**, and **host automation daemon** for the **duckyPad Pro (`0x0483:0xd11d`)** and **duckyPad 2020 (`0x0483:0xd11c`)**.
 
 ### Core Design Goals
 1. **Zero-Runtime-Wrapper Native Stack:** Built directly in **Rust** bridged to **Qt 6** via **CXX-Qt 0.7**, avoiding Electron/Python packaging overhead. On Linux, it integrates natively with **KDE Frameworks 6 (Kirigami + KSyntaxHighlighting + KColorScheme)**; on Windows 10/11, it uses a self-contained **Kirigami QML Compatibility Layer (`src/qml/kirigami/` + `src/cpp/kirigami_compat.h`)** and custom C++ `QSyntaxHighlighter` with Qt Fusion Dark/Light palette synchronization.
@@ -101,7 +101,7 @@ flowchart TB
 
 | Path | Responsibility |
 | :--- | :--- |
-| [`Cargo.toml`](../Cargo.toml) | Crate manifest (`version = "0.1.12"`, `cxx-qt 0.7`, `hidapi`, `zbus`, `windows-sys`, `tokio`, `reqwest`, `keyring`, `serde`, `serde_json`, `sha2`). |
+| [`Cargo.toml`](../Cargo.toml) | Crate manifest (`version = "0.1.13"`, `cxx-qt 0.7`, `hidapi`, `zbus`, `windows-sys`, `tokio`, `reqwest`, `keyring`, `serde`, `serde_json`, `sha2`). |
 | [`build.rs`](../build.rs) | `CxxQtBuilder` configuration registering QML module `io.github.duckydeck`, embedding `src/qml/kirigami/*.qml` for Windows builds, and compiling [`src/bridge/device_controller.rs`](../src/bridge/device_controller.rs). |
 | [`src/main.rs`](../src/main.rs) | Application entrypoint: CLI & D-Bus / `QLocalSocket` single-instance IPC client, `QApplication` initialization, `KSyntaxHighlighting` / Windows Kirigami registration, and QML engine startup. |
 | [`src/paths.rs`](../src/paths.rs) | Cross-platform directory helpers: Linux XDG (`XDG_CONFIG_HOME`, `XDG_DATA_HOME`), Flatpak host paths (`~/.var/app/...`), and Windows (`%APPDATA%\duckydeck-studio`, `%LOCALAPPDATA%\duckydeck-studio`). |
@@ -338,7 +338,7 @@ DuckyDeck Studio distinguishes between **Standalone Hardware-Portable Capabiliti
 
 ## 9.6 Firmware Versioning (`v1.1.2`), DDS Prefix & Official Firmware Catalog Downloader (`src/hardware/firmware.rs`)
 
-- **DuckyDeck Studio Firmware (`v1.1.2`)**: Built from `firmware/duckyPad-Pro/firmware/` (`DDS_FW_1.1.2_0f85dab1.bin`, downloadable from the [GitHub Releases page](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.12)). Uses the distinct **`DDS_FW_`** prefix to cleanly separate DuckyDeck Studio firmware from official **`DPP_FW_`** builds. Identified over USB HID `GET_INFO` (`0x00`) via the `'D', 'D', 'S'` signature at bytes `20..22`. Adds 12 Home Automation OLED icons, SSD1306 SPI DMA dirty page tracking, smooth RGB LED fade opcode (`SWC_FADE_TO` / opcode `89`), sub-ms USB HID SOF dispatch spin-retry, NVS wear-leveling profile cache, `0°/90°/180°/270°` hardware OLED orientation, and 1-bit monochrome key icons.
+- **DuckyDeck Studio Firmware (`v1.1.2`)**: Built from `firmware/duckyPad-Pro/firmware/` (`DDS_FW_1.1.2_0f85dab1.bin`, downloadable from the [GitHub Releases page](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.13)). Uses the distinct **`DDS_FW_`** prefix to cleanly separate DuckyDeck Studio firmware from official **`DPP_FW_`** builds. Identified over USB HID `GET_INFO` (`0x00`) via the `'D', 'D', 'S'` signature at bytes `20..22`. Adds 12 Home Automation OLED icons, SSD1306 SPI DMA dirty page tracking, smooth RGB LED fade opcode (`SWC_FADE_TO` / opcode `89`), sub-ms USB HID SOF dispatch spin-retry, NVS wear-leveling profile cache, `0°/90°/180°/270°` hardware OLED orientation, and 1-bit monochrome key icons.
 - **Official dekuNukem Firmware Catalog Downloader**: `fetch_official_firmwares_from_site()` in [`src/hardware/firmware.rs`](../src/hardware/firmware.rs) queries the official `dekuNukem/duckyPad-Pro` GitHub repository to list available `DPP_FW_<ver>_<crc32>.bin` releases inside the Firmware Manager window and verifies IEEE CRC32 checksums before staging.
 
 ---
@@ -368,8 +368,8 @@ DuckyDeck Studio embeds a bounded, stoppable/restartable HTTP/1.1 REST API serve
 - **Toolchain & Target:** Cross-compiles from Linux to **`x86_64-pc-windows-gnullvm`** using `llvm-mingw` (`clang++` / `lld`) linked against **Qt 6.8.3 MinGW64**.
 - **Self-Contained Kirigami QML Layer (`src/cpp/kirigami_compat.h` & `src/qml/kirigami/`):** Registers `org.kde.kirigami` (`Theme`, `Units`, `Icon`, `ApplicationWindow`, `Page`, `ScrollablePage`, `OverlayDrawer`, `SearchField`, `FormLayout`, `InlineMessage`, `Heading`, `Separator`, `Action`) directly in Qt QRC resources with live Qt Fusion Dark/Light `QPalette` synchronization—eliminating external KDE Frameworks 6 DLL dependencies on Windows.
 - **Installer & Portable Packaging (`packaging/windows/DuckyDeckStudio.iss`):** `scripts/build-windows.sh` stages `duckydeck-studio.exe`, all required Qt6 Core/Gui/Qml/Quick/QuickControls2/Network/Svg/OpenGL DLLs, `llvm-mingw` C++/unwind runtime DLLs, QML modules, SVG icon engines, bundled firmware, and documentation into `target/windows-stage/`, then produces:
-  - `target/release/duckydeck-studio-v0.1.12-windows-x86_64-portable.zip`
-  - `target/release/DuckyDeck-Studio-Setup-v0.1.12-x86_64.exe` (via Inno Setup 6)
+  - `target/release/duckydeck-studio-v0.1.13-windows-x86_64-portable.zip`
+  - `target/release/DuckyDeck-Studio-Setup-v0.1.13-x86_64.exe` (via Inno Setup 6)
 
 ### Running Unit, Compiler, Native UI, Flatpak UI & Windows Builds
 ```bash
@@ -381,7 +381,7 @@ cargo test ui_test_suite::test_full_qml_ui_overflow_and_contrast_suite -- --igno
 
 # 3. Build & install the Linux Flatpak bundle:
 bash scripts/build-flatpak.sh
-flatpak install --user -y --reinstall target/release/duckydeck-studio-v0.1.12-x86_64.flatpak
+flatpak install --user -y --reinstall target/release/duckydeck-studio-v0.1.13-x86_64.flatpak
 
 # 4. Run the Flatpak QML UI Overflow, Contrast & Behavioral Test Suite:
 bash scripts/test-flatpak-ui.sh

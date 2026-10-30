@@ -2,6 +2,14 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.13](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.13) — 2026-10-30
+
+### Highlights
+- Fix 2020 duckyPad SD card auto-mounting & profile folder naming, release DDS20_FW v1.1.3 firmware, and auto-close Key Editor on sync
+
+### Commits
+- fix(sd,firmware,ui): auto-mount 2020 duckyPad SD cards, release DDS20_FW v1.1.3, and close Key Editor on sync (f2fbe92)
+
 ## [v0.1.12](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.12) — 2026-10-26
 
 ### Changes

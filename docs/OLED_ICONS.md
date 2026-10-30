@@ -1,6 +1,6 @@
 # DuckyDeck Studio — OLED Icon Library Reference (Color & 1-Bit Monochrome)
 
-**DuckyDeck Studio (`v0.1.12`)** and **Custom Firmware (`DDS_FW v1.1.2`)** include **204 unique OLED icons** (199 application & macro icons across 14 categories in the in-app **OLED Button Icon Picker**, plus 5 dedicated keyboard modifier glyphs).
+**DuckyDeck Studio (`v0.1.13`)** and **Custom Firmware (`DDS_FW v1.1.2`)** include **204 unique OLED icons** (199 application & macro icons across 14 categories in the in-app **OLED Button Icon Picker**, plus 5 dedicated keyboard modifier glyphs).
 
 Every icon has **dual representations**:
 1. **Color Desktop UI Version**: Full-color Unicode/Emoji symbol displayed on the interactive Hardware Canvas, Floating OLED Desktop Widget, and Key Inspector.
