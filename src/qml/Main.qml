@@ -1032,9 +1032,20 @@ Kirigami.ApplicationWindow {
     }
 
     function clearSlotSelection() {
+        if (typeof liveSlotAutoSaveTimer !== "undefined" && liveSlotAutoSaveTimer && liveSlotAutoSaveTimer.running) {
+            liveSlotAutoSaveTimer.stop()
+        }
         root.flushPendingSlotEditsIfModified()
         root.selectedSlotNumber = 0
         hardwareCanvas.selectedSlot = 0
+        if (typeof keyPropertiesWindow !== "undefined" && keyPropertiesWindow && keyPropertiesWindow.visible) {
+            keyPropertiesWindow.close()
+            keyPropertiesWindow.visible = false
+        }
+        if (settingsDialog && settingsDialog.keyPropertiesWindow && settingsDialog.keyPropertiesWindow.visible) {
+            settingsDialog.keyPropertiesWindow.close()
+            settingsDialog.keyPropertiesWindow.visible = false
+        }
     }
 
     function captureSlotSnapshot() {
@@ -1425,12 +1436,13 @@ Kirigami.ApplicationWindow {
     }
 
     function triggerSyncToDeviceSd() {
-        root.flushPendingSlotEditsIfModified()
+        root.clearSlotSelection()
         sdSyncDialog.open()
         deviceController.syncProfilesToDeviceSd()
     }
 
     function triggerReloadFromDeviceSd() {
+        root.clearSlotSelection()
         sdSyncDialog.open()
         deviceController.reloadProfilesFromDeviceSd()
     }
@@ -1444,6 +1456,7 @@ Kirigami.ApplicationWindow {
         }
         onSdSyncBusyChanged: {
             if (deviceController.sdSyncBusy) {
+                root.clearSlotSelection()
                 sdSyncDialog.open()
             } else {
                 root.syncSidebarProfilesFromController()

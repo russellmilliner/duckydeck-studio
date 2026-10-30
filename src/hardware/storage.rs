@@ -1089,15 +1089,15 @@ mod tests {
         }
 
         // Verify duckyPad (2020) custom firmware catalog as well
-        let dp20_list = list_available_duckypad_2020_firmwares("1.1.2");
+        let dp20_list = list_available_duckypad_2020_firmwares("1.1.3");
         let dp20_studio: Vec<&FirmwareVersionEntry> =
             dp20_list.iter().filter(|e| !e.is_official).collect();
         assert!(
             !dp20_studio.is_empty(),
             "Expected duckyPad (2020) custom firmware in catalog"
         );
-        assert_eq!(dp20_studio[0].version, "1.1.2");
-        assert_eq!(dp20_studio[0].filename, "DDS20_FW_1.1.2_3bd4beef.dfu");
+        assert_eq!(dp20_studio[0].version, "1.1.3");
+        assert_eq!(dp20_studio[0].filename, "DDS20_FW_1.1.3_1288faee.dfu");
         assert!(dp20_studio[0].supports_monochrome_icons);
     }
 
@@ -1697,5 +1697,123 @@ mod tests {
             .find(|p| p.number == 5)
             .expect("profile 5 should exist");
         assert_eq!(p5.effective_widget_rotation_degrees(), 90);
+    }
+
+    #[test]
+    fn test_duckypad_2020_sd_card_detection_matching_and_writing() {
+        let base_tmp = std::env::temp_dir().join("duckydeck_test_dp20_sd_regression");
+        let _ = fs::remove_dir_all(&base_tmp);
+
+        // 1. Simulate a 2020 duckyPad EVO / DDS20 microSD card mounted with a generic volume name
+        // (EVO/DDS20 writes dpp_config.txt without serial_number/bt_mode and does not set a DP20_ label).
+        let evo_sd = base_tmp.join("GENERIC_SD");
+        let prof_dir = evo_sd.join("profile_Main");
+        fs::create_dir_all(&prof_dir).unwrap();
+        fs::write(
+            evo_sd.join("dpp_config.txt"),
+            "sleep_index 0\nbrightness_index 0\nlast_profile 1\nfw_ver 2.1.0\n",
+        )
+        .unwrap();
+        fs::write(evo_sd.join("profile_info.txt"), "1 Main\n").unwrap();
+        fs::write(
+            prof_dir.join("config.txt"),
+            "BG_COLOR 10 20 30\nz1 Copy\n",
+        )
+        .unwrap();
+        fs::write(prof_dir.join("key1.txt"), "STRING hello\n").unwrap();
+
+        let dpp_cfg = read_dpp_config(&evo_sd).expect("read_dpp_config should succeed");
+        assert_eq!(
+            dpp_cfg.hw_model,
+            Some(DP_MODEL_OG_DUCKYPAD),
+            "2020 duckyPad dpp_config.txt without serial_number/bt_mode must identify as DP_MODEL_OG_DUCKYPAD (20)"
+        );
+
+        let inspected = inspect_duckypad_sd_root(&evo_sd).expect("inspect_duckypad_sd_root should succeed");
+        assert_eq!(
+            inspected.hw_model, DP_MODEL_OG_DUCKYPAD,
+            "inspect_duckypad_sd_root must identify 2020 EVO SD card as DP_MODEL_OG_DUCKYPAD (20)"
+        );
+
+        // Must match a connected 2020 duckyPad even without a DP20_XXXX volume label
+        let matched = find_mounted_duckypad_sd_for_device_in_list(
+            std::slice::from_ref(&inspected),
+            Some("017DAC20"),
+            Some("DP20_AC20"),
+            Some(DP_MODEL_OG_DUCKYPAD),
+        );
+        assert_eq!(
+            matched.as_ref().map(|m| m.path.as_path()),
+            Some(evo_sd.as_path()),
+            "Unlabeled 2020 duckyPad EVO SD card must match connected 2020 duckyPad"
+        );
+
+        // Now write profiles (including one with a legacy numbered folder_name_override and one from a template)
+        let mut p1 = DuckyProfile {
+            number: 1,
+            name: "Main".to_string(),
+            folder_name_override: Some("profile1_Main".to_string()),
+            ..Default::default()
+        };
+        p1.slots.insert(
+            1,
+            DuckyKeySlot {
+                slot: 1,
+                label_line1: "Copy".to_string(),
+                on_press_script: "USE_STDLIB\nVAR $x = -5\n$x = ABS($x)\n".to_string(),
+                ..Default::default()
+            },
+        );
+        let p2 = instantiate_profile_from_template("media", 2, "MediaPad");
+        let meta = DuckySdDeviceMeta {
+            serial_number: "017DAC20".to_string(),
+            hw_model: DP_MODEL_OG_DUCKYPAD,
+            model_name: "duckyPad (2020)".to_string(),
+            firmware_version: "2.1.0".to_string(),
+            disk_label: "DP20_AC20".to_string(),
+        };
+        let summary = write_profiles_to_sd_root_for_model(
+            &evo_sd,
+            &[p1, p2],
+            DP_MODEL_OG_DUCKYPAD,
+            Some(&meta),
+        )
+        .expect("writing to 2020 EVO SD card should succeed");
+        assert_eq!(summary.profiles_count, 2);
+        assert!(
+            evo_sd.join("profile_Main").is_dir(),
+            "EVO/DDS20 SD card must use profile_Main folder when profile_info.txt is present"
+        );
+        assert!(
+            evo_sd.join("profile_MediaPad").is_dir(),
+            "Template profile on EVO/DDS20 SD card must use profile_MediaPad folder"
+        );
+        assert!(
+            !evo_sd.join("profile1_Main").exists() && !evo_sd.join("profile2_MediaPad").exists(),
+            "Numbered profile<N>_<Name> folders must not be written alongside profile_info.txt"
+        );
+
+        // 2. Simulate a legacy v1.x 2020 duckyPad SD card (dp_stats.txt + profile1_Default, no profile_info.txt)
+        let v1_sd = base_tmp.join("LEGACY_V1_SD");
+        let v1_prof_dir = v1_sd.join("profile1_Default");
+        fs::create_dir_all(&v1_prof_dir).unwrap();
+        fs::write(v1_sd.join("dp_stats.txt"), "fw 1.4.0\n").unwrap();
+        fs::write(v1_prof_dir.join("config.txt"), "BG_COLOR 0 128 255\nz1 Key1\n").unwrap();
+        fs::write(v1_prof_dir.join("key1.txt"), "STRING v1\n").unwrap();
+
+        let loaded_v1 = load_all_sd_profiles(&v1_sd).expect("load_all_sd_profiles on v1 SD should succeed");
+        assert_eq!(loaded_v1.len(), 1);
+        write_profiles_to_sd_root_for_model(&v1_sd, &loaded_v1, DP_MODEL_OG_DUCKYPAD, None)
+            .expect("writing to legacy v1 SD should succeed");
+        assert!(
+            v1_sd.join("profile1_Default").is_dir(),
+            "Legacy v1.x 2020 SD card without dpp_config.txt/profile_info.txt must preserve profile1_Default folder"
+        );
+        assert!(
+            !v1_sd.join("profile_info.txt").exists(),
+            "Legacy v1.x 2020 SD card must not have profile_info.txt written unless migrated to EVO/DDS20"
+        );
+
+        let _ = fs::remove_dir_all(&base_tmp);
     }
 }

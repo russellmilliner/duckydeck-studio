@@ -53,7 +53,8 @@ setsid --wait flatpak build \
     install -Dm644 '$REPO_ROOT/docs/architecture.html' -t /app/share/duckydeck-studio/docs/
     install -Dm644 '$REPO_ROOT/firmware/releases/DDS_FW_1.1.2_0f85dab1.bin' -t /app/share/duckydeck-studio/firmware/
     install -Dm644 '$REPO_ROOT/firmware/releases/DDS_FW_1.1.2_0f85dab1.bin' -t /app/share/duckydeck-studio/firmware/releases/
-    install -Dm644 '$REPO_ROOT/firmware/releases/DDS20_FW_1.1.2_3bd4beef.dfu' -t /app/share/duckydeck-studio/firmware/
+    install -Dm644 '$REPO_ROOT/firmware/releases/DDS20_FW_1.1.3_1288faee.dfu' -t /app/share/duckydeck-studio/firmware/
+    install -Dm644 '$REPO_ROOT/firmware/releases/DDS20_FW_1.1.3_1288faee.dfu' -t /app/share/duckydeck-studio/firmware/releases/
     install -Dm644 '$REPO_ROOT/firmware/releases/DDS20_FW_1.1.2_3bd4beef.dfu' -t /app/share/duckydeck-studio/firmware/releases/
     install -Dm644 '$REPO_ROOT/firmware/releases/DDS_FW_1.1.1_eed0141e.bin' -t /app/share/duckydeck-studio/firmware/releases/
     install -Dm644 '$REPO_ROOT/firmware/releases/DDS_FW_1.1.0_b3291568.bin' -t /app/share/duckydeck-studio/firmware/releases/

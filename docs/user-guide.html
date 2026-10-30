@@ -1223,7 +1223,7 @@ bash scripts/build-windows.sh</code></pre>
         <li><strong>Status Bar Sync Badge:</strong> The bottom status bar shows whether your local profiles match the hardware microSD card (<strong>✓ SD Synced</strong> vs. <strong>⚠ Unsynced Changes</strong>). Host-only settings like Desktop Widget Orientation (`DW_ROTATION`) and Profile Change Webhooks apply immediately without requiring an SD sync.</li>
         <li><strong>📋 Changes Summary:</strong> Click the sync status badge (or <strong>📋 Summary</strong>) to inspect a per-profile diff of added, modified, or deleted keys before writing to hardware.</li>
         <li><strong>⬆ Sync to SD:</strong> Mounts the duckyPad Pro microSD card (automatically via USB Mass Storage mode `0x1B` + `udisksctl`, or direct SD mount), compiles every `keyN.txt` script into a DSVM v2 `.dsb` binary, writes `config.txt` and `profile_info.txt`, flushes the filesystem, and verifies the written files.</li>
-        <li><strong>DuckyDeck Studio Firmware (<code>v1.1.2</code> — <code>DDS_FW_1.1.2_0f85dab1.bin</code> for Pro &amp; <code>DDS20_FW_1.1.2_3bd4beef.dfu</code> for 2020) &amp; Official Firmware Catalog Downloader:</strong>
+        <li><strong>DuckyDeck Studio Firmware (<code>v1.1.2</code> — <code>DDS_FW_1.1.2_0f85dab1.bin</code> for Pro &amp; <code>v1.1.3</code> — <code>DDS20_FW_1.1.3_1288faee.dfu</code> for 2020) &amp; Official Firmware Catalog Downloader:</strong>
           <ul>
             <li>
               <strong>Download Firmware Images:</strong>
@@ -1231,9 +1231,9 @@ bash scripts/build-windows.sh</code></pre>
               &nbsp;|&nbsp;
               <a href="firmware/DDS_FW_1.1.2_0f85dab1.bin" style="color:var(--accent);font-weight:700;">⬇ duckyPad Pro (<code>DDS_FW_1.1.2_0f85dab1.bin</code>, CRC32: <code>0f85dab1</code>)</a>
               &nbsp;|&nbsp;
-              <a href="firmware/DDS20_FW_1.1.2_3bd4beef.dfu" style="color:var(--accent);font-weight:700;">⬇ duckyPad 2020 (<code>DDS20_FW_1.1.2_3bd4beef.dfu</code>, CRC32: <code>3bd4beef</code>)</a>
+              <a href="firmware/DDS20_FW_1.1.3_1288faee.dfu" style="color:var(--accent);font-weight:700;">⬇ duckyPad 2020 (<code>DDS20_FW_1.1.3_1288faee.dfu</code>, CRC32: <code>1288faee</code>)</a>
             </li>
-            <li>DuckyDeck Studio includes custom firmware builds versioned as <strong><code>1.1.2</code></strong> for both <strong>duckyPad Pro</strong> (<code>DDS_FW_1.1.2_0f85dab1.bin</code>, automatically staged to microSD as <code>DPP_FW_1.1.2_0f85dab1.bin</code> for universal bootloader compatibility) and <strong>duckyPad 2020</strong> (<code>DDS20_FW_1.1.2_3bd4beef.dfu</code>, STM32F072 DfuSe image with software Jump-to-DFU bootloader), identified by the DuckyDeck Studio icon badge in the status bar and USB HID <code>0x00</code> signature bytes <code>'D','D','S'</code>.</li>
+            <li>DuckyDeck Studio includes custom firmware builds for both <strong>duckyPad Pro</strong> (<code>DDS_FW_1.1.2_0f85dab1.bin</code>, automatically staged to microSD as <code>DPP_FW_1.1.2_0f85dab1.bin</code> for universal bootloader compatibility) and <strong>duckyPad 2020</strong> (<code>DDS20_FW_1.1.3_1288faee.dfu</code>, STM32F072 DfuSe image with software Jump-to-DFU bootloader, automatic <code>DP20_XXXX</code> FAT volume label stamping, and <code>serial_number DP20_XXXXXXXX</code> config identification), identified by the DuckyDeck Studio icon badge in the status bar and USB HID <code>0x00</code> signature bytes <code>'D','D','S'</code>.</li>
             <li><strong>Download Official Firmware List in Firmware Manager (<code>☰ → Firmware Update...</code>):</strong> Click <strong>⬇ Fetch Official List from Site</strong> inside the Firmware Manager window to query the official <code>dekuNukem/duckyPad-Pro</code> repository, browse all available official firmware versions, and click <strong>⬇ Download .bin</strong> or <strong>Download &amp; Install Selected Firmware</strong> (with automatic IEEE CRC32 checksum verification).</li>
           </ul>
         </li>

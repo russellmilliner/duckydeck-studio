@@ -16,7 +16,7 @@
 
 **DuckyDeck Studio (`v0.1.12`)** is a native **Linux (KDE Plasma 6 / Wayland & X11)** and **Windows 10/11 (x86_64)** desktop configurator, **DSVM v2 bytecode compiler**, **Window-Aware Auto-Switcher**, and **Macro Template Generator (experimental)** for the **duckyPad Pro (`0x0483:0xd11d`)** and **duckyPad 2020 (`0x0483:0xd11c`)**, built with **Rust**, **CXX-Qt 0.7**, **Qt 6**, and **KDE Frameworks 6 (Kirigami + KSyntaxHighlighting)** (with a self-contained Kirigami QML compatibility layer on Windows).
 
-> 🏷️ **Current Version:** **DuckyDeck Studio `v0.1.12`** · **Custom Firmware `v1.1.2` (`DDS_FW_1.1.2_0f85dab1.bin` for duckyPad Pro & `DDS20_FW_1.1.2_3bd4beef.dfu` for duckyPad 2020)** · **KDE Plasma 6 Applet `v1.0.2`**
+> 🏷️ **Current Version:** **DuckyDeck Studio `v0.1.12`** · **Custom Firmware `v1.1.2` (`DDS_FW_1.1.2_0f85dab1.bin` for duckyPad Pro) & `v1.1.3` (`DDS20_FW_1.1.3_1288faee.dfu` for duckyPad 2020)** · **KDE Plasma 6 Applet `v1.0.2`**
 >
 > 🌐 **Official Website & Online Documentation:** **[https://duckydeckstudio.com](https://duckydeckstudio.com)** · **[Architecture Reference (`architecture.html`)](https://duckydeckstudio.com/architecture.html)**
 >
@@ -93,8 +93,8 @@
   - **Simultaneous Multi-Device Management (`duckyPad Pro` + `duckyPad 2020`) & Custom Hardware Naming:** Attach multiple duckyPad Pro (`0x0483:0xd11d`) and/or duckyPad 2020 (`0x0483:0xd11c`) units simultaneously with isolated per-device profile caches (`~/.local/share/duckydeck-studio/device_profiles/<SERIAL>/`), custom per-serial hardware names (`~/.config/duckydeck-studio/device_names.json` / `POST /api/v1/devices/rename`), independent per-device Auto-Switcher rules, and dedicated per-device floating Desktop OLED Widgets that automatically close and hide from the status bar when a device is disconnected.
   - **Built-in `duckypad-esp32-ha` Web Configurator Server (Port `8099`):** Automatically detects USB-connected ESP32 Home Assistant duckyPads (`0x303A:*` / `DPP_ESP32` / `ESP32-HA`), serves the identical Web UI (`http://127.0.0.1:8099`) in 100% feature parity with the on-device firmware, and automatically shuts down the server and hides the status bar badge when no ESP32 duckyPad is connected.
   - **High-Resolution Wheel & Ploopy Knob (`v120`) Smooth Scrolling:** Global C++ `QWheelEvent` filter with fractional sub-notch accumulation and 180 ms gesture target lock so high-resolution rotary encoders (such as the Ploopy Knob) and standard mouse wheels scroll every list and pane smoothly without pausing when child controls pass under the cursor.
-- **🔧 DuckyDeck Studio Firmware `v1.1.2` (`duckyPad Pro` & `duckyPad 2020`) & Official Firmware Catalog Downloader:**
-  - Custom firmware builds for both **`duckyPad Pro` (`DDS_FW_1.1.2_0f85dab1.bin`)** and **`duckyPad 2020` (`DDS20_FW_1.1.2_3bd4beef.dfu`)**, badged with the DuckyDeck Studio icon in the status bar, supporting 204 1-bit monochrome pixel-art OLED icons, 4 customizable OLED layout styles (on Pro), smooth `SWC_FADE_TO` LED transitions, dirty-page display tracking, and zero-SD-wear profile caching (NVS on Pro, RTC backup registers on 2020).
+- **🔧 DuckyDeck Studio Firmware (`v1.1.2` Pro & `v1.1.3` 2020) & Official Firmware Catalog Downloader:**
+  - Custom firmware builds for both **`duckyPad Pro` (`DDS_FW_1.1.2_0f85dab1.bin`)** and **`duckyPad 2020` (`DDS20_FW_1.1.3_1288faee.dfu`)**, badged with the DuckyDeck Studio icon in the status bar, supporting 204 1-bit monochrome pixel-art OLED icons, 4 customizable OLED layout styles (on Pro), smooth `SWC_FADE_TO` LED transitions, dirty-page display tracking, automatic `DP20_XXXX` FAT volume label & `serial_number DP20_XXXXXXXX` stamping (on 2020), and zero-SD-wear profile caching (NVS on Pro, RTC backup registers on 2020).
   - **Official Firmware Catalog Downloader:** Fetch the list of official dekuNukem firmwares directly inside the **Firmware Manager** window, download `.bin`/`.dfu` images with IEEE CRC32 verification, and install them in one click.
 
 ---
@@ -121,18 +121,19 @@ DuckyDeck Studio clearly badges capabilities in the UI as either **✅ Hardware-
 
 ---
 
-## 🔧 DuckyDeck Studio Firmware (`v1.1.2`) vs. Standard Firmware (`3.3.5` / `3.0.4`)
+## 🔧 DuckyDeck Studio Firmware (`v1.1.2` Pro / `v1.1.3` 2020) vs. Standard Firmware (`3.3.5` / `3.0.4`)
 
-**DuckyDeck Studio Firmware `v1.1.2`** is an optional, 100% backwards-compatible custom firmware suite for both **`duckyPad Pro` (`DDS_FW_1.1.2_0f85dab1.bin`)** and **`duckyPad (2020)` (`DDS20_FW_1.1.2_3bd4beef.dfu`)**. All existing `.dsb` bytecode scripts, profiles, and official features work identically to upstream firmware `3.3.5` (Pro) and `3.0.4` (2020 Evo), while unlocking hardware enhancements tailored to each platform:
+**DuckyDeck Studio Firmware** is an optional, 100% backwards-compatible custom firmware suite for both **`duckyPad Pro` (`DDS_FW_1.1.2_0f85dab1.bin`)** and **`duckyPad (2020)` (`DDS20_FW_1.1.3_1288faee.dfu`)**. All existing `.dsb` bytecode scripts, profiles, and official features work identically to upstream firmware `3.3.5` (Pro) and `3.0.4` (2020 Evo), while unlocking hardware enhancements tailored to each platform:
 
 - **📦 Download from GitHub Releases:**
   - **duckyPad Pro (`ESP32-S3`):** [`DDS_FW_1.1.2_0f85dab1.bin` (`v1.1.2`)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.12) · IEEE CRC32 `0f85dab1` · Size `891,200 bytes` *(automatically staged as `DPP_FW_1.1.2_0f85dab1.bin` onto microSD for universal bootloader compatibility)*
-  - **duckyPad 2020 (`STM32F072`):** [`DDS20_FW_1.1.2_3bd4beef.dfu` (`v1.1.2`)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.12) · IEEE CRC32 `3bd4beef` · Size `63,057 bytes` (`62,748 bytes` Flash used)
-- **🌐 Direct Downloads:** [`https://duckydeckstudio.com/firmware/DDS_FW_1.1.2_0f85dab1.bin`](https://duckydeckstudio.com/firmware/DDS_FW_1.1.2_0f85dab1.bin) · [`https://duckydeckstudio.com/firmware/DDS20_FW_1.1.2_3bd4beef.dfu`](https://duckydeckstudio.com/firmware/DDS20_FW_1.1.2_3bd4beef.dfu)
+  - **duckyPad 2020 (`STM32F072`):** [`DDS20_FW_1.1.3_1288faee.dfu` (`v1.1.3`)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.12) · IEEE CRC32 `1288faee` · Size `63,609 bytes` (`63,300 bytes` Flash used)
+- **🌐 Direct Downloads:** [`https://duckydeckstudio.com/firmware/DDS_FW_1.1.2_0f85dab1.bin`](https://duckydeckstudio.com/firmware/DDS_FW_1.1.2_0f85dab1.bin) · [`https://duckydeckstudio.com/firmware/DDS20_FW_1.1.3_1288faee.dfu`](https://duckydeckstudio.com/firmware/DDS20_FW_1.1.3_1288faee.dfu)
 
-| Feature / Capability | Standard Firmware (`3.3.5` Pro / `3.0.4` 2020) | DuckyDeck Studio Firmware (`1.1.2` Pro & 2020) |
+| Feature / Capability | Standard Firmware (`3.3.5` Pro / `3.0.4` 2020) | DuckyDeck Studio Firmware (`1.1.2` Pro & `1.1.3` 2020) |
 | :--- | :--- | :--- |
 | **Firmware Prefix & Identity** (`shared.c` / `hid_task.c`) | Uses `DPP_FW_*.bin` / `duckypad_v*.dfu`; standard `GET_INFO` (`0x00`) response. | ✅ Distinct **`DDS_FW_*.bin`** (Pro) and **`DDS20_FW_*.dfu`** (2020) builds; reports `'D','D','S'` capability signature at HID bytes `20..22` so DuckyDeck Studio automatically identifies and optimizes for it. |
+| **FAT Volume Label & Serial Stamping (2020)** (`main.c` / `profiles.c`) | ❌ Leaves microSD volume label blank and omits `serial_number` from `/dpp_config.txt`, making unmounted card readers harder to match. | ✅ **Automatic `DP20_XXXX` Volume Label (`f_setlabel`) & `serial_number DP20_XXXXXXXX`** written on boot, plus automatic `/profile<N>_<Name>` → `/profile_<Name>` folder self-healing in `scan_profiles()` and `ensure_new_profile_format()`. |
 | **Monochrome OLED Key Icons** (`oled_icons.c` / `ui_task.c`) | ❌ ASCII text only (`0x20..0x7E`); Unicode/emoji symbols are stripped or ignored on hardware. | ✅ **204 Native Pixel-Art Icons** across 14 categories:<br>• **duckyPad Pro**: Full-Cell `16×16`, Top-Line `10×10` + Caption, and Inline `7×10` / `6×8` glyphs.<br>• **duckyPad (2020)**: All 204 inline `6×10` / `7×10` monochrome icons packed into 2.4 KB of STM32F072 Flash. |
 | **Customizable OLED Layout Styles (Pro)** (`ui_task.c`) | Single fixed header bar and grid style. | ✅ **4 Selectable OLED Layout Styles** (`OLED_LAYOUT_STYLE 0..3`): Top Bezel Header (`0`), Micro-Page Dots (`1`), Header/Footer Split (`2`), and 3px Recessed Divider Strip (`3`). |
 | **OLED Display Refresh Speed** (`ssd1306.c`) | Full framebuffer transmitted over SPI (Pro) or 400 kHz I²C (2020) on every screen refresh. | ✅ **Dirty-Page Bitmask Tracking (`ssd1306_dirty_pages`)**: Only modified 128-byte display pages are transmitted over SPI DMA (Pro) or I²C (2020), cutting `OLED_PRINT` / key-update bus time by up to 8×. |

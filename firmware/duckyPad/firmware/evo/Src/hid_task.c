@@ -501,6 +501,7 @@ void parse_hid_msg(uint8_t* this_msg)
   else if(command_type == HID_COMMAND_OPEN_FILE_FOR_WRITING)
   {
     enter_file_access_mode();
+    f_close(&sd_file);
     if(f_open(&sd_file, this_msg+3, FA_CREATE_ALWAYS | FA_WRITE) != 0)
     {
       hid_tx_buf[2] = HID_RESPONSE_GENERIC_ERROR;

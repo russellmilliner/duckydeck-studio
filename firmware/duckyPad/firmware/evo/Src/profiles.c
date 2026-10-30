@@ -55,6 +55,7 @@ uint8_t load_settings(dp_global_settings* dps)
 
   CLEAR_TEMP_BUF();
   memset(dps->current_kb_layout, 0, FILENAME_BUFSIZE);
+  uint8_t has_serial = 0;
 
   while(f_gets(temp_buf, TEMP_BUFSIZE, &sd_file))
   {
@@ -71,11 +72,18 @@ uint8_t load_settings(dp_global_settings* dps)
       strcpy(dps->current_kb_layout, temp_buf + strlen(config_keyboard_layout));
       strip_newline(dps->current_kb_layout, FILENAME_BUFSIZE);
     }
+    if(strncmp(temp_buf, "serial_number ", 14) == 0)
+      has_serial = 1;
   }
   f_close(&sd_file);
   uint32_t cached_pf = HAL_RTCEx_BKUPRead(&hrtc, RTC_LAST_PROFILE_REG);
   if((cached_pf & 0xFF00U) == RTC_LAST_PROFILE_MAGIC)
     dps->last_used_profile = (uint8_t)(cached_pf & 0xFFU);
+  if(!has_serial)
+  {
+    current_profile_number = dps->last_used_profile;
+    save_settings(dps);
+  }
   return 0;
 }
 
@@ -91,11 +99,13 @@ uint8_t save_settings(dp_global_settings* dps)
     "%s%d\n"
     "%s%d\n"
     "fw_ver %d.%d.%d\n"
+    "serial_number DP20_%08lX\n"
     "%s%s\n",
     config_sleep_after_index, dps->sleep_index,
     config_brightness_index, dps->brightness_index,
     config_last_used_profile, current_profile_number,
     fw_version_major, fw_version_minor, fw_version_patch,
+    (unsigned long)get_uuid(),
     config_keyboard_layout, dps->current_kb_layout
   );
   f_close(&sd_file);
@@ -140,8 +150,15 @@ uint8_t scan_profiles(void)
     strip_newline(this_profile_name, PROFILE_NAME_MAX_LEN);
     CLEAR_TEMP_BUF();
     snprintf(temp_buf, TEMP_BUFSIZE, "/profile_%s/config.txt", this_profile_name);
-    if(f_stat(temp_buf, &fno)) // profile does not exist
-      continue;
+    if(f_stat(temp_buf, &fno)) // profile_<Name> does not exist; auto-migrate /profile<N>_<Name> if present
+    {
+      snprintf(temp_buf, TEMP_BUFSIZE, "/profile%d_%s", this_profile_number, this_profile_name);
+      snprintf(lfn_buf, FILENAME_BUFSIZE, "/profile_%s", this_profile_name);
+      f_rename(temp_buf, lfn_buf);
+      snprintf(temp_buf, TEMP_BUFSIZE, "/profile_%s/config.txt", this_profile_name);
+      if(f_stat(temp_buf, &fno))
+        continue;
+    }
     memset(profile_name_list[this_profile_number], 0, PROFILE_NAME_MAX_LEN);
     strncpy(profile_name_list[this_profile_number], this_profile_name, PROFILE_NAME_MAX_LEN);
     valid_profile_count++;
@@ -662,8 +679,8 @@ uint8_t ensure_new_profile_format(void)
       continue;
     CLEAR_TEMP_BUF();
     memset(lfn_buf, 0, FILENAME_BUFSIZE);
-    snprintf(temp_buf, TEMP_BUFSIZE, "/profile%d_%s\n", i, profile_name_list[i]);
-    snprintf(lfn_buf, FILENAME_BUFSIZE, "/profile_%s\n", profile_name_list[i]);
+    snprintf(temp_buf, TEMP_BUFSIZE, "/profile%d_%s", i, profile_name_list[i]);
+    snprintf(lfn_buf, FILENAME_BUFSIZE, "/profile_%s", profile_name_list[i]);
     f_rename(temp_buf, lfn_buf);
   }
   oled_say("Done!");

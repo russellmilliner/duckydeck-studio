@@ -126,8 +126,10 @@ pub async fn check_latest_duckypad_firmware(
         let curr_studio = parse_semver(current_version.split_whitespace().next().unwrap_or(""))
             .map(|v| if v == (3, 4, 0) { (1, 0, 0) } else { v })
             .unwrap_or((1, 0, 0));
-        if curr_studio < (1, 1, 2) {
-            latest_version = "1.1.2".to_string();
+        let target_studio = if is_pro { (1, 1, 2) } else { (1, 1, 3) };
+        let target_studio_str = if is_pro { "1.1.2" } else { "1.1.3" };
+        if curr_studio < target_studio {
+            latest_version = target_studio_str.to_string();
             true
         } else {
             remote_semver > (3, 3, 5)
@@ -279,7 +281,8 @@ pub fn is_duckydeck_studio_firmware_version(version: &str) -> bool {
         .next()
         .unwrap_or(trimmed)
         .trim_start_matches(['v', 'V']);
-    clean == "1.1.2"
+    clean == "1.1.3"
+        || clean == "1.1.2"
         || clean == "1.1.1"
         || clean == "1.1.0"
         || clean == "1.0.1"
@@ -374,9 +377,9 @@ const EMBEDDED_STUDIO_FW_FILENAME: &str = "DDS_FW_1.1.2_0f85dab1.bin";
 const EMBEDDED_STUDIO_FW_BYTES: &[u8] =
     include_bytes!("../../firmware/releases/DDS_FW_1.1.2_0f85dab1.bin");
 
-const EMBEDDED_STUDIO_2020_FW_FILENAME: &str = "DDS20_FW_1.1.2_3bd4beef.dfu";
+const EMBEDDED_STUDIO_2020_FW_FILENAME: &str = "DDS20_FW_1.1.3_1288faee.dfu";
 const EMBEDDED_STUDIO_2020_FW_BYTES: &[u8] =
-    include_bytes!("../../firmware/releases/DDS20_FW_1.1.2_3bd4beef.dfu");
+    include_bytes!("../../firmware/releases/DDS20_FW_1.1.3_1288faee.dfu");
 
 fn ensure_embedded_studio_firmware_cached() -> PathBuf {
     let user_fw_dir = crate::paths::data_dir().join("firmware");
@@ -1241,11 +1244,19 @@ pub fn list_available_duckypad_2020_firmwares(current_version: &str) -> Vec<Firm
             let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
             let is_official = !is_studio_custom;
             let (channel, release_date, notes) = if is_studio_custom {
-                (
-                    "DuckyDeck Studio Custom (v1.1.2 — duckyPad 2020)",
-                    "Oct 22, 2026",
-                    "DuckyDeck Studio custom firmware v1.1.2 for duckyPad (2020) STM32F072 (built on Evo 3.0.4 / DSVM v2): adds 204 native 1-bit monochrome pixel-art OLED icons, UTF-8 ui_z key labels, SWC_FADE_TO smooth RGB fade opcode (89) + Q8 fixed-point 50 Hz LED engine, SSD1306 I²C dirty-page tracking, RTC backup register profile cache (zero SD wear on profile switch), stuck-key release guard, and software Jump-to-DFU bootloader.",
-                )
+                if ver_str == "1.1.2" {
+                    (
+                        "DuckyDeck Studio Custom (v1.1.2 — duckyPad 2020)",
+                        "Oct 22, 2026",
+                        "DuckyDeck Studio custom firmware v1.1.2 for duckyPad (2020) STM32F072 (built on Evo 3.0.4 / DSVM v2): adds 204 native 1-bit monochrome pixel-art OLED icons, UTF-8 ui_z key labels, SWC_FADE_TO smooth RGB fade opcode (89) + Q8 fixed-point 50 Hz LED engine, SSD1306 I²C dirty-page tracking, RTC backup register profile cache (zero SD wear on profile switch), stuck-key release guard, and software Jump-to-DFU bootloader.",
+                    )
+                } else {
+                    (
+                        "DuckyDeck Studio Custom (v1.1.3 — duckyPad 2020)",
+                        "Oct 30, 2026",
+                        "DuckyDeck Studio custom firmware v1.1.3 for duckyPad (2020) STM32F072 (built on Evo 3.0.4 / DSVM v2): stamps DP20_XXXX FAT volume label on microSD boot, writes serial_number DP20_XXXXXXXX into /dpp_config.txt for deterministic multi-device matching, fixes ensure_new_profile_format() f_rename trailing newline and auto-migrates /profile<N>_<Name> -> /profile_<Name> in scan_profiles(), closes stale SD handles before HID_COMMAND_OPEN_FILE_FOR_WRITING, plus 204 native 1-bit monochrome pixel-art OLED icons, SWC_FADE_TO smooth RGB fade, SSD1306 I²C dirty-page tracking, RTC backup register profile cache, and software Jump-to-DFU bootloader.",
+                    )
+                }
             } else if ver_str == "3.0.4" {
                 (
                     "Official Release (duckyPad 2020 Evo)",
@@ -1332,7 +1343,7 @@ where
     let fname = src_path
         .file_name()
         .and_then(|n| n.to_str())
-        .unwrap_or("DDS20_FW_1.1.2.dfu");
+        .unwrap_or("DDS20_FW_1.1.3.dfu");
 
     on_progress(
         15,

@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::hardware::profile::{
     compute_profiles_fingerprint, find_mounted_duckypad_sd, find_mounted_duckypad_sd_for_device,
+    find_mounted_duckypad_sd_for_device_in_list, inspect_duckypad_sd_root, is_duckypad_sd_root,
     load_all_sd_profiles, mark_profiles_sd_synced, parse_profile_folder_name,
     profile_cache_dir_for_serial, record_mounted_sd_space, sync_profiles_to_device_cache,
     write_profiles_to_sd_root_for_model, DuckyProfile, DuckySdDeviceMeta, SdWriteSummary,
@@ -459,31 +460,234 @@ pub fn unmount_mounted_duckypad_sd(current_mount: Option<&Path>) -> Result<Strin
     ))
 }
 
+pub fn find_unmounted_removable_sd_partitions(disk_label: &str) -> Vec<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = disk_label;
+        return Vec::new();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let clean_label = disk_label.trim();
+        let mounts = read_mounts_table().unwrap_or_default();
+        let mut mounted_devs = std::collections::HashSet::new();
+        let mut system_disks = std::collections::HashSet::new();
+        for line in mounts.lines() {
+            let mut parts = line.split_whitespace();
+            let Some(dev) = parts.next() else {
+                continue;
+            };
+            let Some(mnt) = parts.next() else {
+                continue;
+            };
+            if dev.starts_with("/dev/") {
+                let p = PathBuf::from(dev);
+                let canon = fs::canonicalize(&p).unwrap_or(p);
+                if matches!(mnt, "/" | "/boot" | "/boot/efi" | "/efi" | "/home" | "/var" | "/usr") {
+                    if let Some(name) = canon.file_name().and_then(|s| s.to_str()) {
+                        let base = if let Some((prefix, _)) = name.split_once('p') {
+                            if name.starts_with("mmcblk") || name.starts_with("nvme") {
+                                prefix
+                            } else {
+                                name.trim_end_matches(|c: char| c.is_ascii_digit())
+                            }
+                        } else {
+                            name.trim_end_matches(|c: char| c.is_ascii_digit())
+                        };
+                        if !base.is_empty() {
+                            system_disks.insert(base.to_string());
+                        }
+                    }
+                }
+                mounted_devs.insert(canon);
+            }
+        }
+
+        let mut foreign_duckypad_devs = std::collections::HashSet::new();
+        if let Ok(entries) = fs::read_dir("/dev/disk/by-label") {
+            for entry in entries.flatten() {
+                let label = entry.file_name().to_string_lossy().to_string();
+                let is_dp24 = label.starts_with("DP24_");
+                let is_dp20 = label.starts_with("DP20_");
+                if (is_dp24 || is_dp20) && !clean_label.is_empty() && !label.eq_ignore_ascii_case(clean_label) {
+                    if let Ok(canon) = fs::canonicalize(entry.path()) {
+                        foreign_duckypad_devs.insert(canon);
+                    }
+                }
+            }
+        }
+
+        let mut candidates = Vec::new();
+        if let Some(dev) = find_duckypad_msc_block_device(disk_label, true) {
+            let canon = fs::canonicalize(&dev).unwrap_or(dev);
+            if !mounted_devs.contains(&canon) && !foreign_duckypad_devs.contains(&canon) {
+                candidates.push(canon);
+            }
+        }
+
+        if let Ok(entries) = fs::read_dir("/sys/block") {
+            let mut block_names: Vec<String> = entries
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .collect();
+            block_names.sort();
+
+            for name in block_names {
+                if name.contains("boot") || name.contains("rpmb") || system_disks.contains(&name) {
+                    continue;
+                }
+                let is_mmc = name.starts_with("mmcblk");
+                let is_removable_sd = name.starts_with("sd")
+                    && fs::read_to_string(format!("/sys/block/{name}/removable"))
+                        .map(|s| s.trim() == "1")
+                        .unwrap_or(false);
+                if !is_mmc && !is_removable_sd {
+                    continue;
+                }
+
+                let sectors = fs::read_to_string(format!("/sys/block/{name}/size"))
+                    .ok()
+                    .and_then(|s| s.trim().parse::<u64>().ok())
+                    .unwrap_or(0);
+                // Skip empty card reader slots (0 sectors) and drives > 256 GiB (536,870,912 * 512B sectors)
+                if sectors == 0 || sectors > 536_870_912 {
+                    continue;
+                }
+
+                let mut part_names = Vec::new();
+                if let Ok(sub_entries) = fs::read_dir(format!("/sys/block/{name}")) {
+                    for sub in sub_entries.flatten() {
+                        let sub_name = sub.file_name().to_string_lossy().to_string();
+                        if sub_name.starts_with(&name)
+                            && sub_name != name
+                            && !sub_name.contains("boot")
+                            && !sub_name.contains("rpmb")
+                        {
+                            let part_sectors = fs::read_to_string(sub.path().join("size"))
+                                .ok()
+                                .and_then(|s| s.trim().parse::<u64>().ok())
+                                .unwrap_or(0);
+                            if part_sectors > 0 {
+                                part_names.push(sub_name);
+                            }
+                        }
+                    }
+                }
+                part_names.sort();
+
+                if !part_names.is_empty() {
+                    let any_part_mounted = part_names.iter().any(|pn| {
+                        let p = PathBuf::from(format!("/dev/{pn}"));
+                        let canon = fs::canonicalize(&p).unwrap_or(p);
+                        mounted_devs.contains(&canon)
+                    });
+                    if any_part_mounted {
+                        continue;
+                    }
+                    for pn in part_names {
+                        let p = PathBuf::from(format!("/dev/{pn}"));
+                        if !p.exists() {
+                            continue;
+                        }
+                        let canon = fs::canonicalize(&p).unwrap_or(p);
+                        if !mounted_devs.contains(&canon)
+                            && !foreign_duckypad_devs.contains(&canon)
+                            && !candidates.contains(&canon)
+                        {
+                            candidates.push(canon);
+                        }
+                    }
+                } else {
+                    let whole = PathBuf::from(format!("/dev/{name}"));
+                    if whole.exists() {
+                        let canon = fs::canonicalize(&whole).unwrap_or(whole);
+                        if !mounted_devs.contains(&canon)
+                            && !foreign_duckypad_devs.contains(&canon)
+                            && !candidates.contains(&canon)
+                        {
+                            candidates.push(canon);
+                        }
+                    }
+                }
+            }
+        }
+        candidates
+    }
+}
+
 pub fn detect_unmounted_duckypad_sd(disk_label: &str) -> Option<PathBuf> {
     let target_label_opt = if disk_label.trim().is_empty() {
         None
     } else {
         Some(disk_label.trim())
     };
-    if find_mounted_duckypad_sd_for_device(None, target_label_opt, None).is_some() {
+    let target_model_opt = if disk_label.starts_with("DP20_") {
+        Some(DP_MODEL_OG_DUCKYPAD)
+    } else if disk_label.starts_with("DP24_") {
+        Some(DP_MODEL_DUCKYPAD_PRO)
+    } else {
+        None
+    };
+    if find_mounted_duckypad_sd_for_device(None, target_label_opt, target_model_opt).is_some() {
         return None;
     }
-    if let Some(dev) = find_duckypad_msc_block_device(disk_label, true) {
-        return Some(dev);
+    find_unmounted_removable_sd_partitions(disk_label)
+        .into_iter()
+        .next()
+}
+
+pub fn try_auto_mount_duckypad_sd_for_device(
+    target_serial: Option<&str>,
+    target_disk_label: Option<&str>,
+    target_hw_model: Option<u8>,
+) -> Option<PathBuf> {
+    if let Some(mounted) =
+        find_mounted_duckypad_sd_for_device(target_serial, target_disk_label, target_hw_model)
+    {
+        return Some(mounted);
     }
-    if let Ok(entries) = fs::read_dir("/sys/block") {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.starts_with("mmcblk") {
-                let p1 = PathBuf::from(format!("/dev/{name}p1"));
-                if p1.exists() {
-                    return Some(p1);
-                }
-                let whole = PathBuf::from(format!("/dev/{name}"));
-                if whole.exists() {
-                    return Some(whole);
-                }
+    if std::env::var("DUCKYDECK_UI_TEST").is_ok()
+        || std::env::var("DUCKYDECK_DEMO_SHOWCASE").is_ok()
+    {
+        return None;
+    }
+
+    let label_hint = target_disk_label.unwrap_or("");
+    let candidates = find_unmounted_removable_sd_partitions(label_hint);
+    for dev_path in candidates {
+        let dev_str = dev_path.to_string_lossy().to_string();
+        let Ok(out) = run_storage_cmd(
+            "udisksctl",
+            &["mount", "--no-user-interaction", "-b", &dev_str],
+        ) else {
+            continue;
+        };
+        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let mounted_opt = parse_udisks_mount_path(&stdout).or_else(|| {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            find_mounted_duckypad_sd_for_device(target_serial, target_disk_label, target_hw_model)
+        });
+        let Some(mnt) = mounted_opt else {
+            continue;
+        };
+        let Some(sd_info) = inspect_duckypad_sd_root(&mnt) else {
+            if !is_duckypad_sd_root(&mnt) {
+                let _ = run_storage_cmd(
+                    "udisksctl",
+                    &["unmount", "--no-user-interaction", "-b", &dev_str],
+                );
             }
+            continue;
+        };
+        if find_mounted_duckypad_sd_for_device_in_list(
+            std::slice::from_ref(&sd_info),
+            target_serial,
+            target_disk_label,
+            target_hw_model,
+        )
+        .is_some()
+        {
+            return Some(mnt);
         }
     }
     None
@@ -504,7 +708,7 @@ pub fn mount_duckypad_sd_only(disk_label: &str) -> Result<PathBuf, String> {
     };
 
     if let Some(mounted) =
-        find_mounted_duckypad_sd_for_device(None, target_label_opt, target_model_opt)
+        try_auto_mount_duckypad_sd_for_device(None, target_label_opt, target_model_opt)
     {
         return Ok(mounted);
     }
@@ -745,6 +949,9 @@ fn hid_write_file_bytes(
     remote_path: &str,
     content: &[u8],
 ) -> Result<(), String> {
+    // Ensure any previous SD file handle is closed before opening a new file for writing
+    // (EVO/v1.x HID_COMMAND_OPEN_FILE_FOR_WRITING calls f_open(&sd_file, ...) without f_close first).
+    let _ = hid_txrx(dev, seq, HID_CMD_CLOSE_FILE, &[], 500);
     let _ = hid_txrx(
         dev,
         seq,
@@ -765,7 +972,10 @@ fn hid_write_file_bytes(
             .read_timeout(&mut rx, 1500)
             .map_err(|e| format!("HID read error (WRITE_FILE): {e}"))?;
         if n == 0 || rx[2] == HID_STATUS_ERROR {
-            return Err("duckyPad reported HID error while writing file chunk".to_string());
+            let _ = hid_txrx(dev, seq, HID_CMD_CLOSE_FILE, &[], 500);
+            return Err(format!(
+                "duckyPad reported HID error while writing file chunk to {remote_path}"
+            ));
         }
     }
     let _ = hid_txrx(dev, seq, HID_CMD_CLOSE_FILE, &[], 1200)?;
@@ -961,10 +1171,15 @@ where
         } else {
             for key_idx in 1..=15usize {
                 let z_prefix = format!("z{key_idx} ");
+                let ui_z_prefix = format!("ui_z{key_idx} ");
+                let x_prefix = format!("x{key_idx} ");
                 let sw_prefix = format!("SWCOLOR_{key_idx} ");
-                let maybe_configured = cfg_text
-                    .lines()
-                    .any(|l| l.starts_with(&z_prefix) || l.starts_with(&sw_prefix));
+                let maybe_configured = cfg_text.lines().any(|l| {
+                    l.starts_with(&z_prefix)
+                        || l.starts_with(&ui_z_prefix)
+                        || l.starts_with(&x_prefix)
+                        || l.starts_with(&sw_prefix)
+                });
                 if !maybe_configured {
                     continue;
                 }
@@ -1048,7 +1263,10 @@ where
     } else {
         Some(serial)
     };
-    let staging_dir = profile_cache_dir_for_serial(serial);
+    // Stage into a dedicated .hid_staging subdirectory so the device cache is not modified
+    // if the USB HID transfer is interrupted.
+    let staging_dir = profile_cache_dir_for_serial(serial).join(".hid_staging");
+    let _ = fs::remove_dir_all(&staging_dir);
     fs::create_dir_all(&staging_dir)
         .map_err(|e| format!("Failed creating staging dir {}: {e}", staging_dir.display()))?;
 
@@ -1090,6 +1308,69 @@ where
         let (fw_major, is_dds_fw, _) = query_dp20_fw_mode(&dev, &mut seq);
         let use_pinfo_folders = fw_major >= 2 || is_dds_fw;
 
+        let desired_remote_folders: std::collections::HashSet<String> = profiles
+            .iter()
+            .map(|p| {
+                if use_pinfo_folders {
+                    p.folder_name_for_model(DP_MODEL_OG_DUCKYPAD)
+                } else {
+                    p.legacy_numbered_folder_name()
+                }
+            })
+            .collect();
+
+        // Discover existing profile directories on the SD card so stale/renamed profiles are removed
+        let mut existing_remote_dirs = Vec::new();
+        if !use_pinfo_folders {
+            for (ft, name) in hid_list_dir_v1(&dev, &mut seq, "") {
+                if ft == 1 && parse_profile_folder_name(&name).is_some() {
+                    existing_remote_dirs.push(name);
+                }
+            }
+        } else {
+            for _ in 0..512 {
+                let mut tx = [0u8; 64];
+                tx[0] = HID_REPORT_ID_OUT;
+                tx[1] = 0;
+                tx[2] = HID_CMD_DUMP_SD;
+                if dev.write(&tx).is_err() {
+                    break;
+                }
+                let mut rx = [0u8; 64];
+                let Ok(n) = dev.read_timeout(&mut rx, 800) else {
+                    break;
+                };
+                if n == 0 || rx[1] == 4 || rx[2] == HID_STATUS_ERROR {
+                    break;
+                }
+                if rx[1] == 1 {
+                    let raw_slice = &rx[2..];
+                    let nul_pos = raw_slice
+                        .iter()
+                        .position(|&b| b == 0)
+                        .unwrap_or(raw_slice.len());
+                    if nul_pos > 0 {
+                        let name = String::from_utf8_lossy(&raw_slice[..nul_pos])
+                            .trim_start_matches('/')
+                            .trim()
+                            .to_string();
+                        if parse_profile_folder_name(&name).is_some()
+                            && !existing_remote_dirs.contains(&name)
+                        {
+                            existing_remote_dirs.push(name);
+                        }
+                    }
+                }
+            }
+        }
+        for old_dir in existing_remote_dirs {
+            if !desired_remote_folders.contains(&old_dir) {
+                let slash_dir = format!("/{old_dir}");
+                let _ = hid_txrx(&dev, &mut seq, HID_CMD_DELETE_DIR, slash_dir.as_bytes(), 1200);
+                let _ = hid_txrx(&dev, &mut seq, HID_CMD_DELETE_DIR, old_dir.as_bytes(), 1200);
+            }
+        }
+
         // Write profile_info.txt
         if use_pinfo_folders {
             if let Ok(info_bytes) = fs::read(staging_dir.join("profile_info.txt")) {
@@ -1097,11 +1378,25 @@ where
                     &dev,
                     &mut seq,
                     HID_CMD_DELETE_FILE,
+                    b"/profile_info.txt",
+                    800,
+                );
+                let _ = hid_txrx(
+                    &dev,
+                    &mut seq,
+                    HID_CMD_DELETE_FILE,
                     b"profile_info.txt",
                     800,
                 );
-                let _ = hid_write_file_bytes(&dev, &mut seq, "profile_info.txt", &info_bytes);
+                hid_write_file_bytes(&dev, &mut seq, "/profile_info.txt", &info_bytes)
+                    .or_else(|_| {
+                        hid_write_file_bytes(&dev, &mut seq, "profile_info.txt", &info_bytes)
+                    })?;
             }
+        } else {
+            // Ensure legacy v1.x SD cards don't have a stale profile_info.txt
+            let _ = hid_txrx(&dev, &mut seq, HID_CMD_DELETE_FILE, b"/profile_info.txt", 800);
+            let _ = hid_txrx(&dev, &mut seq, HID_CMD_DELETE_FILE, b"profile_info.txt", 800);
         }
 
         for (idx, prof) in profiles.iter().enumerate() {
@@ -1109,7 +1404,7 @@ where
             let remote_folder = if use_pinfo_folders {
                 local_folder.clone()
             } else {
-                format!("profile{}_{}", prof.number, prof.name)
+                prof.legacy_numbered_folder_name()
             };
             let local_dir = staging_dir.join(&local_folder);
             if !local_dir.is_dir() {
@@ -1125,6 +1420,14 @@ where
                 ),
             );
 
+            let slash_remote_folder = format!("/{remote_folder}");
+            let _ = hid_txrx(
+                &dev,
+                &mut seq,
+                HID_CMD_DELETE_DIR,
+                slash_remote_folder.as_bytes(),
+                1200,
+            );
             let _ = hid_txrx(
                 &dev,
                 &mut seq,
@@ -1136,9 +1439,18 @@ where
                 &dev,
                 &mut seq,
                 HID_CMD_CREATE_DIR,
-                remote_folder.as_bytes(),
+                slash_remote_folder.as_bytes(),
                 1200,
-            );
+            )
+            .or_else(|_| {
+                hid_txrx(
+                    &dev,
+                    &mut seq,
+                    HID_CMD_CREATE_DIR,
+                    remote_folder.as_bytes(),
+                    1200,
+                )
+            });
 
             if let Ok(entries) = fs::read_dir(&local_dir) {
                 for entry in entries.flatten() {
@@ -1165,6 +1477,7 @@ where
         let reset_pkt = build_hid_file_command_packet(0x99, HID_CMD_SOFTWARE_RESET, &[0]);
         let _ = dev.write(&reset_pkt);
     }
+    let _ = fs::remove_dir_all(&staging_dir);
 
     std::thread::sleep(std::time::Duration::from_millis(1200));
     if restore_profile > 0 {
@@ -1232,7 +1545,7 @@ where
     };
 
     if let Some(already_mounted) =
-        find_mounted_duckypad_sd_for_device(serial_opt, label_opt, model_opt)
+        try_auto_mount_duckypad_sd_for_device(serial_opt, label_opt, model_opt)
     {
         on_progress(
             35,
@@ -1473,7 +1786,7 @@ where
     };
 
     if let Some(already_mounted) =
-        find_mounted_duckypad_sd_for_device(serial_opt, label_opt, model_opt)
+        try_auto_mount_duckypad_sd_for_device(serial_opt, label_opt, model_opt)
     {
         on_progress(
             30,

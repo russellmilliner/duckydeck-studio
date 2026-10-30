@@ -326,11 +326,13 @@ pub fn write_duckypad_device_meta(dir: &Path, meta: &DuckySdDeviceMeta) -> io::R
 }
 
 pub fn read_dpp_config(sd_root: &Path) -> Option<DuckySdConfig> {
+    let meta = read_duckypad_device_meta(sd_root);
+
     if let Ok(content) = fs::read_to_string(sd_root.join("dpp_config.txt")) {
-        let mut cfg = DuckySdConfig {
-            hw_model: Some(DP_MODEL_DUCKYPAD_PRO),
-            ..Default::default()
-        };
+        let mut cfg = DuckySdConfig::default();
+        let mut has_dpp_serial = false;
+        let mut has_dp20_serial = false;
+        let mut has_bt_mode = false;
         for line in content.lines() {
             let trimmed = line.trim();
             if let Some(rest) = trimmed.strip_prefix("last_profile ") {
@@ -341,16 +343,35 @@ pub fn read_dpp_config(sd_root: &Path) -> Option<DuckySdConfig> {
                     cfg.fw_ver = Some(v.to_string());
                 }
             } else if let Some(rest) = trimmed.strip_prefix("serial_number ") {
-                let s = normalize_duckypad_serial(rest.trim());
+                let raw_sn = rest.trim();
+                if raw_sn.to_ascii_uppercase().starts_with("DP20_") {
+                    has_dp20_serial = true;
+                } else {
+                    has_dpp_serial = true;
+                }
+                let s = normalize_duckypad_serial(raw_sn);
                 if !s.is_empty() {
                     cfg.serial_number = Some(s);
                 }
+            } else if trimmed.starts_with("bt_mode ") {
+                has_bt_mode = true;
             }
         }
+        // duckyPad Pro writes `serial_number DP24_...` (and `bt_mode`) into `dpp_config.txt`,
+        // whereas duckyPad (2020) EVO / DDS20 firmware writes `dpp_config.txt` with `DP20_...` or without `bt_mode`.
+        cfg.hw_model = if let Some(m) = meta.as_ref().map(|m| m.hw_model).filter(|&m| m > 0) {
+            Some(m)
+        } else if has_dp20_serial {
+            Some(DP_MODEL_OG_DUCKYPAD)
+        } else if has_dpp_serial || has_bt_mode {
+            Some(DP_MODEL_DUCKYPAD_PRO)
+        } else {
+            Some(DP_MODEL_OG_DUCKYPAD)
+        };
         if cfg.serial_number.is_none() {
-            if let Some(meta) = read_duckypad_device_meta(sd_root) {
-                if !meta.serial_number.is_empty() {
-                    cfg.serial_number = Some(normalize_duckypad_serial(&meta.serial_number));
+            if let Some(ref m) = meta {
+                if !m.serial_number.is_empty() {
+                    cfg.serial_number = Some(normalize_duckypad_serial(&m.serial_number));
                 }
             }
         }
@@ -389,18 +410,18 @@ pub fn read_dpp_config(sd_root: &Path) -> Option<DuckySdConfig> {
                 }
             }
         }
-        if let Some(meta) = read_duckypad_device_meta(sd_root) {
-            if cfg.serial_number.is_none() && !meta.serial_number.is_empty() {
-                cfg.serial_number = Some(normalize_duckypad_serial(&meta.serial_number));
+        if let Some(ref m) = meta {
+            if cfg.serial_number.is_none() && !m.serial_number.is_empty() {
+                cfg.serial_number = Some(normalize_duckypad_serial(&m.serial_number));
             }
-            if cfg.fw_ver.is_none() && !meta.firmware_version.is_empty() {
-                cfg.fw_ver = Some(meta.firmware_version);
+            if cfg.fw_ver.is_none() && !m.firmware_version.is_empty() {
+                cfg.fw_ver = Some(m.firmware_version.clone());
             }
         }
         return Some(cfg);
     }
 
-    if let Some(meta) = read_duckypad_device_meta(sd_root) {
+    if let Some(meta) = meta {
         return Some(DuckySdConfig {
             last_profile: None,
             fw_ver: if meta.firmware_version.is_empty() {
@@ -464,15 +485,15 @@ pub fn inspect_duckypad_sd_root(dir: &Path) -> Option<MountedDuckyPadSdInfo> {
         }
     }
 
-    let mut hw_model = cfg
-        .hw_model
-        .or_else(|| meta.as_ref().map(|m| m.hw_model).filter(|&m| m > 0))
+    let mut hw_model = meta
+        .as_ref()
+        .map(|m| m.hw_model)
+        .filter(|&m| m > 0)
+        .or(cfg.hw_model)
         .unwrap_or(0);
 
     if hw_model == 0 {
-        if dir.join("dpp_config.txt").exists() {
-            hw_model = DP_MODEL_DUCKYPAD_PRO;
-        } else if dir.join("dp_stats.txt").exists() || dir.join("dp_settings.txt").exists() {
+        if dir.join("dp_stats.txt").exists() || dir.join("dp_settings.txt").exists() {
             hw_model = DP_MODEL_OG_DUCKYPAD;
         } else if let Some(ref lbl) = disk_label {
             if lbl.starts_with("DP20_") {
@@ -484,8 +505,9 @@ pub fn inspect_duckypad_sd_root(dir: &Path) -> Option<MountedDuckyPadSdInfo> {
     }
 
     if hw_model == 0 {
-        // Inspect profile folders: if any profile uses key16..key26 or SWCOLOR_16..20, it's Pro;
-        // if legacy profile<N>_<Name> without profile_info.txt, likely duckyPad (2020)
+        // Inspect profile folders: if any profile uses key16..key26, it's Pro;
+        // if legacy profile<N>_<Name>, it's duckyPad (2020);
+        // otherwise leave hw_model = 0 (compatible with both models when untagged).
         let mut has_legacy_numbered_folder = false;
         let mut has_pro_slot = false;
         if let Ok(entries) = fs::read_dir(dir) {
@@ -510,12 +532,12 @@ pub fn inspect_duckypad_sd_root(dir: &Path) -> Option<MountedDuckyPadSdInfo> {
                 }
             }
         }
-        hw_model = if has_pro_slot || dir.join("profile_info.txt").exists() {
+        hw_model = if has_pro_slot {
             DP_MODEL_DUCKYPAD_PRO
         } else if has_legacy_numbered_folder {
             DP_MODEL_OG_DUCKYPAD
         } else {
-            DP_MODEL_DUCKYPAD_PRO
+            0
         };
     }
 
@@ -1087,26 +1109,23 @@ impl DuckyProfile {
     }
 
     pub fn folder_name(&self) -> String {
-        if let Some(ref existing) = self.folder_name_override {
-            if let Some((Some(_old_num), _old_name)) = parse_profile_folder_name(existing) {
-                return format!("profile{}_{}", self.number, self.sanitized_name());
-            }
-            if existing == &format!("profile_{}", self.sanitized_name()) {
-                return existing.clone();
-            }
-        }
         format!("profile_{}", self.sanitized_name())
     }
 
-    pub fn folder_name_for_model(&self, hw_model: u8) -> String {
-        if hw_model == DP_MODEL_OG_DUCKYPAD {
-            if let Some(ref existing) = self.folder_name_override {
-                if let Some((Some(_), _)) = parse_profile_folder_name(existing) {
-                    return format!("profile{}_{}", self.number, self.sanitized_name());
-                }
-            }
-        }
+    pub fn legacy_numbered_folder_name(&self) -> String {
+        format!("profile{}_{}", self.number, self.sanitized_name())
+    }
+
+    pub fn folder_name_for_model(&self, _hw_model: u8) -> String {
         self.folder_name()
+    }
+
+    pub fn folder_name_for_sd_root(&self, sd_root: &Path, hw_model: u8) -> String {
+        if sd_root_uses_legacy_dp20_folders(sd_root, hw_model) {
+            self.legacy_numbered_folder_name()
+        } else {
+            self.folder_name()
+        }
     }
 
     pub fn load_from_dir(dir_path: &Path) -> io::Result<Self> {
@@ -1283,15 +1302,7 @@ impl DuckyProfile {
         &self,
         sd_root: &Path,
     ) -> io::Result<(PathBuf, usize, usize)> {
-        let inferred_model =
-            if sd_root.join("dp_stats.txt").exists() || sd_root.join("dp_settings.txt").exists() {
-                DP_MODEL_OG_DUCKYPAD
-            } else {
-                read_duckypad_device_meta(sd_root)
-                    .map(|m| m.hw_model)
-                    .filter(|&m| m > 0)
-                    .unwrap_or(DP_MODEL_DUCKYPAD_PRO)
-            };
+        let inferred_model = infer_sd_root_hw_model(sd_root);
         self.save_to_sd_root_with_stats_for_model(sd_root, inferred_model)
     }
 
@@ -1300,7 +1311,7 @@ impl DuckyProfile {
         sd_root: &Path,
         hw_model: u8,
     ) -> io::Result<(PathBuf, usize, usize)> {
-        let profile_dir = sd_root.join(self.folder_name_for_model(hw_model));
+        let profile_dir = sd_root.join(self.folder_name_for_sd_root(sd_root, hw_model));
         fs::create_dir_all(&profile_dir)?;
 
         let onboard_keys = onboard_key_count_for_model(hw_model);
@@ -2344,19 +2355,68 @@ pub struct SdWriteSummary {
     pub validated_fingerprint: String,
 }
 
+pub fn infer_sd_root_hw_model(sd_root: &Path) -> u8 {
+    if let Some(m) = read_duckypad_device_meta(sd_root)
+        .map(|m| m.hw_model)
+        .filter(|&m| m > 0)
+    {
+        return m;
+    }
+    if let Some(m) = inspect_duckypad_sd_root(sd_root)
+        .map(|i| i.hw_model)
+        .filter(|&m| m > 0)
+    {
+        return m;
+    }
+    if let Some(m) = read_dpp_config(sd_root)
+        .and_then(|c| c.hw_model)
+        .filter(|&m| m > 0)
+    {
+        return m;
+    }
+    DP_MODEL_DUCKYPAD_PRO
+}
+
+pub fn sd_root_uses_legacy_dp20_folders(sd_root: &Path, hw_model: u8) -> bool {
+    if hw_model != DP_MODEL_OG_DUCKYPAD {
+        return false;
+    }
+    // EVO v2.x and DuckyDeck Studio Firmware for duckyPad (2020) use `dpp_config.txt` and `profile_info.txt`
+    // with `profile_<Name>` folders.
+    if sd_root.join("dpp_config.txt").exists() || sd_root.join("profile_info.txt").exists() {
+        return false;
+    }
+    if sd_root.join("dp_stats.txt").exists() || sd_root.join("dp_settings.txt").exists() {
+        return true;
+    }
+    if let Ok(entries) = fs::read_dir(sd_root) {
+        let mut has_numbered = false;
+        let mut has_unnumbered = false;
+        for entry in entries.flatten() {
+            if entry.path().is_dir() {
+                if let Some(fname) = entry.file_name().to_str() {
+                    if let Some((num_opt, _)) = parse_profile_folder_name(fname) {
+                        if num_opt.is_some() {
+                            has_numbered = true;
+                        } else {
+                            has_unnumbered = true;
+                        }
+                    }
+                }
+            }
+        }
+        if has_numbered && !has_unnumbered {
+            return true;
+        }
+    }
+    false
+}
+
 pub fn write_profiles_to_sd_root(
     sd_root: &Path,
     profiles: &[DuckyProfile],
 ) -> Result<SdWriteSummary, String> {
-    let inferred_model =
-        if sd_root.join("dp_stats.txt").exists() || sd_root.join("dp_settings.txt").exists() {
-            DP_MODEL_OG_DUCKYPAD
-        } else {
-            read_duckypad_device_meta(sd_root)
-                .map(|m| m.hw_model)
-                .filter(|&m| m > 0)
-                .unwrap_or(DP_MODEL_DUCKYPAD_PRO)
-        };
+    let inferred_model = infer_sd_root_hw_model(sd_root);
     write_profiles_to_sd_root_for_model(sd_root, profiles, inferred_model, None)
 }
 
@@ -2385,9 +2445,16 @@ pub fn write_profiles_to_sd_root_for_model(
         }
     }
 
+    let use_legacy_folders = sd_root_uses_legacy_dp20_folders(sd_root, hw_model);
     let valid_folders_lower: std::collections::HashSet<String> = profiles
         .iter()
-        .map(|p| p.folder_name_for_model(hw_model).to_ascii_lowercase())
+        .map(|p| {
+            if use_legacy_folders {
+                p.legacy_numbered_folder_name().to_ascii_lowercase()
+            } else {
+                p.folder_name().to_ascii_lowercase()
+            }
+        })
         .collect();
 
     for prof in profiles {
@@ -2398,15 +2465,17 @@ pub fn write_profiles_to_sd_root_for_model(
         summary.files_verified_unchanged += unchanged;
     }
 
-    let profile_info_path = sd_root.join("profile_info.txt");
-    let mut info_content = String::new();
-    for prof in profiles {
-        info_content.push_str(&format!("{} {}\n", prof.number, prof.name));
-    }
-    match write_file_if_changed_and_sync(&profile_info_path, info_content.as_bytes()) {
-        Ok(true) => summary.files_written += 1,
-        Ok(false) => summary.files_verified_unchanged += 1,
-        Err(e) => return Err(format!("Failed writing profile_info.txt: {e}")),
+    if !use_legacy_folders {
+        let profile_info_path = sd_root.join("profile_info.txt");
+        let mut info_content = String::new();
+        for prof in profiles {
+            info_content.push_str(&format!("{} {}\n", prof.number, prof.name));
+        }
+        match write_file_if_changed_and_sync(&profile_info_path, info_content.as_bytes()) {
+            Ok(true) => summary.files_written += 1,
+            Ok(false) => summary.files_verified_unchanged += 1,
+            Err(e) => return Err(format!("Failed writing profile_info.txt: {e}")),
+        }
     }
 
     if let Some(cfg) = crate::kwin::auto_switcher::SwitcherState::load_config_from_disk() {
@@ -4439,14 +4508,15 @@ pub fn instantiate_profile_from_template(
         let mut p = tpl.profile.clone();
         p.number = number;
         p.name = profile_name.to_string();
-        p.folder_name_override = Some(format!("profile{number}_{profile_name}"));
+        p.folder_name_override = Some(format!("profile_{}", p.sanitized_name()));
         p
     } else {
-        DuckyProfile {
+        let mut p = DuckyProfile {
             number,
             name: profile_name.to_string(),
-            folder_name_override: Some(format!("profile{number}_{profile_name}")),
             ..Default::default()
-        }
+        };
+        p.folder_name_override = Some(format!("profile_{}", p.sanitized_name()));
+        p
     }
 }

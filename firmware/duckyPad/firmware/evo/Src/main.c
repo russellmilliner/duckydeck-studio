@@ -137,7 +137,7 @@ uint32_t current_tick;
 
 uint8_t fw_version_major = 1;
 uint8_t fw_version_minor = 1;
-uint8_t fw_version_patch = 2;
+uint8_t fw_version_patch = 3;
 uint8_t dsvm_version = 2;
 
 /* USER CODE END PV */
@@ -247,6 +247,10 @@ int main(void)
     draw_nosd();
     idle_loop();
   }
+
+  CLEAR_TEMP_BUF();
+  snprintf(temp_buf, TEMP_BUFSIZE, "DP20_%04X", (uint16_t)(get_uuid() & 0xFFFF));
+  f_setlabel(temp_buf);
 
   ensure_new_profile_format();
 

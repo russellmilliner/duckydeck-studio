@@ -1254,7 +1254,7 @@ pub fn save_profile_properties_json_impl(
         let old_name = prof.name.clone();
         if !sanitized_name.is_empty() && sanitized_name != old_name {
             prof.name = sanitized_name.clone();
-            prof.folder_name_override = Some(format!("profile{}_{}", prof.number, sanitized_name));
+            prof.folder_name_override = Some(format!("profile_{sanitized_name}"));
         }
         let new_bg = parse_hex(bg_hex, prof.bg_color);
         let old_bg = prof.bg_color;

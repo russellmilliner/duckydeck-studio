@@ -707,7 +707,7 @@ Window {
                         Layout.minimumWidth: 0
                         wrapMode: Text.WordWrap
                         font.pointSize: 10 * root.fontScale
-                        text: qsTr("DuckyDeck Studio includes its custom DuckyDeck Studio Firmware v1.1.2 for both duckyPad Pro (DDS_FW_1.1.2_0f85dab1.bin) and duckyPad 2020 (DDS20_FW_1.1.2_3bd4beef.dfu) — with 204 monochrome pixel-art OLED icons, 4 customizable OLED layout styles, smooth SWC_FADE_TO LED fade, dirty-page display tracking, and zero-SD-wear profile switching — plus official dekuNukem firmware releases.")
+                        text: qsTr("DuckyDeck Studio includes its custom DuckyDeck Studio Firmware for both duckyPad Pro (DDS_FW_1.1.2_0f85dab1.bin) and duckyPad 2020 (DDS20_FW_1.1.3_1288faee.dfu) — with 204 monochrome pixel-art OLED icons, 4 customizable OLED layout styles, smooth SWC_FADE_TO LED fade, dirty-page display tracking, DP20_XXXX SD volume label & serial stamping, and zero-SD-wear profile switching — plus official dekuNukem firmware releases.")
                         color: Kirigami.Theme.textColor
                     }
                 }
