@@ -14,7 +14,10 @@ use crate::hardware::storage::{
     sync_profiles_to_cache, sync_profiles_to_device_cache, DuckyProfile, ProfileWebhookConfig,
     MAX_INPUT_SLOTS,
 };
-use crate::kwin::auto_switcher::{resolve_rule_icon, AutoSwitchRule};
+use crate::kwin::auto_switcher::{
+    modifier_mode_label, modifier_trigger_key_label, normalize_modifier_mode,
+    normalize_modifier_trigger_key, resolve_rule_icon, AutoSwitchRule, ModifierLayerRule,
+};
 
 fn default_bundle_version() -> u32 {
     1
@@ -127,6 +130,38 @@ pub fn serialize_rules(rules: &[AutoSwitchRule], profiles: &[DuckyProfile]) -> S
                 "targetProfile": r.target_profile,
                 "targetProfileName": prof_name,
                 "icon": icon_name,
+            })
+        })
+        .collect();
+    serde_json::to_string(&items).unwrap_or_else(|_| "[]".to_string())
+}
+
+pub fn serialize_modifier_rules(
+    rules: &[ModifierLayerRule],
+    profiles: &[DuckyProfile],
+) -> String {
+    let items: Vec<_> = rules
+        .iter()
+        .enumerate()
+        .map(|(idx, r)| {
+            let prof_name = profiles
+                .iter()
+                .find(|p| p.number == r.target_profile)
+                .map(|p| p.name.as_str())
+                .unwrap_or("Unassigned");
+            let trig = normalize_modifier_trigger_key(&r.trigger_key);
+            let mode = normalize_modifier_mode(&r.mode);
+            json!({
+                "index": idx,
+                "enabled": r.enabled,
+                "triggerKey": trig,
+                "triggerKeyLabel": modifier_trigger_key_label(&trig),
+                "mode": mode,
+                "modeLabel": modifier_mode_label(&mode),
+                "holdDelayMs": r.hold_delay_ms.clamp(0, 2000),
+                "oneshotTimeoutSec": r.oneshot_timeout_sec.clamp(1, 60),
+                "targetProfile": r.target_profile,
+                "targetProfileName": prof_name,
             })
         })
         .collect();

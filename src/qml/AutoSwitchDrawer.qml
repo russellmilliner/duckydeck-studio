@@ -30,6 +30,51 @@ Window {
     property int dwellMsValue: controller ? controller.autoSwitchDwellMs : 150
     property bool enableSectionExpanded: controller ? controller.autoswitchEnableSectionExpanded : true
     property bool ruleEditorSectionExpanded: controller ? controller.autoswitchRuleEditorExpanded : true
+    property bool modifierSectionExpanded: controller ? controller.modifierSectionExpanded : true
+    property int editingModifierRuleIndex: -1
+
+    readonly property var modifierKeyOptions: [
+        { code: "MENU", label: qsTr("Menu / App Key (KEY_COMPOSE)") },
+        { code: "RCTRL", label: qsTr("Right Ctrl") },
+        { code: "RALT", label: qsTr("Right Alt / AltGr") },
+        { code: "RSHIFT", label: qsTr("Right Shift") },
+        { code: "LCTRL", label: qsTr("Left Ctrl") },
+        { code: "LALT", label: qsTr("Left Alt") },
+        { code: "LSHIFT", label: qsTr("Left Shift") },
+        { code: "SUPER", label: qsTr("Super / Windows Key") },
+        { code: "CTRL_ALT", label: qsTr("Ctrl + Alt (Chord)") },
+        { code: "CTRL_SUPER", label: qsTr("Ctrl + Super (Chord)") },
+        { code: "CAPSLOCK", label: qsTr("Caps Lock") },
+        { code: "SCROLLLOCK", label: qsTr("Scroll Lock") },
+        { code: "PAUSE", label: qsTr("Pause / Break") },
+        { code: "FN", label: qsTr("Fn (if exposed via USB HID)") },
+        { code: "F13", label: qsTr("F13") },
+        { code: "F14", label: qsTr("F14") },
+        { code: "F15", label: qsTr("F15") },
+        { code: "F16", label: qsTr("F16") },
+        { code: "F17", label: qsTr("F17") },
+        { code: "F18", label: qsTr("F18") },
+        { code: "F19", label: qsTr("F19") },
+        { code: "F20", label: qsTr("F20") },
+        { code: "F21", label: qsTr("F21") },
+        { code: "F22", label: qsTr("F22") },
+        { code: "F23", label: qsTr("F23") },
+        { code: "F24", label: qsTr("F24") }
+    ]
+
+    readonly property var modifierModeOptions: [
+        { code: "hold", label: qsTr("Momentary Hold (while held)") },
+        { code: "oneshot", label: qsTr("One-Shot Sticky (1 key or timeout)") },
+        { code: "double_tap_hold", label: qsTr("Double-Tap + Hold") },
+        { code: "toggle", label: qsTr("Toggle Lock (tap / 2× tap)") }
+    ]
+
+    onModifierSectionExpandedChanged: {
+        if (drawerRoot.controller
+            && drawerRoot.controller.modifierSectionExpanded !== drawerRoot.modifierSectionExpanded) {
+            drawerRoot.controller.updateModifierSectionExpanded(drawerRoot.modifierSectionExpanded)
+        }
+    }
 
     function setSectionsExpanded(enableExp, ruleExp) {
         const nextEnable = !!enableExp
@@ -188,6 +233,42 @@ Window {
         id: rulesModel
     }
 
+    ListModel {
+        id: modifierRulesModel
+    }
+
+    function loadModifierRuleIntoEditor(mIdx, trigKey, modeStr, holdDelay, oneshotTimeout, targetProf) {
+        drawerRoot.modifierSectionExpanded = true
+        drawerRoot.editingModifierRuleIndex = mIdx
+        for (let i = 0; i < drawerRoot.modifierKeyOptions.length; ++i) {
+            if (drawerRoot.modifierKeyOptions[i].code === trigKey) {
+                modifierKeyCombo.currentIndex = i
+                break
+            }
+        }
+        for (let i = 0; i < drawerRoot.modifierModeOptions.length; ++i) {
+            if (drawerRoot.modifierModeOptions[i].code === modeStr) {
+                modifierModeCombo.currentIndex = i
+                break
+            }
+        }
+        modifierHoldDelayInput.text = String(holdDelay || 200)
+        modifierOneshotTimeoutInput.text = String(oneshotTimeout || 6)
+        const pIdx = drawerRoot.profileNumbers.indexOf(targetProf)
+        if (pIdx >= 0) {
+            modifierTargetProfileCombo.currentIndex = pIdx
+        }
+        drawerRoot.requestActivate()
+        Qt.callLater(function() {
+            if (mainFlickable && modifierLayerCard) {
+                const maxScroll = Math.max(0, mainFlickable.contentHeight - mainFlickable.height)
+                const targetY = Math.max(0, Math.min(maxScroll, modifierLayerCard.y - 8))
+                mainFlickable.contentY = targetY
+            }
+            modifierKeyCombo.forceActiveFocus()
+        })
+    }
+
     function applyTimings(newSettleMs, newDwellMs) {
         const clampedSettle = Math.max(0, Math.min(5000, Math.round(newSettleMs)))
         const clampedDwell = Math.max(0, Math.min(5000, Math.round(newDwellMs)))
@@ -215,7 +296,16 @@ Window {
         if (pIdx >= 0) {
             targetProfileCombo.currentIndex = pIdx
         }
-        classInput.forceActiveFocus()
+        drawerRoot.requestActivate()
+        Qt.callLater(function() {
+            if (mainFlickable && ruleEditorCard) {
+                const maxScroll = Math.max(0, mainFlickable.contentHeight - mainFlickable.height)
+                const targetY = Math.max(0, Math.min(maxScroll, ruleEditorCard.y - 8))
+                mainFlickable.contentY = targetY
+            }
+            classInput.forceActiveFocus()
+            classInput.selectAll()
+        })
     }
 
     QQC2.Menu {
@@ -286,10 +376,11 @@ Window {
 
     function syncFromController() {
         if (!controller) return
-        const savedScrollY = rulesListView ? rulesListView.contentY : 0
+        const savedScrollY = mainFlickable ? mainFlickable.contentY : 0
 
         drawerRoot.enableSectionExpanded = controller.autoswitchEnableSectionExpanded
         drawerRoot.ruleEditorSectionExpanded = controller.autoswitchRuleEditorExpanded
+        drawerRoot.modifierSectionExpanded = controller.modifierSectionExpanded
         drawerRoot.settleMsValue = controller.autoSwitchSettleMs
         drawerRoot.dwellMsValue = controller.autoSwitchDwellMs
         if (!mouseSettleInput.activeFocus) {
@@ -326,6 +417,30 @@ Window {
             const activeIdx = nums.indexOf(controller.activeProfile)
             if (targetProfileCombo.currentIndex < 0 && activeIdx >= 0) {
                 targetProfileCombo.currentIndex = activeIdx
+            }
+            if (modifierTargetProfileCombo.currentIndex < 0 && activeIdx >= 0) {
+                modifierTargetProfileCombo.currentIndex = activeIdx
+            }
+        } catch (e) {}
+
+        // 1b. Sync main-keyboard modifier layer rules
+        try {
+            const mArr = JSON.parse(controller.modifierRulesJson || "[]")
+            modifierRulesModel.clear()
+            for (let i = 0; i < mArr.length; ++i) {
+                const m = mArr[i]
+                modifierRulesModel.append({
+                    mRuleIndex: m.index !== undefined ? m.index : i,
+                    mRuleEnabled: !!m.enabled,
+                    triggerKey: String(m.triggerKey || "RCTRL"),
+                    triggerKeyLabel: String(m.triggerKeyLabel || m.triggerKey || "Right Ctrl"),
+                    mode: String(m.mode || "hold"),
+                    modeLabel: String(m.modeLabel || "Momentary Hold"),
+                    holdDelayMs: m.holdDelayMs !== undefined ? Number(m.holdDelayMs) : 200,
+                    oneshotTimeoutSec: m.oneshotTimeoutSec !== undefined ? Number(m.oneshotTimeoutSec) : 6,
+                    targetProfile: m.targetProfile || 1,
+                    targetProfileName: String(m.targetProfileName || "Default")
+                })
             }
         } catch (e) {}
 
@@ -397,9 +512,9 @@ Window {
                 rulesModel.remove(nextItems.length, rulesModel.count - nextItems.length)
             }
 
-            if (rulesListView && savedScrollY > 0) {
-                const maxScroll = Math.max(0, rulesListView.contentHeight - rulesListView.height)
-                rulesListView.contentY = Math.min(savedScrollY, maxScroll)
+            if (mainFlickable && savedScrollY > 0) {
+                const maxScroll = Math.max(0, mainFlickable.contentHeight - mainFlickable.height)
+                mainFlickable.contentY = Math.min(savedScrollY, maxScroll)
             }
         } catch (e) {}
     }
@@ -414,6 +529,14 @@ Window {
         target: drawerRoot.controller
         function onAutoSwitchRulesJsonChanged() {
             drawerRoot.syncFromController()
+        }
+        function onModifierRulesJsonChanged() {
+            drawerRoot.syncFromController()
+        }
+        function onModifierSectionExpandedChanged() {
+            if (drawerRoot.controller) {
+                drawerRoot.modifierSectionExpanded = drawerRoot.controller.modifierSectionExpanded
+            }
         }
         function onProfilesJsonChanged() {
             drawerRoot.syncFromController()
@@ -510,8 +633,8 @@ Window {
                     Rectangle {
                         Layout.fillWidth: true
                         radius: 4
-                        color: Qt.alpha("#f59e0b", 0.14)
-                        border.color: Qt.alpha("#f59e0b", 0.55)
+                        color: Qt.alpha(Kirigami.Theme.neutralTextColor, 0.14)
+                        border.color: Qt.alpha(Kirigami.Theme.neutralTextColor, 0.55)
                         border.width: 1
                         implicitHeight: autoSwitchHostLbl.implicitHeight + 8
 
@@ -522,9 +645,7 @@ Window {
                             wrapMode: Text.WordWrap
                             font.pointSize: 10 * drawerRoot.fontScale
                             font.bold: true
-                            color: (0.2126 * Kirigami.Theme.backgroundColor.r + 0.7152 * Kirigami.Theme.backgroundColor.g + 0.0722 * Kirigami.Theme.backgroundColor.b) > 0.45
-                                ? "#92400e"
-                                : "#fbbf24"
+                            color: Kirigami.Theme.textColor
                             text: qsTr("💻 Requires DuckyDeck Studio Running on Host PC (Not Hardware-Portable) — Window tracking uses KDE KWin & USB HID. Without the host app, switch profiles manually on hardware via GOTO_PROFILE / NEXT_PROFILE / PREV_PROFILE or holding '-' on the keypad.")
                         }
                     }
@@ -561,7 +682,7 @@ Window {
                         300,
                         mainFlickable.width - (mainFlickable.contentHeight > mainFlickable.height ? 14 : 0)
                     )
-                    height: Math.max(implicitHeight, mainFlickable.height)
+                    height: implicitHeight
                     spacing: 10
 
                     // Global Enable + Fallback Desktop Profile + Settle Timings Card
@@ -585,7 +706,7 @@ Window {
                                 Layout.fillWidth: true
                                 spacing: 6
 
-                                Rectangle {
+                                QQC2.ToolButton {
                                     id: enableSectionTwistButton
                                     objectName: "enableSectionTwistButton"
                                     Layout.alignment: Qt.AlignVCenter
@@ -593,33 +714,13 @@ Window {
                                     implicitHeight: 26
                                     width: 26
                                     height: 26
-                                    radius: 5
-                                    color: enableTwistMouse.containsMouse
-                                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.22)
-                                        : Kirigami.Theme.alternateBackgroundColor
-                                    border.color: enableTwistMouse.containsMouse
-                                        ? Kirigami.Theme.highlightColor
-                                        : drawerRoot.subtleBorder
-                                    border.width: 1
-
-                                    QQC2.Label {
-                                        anchors.centerIn: parent
-                                        text: drawerRoot.enableSectionExpanded ? "▾" : "▸"
-                                        font.bold: true
-                                        font.pointSize: 11 * drawerRoot.fontScale
-                                        color: Kirigami.Theme.textColor
-                                    }
-
-                                    MouseArea {
-                                        id: enableTwistMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: drawerRoot.enableSectionExpanded = !drawerRoot.enableSectionExpanded
-                                    }
-
+                                    padding: 0
+                                    text: drawerRoot.enableSectionExpanded ? "▾" : "▸"
+                                    font.bold: true
+                                    font.pointSize: 11 * drawerRoot.fontScale
+                                    onClicked: drawerRoot.enableSectionExpanded = !drawerRoot.enableSectionExpanded
                                     QQC2.ToolTip.delay: 500
-                                    QQC2.ToolTip.visible: enableTwistMouse.containsMouse
+                                    QQC2.ToolTip.visible: hovered
                                     QQC2.ToolTip.text: drawerRoot.enableSectionExpanded
                                         ? qsTr("Minimize Auto-Switcher enable & timing settings")
                                         : qsTr("Expand Auto-Switcher enable & timing settings")
@@ -913,6 +1014,426 @@ Window {
                         }
                     }
 
+                    // Main-Keyboard Modifier Layer Shift Card
+                    Rectangle {
+                        id: modifierLayerCard
+                        objectName: "modifierLayerCard"
+                        Kirigami.Theme.colorSet: Kirigami.Theme.View
+                        Kirigami.Theme.inherit: false
+                        Layout.fillWidth: true
+                        implicitHeight: modifierLayerLayout.implicitHeight + 18
+                        radius: 8
+                        color: drawerRoot.controller && drawerRoot.controller.modifierLayerActive
+                            ? Qt.tint(Kirigami.Theme.backgroundColor, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.14))
+                            : Kirigami.Theme.backgroundColor
+                        border.color: drawerRoot.controller && drawerRoot.controller.modifierLayerActive
+                            ? Kirigami.Theme.highlightColor
+                            : drawerRoot.subtleBorder
+                        border.width: drawerRoot.controller && drawerRoot.controller.modifierLayerActive ? 2 : 1
+
+                        ColumnLayout {
+                            id: modifierLayerLayout
+                            anchors.fill: parent
+                            anchors.margins: 9
+                            spacing: 8
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 6
+
+                                QQC2.ToolButton {
+                                    id: modifierSectionTwistButton
+                                    objectName: "modifierSectionTwistButton"
+                                    Layout.alignment: Qt.AlignVCenter
+                                    implicitWidth: 26
+                                    implicitHeight: 26
+                                    width: 26
+                                    height: 26
+                                    padding: 0
+                                    text: drawerRoot.modifierSectionExpanded ? "▾" : "▸"
+                                    font.bold: true
+                                    font.pointSize: 11 * drawerRoot.fontScale
+                                    onClicked: drawerRoot.modifierSectionExpanded = !drawerRoot.modifierSectionExpanded
+                                    QQC2.ToolTip.delay: 500
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: drawerRoot.modifierSectionExpanded
+                                        ? qsTr("Minimize Main-Keyboard Modifier Layer Shift section")
+                                        : qsTr("Expand Main-Keyboard Modifier Layer Shift section")
+                                }
+
+                                QQC2.Switch {
+                                    id: modifierEnableSwitch
+                                    objectName: "modifierEnableSwitch"
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 0
+                                    checked: drawerRoot.controller ? drawerRoot.controller.modifierSwitchEnabled : true
+                                    text: qsTr("⌨️ Main-Keyboard Modifier Layer Shift (Hold / One-Shot / Toggle)")
+                                    font.bold: true
+                                    font.pointSize: 10.5 * drawerRoot.fontScale
+                                    onToggled: {
+                                        if (drawerRoot.controller) {
+                                            drawerRoot.controller.updateModifierSwitchEnabled(checked)
+                                        }
+                                    }
+                                }
+
+                                QQC2.Label {
+                                    visible: drawerRoot.controller && drawerRoot.controller.modifierLayerActive
+                                    Layout.alignment: Qt.AlignVCenter
+                                    Layout.maximumWidth: 220
+                                    text: drawerRoot.controller ? drawerRoot.controller.modifierLayerStatus : ""
+                                    font.bold: true
+                                    font.pointSize: 10 * drawerRoot.fontScale
+                                    color: Kirigami.Theme.textColor
+                                    elide: Text.ElideRight
+                                }
+
+                                QQC2.Label {
+                                    visible: !drawerRoot.modifierSectionExpanded
+                                        && !(drawerRoot.controller && drawerRoot.controller.modifierLayerActive)
+                                    Layout.alignment: Qt.AlignVCenter
+                                    text: qsTr("%1 layer(s)").arg(modifierRulesModel.count)
+                                    font.family: "monospace"
+                                    font.pointSize: 10 * drawerRoot.fontScale
+                                    color: Kirigami.Theme.disabledTextColor
+                                }
+                            }
+
+                            ColumnLayout {
+                                id: modifierSectionDetailsCol
+                                visible: drawerRoot.modifierSectionExpanded
+                                Layout.fillWidth: true
+                                spacing: 6
+
+                                QQC2.Label {
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 0
+                                    wrapMode: Text.WordWrap
+                                    font.pointSize: 10 * drawerRoot.fontScale
+                                    color: Kirigami.Theme.disabledTextColor
+                                    text: qsTr("Hold or tap a modifier/dedicated key on your main PC keyboard to shift the duckyPad to a global desktop profile and restore your window's profile on release. Includes a chord guard so normal shortcuts (like Ctrl+C) never flicker the keypad.")
+                                }
+
+                                // Row 1: Trigger Key + Activation Mode
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    QQC2.Label {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr("Trigger Key:")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        color: Kirigami.Theme.disabledTextColor
+                                    }
+
+                                    QQC2.ComboBox {
+                                        id: modifierKeyCombo
+                                        objectName: "modifierKeyCombo"
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 110
+                                        Layout.preferredWidth: 1
+                                        Layout.alignment: Qt.AlignVCenter
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        textRole: "label"
+                                        valueRole: "code"
+                                        model: drawerRoot.modifierKeyOptions
+                                        currentIndex: 1 // Default RCTRL
+                                    }
+
+                                    QQC2.Label {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr("Mode:")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        color: Kirigami.Theme.disabledTextColor
+                                    }
+
+                                    QQC2.ComboBox {
+                                        id: modifierModeCombo
+                                        objectName: "modifierModeCombo"
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 110
+                                        Layout.preferredWidth: 1
+                                        Layout.alignment: Qt.AlignVCenter
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        textRole: "label"
+                                        valueRole: "code"
+                                        model: drawerRoot.modifierModeOptions
+                                        currentIndex: 0 // Default Hold
+                                    }
+                                }
+
+                                // Row 2: Hold Delay / One-Shot Timeout + Target Profile + Save Button
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    QQC2.Label {
+                                        visible: modifierModeCombo.currentIndex !== 1
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr("Hold Delay:")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        color: Kirigami.Theme.disabledTextColor
+                                    }
+
+                                    QQC2.TextField {
+                                        id: modifierHoldDelayInput
+                                        visible: modifierModeCombo.currentIndex !== 1
+                                        Layout.preferredWidth: 64
+                                        Layout.minimumWidth: 56
+                                        implicitHeight: 30
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        font.family: "monospace"
+                                        font.bold: true
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        selectByMouse: true
+                                        text: "200"
+                                        validator: IntValidator { bottom: 0; top: 2000 }
+                                        QQC2.ToolTip.delay: 500
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Chord-guard hold delay in milliseconds before shifting (0–2000 ms, default 200 ms)")
+                                    }
+
+                                    QQC2.Label {
+                                        visible: modifierModeCombo.currentIndex !== 1
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr("ms")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        color: Kirigami.Theme.disabledTextColor
+                                    }
+
+                                    QQC2.Label {
+                                        visible: modifierModeCombo.currentIndex === 1
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr("Timeout:")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        color: Kirigami.Theme.disabledTextColor
+                                    }
+
+                                    QQC2.TextField {
+                                        id: modifierOneshotTimeoutInput
+                                        visible: modifierModeCombo.currentIndex === 1
+                                        Layout.preferredWidth: 56
+                                        Layout.minimumWidth: 48
+                                        implicitHeight: 30
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        font.family: "monospace"
+                                        font.bold: true
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        selectByMouse: true
+                                        text: "6"
+                                        validator: IntValidator { bottom: 1; top: 60 }
+                                        QQC2.ToolTip.delay: 500
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("One-Shot auto-restore timeout in seconds if no duckyPad key is pressed (1–60 s, default 6 s)")
+                                    }
+
+                                    QQC2.Label {
+                                        visible: modifierModeCombo.currentIndex === 1
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr("sec")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        color: Kirigami.Theme.disabledTextColor
+                                    }
+
+                                    QQC2.Label {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr("Profile:")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        color: Kirigami.Theme.disabledTextColor
+                                    }
+
+                                    QQC2.ComboBox {
+                                        id: modifierTargetProfileCombo
+                                        objectName: "modifierTargetProfileCombo"
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 100
+                                        Layout.preferredWidth: 1
+                                        Layout.alignment: Qt.AlignVCenter
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        model: drawerRoot.profileChoices
+                                    }
+
+                                    QQC2.Button {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        visible: drawerRoot.editingModifierRuleIndex >= 0
+                                        text: qsTr("Cancel")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        onClicked: {
+                                            drawerRoot.editingModifierRuleIndex = -1
+                                        }
+                                    }
+
+                                    QQC2.Button {
+                                        id: saveModifierRuleBtn
+                                        objectName: "saveModifierRuleButton"
+                                        Layout.alignment: Qt.AlignVCenter
+                                        icon.name: drawerRoot.editingModifierRuleIndex >= 0 ? "document-save" : "list-add"
+                                        text: drawerRoot.editingModifierRuleIndex >= 0 ? qsTr("Update Layer") : qsTr("Add Layer")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        highlighted: true
+                                        enabled: modifierTargetProfileCombo.currentIndex >= 0
+                                        onClicked: {
+                                            if (!drawerRoot.controller) return
+                                            const keyOpt = drawerRoot.modifierKeyOptions[Math.max(0, modifierKeyCombo.currentIndex)]
+                                            const modeOpt = drawerRoot.modifierModeOptions[Math.max(0, modifierModeCombo.currentIndex)]
+                                            const parsedDelay = parseInt(modifierHoldDelayInput.text, 10)
+                                            const parsedTimeout = parseInt(modifierOneshotTimeoutInput.text, 10)
+                                            const profNum = drawerRoot.profileNumbers[modifierTargetProfileCombo.currentIndex] || 1
+                                            drawerRoot.controller.saveModifierRule(
+                                                drawerRoot.editingModifierRuleIndex,
+                                                true,
+                                                keyOpt ? keyOpt.code : "RCTRL",
+                                                modeOpt ? modeOpt.code : "hold",
+                                                isNaN(parsedDelay) ? 200 : parsedDelay,
+                                                isNaN(parsedTimeout) ? 6 : parsedTimeout,
+                                                profNum
+                                            )
+                                            drawerRoot.editingModifierRuleIndex = -1
+                                        }
+                                    }
+                                }
+
+                                // Configured Modifier Layer Rules List
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 4
+                                    visible: modifierRulesModel.count > 0
+
+                                    Repeater {
+                                        model: modifierRulesModel
+                                        delegate: Rectangle {
+                                            id: modRuleRow
+                                            required property int index
+                                            required property int mRuleIndex
+                                            required property bool mRuleEnabled
+                                            required property string triggerKey
+                                            required property string triggerKeyLabel
+                                            required property string mode
+                                            required property string modeLabel
+                                            required property int holdDelayMs
+                                            required property int oneshotTimeoutSec
+                                            required property int targetProfile
+                                            required property string targetProfileName
+
+                                            Layout.fillWidth: true
+                                            implicitHeight: modRuleInnerRow.implicitHeight + 10
+                                            radius: 6
+                                            color: Kirigami.Theme.alternateBackgroundColor
+                                            border.color: drawerRoot.editingModifierRuleIndex === mRuleIndex
+                                                ? Kirigami.Theme.highlightColor
+                                                : drawerRoot.subtleBorder
+                                            border.width: drawerRoot.editingModifierRuleIndex === mRuleIndex ? 2 : 1
+
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                acceptedButtons: Qt.LeftButton
+                                                onDoubleClicked: {
+                                                    drawerRoot.loadModifierRuleIntoEditor(
+                                                        modRuleRow.mRuleIndex,
+                                                        modRuleRow.triggerKey,
+                                                        modRuleRow.mode,
+                                                        modRuleRow.holdDelayMs,
+                                                        modRuleRow.oneshotTimeoutSec,
+                                                        modRuleRow.targetProfile
+                                                    )
+                                                }
+                                            }
+
+                                            RowLayout {
+                                                id: modRuleInnerRow
+                                                anchors.fill: parent
+                                                anchors.leftMargin: 8
+                                                anchors.rightMargin: 8
+                                                anchors.topMargin: 5
+                                                anchors.bottomMargin: 5
+                                                spacing: 8
+
+                                                HighContrastCheckBox {
+                                                    Layout.alignment: Qt.AlignVCenter
+                                                    checked: modRuleRow.mRuleEnabled
+                                                    onToggled: {
+                                                        if (drawerRoot.controller) {
+                                                            drawerRoot.controller.toggleModifierRule(modRuleRow.mRuleIndex, checked)
+                                                        }
+                                                    }
+                                                    QQC2.ToolTip.delay: 500
+                                                    QQC2.ToolTip.visible: hovered
+                                                    QQC2.ToolTip.text: qsTr("Enable or disable this modifier layer rule")
+                                                }
+
+                                                QQC2.Label {
+                                                    Layout.fillWidth: true
+                                                    Layout.minimumWidth: 60
+                                                    Layout.preferredWidth: 1
+                                                    Layout.alignment: Qt.AlignVCenter
+                                                    text: {
+                                                        const timingDesc = modRuleRow.mode === "oneshot"
+                                                            ? qsTr("%1 s timeout").arg(modRuleRow.oneshotTimeoutSec)
+                                                            : (modRuleRow.mode === "toggle"
+                                                                ? qsTr("lock on/off")
+                                                                : qsTr("%1 ms hold").arg(modRuleRow.holdDelayMs))
+                                                        return qsTr("⌨️ %1  •  %2 (%3)  →  Profile #%4 (%5)")
+                                                            .arg(modRuleRow.triggerKeyLabel)
+                                                            .arg(modRuleRow.modeLabel)
+                                                            .arg(timingDesc)
+                                                            .arg(modRuleRow.targetProfile)
+                                                            .arg(modRuleRow.targetProfileName)
+                                                    }
+                                                    font.bold: true
+                                                    font.pointSize: 10 * drawerRoot.fontScale
+                                                    elide: Text.ElideRight
+                                                    color: modRuleRow.mRuleEnabled
+                                                        ? Kirigami.Theme.textColor
+                                                        : Kirigami.Theme.disabledTextColor
+                                                }
+
+                                                QQC2.Button {
+                                                    Layout.alignment: Qt.AlignVCenter
+                                                    implicitHeight: 26
+                                                    icon.name: "document-edit"
+                                                    text: qsTr("Edit")
+                                                    font.pointSize: 10 * drawerRoot.fontScale
+                                                    onClicked: {
+                                                        drawerRoot.loadModifierRuleIntoEditor(
+                                                            modRuleRow.mRuleIndex,
+                                                            modRuleRow.triggerKey,
+                                                            modRuleRow.mode,
+                                                            modRuleRow.holdDelayMs,
+                                                            modRuleRow.oneshotTimeoutSec,
+                                                            modRuleRow.targetProfile
+                                                        )
+                                                    }
+                                                }
+
+                                                QQC2.Button {
+                                                    Layout.alignment: Qt.AlignVCenter
+                                                    implicitWidth: 28
+                                                    implicitHeight: 26
+                                                    text: "✕"
+                                                    font.bold: true
+                                                    font.pointSize: 10 * drawerRoot.fontScale
+                                                    onClicked: {
+                                                        if (drawerRoot.editingModifierRuleIndex === modRuleRow.mRuleIndex) {
+                                                            drawerRoot.editingModifierRuleIndex = -1
+                                                        }
+                                                        if (drawerRoot.controller) {
+                                                            drawerRoot.controller.removeModifierRule(modRuleRow.mRuleIndex)
+                                                        }
+                                                    }
+                                                    QQC2.ToolTip.delay: 500
+                                                    QQC2.ToolTip.visible: hovered
+                                                    QQC2.ToolTip.text: qsTr("Remove modifier layer rule")
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Live Active Window Monitor + Picker Card
                     Rectangle {
                         Kirigami.Theme.colorSet: Kirigami.Theme.View
@@ -1023,14 +1544,18 @@ Window {
 
                     // Add / Edit Rule Form Card
                     Rectangle {
+                        id: ruleEditorCard
+                        objectName: "ruleEditorCard"
                         Kirigami.Theme.colorSet: Kirigami.Theme.View
                         Kirigami.Theme.inherit: false
                         Layout.fillWidth: true
                         implicitHeight: ruleFormCol.implicitHeight + 18
                         radius: 8
                         color: Kirigami.Theme.backgroundColor
-                        border.color: drawerRoot.subtleBorder
-                        border.width: 1
+                        border.color: drawerRoot.editingRuleIndex >= 0
+                            ? Kirigami.Theme.highlightColor
+                            : drawerRoot.subtleBorder
+                        border.width: drawerRoot.editingRuleIndex >= 0 ? 2 : 1
 
                         ColumnLayout {
                             id: ruleFormCol
@@ -1042,7 +1567,7 @@ Window {
                                 Layout.fillWidth: true
                                 spacing: 6
 
-                                Rectangle {
+                                QQC2.ToolButton {
                                     id: ruleEditorTwistButton
                                     objectName: "ruleEditorTwistButton"
                                     Layout.alignment: Qt.AlignVCenter
@@ -1050,33 +1575,13 @@ Window {
                                     implicitHeight: 26
                                     width: 26
                                     height: 26
-                                    radius: 5
-                                    color: ruleTwistMouse.containsMouse
-                                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.22)
-                                        : Kirigami.Theme.alternateBackgroundColor
-                                    border.color: ruleTwistMouse.containsMouse
-                                        ? Kirigami.Theme.highlightColor
-                                        : drawerRoot.subtleBorder
-                                    border.width: 1
-
-                                    QQC2.Label {
-                                        anchors.centerIn: parent
-                                        text: drawerRoot.ruleEditorSectionExpanded ? "▾" : "▸"
-                                        font.bold: true
-                                        font.pointSize: 11 * drawerRoot.fontScale
-                                        color: Kirigami.Theme.textColor
-                                    }
-
-                                    MouseArea {
-                                        id: ruleTwistMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: drawerRoot.ruleEditorSectionExpanded = !drawerRoot.ruleEditorSectionExpanded
-                                    }
-
+                                    padding: 0
+                                    text: drawerRoot.ruleEditorSectionExpanded ? "▾" : "▸"
+                                    font.bold: true
+                                    font.pointSize: 11 * drawerRoot.fontScale
+                                    onClicked: drawerRoot.ruleEditorSectionExpanded = !drawerRoot.ruleEditorSectionExpanded
                                     QQC2.ToolTip.delay: 500
-                                    QQC2.ToolTip.visible: ruleTwistMouse.containsMouse
+                                    QQC2.ToolTip.visible: hovered
                                     QQC2.ToolTip.text: drawerRoot.ruleEditorSectionExpanded
                                         ? qsTr("Minimize Add / Edit Window Rule section")
                                         : qsTr("Expand Add / Edit Window Rule section")
@@ -1372,12 +1877,16 @@ Window {
                         }
                     }
 
-                    // Scrollable Rules List Container with Drag-and-Drop Reordering & Right-Click Context Menu
+                    // Fully Expanded Rules List Container with Drag-and-Drop Reordering & Right-Click Context Menu
                     Rectangle {
+                        id: rulesListContainer
                         Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        Layout.minimumHeight: 160
-                        Layout.preferredHeight: 1
+                        readonly property int fullListHeight: rulesModel.count > 0
+                            ? (rulesModel.count * 66 + 6)
+                            : 72
+                        implicitHeight: fullListHeight
+                        Layout.minimumHeight: fullListHeight
+                        Layout.preferredHeight: fullListHeight
                         radius: 8
                         color: Kirigami.Theme.alternateBackgroundColor
                         border.color: drawerRoot.subtleBorder
@@ -1389,6 +1898,8 @@ Window {
                             anchors.fill: parent
                             anchors.margins: 6
                             clip: true
+                            interactive: false
+                            cacheBuffer: 100000
                             model: rulesModel
                             spacing: 6
                             boundsBehavior: Flickable.StopAtBounds
@@ -1397,16 +1908,6 @@ Window {
                             property int draggedRuleIndex: -1
                             property int dropTargetRuleIndex: -1
                             readonly property bool canReorder: drawerRoot.ruleFilterText.trim().length === 0
-
-                            QQC2.ScrollBar.vertical: HighContrastScrollBar {
-                                parent: rulesListView
-                                anchors.top: parent.top
-                                anchors.right: parent.right
-                                anchors.bottom: parent.bottom
-                                policy: rulesListView.contentHeight > rulesListView.height
-                                    ? QQC2.ScrollBar.AlwaysOn
-                                    : QQC2.ScrollBar.AsNeeded
-                            }
 
                             QQC2.Label {
                                 anchors.centerIn: parent
@@ -1454,10 +1955,7 @@ Window {
 
                                 Kirigami.Theme.colorSet: Kirigami.Theme.View
                                 Kirigami.Theme.inherit: false
-                                width: Math.max(
-                                    200,
-                                    rulesListView.width - (rulesListView.contentHeight > rulesListView.height ? 16 : 4)
-                                )
+                                width: Math.max(200, rulesListView.width - 4)
                                 height: 60
                                 z: isBeingDragged ? 100 : 1
 
@@ -1529,17 +2027,16 @@ Window {
                                         if (!pressed || !(mouse.buttons & Qt.LeftButton) || !rulesListView.canReorder) return
                                         if (!dragging && Math.abs(mouse.y - pressY) > 5) {
                                             dragging = true
-                                            rulesListView.interactive = false
                                             rulesListView.draggedRuleIndex = ruleDelegate.index
                                             rulesListView.dropTargetRuleIndex = ruleDelegate.index
                                         }
                                         if (dragging) {
-                                            const posInView = ruleDragMouse.mapToItem(rulesListView, mouse.x, mouse.y)
-                                            if (posInView.y < 24 && rulesListView.contentY > 0) {
-                                                rulesListView.contentY = Math.max(0, rulesListView.contentY - 10)
-                                            } else if (posInView.y > rulesListView.height - 24) {
-                                                const maxScroll = Math.max(0, rulesListView.contentHeight - rulesListView.height)
-                                                rulesListView.contentY = Math.min(maxScroll, rulesListView.contentY + 10)
+                                            const posInFlick = ruleDragMouse.mapToItem(mainFlickable, mouse.x, mouse.y)
+                                            if (posInFlick.y < 32 && mainFlickable.contentY > 0) {
+                                                mainFlickable.contentY = Math.max(0, mainFlickable.contentY - 12)
+                                            } else if (posInFlick.y > mainFlickable.height - 32) {
+                                                const maxScroll = Math.max(0, mainFlickable.contentHeight - mainFlickable.height)
+                                                mainFlickable.contentY = Math.min(maxScroll, mainFlickable.contentY + 12)
                                             }
 
                                             dragOffsetX = Math.max(-10, Math.min(10, mouse.x - pressX))
@@ -1566,14 +2063,13 @@ Window {
                                             dragOffsetY = 0
                                             rulesListView.draggedRuleIndex = -1
                                             rulesListView.dropTargetRuleIndex = -1
-                                            rulesListView.interactive = true
                                             if (drawerRoot.controller && fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx) {
                                                 if (drawerRoot.editingRuleIndex === fromIdx) {
                                                     drawerRoot.editingRuleIndex = toIdx
                                                 }
-                                                const savedY = rulesListView.contentY
+                                                const savedY = mainFlickable.contentY
                                                 drawerRoot.controller.reorderAutoSwitchRule(fromIdx, toIdx)
-                                                rulesListView.contentY = savedY
+                                                mainFlickable.contentY = savedY
                                             }
                                         }
                                     }
@@ -1584,7 +2080,6 @@ Window {
                                         dragOffsetY = 0
                                         rulesListView.draggedRuleIndex = -1
                                         rulesListView.dropTargetRuleIndex = -1
-                                        rulesListView.interactive = true
                                     }
                                 }
 
@@ -1736,9 +2231,7 @@ Window {
                                                 font.pointSize: 10 * drawerRoot.fontScale
                                                 font.weight: Font.Medium
                                                 elide: Text.ElideRight
-                                                color: (0.2126 * Kirigami.Theme.backgroundColor.r + 0.7152 * Kirigami.Theme.backgroundColor.g + 0.0722 * Kirigami.Theme.backgroundColor.b) > 0.45
-                                                    ? "#0369a1"
-                                                    : Kirigami.Theme.highlightColor
+                                                color: Kirigami.Theme.textColor
                                             }
                                         }
                                     }

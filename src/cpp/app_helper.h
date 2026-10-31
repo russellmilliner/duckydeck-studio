@@ -1978,9 +1978,12 @@ inline void duckydeck_apply_ui_font_scale(int32_t scalePercent) {
         return;
     }
     const int clamped = std::clamp(static_cast<int>(scalePercent), 75, 160);
+    static const double s_osBasePt = std::max(
+        10.0,
+        QGuiApplication::font().pointSizeF() > 0.0 ? QGuiApplication::font().pointSizeF() : 10.5
+    );
     QFont f = QGuiApplication::font();
-    const double basePt = 10.5;
-    f.setPointSizeF(std::round(basePt * (static_cast<double>(clamped) / 100.0) * 10.0) / 10.0);
+    f.setPointSizeF(std::round(s_osBasePt * (static_cast<double>(clamped) / 100.0) * 10.0) / 10.0);
     QGuiApplication::setFont(f);
 }
 

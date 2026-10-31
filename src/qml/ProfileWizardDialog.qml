@@ -391,6 +391,20 @@ Window {
         const jsonStr = JSON.stringify(payload)
         const ok = controller.createWizardProfile(jsonStr)
         if (ok) {
+            if (root) {
+                if (typeof root.syncSidebarProfilesFromController === "function") {
+                    root.syncSidebarProfilesFromController()
+                }
+                if (root.mainHardwareCanvas && typeof root.mainHardwareCanvas.syncProfilesFromController === "function") {
+                    root.mainHardwareCanvas.syncProfilesFromController()
+                }
+                if (typeof root.refreshSelectedSlotFromController === "function") {
+                    root.refreshSelectedSlotFromController()
+                }
+                if (typeof root.ensureActiveProfileVisibleInList === "function") {
+                    Qt.callLater(root.ensureActiveProfileVisibleInList)
+                }
+            }
             const doSync = (syncImmediately !== undefined) ? !!syncImmediately : wizardDialog.syncAfterCreation
             wizardDialog.close()
             if (doSync) {

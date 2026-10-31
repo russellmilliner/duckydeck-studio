@@ -24,12 +24,15 @@ Kirigami.ApplicationWindow {
             + Math.min(hardwareCanvas.requiredWidthForFullHeight, root.maxCenterColumnWidth)
             + Kirigami.Units.largeSpacing * 2
             + 20,
-        connRow.implicitWidth
-            + fwBadgeRect.implicitWidth
+        connStatusPill.implicitWidth
             + syncStatusBadge.implicitWidth
-            + (deviceController.sdMountPath.length > 0 ? 220 : 0)
             + Kirigami.Units.largeSpacing * 2
-            + 180
+            + 220,
+        fwBadgeRect.implicitWidth
+            + (sdSpaceBadge.visible ? sdSpaceBadge.implicitWidth + 10 : 0)
+            + (oledWidgetStatusBtn.visible ? oledWidgetStatusBtn.implicitWidth + 10 : 0)
+            + Kirigami.Units.largeSpacing * 2
+            + 16
     )
     readonly property int expandedWindowWidth: Math.max(
         compactWindowWidth + inspectorCard.minContentWidth + 8,
@@ -62,21 +65,83 @@ Kirigami.ApplicationWindow {
         clipboardHelper.deselect()
     }
 
+    Timer {
+        id: windowWidthSyncTimer
+        interval: 40
+        repeat: false
+        onTriggered: {
+            if (root.isShowcaseCaptureWindow) return
+            if (root.visibility === Window.Maximized || root.visibility === Window.FullScreen) {
+                root.maximumWidth = 16777215
+                return
+            }
+            if (!root.hasSelectedSlot) {
+                const targetW = root.compactWindowWidth
+                if (typeof profilesSidebar !== "undefined" && profilesSidebar) {
+                    profilesSidebar.width = profilesSidebar.QQC2.SplitView.preferredWidth
+                }
+                root.maximumWidth = targetW
+                root.width = targetW
+                windowMaxReleaseTimer.restart()
+            } else {
+                root.maximumWidth = 16777215
+                if (root.width < root.minimumWidth) {
+                    root.width = root.minimumWidth
+                }
+            }
+        }
+    }
+
+    Timer {
+        id: windowMaxReleaseTimer
+        interval: 90
+        repeat: false
+        onTriggered: {
+            root.maximumWidth = 16777215
+            if (!root.hasSelectedSlot
+                && !root.isShowcaseCaptureWindow
+                && root.visibility !== Window.Maximized
+                && root.visibility !== Window.FullScreen) {
+                root.width = root.compactWindowWidth
+            }
+        }
+    }
+
     function syncWindowWidthToEditorState() {
         if (root.isShowcaseCaptureWindow) {
+            windowWidthSyncTimer.stop()
+            windowMaxReleaseTimer.stop()
+            root.maximumWidth = 16777215
             root.width = 1600
             root.height = 900
             return
         }
         if (root.visibility === Window.Maximized || root.visibility === Window.FullScreen) {
+            windowWidthSyncTimer.stop()
+            windowMaxReleaseTimer.stop()
+            root.maximumWidth = 16777215
             return
         }
         if (root.hasSelectedSlot) {
+            windowWidthSyncTimer.stop()
+            windowMaxReleaseTimer.stop()
+            root.maximumWidth = 16777215
             if (root.width < root.minimumWidth) {
                 root.width = root.minimumWidth
             }
         } else {
-            root.width = root.minimumWidth
+            const targetW = root.compactWindowWidth
+            if (typeof profilesSidebar !== "undefined" && profilesSidebar) {
+                profilesSidebar.width = profilesSidebar.QQC2.SplitView.preferredWidth
+            }
+            if (!deviceController || !deviceController.isUiTestSuiteMode()) {
+                root.maximumWidth = targetW
+                windowWidthSyncTimer.restart()
+                windowMaxReleaseTimer.restart()
+            } else {
+                root.maximumWidth = 16777215
+            }
+            root.width = targetW
         }
     }
 
@@ -1013,6 +1078,7 @@ Kirigami.ApplicationWindow {
                 })
             }
 
+            const prevCount = sidebarProfileModel.count
             for (let idx = 0; idx < newItems.length; ++idx) {
                 if (idx < sidebarProfileModel.count) {
                     sidebarProfileModel.set(idx, newItems[idx])
@@ -1024,7 +1090,9 @@ Kirigami.ApplicationWindow {
                 sidebarProfileModel.remove(newItems.length, sidebarProfileModel.count - newItems.length)
             }
 
-            if (profileSidebarList && savedContentY > 0) {
+            if (newItems.length > prevCount) {
+                Qt.callLater(root.ensureActiveProfileVisibleInList)
+            } else if (profileSidebarList && savedContentY > 0) {
                 const maxScroll = Math.max(0, profileSidebarList.contentHeight - profileSidebarList.height)
                 profileSidebarList.contentY = Math.min(savedContentY, maxScroll)
             }
@@ -1436,15 +1504,31 @@ Kirigami.ApplicationWindow {
     }
 
     function triggerSyncToDeviceSd() {
+        if (sdSyncDialog && sdSyncDialog.unsyncedChangesDialog && sdSyncDialog.unsyncedChangesDialog.visible) {
+            sdSyncDialog.unsyncedChangesDialog.close()
+            sdSyncDialog.unsyncedChangesDialog.visible = false
+        }
         root.clearSlotSelection()
-        sdSyncDialog.open()
-        deviceController.syncProfilesToDeviceSd()
+        root.syncWindowWidthToEditorState()
+        Qt.callLater(function() {
+            root.syncWindowWidthToEditorState()
+            sdSyncDialog.open()
+            deviceController.syncProfilesToDeviceSd()
+        })
     }
 
     function triggerReloadFromDeviceSd() {
+        if (sdSyncDialog && sdSyncDialog.unsyncedChangesDialog && sdSyncDialog.unsyncedChangesDialog.visible) {
+            sdSyncDialog.unsyncedChangesDialog.close()
+            sdSyncDialog.unsyncedChangesDialog.visible = false
+        }
         root.clearSlotSelection()
-        sdSyncDialog.open()
-        deviceController.reloadProfilesFromDeviceSd()
+        root.syncWindowWidthToEditorState()
+        Qt.callLater(function() {
+            root.syncWindowWidthToEditorState()
+            sdSyncDialog.open()
+            deviceController.reloadProfilesFromDeviceSd()
+        })
     }
 
     DeviceController {
@@ -1457,11 +1541,14 @@ Kirigami.ApplicationWindow {
         onSdSyncBusyChanged: {
             if (deviceController.sdSyncBusy) {
                 root.clearSlotSelection()
+                root.syncWindowWidthToEditorState()
                 sdSyncDialog.open()
             } else {
                 root.syncSidebarProfilesFromController()
                 hardwareCanvas.syncProfilesFromController()
                 root.refreshSelectedSlotFromController()
+                root.syncWindowWidthToEditorState()
+                Qt.callLater(root.syncWindowWidthToEditorState)
             }
         }
         onActiveProfileChanged: {
@@ -3322,6 +3409,7 @@ Kirigami.ApplicationWindow {
                                             root.syncSidebarProfilesFromController()
                                             hardwareCanvas.syncProfilesFromController()
                                             root.refreshSelectedSlotFromController()
+                                            Qt.callLater(root.ensureActiveProfileVisibleInList)
                                         }
                                     }
                                 }
@@ -4119,280 +4207,92 @@ Kirigami.ApplicationWindow {
                                 RowLayout {
                                     id: inspectorPhaseRow
                                     anchors.fill: parent
-                                    spacing: 2
+                                    spacing: 4
 
-                                    // 1x Single Click (On Press) Tab
-                                    Rectangle {
-                                        readonly property bool isActiveTab: root.editingClickPhase === 0 && !root.editingReleaseScript
+                                    QQC2.TabBar {
+                                        id: inspectorPhaseTabBar
                                         Layout.preferredHeight: Math.round(30 * root.inspectorScale)
-                                        implicitWidth: onPressTabLbl.implicitWidth + 18
-                                        topLeftRadius: 6
-                                        topRightRadius: 6
-                                        bottomLeftRadius: 0
-                                        bottomRightRadius: 0
-                                        color: isActiveTab
-                                            ? Kirigami.Theme.backgroundColor
-                                            : (onPressTabMouse.containsMouse
-                                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.10)
-                                                : Kirigami.Theme.alternateBackgroundColor)
-                                        border.color: isActiveTab
-                                            ? Kirigami.Theme.highlightColor
-                                            : Qt.alpha(Kirigami.Theme.textColor, 0.18)
-                                        border.width: 1
+                                        padding: 0
+                                        spacing: 2
+                                        background: Item {}
 
-                                        Rectangle {
-                                            visible: parent.isActiveTab
-                                            anchors.top: parent.top
-                                            anchors.left: parent.left
-                                            anchors.right: parent.right
-                                            height: 3
-                                            topLeftRadius: 6
-                                            topRightRadius: 6
-                                            color: Kirigami.Theme.highlightColor
-                                        }
-
-                                        Rectangle {
-                                            visible: parent.isActiveTab
-                                            anchors.bottom: parent.bottom
-                                            anchors.left: parent.left
-                                            anchors.right: parent.right
-                                            anchors.leftMargin: 1
-                                            anchors.rightMargin: 1
-                                            height: 2
-                                            color: Kirigami.Theme.backgroundColor
-                                        }
-
-                                        QQC2.Label {
-                                            id: onPressTabLbl
-                                            anchors.centerIn: parent
+                                        // 1x Single Click (On Press) Tab
+                                        QQC2.TabButton {
+                                            readonly property bool isActiveTab: root.editingClickPhase === 0 && !root.editingReleaseScript
+                                            checked: isActiveTab
+                                            width: implicitWidth
+                                            implicitHeight: Math.round(30 * root.inspectorScale)
+                                            leftPadding: 10
+                                            rightPadding: 10
                                             text: root.singleClickScriptBuffer.trim().length > 0
                                                 ? qsTr("⬇ 1× Press ●")
                                                 : qsTr("⬇ 1× Press")
                                             font.pointSize: 10 * root.fontScale
-                                            font.bold: parent.isActiveTab
-                                            color: parent.isActiveTab
-                                                ? root.highContrastHighlightText
-                                                : Kirigami.Theme.textColor
-                                        }
-
-                                        MouseArea {
-                                            id: onPressTabMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
+                                            font.bold: isActiveTab
                                             onClicked: root.switchEditingClickPhase(0)
+                                            QQC2.ToolTip.delay: 500
+                                            QQC2.ToolTip.visible: hovered
+                                            QQC2.ToolTip.text: qsTr("Edit script executed on 1× Single Click (On Press)")
                                         }
 
-                                        QQC2.ToolTip.delay: 500
-                                        QQC2.ToolTip.visible: onPressTabMouse.containsMouse
-                                        QQC2.ToolTip.text: qsTr("Edit script executed on 1× Single Click (On Press)")
-                                    }
-
-                                    // 2x Double Click Tab (Mechanical Keys 1..20)
-                                    Rectangle {
-                                        visible: inspectorCard.isMechanicalKey
-                                        readonly property bool isActiveTab: root.editingClickPhase === 1
-                                        Layout.preferredHeight: Math.round(30 * root.inspectorScale)
-                                        implicitWidth: doubleClickTabLbl.implicitWidth + 18
-                                        topLeftRadius: 6
-                                        topRightRadius: 6
-                                        bottomLeftRadius: 0
-                                        bottomRightRadius: 0
-                                        color: isActiveTab
-                                            ? Kirigami.Theme.backgroundColor
-                                            : (doubleClickTabMouse.containsMouse
-                                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.10)
-                                                : Kirigami.Theme.alternateBackgroundColor)
-                                        border.color: isActiveTab
-                                            ? Kirigami.Theme.highlightColor
-                                            : Qt.alpha(Kirigami.Theme.textColor, 0.18)
-                                        border.width: 1
-
-                                        Rectangle {
-                                            visible: parent.isActiveTab
-                                            anchors.top: parent.top
-                                            anchors.left: parent.left
-                                            anchors.right: parent.right
-                                            height: 3
-                                            topLeftRadius: 6
-                                            topRightRadius: 6
-                                            color: Kirigami.Theme.highlightColor
-                                        }
-
-                                        Rectangle {
-                                            visible: parent.isActiveTab
-                                            anchors.bottom: parent.bottom
-                                            anchors.left: parent.left
-                                            anchors.right: parent.right
-                                            anchors.leftMargin: 1
-                                            anchors.rightMargin: 1
-                                            height: 2
-                                            color: Kirigami.Theme.backgroundColor
-                                        }
-
-                                        QQC2.Label {
-                                            id: doubleClickTabLbl
-                                            anchors.centerIn: parent
+                                        // 2x Double Click Tab (Mechanical Keys 1..20)
+                                        QQC2.TabButton {
+                                            visible: inspectorCard.isMechanicalKey
+                                            readonly property bool isActiveTab: root.editingClickPhase === 1
+                                            checked: isActiveTab
+                                            width: visible ? implicitWidth : 0
+                                            implicitHeight: Math.round(30 * root.inspectorScale)
+                                            leftPadding: 10
+                                            rightPadding: 10
                                             text: root.doubleClickScriptBuffer.trim().length > 0
                                                 ? qsTr("⚡ 2× Double ●")
                                                 : qsTr("⚡ 2× Double")
                                             font.pointSize: 10 * root.fontScale
-                                            font.bold: parent.isActiveTab || root.doubleClickScriptBuffer.trim().length > 0
-                                            color: parent.isActiveTab
-                                                ? root.highContrastHighlightText
-                                                : (root.doubleClickScriptBuffer.trim().length > 0
-                                                    ? root.highContrastPositiveText
-                                                    : Kirigami.Theme.textColor)
-                                        }
-
-                                        MouseArea {
-                                            id: doubleClickTabMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
+                                            font.bold: isActiveTab || root.doubleClickScriptBuffer.trim().length > 0
                                             onClicked: root.switchEditingClickPhase(1)
+                                            QQC2.ToolTip.delay: 500
+                                            QQC2.ToolTip.visible: hovered
+                                            QQC2.ToolTip.text: qsTr("Assign an action or DuckyScript 3 executed when this key is double-clicked within %1 ms").arg(deviceController ? deviceController.multiClickIntervalMs : 250)
                                         }
 
-                                        QQC2.ToolTip.delay: 500
-                                        QQC2.ToolTip.visible: doubleClickTabMouse.containsMouse
-                                        QQC2.ToolTip.text: qsTr("Assign an action or DuckyScript 3 executed when this key is double-clicked within %1 ms").arg(deviceController ? deviceController.multiClickIntervalMs : 250)
-                                    }
-
-                                    // 3x Triple Click Tab (Mechanical Keys 1..20)
-                                    Rectangle {
-                                        visible: inspectorCard.isMechanicalKey
-                                        readonly property bool isActiveTab: root.editingClickPhase === 2
-                                        Layout.preferredHeight: Math.round(30 * root.inspectorScale)
-                                        implicitWidth: tripleClickTabLbl.implicitWidth + 18
-                                        topLeftRadius: 6
-                                        topRightRadius: 6
-                                        bottomLeftRadius: 0
-                                        bottomRightRadius: 0
-                                        color: isActiveTab
-                                            ? Kirigami.Theme.backgroundColor
-                                            : (tripleClickTabMouse.containsMouse
-                                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.10)
-                                                : Kirigami.Theme.alternateBackgroundColor)
-                                        border.color: isActiveTab
-                                            ? Kirigami.Theme.highlightColor
-                                            : Qt.alpha(Kirigami.Theme.textColor, 0.18)
-                                        border.width: 1
-
-                                        Rectangle {
-                                            visible: parent.isActiveTab
-                                            anchors.top: parent.top
-                                            anchors.left: parent.left
-                                            anchors.right: parent.right
-                                            height: 3
-                                            topLeftRadius: 6
-                                            topRightRadius: 6
-                                            color: Kirigami.Theme.highlightColor
-                                        }
-
-                                        Rectangle {
-                                            visible: parent.isActiveTab
-                                            anchors.bottom: parent.bottom
-                                            anchors.left: parent.left
-                                            anchors.right: parent.right
-                                            anchors.leftMargin: 1
-                                            anchors.rightMargin: 1
-                                            height: 2
-                                            color: Kirigami.Theme.backgroundColor
-                                        }
-
-                                        QQC2.Label {
-                                            id: tripleClickTabLbl
-                                            anchors.centerIn: parent
+                                        // 3x Triple Click Tab (Mechanical Keys 1..20)
+                                        QQC2.TabButton {
+                                            visible: inspectorCard.isMechanicalKey
+                                            readonly property bool isActiveTab: root.editingClickPhase === 2
+                                            checked: isActiveTab
+                                            width: visible ? implicitWidth : 0
+                                            implicitHeight: Math.round(30 * root.inspectorScale)
+                                            leftPadding: 10
+                                            rightPadding: 10
                                             text: root.tripleClickScriptBuffer.trim().length > 0
                                                 ? qsTr("⚡⚡ 3× Triple ●")
                                                 : qsTr("⚡⚡ 3× Triple")
                                             font.pointSize: 10 * root.fontScale
-                                            font.bold: parent.isActiveTab || root.tripleClickScriptBuffer.trim().length > 0
-                                            color: parent.isActiveTab
-                                                ? root.highContrastHighlightText
-                                                : (root.tripleClickScriptBuffer.trim().length > 0
-                                                    ? root.highContrastOrangeText
-                                                    : Kirigami.Theme.textColor)
-                                        }
-
-                                        MouseArea {
-                                            id: tripleClickTabMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
+                                            font.bold: isActiveTab || root.tripleClickScriptBuffer.trim().length > 0
                                             onClicked: root.switchEditingClickPhase(2)
+                                            QQC2.ToolTip.delay: 500
+                                            QQC2.ToolTip.visible: hovered
+                                            QQC2.ToolTip.text: qsTr("Assign an action or DuckyScript 3 executed when this key is triple-clicked (%1 ms between clicks)").arg(deviceController ? deviceController.multiClickIntervalMs : 250)
                                         }
 
-                                        QQC2.ToolTip.delay: 500
-                                        QQC2.ToolTip.visible: tripleClickTabMouse.containsMouse
-                                        QQC2.ToolTip.text: qsTr("Assign an action or DuckyScript 3 executed when this key is triple-clicked (%1 ms between clicks)").arg(deviceController ? deviceController.multiClickIntervalMs : 250)
-                                    }
-
-                                    // On Release Tab
-                                    Rectangle {
-                                        readonly property bool isActiveTab: root.editingClickPhase === 3 || root.editingReleaseScript
-                                        Layout.preferredHeight: Math.round(30 * root.inspectorScale)
-                                        implicitWidth: onReleaseTabLbl.implicitWidth + 18
-                                        topLeftRadius: 6
-                                        topRightRadius: 6
-                                        bottomLeftRadius: 0
-                                        bottomRightRadius: 0
-                                        color: isActiveTab
-                                            ? Kirigami.Theme.backgroundColor
-                                            : (onReleaseTabMouse.containsMouse
-                                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.10)
-                                                : Kirigami.Theme.alternateBackgroundColor)
-                                        border.color: isActiveTab
-                                            ? Kirigami.Theme.highlightColor
-                                            : Qt.alpha(Kirigami.Theme.textColor, 0.18)
-                                        border.width: 1
-
-                                        Rectangle {
-                                            visible: parent.isActiveTab
-                                            anchors.top: parent.top
-                                            anchors.left: parent.left
-                                            anchors.right: parent.right
-                                            height: 3
-                                            topLeftRadius: 6
-                                            topRightRadius: 6
-                                            color: Kirigami.Theme.highlightColor
-                                        }
-
-                                        Rectangle {
-                                            visible: parent.isActiveTab
-                                            anchors.bottom: parent.bottom
-                                            anchors.left: parent.left
-                                            anchors.right: parent.right
-                                            anchors.leftMargin: 1
-                                            anchors.rightMargin: 1
-                                            height: 2
-                                            color: Kirigami.Theme.backgroundColor
-                                        }
-
-                                        QQC2.Label {
-                                            id: onReleaseTabLbl
-                                            anchors.centerIn: parent
+                                        // On Release Tab
+                                        QQC2.TabButton {
+                                            readonly property bool isActiveTab: root.editingClickPhase === 3 || root.editingReleaseScript
+                                            checked: isActiveTab
+                                            width: implicitWidth
+                                            implicitHeight: Math.round(30 * root.inspectorScale)
+                                            leftPadding: 10
+                                            rightPadding: 10
                                             text: root.releaseScriptBuffer.trim().length > 0
                                                 ? qsTr("⬆ On Release ●")
                                                 : qsTr("⬆ On Release")
                                             font.pointSize: 10 * root.fontScale
-                                            font.bold: parent.isActiveTab
-                                            color: parent.isActiveTab
-                                                ? root.highContrastHighlightText
-                                                : Kirigami.Theme.textColor
-                                        }
-
-                                        MouseArea {
-                                            id: onReleaseTabMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
+                                            font.bold: isActiveTab
                                             onClicked: root.switchEditingClickPhase(3)
+                                            QQC2.ToolTip.delay: 500
+                                            QQC2.ToolTip.visible: hovered
+                                            QQC2.ToolTip.text: qsTr("Edit script executed when released")
                                         }
-
-                                        QQC2.ToolTip.delay: 500
-                                        QQC2.ToolTip.visible: onReleaseTabMouse.containsMouse
-                                        QQC2.ToolTip.text: qsTr("Edit script executed when released")
                                     }
 
                                     Item { Layout.fillWidth: true }
@@ -4563,280 +4463,97 @@ Kirigami.ApplicationWindow {
                             RowLayout {
                                 id: inspectorTabsRow
                                 anchors.fill: parent
-                                spacing: 2
+                                spacing: 4
 
-                                // Tab 1: DuckyScript IDE
-                                Rectangle {
-                                    id: codeModeBtn
-                                    readonly property bool isActiveTab: root.inspectorMode === "code"
+                                QQC2.TabBar {
+                                    id: inspectorModeTabBar
                                     Layout.preferredHeight: Math.round(30 * root.inspectorScale)
-                                    implicitWidth: codeTabLbl.implicitWidth + 18
-                                    topLeftRadius: 6
-                                    topRightRadius: 6
-                                    bottomLeftRadius: 0
-                                    bottomRightRadius: 0
-                                    color: isActiveTab
-                                        ? Kirigami.Theme.backgroundColor
-                                        : (codeTabMouse.containsMouse
-                                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.10)
-                                            : Kirigami.Theme.alternateBackgroundColor)
-                                    border.color: isActiveTab
-                                        ? Kirigami.Theme.highlightColor
-                                        : Qt.alpha(Kirigami.Theme.textColor, 0.18)
-                                    border.width: 1
+                                    padding: 0
+                                    spacing: 2
+                                    background: Item {}
 
-                                    Rectangle {
-                                        visible: parent.isActiveTab
-                                        anchors.top: parent.top
-                                        anchors.left: parent.left
-                                        anchors.right: parent.right
-                                        height: 3
-                                        topLeftRadius: 6
-                                        topRightRadius: 6
-                                        color: Kirigami.Theme.highlightColor
-                                    }
-
-                                    Rectangle {
-                                        visible: parent.isActiveTab
-                                        anchors.bottom: parent.bottom
-                                        anchors.left: parent.left
-                                        anchors.right: parent.right
-                                        anchors.leftMargin: 1
-                                        anchors.rightMargin: 1
-                                        height: 2
-                                        color: Kirigami.Theme.backgroundColor
-                                    }
-
-                                    QQC2.Label {
-                                        id: codeTabLbl
-                                        anchors.centerIn: parent
+                                    // Tab 1: DuckyScript IDE
+                                    QQC2.TabButton {
+                                        id: codeModeBtn
+                                        readonly property bool isActiveTab: root.inspectorMode === "code"
+                                        checked: isActiveTab
+                                        width: implicitWidth
+                                        implicitHeight: Math.round(30 * root.inspectorScale)
+                                        leftPadding: 10
+                                        rightPadding: 10
                                         text: qsTr("📜 DuckyScript IDE")
                                         font.pointSize: 10 * root.fontScale
-                                        font.bold: parent.isActiveTab
-                                        color: parent.isActiveTab
-                                            ? root.highContrastHighlightText
-                                            : Kirigami.Theme.textColor
-                                    }
-
-                                    MouseArea {
-                                        id: codeTabMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
+                                        font.bold: isActiveTab
                                         onClicked: {
                                             root.showAppLaunchBuilder = false
                                             root.showWebApiBuilder = false
                                             root.inspectorMode = "code"
                                         }
+                                        QQC2.ToolTip.delay: 500
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Full-height DuckyScript 3 editor with syntax highlighting, autocomplete & command reference")
                                     }
 
-                                    QQC2.ToolTip.delay: 500
-                                    QQC2.ToolTip.visible: codeTabMouse.containsMouse
-                                    QQC2.ToolTip.text: qsTr("Full-height DuckyScript 3 editor with syntax highlighting, autocomplete & command reference")
-                                }
-
-                                // Tab 2: Launch App (Opens Launch App Configuration Window)
-                                Rectangle {
-                                    id: appLaunchToggleBtn
-                                    readonly property bool isActiveTab: root.inspectorMode === "app_launch" || appLaunchConfigWindow.visible
-                                    Layout.preferredHeight: Math.round(30 * root.inspectorScale)
-                                    implicitWidth: appLaunchTabLbl.implicitWidth + 18
-                                    topLeftRadius: 6
-                                    topRightRadius: 6
-                                    bottomLeftRadius: 0
-                                    bottomRightRadius: 0
-                                    color: isActiveTab
-                                        ? Kirigami.Theme.backgroundColor
-                                        : (appLaunchTabMouse.containsMouse
-                                            ? Qt.alpha("#fb923c", 0.14)
-                                            : Kirigami.Theme.alternateBackgroundColor)
-                                    border.color: isActiveTab || root.appLaunchEnabled
-                                        ? "#fb923c"
-                                        : Qt.alpha(Kirigami.Theme.textColor, 0.18)
-                                    border.width: 1
-
-                                    Rectangle {
-                                        visible: parent.isActiveTab || root.appLaunchEnabled
-                                        anchors.top: parent.top
-                                        anchors.left: parent.left
-                                        anchors.right: parent.right
-                                        height: 3
-                                        topLeftRadius: 6
-                                        topRightRadius: 6
-                                        color: "#fb923c"
-                                    }
-
-                                    Rectangle {
-                                        visible: parent.isActiveTab
-                                        anchors.bottom: parent.bottom
-                                        anchors.left: parent.left
-                                        anchors.right: parent.right
-                                        anchors.leftMargin: 1
-                                        anchors.rightMargin: 1
-                                        height: 2
-                                        color: Kirigami.Theme.backgroundColor
-                                    }
-
-                                    QQC2.Label {
-                                        id: appLaunchTabLbl
-                                        anchors.centerIn: parent
+                                    // Tab 2: Launch App
+                                    QQC2.TabButton {
+                                        id: appLaunchToggleBtn
+                                        readonly property bool isActiveTab: root.inspectorMode === "app_launch" || appLaunchConfigWindow.visible
+                                        checked: isActiveTab
+                                        width: implicitWidth
+                                        implicitHeight: Math.round(30 * root.inspectorScale)
+                                        leftPadding: 10
+                                        rightPadding: 10
                                         text: root.appLaunchEnabled
                                             ? qsTr("🚀 Launch App ●")
                                             : qsTr("🚀 Launch App")
                                         font.pointSize: 10 * root.fontScale
-                                        font.bold: parent.isActiveTab || root.appLaunchEnabled
-                                        color: parent.isActiveTab || root.appLaunchEnabled
-                                            ? root.highContrastOrangeText
-                                            : Kirigami.Theme.textColor
-                                    }
-
-                                    MouseArea {
-                                        id: appLaunchTabMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
+                                        font.bold: isActiveTab || root.appLaunchEnabled
                                         onClicked: {
                                             root.showWebApiBuilder = false
                                             root.showAppLaunchBuilder = false
                                             root.inspectorMode = "app_launch"
                                         }
+                                        QQC2.ToolTip.delay: 500
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Switch to Launch App tab")
                                     }
 
-                                    QQC2.ToolTip.delay: 500
-                                    QQC2.ToolTip.visible: appLaunchTabMouse.containsMouse
-                                    QQC2.ToolTip.text: qsTr("Switch to Launch App tab")
-                                }
-
-                                // Tab 3: Web API
-                                Rectangle {
-                                    id: webApiToggleBtn
-                                    readonly property bool isActiveTab: root.inspectorMode === "web_api" || webApiKeyConfigWindow.visible
-                                    Layout.preferredHeight: Math.round(30 * root.inspectorScale)
-                                    implicitWidth: webApiTabLbl.implicitWidth + 18
-                                    topLeftRadius: 6
-                                    topRightRadius: 6
-                                    bottomLeftRadius: 0
-                                    bottomRightRadius: 0
-                                    color: isActiveTab
-                                        ? Kirigami.Theme.backgroundColor
-                                        : (webApiTabMouse.containsMouse
-                                            ? Qt.alpha(Kirigami.Theme.positiveTextColor, 0.14)
-                                            : Kirigami.Theme.alternateBackgroundColor)
-                                    border.color: isActiveTab || root.webApiEnabled
-                                        ? Kirigami.Theme.positiveTextColor
-                                        : Qt.alpha(Kirigami.Theme.textColor, 0.18)
-                                    border.width: 1
-
-                                    Rectangle {
-                                        visible: parent.isActiveTab || root.webApiEnabled
-                                        anchors.top: parent.top
-                                        anchors.left: parent.left
-                                        anchors.right: parent.right
-                                        height: 3
-                                        topLeftRadius: 6
-                                        topRightRadius: 6
-                                        color: Kirigami.Theme.positiveTextColor
-                                    }
-
-                                    Rectangle {
-                                        visible: parent.isActiveTab
-                                        anchors.bottom: parent.bottom
-                                        anchors.left: parent.left
-                                        anchors.right: parent.right
-                                        anchors.leftMargin: 1
-                                        anchors.rightMargin: 1
-                                        height: 2
-                                        color: Kirigami.Theme.backgroundColor
-                                    }
-
-                                    QQC2.Label {
-                                        id: webApiTabLbl
-                                        anchors.centerIn: parent
+                                    // Tab 3: Web API
+                                    QQC2.TabButton {
+                                        id: webApiToggleBtn
+                                        readonly property bool isActiveTab: root.inspectorMode === "web_api" || webApiKeyConfigWindow.visible
+                                        checked: isActiveTab
+                                        width: implicitWidth
+                                        implicitHeight: Math.round(30 * root.inspectorScale)
+                                        leftPadding: 10
+                                        rightPadding: 10
                                         text: root.webApiEnabled
                                             ? qsTr("🌐 Web API ●")
                                             : qsTr("🌐 Web API")
                                         font.pointSize: 10 * root.fontScale
-                                        font.bold: parent.isActiveTab || root.webApiEnabled
-                                        color: parent.isActiveTab || root.webApiEnabled
-                                            ? root.highContrastPositiveText
-                                            : Kirigami.Theme.textColor
-                                    }
-
-                                    MouseArea {
-                                        id: webApiTabMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
+                                        font.bold: isActiveTab || root.webApiEnabled
                                         onClicked: {
                                             root.showAppLaunchBuilder = false
                                             root.showWebApiBuilder = false
                                             root.inspectorMode = "web_api"
                                         }
+                                        QQC2.ToolTip.delay: 500
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Switch to Web API tab")
                                     }
 
-                                    QQC2.ToolTip.delay: 500
-                                    QQC2.ToolTip.visible: webApiTabMouse.containsMouse
-                                    QQC2.ToolTip.text: qsTr("Switch to Web API tab")
-                                }
-
-                                // Tab 4: Shortcuts Library
-                                Rectangle {
-                                    id: shortcutsToggleBtn
-                                    readonly property bool isActiveTab: root.inspectorMode === "shortcuts"
-                                    Layout.preferredHeight: Math.round(30 * root.inspectorScale)
-                                    implicitWidth: shortcutsTabLbl.implicitWidth + 18
-                                    topLeftRadius: 6
-                                    topRightRadius: 6
-                                    bottomLeftRadius: 0
-                                    bottomRightRadius: 0
-                                    color: isActiveTab
-                                        ? Kirigami.Theme.backgroundColor
-                                        : (shortcutsTabMouse.containsMouse
-                                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.14)
-                                            : Kirigami.Theme.alternateBackgroundColor)
-                                    border.color: isActiveTab
-                                        ? Kirigami.Theme.highlightColor
-                                        : Qt.alpha(Kirigami.Theme.textColor, 0.18)
-                                    border.width: 1
-
-                                    Rectangle {
-                                        visible: parent.isActiveTab
-                                        anchors.top: parent.top
-                                        anchors.left: parent.left
-                                        anchors.right: parent.right
-                                        height: 3
-                                        topLeftRadius: 6
-                                        topRightRadius: 6
-                                        color: Kirigami.Theme.highlightColor
-                                    }
-
-                                    Rectangle {
-                                        visible: parent.isActiveTab
-                                        anchors.bottom: parent.bottom
-                                        anchors.left: parent.left
-                                        anchors.right: parent.right
-                                        anchors.leftMargin: 1
-                                        anchors.rightMargin: 1
-                                        height: 2
-                                        color: Kirigami.Theme.backgroundColor
-                                    }
-
-                                    QQC2.Label {
-                                        id: shortcutsTabLbl
-                                        anchors.centerIn: parent
+                                    // Tab 4: Shortcuts Library
+                                    QQC2.TabButton {
+                                        id: shortcutsToggleBtn
+                                        readonly property bool isActiveTab: root.inspectorMode === "shortcuts"
+                                        checked: isActiveTab
+                                        width: implicitWidth
+                                        implicitHeight: Math.round(30 * root.inspectorScale)
+                                        leftPadding: 10
+                                        rightPadding: 10
                                         text: qsTr("⌨️ Shortcuts")
                                         font.pointSize: 10 * root.fontScale
-                                        font.bold: parent.isActiveTab
-                                        color: parent.isActiveTab
-                                            ? root.highContrastHighlightText
-                                            : Kirigami.Theme.textColor
-                                    }
-
-                                    MouseArea {
-                                        id: shortcutsTabMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
+                                        font.bold: isActiveTab
                                         onClicked: {
                                             root.showAppLaunchBuilder = false
                                             root.showWebApiBuilder = false
@@ -4848,11 +4565,10 @@ Kirigami.ApplicationWindow {
                                                 )
                                             }
                                         }
+                                        QQC2.ToolTip.delay: 500
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Search application keyboard shortcuts (Google & local cheatsheets) and drag or assign them to keys")
                                     }
-
-                                    QQC2.ToolTip.delay: 500
-                                    QQC2.ToolTip.visible: shortcutsTabMouse.containsMouse
-                                    QQC2.ToolTip.text: qsTr("Search application keyboard shortcuts (Google & local cheatsheets) and drag or assign them to keys")
                                 }
 
                                 Item { Layout.fillWidth: true }
@@ -7122,7 +6838,11 @@ Kirigami.ApplicationWindow {
         selectedSlot: root.selectedSlotNumber
         keyEditorOpen: root.hasSelectedSlot
         onRequestOpenMainWindow: {
-            root.show()
+            if (deviceController) {
+                deviceController.showFromTray()
+            }
+            root.visible = true
+            root.showNormal()
             root.raise()
             root.requestActivate()
         }
@@ -7157,7 +6877,11 @@ Kirigami.ApplicationWindow {
                 }
             }
             onRequestOpenMainWindow: {
-                root.show()
+                if (deviceController) {
+                    deviceController.showFromTray()
+                }
+                root.visible = true
+                root.showNormal()
                 root.raise()
                 root.requestActivate()
             }

@@ -70,6 +70,11 @@ pub mod qobject {
         #[qproperty(i32, auto_switch_dwell_ms)]
         #[qproperty(bool, autoswitch_enable_section_expanded)]
         #[qproperty(bool, autoswitch_rule_editor_expanded)]
+        #[qproperty(bool, modifier_switch_enabled)]
+        #[qproperty(bool, modifier_section_expanded)]
+        #[qproperty(QString, modifier_rules_json)]
+        #[qproperty(bool, modifier_layer_active)]
+        #[qproperty(QString, modifier_layer_status)]
         #[qproperty(QString, active_window_class)]
         #[qproperty(QString, active_window_title)]
         #[qproperty(bool, window_picker_armed)]
@@ -359,6 +364,39 @@ pub mod qobject {
 
         #[qinvokable]
         fn toggle_auto_switch_rule(
+            self: Pin<&mut DeviceController>,
+            rule_index: i32,
+            enabled: bool,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "updateModifierSwitchEnabled"]
+        fn update_modifier_switch_enabled(self: Pin<&mut DeviceController>, enabled: bool);
+
+        #[qinvokable]
+        #[cxx_name = "updateModifierSectionExpanded"]
+        fn update_modifier_section_expanded(self: Pin<&mut DeviceController>, expanded: bool);
+
+        #[qinvokable]
+        #[cxx_name = "saveModifierRule"]
+        fn save_modifier_rule(
+            self: Pin<&mut DeviceController>,
+            rule_index: i32,
+            enabled: bool,
+            trigger_key: QString,
+            mode: QString,
+            hold_delay_ms: i32,
+            oneshot_timeout_sec: i32,
+            target_profile: i32,
+        ) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "removeModifierRule"]
+        fn remove_modifier_rule(self: Pin<&mut DeviceController>, rule_index: i32) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "toggleModifierRule"]
+        fn toggle_modifier_rule(
             self: Pin<&mut DeviceController>,
             rule_index: i32,
             enabled: bool,
@@ -1066,9 +1104,11 @@ use crate::hardware::storage::{
 };
 use crate::kwin::auto_switcher::{
     discover_dekunukem_autoswitcher_configs, is_kde_autostart_enabled, is_web_browser_class,
-    load_rules_bundle_from_dir, parse_dekunukem_autoswitcher_file, save_rules_bundle_to_dir,
-    send_hid_switch_profile_checked, set_kde_autostart_enabled, strip_browser_title_suffix,
-    sync_local_desktop_and_icon, AutoSwitchRule, HidSwitchOutcome, SwitcherState,
+    load_rules_bundle_from_dir, modifier_mode_label, modifier_trigger_key_label,
+    normalize_modifier_mode, normalize_modifier_trigger_key, parse_dekunukem_autoswitcher_file,
+    save_rules_bundle_to_dir, send_hid_switch_profile_checked, set_kde_autostart_enabled,
+    strip_browser_title_suffix, sync_local_desktop_and_icon, AutoSwitchRule, HidSwitchOutcome,
+    ModifierLayerRule, ModifierLayerTransition, SwitcherState,
 };
 
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -1138,6 +1178,11 @@ pub struct DeviceControllerRust {
     pub(crate) auto_switch_dwell_ms: i32,
     pub(crate) autoswitch_enable_section_expanded: bool,
     pub(crate) autoswitch_rule_editor_expanded: bool,
+    pub(crate) modifier_switch_enabled: bool,
+    pub(crate) modifier_section_expanded: bool,
+    pub(crate) modifier_rules_json: QString,
+    pub(crate) modifier_layer_active: bool,
+    pub(crate) modifier_layer_status: QString,
     pub(crate) active_window_class: QString,
     pub(crate) active_window_title: QString,
     pub(crate) window_picker_armed: bool,
@@ -1475,6 +1520,8 @@ impl Default for DeviceControllerRust {
         let dwell_ms = switcher.window_dwell_ms.clamp(0, 5000);
         let enable_sec_expanded = switcher.autoswitch_enable_section_expanded;
         let rule_editor_expanded = switcher.autoswitch_rule_editor_expanded;
+        let mod_switch_enabled = switcher.modifier_switch_enabled;
+        let mod_section_expanded = switcher.modifier_section_expanded;
         let tray_mode = switcher.tray_icon_mode.clone();
         let app_theme = switcher.app_theme_mode.clone();
         let close_tray = switcher.close_to_tray;
@@ -1515,6 +1562,8 @@ impl Default for DeviceControllerRust {
             }
         }
         let rules_json = Self::serialize_rules(&switcher.rules, &profiles);
+        let modifier_rules_json =
+            Self::serialize_modifier_rules(&switcher.modifier_rules, &profiles);
         let profiles_json = Self::serialize_profiles_summary(&profiles, &switcher.rules);
         let active_prof_obj = profiles
             .iter()
@@ -1595,6 +1644,11 @@ impl Default for DeviceControllerRust {
             auto_switch_dwell_ms: dwell_ms,
             autoswitch_enable_section_expanded: enable_sec_expanded,
             autoswitch_rule_editor_expanded: rule_editor_expanded,
+            modifier_switch_enabled: mod_switch_enabled,
+            modifier_section_expanded: mod_section_expanded,
+            modifier_rules_json: QString::from(&modifier_rules_json),
+            modifier_layer_active: false,
+            modifier_layer_status: QString::from(""),
             active_window_class: QString::from("Listening for KWin..."),
             active_window_title: QString::from(""),
             window_picker_armed: false,
@@ -1722,6 +1776,13 @@ impl DeviceControllerRust {
 
     pub fn serialize_rules(rules: &[AutoSwitchRule], profiles: &[DuckyProfile]) -> String {
         crate::bridge::serialize::serialize_rules(rules, profiles)
+    }
+
+    pub fn serialize_modifier_rules(
+        rules: &[ModifierLayerRule],
+        profiles: &[DuckyProfile],
+    ) -> String {
+        crate::bridge::serialize::serialize_modifier_rules(rules, profiles)
     }
 
     pub fn serialize_profile_slots(profile: &DuckyProfile) -> String {
@@ -2323,6 +2384,9 @@ impl qobject::DeviceController {
             profiles_json,
             slots_json,
             rules_json,
+            modifier_rules_json,
+            mod_switch_enabled,
+            mod_section_expanded,
             sync_state,
             sync_detail,
             unsynced_json,
@@ -2330,18 +2394,27 @@ impl qobject::DeviceController {
         ) = {
             let rust = self.rust();
             let max_prof = rust.profiles.len().max(1) as u8;
-            let (rules_vec, fb_num) = if let Ok(mut s) = rust.switcher_state.lock() {
-                let fb = s.default_profile.unwrap_or(1).clamp(1, max_prof);
-                if s.default_profile != Some(fb) {
-                    s.default_profile = Some(fb);
-                }
-                (s.rules.clone(), fb as i32)
-            } else {
-                (Vec::new(), 1)
-            };
+            let (rules_vec, mod_rules_vec, mod_en, mod_exp, fb_num) =
+                if let Ok(mut s) = rust.switcher_state.lock() {
+                    let fb = s.default_profile.unwrap_or(1).clamp(1, max_prof);
+                    if s.default_profile != Some(fb) {
+                        s.default_profile = Some(fb);
+                    }
+                    (
+                        s.rules.clone(),
+                        s.modifier_rules.clone(),
+                        s.modifier_switch_enabled,
+                        s.modifier_section_expanded,
+                        fb as i32,
+                    )
+                } else {
+                    (Vec::new(), Vec::new(), true, true, 1)
+                };
             let profiles_json =
                 DeviceControllerRust::serialize_profiles_summary(&rust.profiles, &rules_vec);
             let rules_json = DeviceControllerRust::serialize_rules(&rules_vec, &rust.profiles);
+            let modifier_rules_json =
+                DeviceControllerRust::serialize_modifier_rules(&mod_rules_vec, &rust.profiles);
             let (sync_state, sync_detail, unsynced_json) = if is_demo_showcase_env() {
                 (
                     "synced".to_string(),
@@ -2391,6 +2464,9 @@ impl qobject::DeviceController {
                     profiles_json,
                     DeviceControllerRust::serialize_profile_slots(prof),
                     rules_json,
+                    modifier_rules_json,
+                    mod_en,
+                    mod_exp,
                     sync_state,
                     sync_detail,
                     unsynced_json,
@@ -2405,6 +2481,9 @@ impl qobject::DeviceController {
                     profiles_json,
                     "[]".to_string(),
                     rules_json,
+                    modifier_rules_json,
+                    mod_en,
+                    mod_exp,
                     sync_state,
                     sync_detail,
                     unsynced_json,
@@ -2412,6 +2491,19 @@ impl qobject::DeviceController {
                 )
             }
         };
+
+        if *self.modifier_switch_enabled() != mod_switch_enabled {
+            self.as_mut()
+                .set_modifier_switch_enabled(mod_switch_enabled);
+        }
+        if *self.modifier_section_expanded() != mod_section_expanded {
+            self.as_mut()
+                .set_modifier_section_expanded(mod_section_expanded);
+        }
+        if self.modifier_rules_json().to_string() != modifier_rules_json {
+            self.as_mut()
+                .set_modifier_rules_json(QString::from(&modifier_rules_json));
+        }
 
         if *self.default_fallback_profile() != effective_fallback {
             self.as_mut()
@@ -3848,21 +3940,39 @@ impl qobject::DeviceController {
         }
         self.as_mut().sync_active_profile_selection_only();
 
-        if !is_demo_showcase_env()
-            && *self.connected()
-            && !crate::kwin::auto_switcher::send_hid_switch_profile(clamped as u8)
-        {
-            record_system_event(
-                "WARN",
-                "HID",
-                format!("Failed switching hardware to profile #{clamped}"),
-            );
+        crate::kwin::auto_switcher::LAST_SW_PROFILE_TARGET
+            .store(clamped as u8, std::sync::atomic::Ordering::SeqCst);
+        crate::kwin::auto_switcher::LAST_SW_PROFILE_SWITCH_MS.store(
+            crate::kwin::auto_switcher::current_epoch_ms(),
+            std::sync::atomic::Ordering::SeqCst,
+        );
+
+        let mut switched_on_hw = false;
+        if !is_demo_showcase_env() && *self.connected() {
+            match crate::kwin::auto_switcher::send_hid_switch_profile_checked(clamped as u8) {
+                crate::kwin::auto_switcher::HidSwitchOutcome::Switched => {
+                    switched_on_hw = true;
+                }
+                crate::kwin::auto_switcher::HidSwitchOutcome::NotLoadedOnHardware => {
+                    // Profile exists in DuckyDeck Studio cache but has not been synced to the
+                    // physical microSD card yet; keep it selected in the editor without error spam.
+                }
+                crate::kwin::auto_switcher::HidSwitchOutcome::DeviceUnavailable => {
+                    record_system_event(
+                        "WARN",
+                        "HID",
+                        format!("Failed switching hardware to profile #{clamped}"),
+                    );
+                }
+            }
         }
 
         {
             let rust = self.as_mut().rust_mut().get_mut();
             if let Ok(mut sw) = rust.switcher_state.lock() {
-                sw.last_switched_profile = clamped as u8;
+                if switched_on_hw {
+                    sw.last_switched_profile = clamped as u8;
+                }
             }
         }
 
@@ -4007,6 +4117,14 @@ impl qobject::DeviceController {
                         }
                     }
                 }
+                for mrule in &mut sw.modifier_rules {
+                    if let Some(&mapped_target) = old_to_new.get(&mrule.target_profile) {
+                        if mrule.target_profile != mapped_target {
+                            mrule.target_profile = mapped_target;
+                            rules_changed = true;
+                        }
+                    }
+                }
                 if rules_changed {
                     if let Err(e) = sw.save_to_disk() {
                         record_system_event(
@@ -4025,6 +4143,12 @@ impl qobject::DeviceController {
             (next_num as i32, saved)
         };
 
+        crate::kwin::auto_switcher::LAST_SW_PROFILE_TARGET
+            .store(next_num as u8, std::sync::atomic::Ordering::SeqCst);
+        crate::kwin::auto_switcher::LAST_SW_PROFILE_SWITCH_MS.store(
+            crate::kwin::auto_switcher::current_epoch_ms(),
+            std::sync::atomic::Ordering::SeqCst,
+        );
         self.as_mut().set_active_profile(next_num);
         self.as_mut().sync_active_profile_state();
         let suffix = if saved_to_sd { " (saved to SD)" } else { "" };
@@ -4227,6 +4351,19 @@ impl qobject::DeviceController {
                             }
                         }
                     }
+                    for mrule in &mut sw.modifier_rules {
+                        if mrule.target_profile == target_num {
+                            if mrule.target_profile != mapped_fb {
+                                mrule.target_profile = mapped_fb;
+                                rules_changed = true;
+                            }
+                        } else if let Some(&mapped_target) = old_to_new.get(&mrule.target_profile) {
+                            if mrule.target_profile != mapped_target {
+                                mrule.target_profile = mapped_target;
+                                rules_changed = true;
+                            }
+                        }
+                    }
                     if rules_changed || sw.loaded_from_disk {
                         if let Err(e) = sw.save_to_disk() {
                             record_system_event(
@@ -4354,6 +4491,16 @@ impl qobject::DeviceController {
                         .unwrap_or(mapped_fb);
                     if rule.target_profile != mapped_target {
                         rule.target_profile = mapped_target;
+                        rules_changed = true;
+                    }
+                }
+                for mrule in &mut sw.modifier_rules {
+                    let mapped_target = old_to_new
+                        .get(&mrule.target_profile)
+                        .copied()
+                        .unwrap_or(mapped_fb);
+                    if mrule.target_profile != mapped_target {
+                        mrule.target_profile = mapped_target;
                         rules_changed = true;
                     }
                 }
@@ -5315,17 +5462,20 @@ impl qobject::DeviceController {
             };
             rt.block_on(async move {
                 let switcher_state = state.clone();
+                let modifier_state = state.clone();
                 tokio::spawn(async move {
                     let _ =
                         crate::kwin::auto_switcher::run_kwin_auto_switcher(switcher_state, tx)
                             .await;
                 });
 
-                // Background Hybrid Web API Trigger Listener (PGV _GV31 + evdev F13..F24)
+                // Background Hybrid Web API Trigger Listener (PGV _GV31 + evdev F13..F24) + Main-Keyboard Modifier Layer Listener
                 tokio::spawn(async move {
                     let mut interval =
                         tokio::time::interval(std::time::Duration::from_millis(50));
                     let mut evdev_listener = DuckypadEvdevListener::new();
+                    let mut modifier_listener =
+                        crate::actions::app_launch::HostKeyboardModifierListener::new();
                     let mut tick_count = 0u32;
                     loop {
                         interval.tick().await;
@@ -5343,7 +5493,28 @@ impl qobject::DeviceController {
                             });
                         }
 
-                        // 2. Poll silent PGV _GV31 hardware trigger (0x444Bxxxx) every 150ms when active profile uses PGV31
+                        // 2. Poll Main-Keyboard Modifier Layer Switcher every 50ms
+                        let (mod_enabled, mod_paused, mod_rules) =
+                            if let Ok(sw) = modifier_state.lock() {
+                                (
+                                    sw.modifier_switch_enabled,
+                                    sw.paused_for_editing,
+                                    sw.modifier_rules.clone(),
+                                )
+                            } else {
+                                (false, false, Vec::new())
+                            };
+                        if let Some(transition) = modifier_listener.poll_modifier_layer(
+                            mod_enabled,
+                            mod_paused,
+                            &mod_rules,
+                        ) {
+                            let _ = web_api_qt_thread.queue(move |mut qobject| {
+                                qobject.as_mut().handle_modifier_layer_transition(transition);
+                            });
+                        }
+
+                        // 3. Poll silent PGV _GV31 hardware trigger (0x444Bxxxx) every 150ms when active profile uses PGV31
                         tick_count = tick_count.wrapping_add(1);
                         if !tick_count.is_multiple_of(3)
                             || !crate::hardware::storage::ACTIVE_PROFILE_HAS_PGV31_TRIGGER
@@ -5355,6 +5526,10 @@ impl qobject::DeviceController {
                         if let Some((encoded_prof, slot_num, is_release)) =
                             poll_and_clear_pgv31_trigger()
                         {
+                            crate::hardware::storage::LAST_EVDEV_KEYDOWN_MS.store(
+                                crate::kwin::auto_switcher::current_epoch_ms(),
+                                std::sync::atomic::Ordering::SeqCst,
+                            );
                             let _ = web_api_qt_thread.queue(move |mut qobject| {
                                 qobject.as_mut().handle_hardware_pgv_web_api_trigger(
                                     encoded_prof,
@@ -5371,12 +5546,14 @@ impl qobject::DeviceController {
                         tokio::time::interval(std::time::Duration::from_millis(800));
                     let mut last_mounts_hash: u64 = 0;
                     let mut mounts_tick: u32 = 0;
+                    let mut last_observed_hw_prof: Option<u8> = None;
                     loop {
                         interval.tick().await;
                         if crate::hardware::storage::MSC_SYNC_IN_PROGRESS
                             .load(std::sync::atomic::Ordering::SeqCst)
                         {
                             crate::hardware::storage::invalidate_cached_hid_device();
+                            last_observed_hw_prof = None;
                             continue;
                         }
                         let new_connected_count =
@@ -5387,6 +5564,15 @@ impl qobject::DeviceController {
                         } else {
                             None
                         };
+                        let hw_prof_changed = match (last_observed_hw_prof, hw_active_prof) {
+                            (Some(prev), Some(curr)) => prev != curr,
+                            _ => false,
+                        };
+                        if !hid_present {
+                            last_observed_hw_prof = None;
+                        } else if hw_active_prof.is_some() {
+                            last_observed_hw_prof = hw_active_prof;
+                        }
                         let selected_ser = crate::hardware::storage::get_selected_duckypad_serial();
                         let mut secondary_prof_changed = false;
                         for sec_dev in crate::kwin::auto_switcher::get_secondary_devices_snapshot()
@@ -5537,13 +5723,21 @@ impl qobject::DeviceController {
                                         .load(std::sync::atomic::Ordering::SeqCst);
                                     let last_sw_target = crate::kwin::auto_switcher::LAST_SW_PROFILE_TARGET
                                         .load(std::sync::atomic::Ordering::SeqCst);
-                                    let in_sw_cooldown = now_ms.saturating_sub(last_sw_ms) < 1400
+                                    let in_sw_cooldown = now_ms.saturating_sub(last_sw_ms) < 1800
                                         && last_sw_target >= 1
-                                        && hw_prof != last_sw_target;
+                                        && (hw_prof != last_sw_target || hw_prof == last_sw_target);
+                                    let is_paused = qobject
+                                        .rust()
+                                        .switcher_state
+                                        .lock()
+                                        .map(|sw| sw.paused_for_editing)
+                                        .unwrap_or(false);
 
                                     let current_prof = *qobject.active_profile() as u8;
                                     let max_prof = qobject.rust().profiles.len() as u8;
-                                    if !in_sw_cooldown
+                                    if hw_prof_changed
+                                        && !in_sw_cooldown
+                                        && !is_paused
                                         && hw_prof != current_prof
                                         && hw_prof >= 1
                                         && (max_prof == 0 || hw_prof <= max_prof)
@@ -5780,33 +5974,41 @@ impl qobject::DeviceController {
 
         let mut matched_now: Option<u8> = None;
         let mut hid_rejected = false;
+        let mut modifier_override_active = false;
         {
             let rust = self.as_mut().rust_mut().get_mut();
             if let Ok(mut sw) = rust.switcher_state.lock() {
                 if sw.enabled && !sw.paused_for_editing {
                     matched_now = sw.match_profile_for_window(&active_class, &active_title);
                     if let Some(target) = matched_now {
-                        match send_hid_switch_profile_checked(target) {
-                            HidSwitchOutcome::Switched => {
-                                sw.last_switched_profile = target;
+                        sw.last_window_matched_profile = Some(target);
+                        if sw.active_modifier_override.is_some() {
+                            modifier_override_active = true;
+                        } else {
+                            match send_hid_switch_profile_checked(target) {
+                                HidSwitchOutcome::Switched => {
+                                    sw.last_switched_profile = target;
+                                }
+                                HidSwitchOutcome::NotLoadedOnHardware => {
+                                    hid_rejected = true;
+                                }
+                                HidSwitchOutcome::DeviceUnavailable => {}
                             }
-                            HidSwitchOutcome::NotLoadedOnHardware => {
-                                hid_rejected = true;
-                            }
-                            HidSwitchOutcome::DeviceUnavailable => {}
                         }
                     }
                 }
             }
         }
 
-        if let Some(prof) = matched_now {
-            self.as_mut().handle_auto_switched_profile(
-                prof,
-                &active_class,
-                &active_title,
-                hid_rejected,
-            );
+        if !modifier_override_active {
+            if let Some(prof) = matched_now {
+                self.as_mut().handle_auto_switched_profile(
+                    prof,
+                    &active_class,
+                    &active_title,
+                    hid_rejected,
+                );
+            }
         }
         crate::kwin::auto_switcher::dispatch_window_switch_to_secondary_devices(
             &active_class,
@@ -5815,11 +6017,183 @@ impl qobject::DeviceController {
         );
     }
 
-    pub fn set_script_editor_open(mut self: Pin<&mut Self>, open: bool) {
-        let rust = self.as_mut().rust_mut().get_mut();
-        if let Ok(mut sw) = rust.switcher_state.lock() {
-            sw.paused_for_editing = open;
+    fn handle_modifier_layer_transition(
+        mut self: Pin<&mut Self>,
+        transition: ModifierLayerTransition,
+    ) {
+        match transition {
+            ModifierLayerTransition::Activated {
+                target_profile,
+                trigger_key,
+                mode,
+            } => {
+                let mut prev_prof = (*self.active_profile()).clamp(1, 64) as u8;
+                let max_prof = self.rust().profiles.len().max(1) as u8;
+                let clamped_target = target_profile.clamp(1, max_prof);
+                let prof_name = self
+                    .rust()
+                    .profiles
+                    .iter()
+                    .find(|p| p.number == clamped_target)
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| format!("Profile {clamped_target}"));
+
+                let key_lbl = modifier_trigger_key_label(&trigger_key);
+                let mode_lbl = modifier_mode_label(&mode);
+
+                let mut hid_rejected = false;
+                {
+                    let rust = self.as_mut().rust_mut().get_mut();
+                    if let Ok(mut sw) = rust.switcher_state.lock() {
+                        let was_already_overridden = sw.active_modifier_override.is_some();
+                        crate::kwin::auto_switcher::LAST_OBSERVED_HW_PROFILE_BEFORE_SWITCH
+                            .store(0, std::sync::atomic::Ordering::SeqCst);
+                        sw.active_modifier_override = Some((
+                            clamped_target,
+                            trigger_key.clone(),
+                            mode.clone(),
+                        ));
+                        match send_hid_switch_profile_checked(clamped_target) {
+                            HidSwitchOutcome::Switched => {
+                                let hw_pre = crate::kwin::auto_switcher::LAST_OBSERVED_HW_PROFILE_BEFORE_SWITCH
+                                    .load(std::sync::atomic::Ordering::SeqCst);
+                                if !was_already_overridden {
+                                    if hw_pre >= 1 {
+                                        prev_prof = hw_pre.clamp(1, max_prof);
+                                    } else if sw.last_switched_profile >= 1 {
+                                        prev_prof = sw.last_switched_profile.clamp(1, max_prof);
+                                    }
+                                    sw.last_window_matched_profile = Some(prev_prof);
+                                }
+                                sw.last_switched_profile = clamped_target;
+                            }
+                            HidSwitchOutcome::NotLoadedOnHardware => {
+                                if !was_already_overridden
+                                    && sw.last_window_matched_profile.is_none()
+                                {
+                                    sw.last_window_matched_profile = Some(prev_prof);
+                                }
+                                hid_rejected = true;
+                            }
+                            HidSwitchOutcome::DeviceUnavailable => {
+                                if !was_already_overridden
+                                    && sw.last_window_matched_profile.is_none()
+                                {
+                                    sw.last_window_matched_profile = Some(prev_prof);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let badge_text = format!(
+                    "⌨️ {key_lbl} [{mode_lbl}] → #{clamped_target} {prof_name}"
+                );
+                self.as_mut().set_modifier_layer_active(true);
+                self.as_mut()
+                    .set_modifier_layer_status(QString::from(&badge_text));
+
+                if prev_prof != clamped_target {
+                    self.as_mut().set_active_profile(clamped_target as i32);
+                    self.as_mut().sync_active_profile_selection_only();
+                    self.as_mut().dispatch_profile_change_webhooks_if_changed(
+                        prev_prof,
+                        clamped_target,
+                        "modifier_layer_activate",
+                    );
+                } else {
+                    self.as_mut().sync_tray_state();
+                }
+
+                let status_msg = if hid_rejected {
+                    format!(
+                        "⚠️ Modifier Layer ({key_lbl}): Profile #{clamped_target} ('{prof_name}') not yet synced to hardware"
+                    )
+                } else {
+                    format!(
+                        "⌨️ Modifier Layer Active ({key_lbl} • {mode_lbl}) → Profile #{clamped_target} ({prof_name})"
+                    )
+                };
+                record_system_event("INFO", "AUTOSWITCH", &status_msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&status_msg));
+            }
+            ModifierLayerTransition::Deactivated => {
+                let prev_prof = (*self.active_profile()).clamp(1, 64) as u8;
+                let max_prof = self.rust().profiles.len().max(1) as u8;
+                let active_class = self.active_window_class().to_string();
+                let active_title = self.active_window_title().to_string();
+
+                let mut restore_prof: u8 = prev_prof;
+                {
+                    let rust = self.as_mut().rust_mut().get_mut();
+                    if let Ok(mut sw) = rust.switcher_state.lock() {
+                        sw.active_modifier_override = None;
+                        if let Some(win_prof) = sw.last_window_matched_profile {
+                            restore_prof = win_prof.clamp(1, max_prof);
+                        } else if !active_class.is_empty()
+                            && active_class != "Listening for KWin..."
+                        {
+                            if let Some(matched) =
+                                sw.match_profile_for_window(&active_class, &active_title)
+                            {
+                                restore_prof = matched.clamp(1, max_prof);
+                            } else if let Some(fb) = sw.default_profile {
+                                restore_prof = fb.clamp(1, max_prof);
+                            }
+                        } else if let Some(fb) = sw.default_profile {
+                            restore_prof = fb.clamp(1, max_prof);
+                        }
+
+                        if let HidSwitchOutcome::Switched =
+                            send_hid_switch_profile_checked(restore_prof)
+                        {
+                            sw.last_switched_profile = restore_prof;
+                        }
+                    }
+                }
+
+                self.as_mut().set_modifier_layer_active(false);
+                self.as_mut().set_modifier_layer_status(QString::from(""));
+
+                let prof_name = self
+                    .rust()
+                    .profiles
+                    .iter()
+                    .find(|p| p.number == restore_prof)
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| format!("Profile {restore_prof}"));
+
+                if prev_prof != restore_prof {
+                    self.as_mut().set_active_profile(restore_prof as i32);
+                    self.as_mut().sync_active_profile_selection_only();
+                    self.as_mut().dispatch_profile_change_webhooks_if_changed(
+                        prev_prof,
+                        restore_prof,
+                        "modifier_layer_restore",
+                    );
+                } else {
+                    self.as_mut().sync_tray_state();
+                }
+
+                let msg = format!(
+                    "⌨️ Modifier Layer Released → Restored Profile #{restore_prof} ({prof_name})"
+                );
+                record_system_event("INFO", "AUTOSWITCH", &msg);
+                self.as_mut().sync_event_log_properties();
+                self.as_mut().set_status_message(QString::from(&msg));
+            }
         }
+    }
+
+    pub fn set_script_editor_open(mut self: Pin<&mut Self>, open: bool) {
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                sw.paused_for_editing = open;
+            }
+        }
+        self.as_mut().sync_tray_state();
     }
 
     pub fn set_auto_switch_config(mut self: Pin<&mut Self>, enabled: bool, default_profile: i32) {
@@ -6218,6 +6592,158 @@ impl qobject::DeviceController {
 
         if updated {
             self.as_mut().apply_auto_switch_for_current_window();
+            self.as_mut().sync_active_profile_state();
+        }
+        updated
+    }
+
+    pub fn update_modifier_switch_enabled(mut self: Pin<&mut Self>, enabled: bool) {
+        let mut had_active_override = false;
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                sw.modifier_switch_enabled = enabled;
+                if !enabled && sw.active_modifier_override.is_some() {
+                    sw.active_modifier_override = None;
+                    had_active_override = true;
+                }
+                if let Err(e) = sw.save_to_disk() {
+                    record_system_event(
+                        "WARN",
+                        "CONFIG",
+                        format!("Failed saving modifier switch state: {e}"),
+                    );
+                }
+            }
+        }
+        self.as_mut().set_modifier_switch_enabled(enabled);
+        if had_active_override {
+            self.as_mut().set_modifier_layer_active(false);
+            self.as_mut().set_modifier_layer_status(QString::from(""));
+            self.as_mut().apply_auto_switch_for_current_window();
+        }
+        self.as_mut().sync_active_profile_state();
+        self.as_mut().set_status_message(QString::from(if enabled {
+            "⌨️ Main-Keyboard Modifier Layer Switcher enabled"
+        } else {
+            "⌨️ Main-Keyboard Modifier Layer Switcher disabled"
+        }));
+    }
+
+    pub fn update_modifier_section_expanded(mut self: Pin<&mut Self>, expanded: bool) {
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                if sw.modifier_section_expanded != expanded {
+                    sw.modifier_section_expanded = expanded;
+                    let _ = sw.save_to_disk();
+                }
+            }
+        }
+        self.as_mut().set_modifier_section_expanded(expanded);
+    }
+
+    pub fn save_modifier_rule(
+        mut self: Pin<&mut Self>,
+        rule_index: i32,
+        enabled: bool,
+        trigger_key: QString,
+        mode: QString,
+        hold_delay_ms: i32,
+        oneshot_timeout_sec: i32,
+        target_profile: i32,
+    ) -> bool {
+        let norm_key = normalize_modifier_trigger_key(&trigger_key.to_string());
+        let norm_mode = normalize_modifier_mode(&mode.to_string());
+        let clamped_delay = hold_delay_ms.clamp(0, 2000);
+        let clamped_timeout = oneshot_timeout_sec.clamp(1, 60);
+        let max_prof = self.rust().profiles.len().max(1) as i32;
+        let target = target_profile.clamp(1, max_prof.max(1)) as u8;
+
+        let new_rule = ModifierLayerRule {
+            enabled,
+            trigger_key: norm_key.clone(),
+            mode: norm_mode.clone(),
+            hold_delay_ms: clamped_delay,
+            oneshot_timeout_sec: clamped_timeout,
+            target_profile: target,
+        };
+
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                if rule_index >= 0 && (rule_index as usize) < sw.modifier_rules.len() {
+                    sw.modifier_rules[rule_index as usize] = new_rule;
+                } else if let Some(existing) = sw
+                    .modifier_rules
+                    .iter_mut()
+                    .find(|r| r.trigger_key.eq_ignore_ascii_case(&norm_key))
+                {
+                    *existing = new_rule;
+                } else {
+                    sw.modifier_rules.push(new_rule);
+                }
+                sw.loaded_from_disk = true;
+                if let Err(e) = sw.save_to_disk() {
+                    record_system_event(
+                        "WARN",
+                        "CONFIG",
+                        format!("Failed saving modifier rule: {e}"),
+                    );
+                }
+            }
+        }
+
+        let key_lbl = modifier_trigger_key_label(&norm_key);
+        let mode_lbl = modifier_mode_label(&norm_mode);
+        self.as_mut().sync_active_profile_state();
+        self.as_mut().set_status_message(QString::from(&format!(
+            "Saved Modifier Layer rule: {key_lbl} ({mode_lbl}) → Profile #{target}"
+        )));
+        true
+    }
+
+    pub fn remove_modifier_rule(mut self: Pin<&mut Self>, rule_index: i32) -> bool {
+        let mut removed = false;
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                let idx = rule_index as usize;
+                if rule_index >= 0 && idx < sw.modifier_rules.len() {
+                    sw.modifier_rules.remove(idx);
+                    sw.loaded_from_disk = true;
+                    let _ = sw.save_to_disk();
+                    removed = true;
+                }
+            }
+        }
+        if removed {
+            self.as_mut().sync_active_profile_state();
+            self.as_mut()
+                .set_status_message(QString::from("Removed Modifier Layer rule"));
+        }
+        removed
+    }
+
+    pub fn toggle_modifier_rule(
+        mut self: Pin<&mut Self>,
+        rule_index: i32,
+        enabled: bool,
+    ) -> bool {
+        let mut updated = false;
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                let idx = rule_index as usize;
+                if rule_index >= 0 && idx < sw.modifier_rules.len() {
+                    sw.modifier_rules[idx].enabled = enabled;
+                    sw.loaded_from_disk = true;
+                    let _ = sw.save_to_disk();
+                    updated = true;
+                }
+            }
+        }
+        if updated {
             self.as_mut().sync_active_profile_state();
         }
         updated
@@ -8792,6 +9318,14 @@ impl qobject::DeviceController {
                         }
                     }
                 }
+                for mrule in &mut sw.modifier_rules {
+                    if let Some(&mapped_target) = old_to_new.get(&mrule.target_profile) {
+                        if mrule.target_profile != mapped_target {
+                            mrule.target_profile = mapped_target;
+                            rules_changed = true;
+                        }
+                    }
+                }
                 if rules_changed {
                     if let Err(e) = sw.save_to_disk() {
                         record_system_event(
@@ -8820,6 +9354,12 @@ impl qobject::DeviceController {
         };
 
         if let Some((next_num, saved_to_sd)) = res {
+            crate::kwin::auto_switcher::LAST_SW_PROFILE_TARGET
+                .store(next_num as u8, std::sync::atomic::Ordering::SeqCst);
+            crate::kwin::auto_switcher::LAST_SW_PROFILE_SWITCH_MS.store(
+                crate::kwin::auto_switcher::current_epoch_ms(),
+                std::sync::atomic::Ordering::SeqCst,
+            );
             self.as_mut().set_active_profile(next_num);
             self.as_mut().sync_active_profile_state();
             let suffix = if saved_to_sd { " (saved to SD)" } else { "" };
@@ -9883,8 +10423,6 @@ impl qobject::DeviceController {
         struct WizardProfileInput {
             name: String,
             #[serde(default)]
-            slot_number: Option<u8>,
-            #[serde(default)]
             template_id: Option<String>,
             #[serde(default)]
             bg_color: Option<[u8; 3]>,
@@ -9929,21 +10467,24 @@ impl qobject::DeviceController {
             return false;
         }
 
-        let (target_num, is_dpp) = {
+        let (target_num, is_dpp, old_to_new) = {
             let rust = self.as_mut().rust_mut().get_mut();
             if rust.profiles.len() >= 64 {
                 return false;
+            }
+            let mut old_to_new: HashMap<u8, u8> = HashMap::with_capacity(rust.profiles.len());
+            for (idx, p) in rust.profiles.iter_mut().enumerate() {
+                let new_num = (idx + 1) as u8;
+                old_to_new.insert(p.number, new_num);
+                p.number = new_num;
             }
             let is_dpp = rust
                 .sd_root_path
                 .as_ref()
                 .map(|r| r.join("profile_info.txt").is_file())
                 .unwrap_or(true);
-            let next_num = input
-                .slot_number
-                .unwrap_or_else(|| (rust.profiles.len() + 1) as u8)
-                .clamp(1, 64);
-            (next_num, is_dpp)
+            let next_num = (rust.profiles.len() + 1).clamp(1, 64) as u8;
+            (next_num, is_dpp, old_to_new)
         };
 
         let mut prof = if let Some(ref tpl) = input.template_id {
@@ -10081,40 +10622,77 @@ impl qobject::DeviceController {
             sync_profiles_to_device_cache(&sn, &rust.profiles);
         }
 
-        // Auto-switch rule creation
+        // Auto-switch rule creation & profile renumbering sync
         let auto_switch_class = input
             .auto_switch_class
             .unwrap_or_default()
             .trim()
             .to_string();
         let auto_enabled = input.auto_switch_enabled.unwrap_or(true);
-        if auto_enabled && !auto_switch_class.is_empty() {
+        {
             let rust = self.as_mut().rust_mut().get_mut();
             if let Ok(mut sw) = rust.switcher_state.lock() {
-                // If a rule for this class already exists, point it to this profile; otherwise append
-                if let Some(existing) = sw
-                    .rules
-                    .iter_mut()
-                    .find(|r| r.resource_class.eq_ignore_ascii_case(&auto_switch_class))
-                {
-                    existing.target_profile = target_num;
-                    existing.enabled = true;
-                } else {
-                    sw.rules.push(AutoSwitchRule {
-                        enabled: true,
-                        resource_class: auto_switch_class.clone(),
-                        title_contains: input.auto_switch_title.filter(|t| !t.trim().is_empty()),
-                        title_is_regex: false,
-                        favicon_url: None,
-                        target_profile: target_num,
-                    });
+                let mut rules_changed = false;
+                let old_fb = sw.default_profile.unwrap_or(1);
+                let mapped_fb = old_to_new
+                    .get(&old_fb)
+                    .copied()
+                    .unwrap_or(old_fb)
+                    .clamp(1, target_num);
+                if sw.default_profile != Some(mapped_fb) {
+                    sw.default_profile = Some(mapped_fb);
+                    rules_changed = true;
                 }
-                let _ = sw.save_to_disk();
+                for rule in &mut sw.rules {
+                    if let Some(&mapped_target) = old_to_new.get(&rule.target_profile) {
+                        if rule.target_profile != mapped_target {
+                            rule.target_profile = mapped_target;
+                            rules_changed = true;
+                        }
+                    }
+                }
+                for mrule in &mut sw.modifier_rules {
+                    if let Some(&mapped_target) = old_to_new.get(&mrule.target_profile) {
+                        if mrule.target_profile != mapped_target {
+                            mrule.target_profile = mapped_target;
+                            rules_changed = true;
+                        }
+                    }
+                }
+                if auto_enabled && !auto_switch_class.is_empty() {
+                    if let Some(existing) = sw
+                        .rules
+                        .iter_mut()
+                        .find(|r| r.resource_class.eq_ignore_ascii_case(&auto_switch_class))
+                    {
+                        existing.target_profile = target_num;
+                        existing.enabled = true;
+                    } else {
+                        sw.rules.push(AutoSwitchRule {
+                            enabled: true,
+                            resource_class: auto_switch_class.clone(),
+                            title_contains: input.auto_switch_title.filter(|t| !t.trim().is_empty()),
+                            title_is_regex: false,
+                            favicon_url: None,
+                            target_profile: target_num,
+                        });
+                    }
+                    rules_changed = true;
+                }
+                if rules_changed {
+                    let _ = sw.save_to_disk();
+                }
             }
         }
 
-        // Switch to the newly created profile
-        self.as_mut().switch_profile(target_num as i32);
+        // Select the newly created profile for editing
+        crate::kwin::auto_switcher::LAST_SW_PROFILE_TARGET
+            .store(target_num, std::sync::atomic::Ordering::SeqCst);
+        crate::kwin::auto_switcher::LAST_SW_PROFILE_SWITCH_MS.store(
+            crate::kwin::auto_switcher::current_epoch_ms(),
+            std::sync::atomic::Ordering::SeqCst,
+        );
+        self.as_mut().set_active_profile(target_num as i32);
         self.as_mut().sync_active_profile_state();
 
         record_system_event(

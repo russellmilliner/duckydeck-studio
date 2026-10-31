@@ -171,6 +171,13 @@ Window {
             }
         }
 
+        onVisibleChanged: {
+            if (!unsyncedChangesDialog.visible && root && typeof root.syncWindowWidthToEditorState === "function") {
+                root.syncWindowWidthToEditorState()
+                Qt.callLater(root.syncWindowWidthToEditorState)
+            }
+        }
+
         Kirigami.Theme.colorSet: Kirigami.Theme.Window
         Kirigami.Theme.inherit: false
         color: Kirigami.Theme.backgroundColor
@@ -1623,6 +1630,13 @@ Window {
         }
     }
 
+    onVisibleChanged: {
+        if (!sdSyncDialog.visible && root && typeof root.syncWindowWidthToEditorState === "function") {
+            root.syncWindowWidthToEditorState()
+            Qt.callLater(root.syncWindowWidthToEditorState)
+        }
+    }
+
     Kirigami.Theme.colorSet: Kirigami.Theme.Window
     Kirigami.Theme.inherit: false
     color: Kirigami.Theme.backgroundColor
@@ -1830,6 +1844,12 @@ Window {
                 highlighted: deviceController.profileSyncState !== "synced" || (inspectorCard && inspectorCard.hasRevertibleChanges)
                 onClicked: {
                     root.flushPendingSlotEditsIfModified()
+                    if (root && typeof root.clearSlotSelection === "function") {
+                        root.clearSlotSelection()
+                    }
+                    if (root && typeof root.syncWindowWidthToEditorState === "function") {
+                        root.syncWindowWidthToEditorState()
+                    }
                     deviceController.syncProfilesToDeviceSd()
                 }
             }

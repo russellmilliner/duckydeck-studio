@@ -1003,6 +1003,26 @@ pub fn create_showcase_instance() -> DeviceControllerRust {
     qobject::duckydeck_apply_ui_font_scale(100);
     let (profiles, rules) = create_showcase_profiles_and_rules();
     let saved_colors = crate::kwin::auto_switcher::default_saved_colors();
+    let demo_modifier_rules = vec![
+        crate::kwin::auto_switcher::ModifierLayerRule {
+            enabled: true,
+            trigger_key: "RCTRL".to_string(),
+            mode: "hold".to_string(),
+            hold_delay_ms: 200,
+            oneshot_timeout_sec: 6,
+            target_profile: 8,
+        },
+        crate::kwin::auto_switcher::ModifierLayerRule {
+            enabled: true,
+            trigger_key: "MENU".to_string(),
+            mode: "oneshot".to_string(),
+            hold_delay_ms: 200,
+            oneshot_timeout_sec: 6,
+            target_profile: 5,
+        },
+    ];
+    let modifier_rules_json =
+        DeviceControllerRust::serialize_modifier_rules(&demo_modifier_rules, &profiles);
     let switcher = SwitcherState {
         enabled: true,
         paused_for_editing: false,
@@ -1035,9 +1055,14 @@ pub fn create_showcase_instance() -> DeviceControllerRust {
         profile_webhook_body: String::new(),
         autoswitch_enable_section_expanded: true,
         autoswitch_rule_editor_expanded: true,
+        modifier_switch_enabled: true,
+        modifier_section_expanded: true,
+        modifier_rules: demo_modifier_rules,
         google_search_shortcuts_permitted: true,
         multi_click_interval_ms: 250,
         last_switched_profile: 1,
+        active_modifier_override: None,
+        last_window_matched_profile: Some(1),
         picker_armed: false,
         loaded_from_disk: true,
     };
@@ -1174,6 +1199,11 @@ pub fn create_showcase_instance() -> DeviceControllerRust {
             auto_switch_dwell_ms: 150,
             autoswitch_enable_section_expanded: true,
             autoswitch_rule_editor_expanded: true,
+            modifier_switch_enabled: true,
+            modifier_section_expanded: true,
+            modifier_rules_json: QString::from(&modifier_rules_json),
+            modifier_layer_active: false,
+            modifier_layer_status: QString::from(""),
             active_window_class: QString::from("org.kde.dolphin"),
             active_window_title: QString::from("Projects — Dolphin"),
             window_picker_armed: false,

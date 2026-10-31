@@ -44,6 +44,11 @@ Window {
         : ""
     readonly property bool hasAutoSwitchError: autoSwitchError.length > 0
     onAutoSwitchErrorChanged: Qt.callLater(updateTitleExpansion)
+    readonly property bool modifierLayerActive: isTargetDeviceSelected && controller && !!controller.modifierLayerActive
+    readonly property string modifierLayerStatus: (isTargetDeviceSelected && controller)
+        ? String(controller.modifierLayerStatus || "")
+        : ""
+    onModifierLayerStatusChanged: Qt.callLater(updateTitleExpansion)
     readonly property real windowOpacity: Math.max(0.20, Math.min(1.0, (100 - transparencyPercent) / 100.0))
     readonly property int transparencyMax: 80
     readonly property int transparencyWheelStep: 5
@@ -546,15 +551,19 @@ Window {
 
     Rectangle {
         id: outerShell
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
         anchors.fill: parent
         radius: oledWidgetWindow.framelessMode ? 10 : 0
-        color: "#0b0f19"
+        color: Kirigami.Theme.backgroundColor
         border.width: oledWidgetWindow.framelessMode ? 1.5 : 1
         border.color: oledWidgetWindow.hasAutoSwitchError
-            ? "#ef4444"
+            ? Kirigami.Theme.negativeTextColor
             : (oledWidgetWindow.autoSwitchPaused
-                ? "#f59e0b"
-                : (oledWidgetWindow.alwaysOnTop ? "#38bdf8" : "#334155"))
+                ? Kirigami.Theme.neutralTextColor
+                : (oledWidgetWindow.alwaysOnTop
+                    ? Kirigami.Theme.highlightColor
+                    : Qt.alpha(Kirigami.Theme.textColor, 0.25)))
         opacity: oledWidgetWindow.windowOpacity
         layer.enabled: oledWidgetWindow.windowOpacity < 0.999
 
@@ -567,8 +576,10 @@ Window {
             anchors.margins: oledWidgetWindow.outerPad
             height: oledWidgetWindow.headerBarHeight
             radius: 6
-            color: "#111827"
-            border.color: oledWidgetWindow.autoSwitchPaused ? "#f59e0b" : "#1e293b"
+            color: Kirigami.Theme.alternateBackgroundColor
+            border.color: oledWidgetWindow.autoSwitchPaused
+                ? Kirigami.Theme.neutralTextColor
+                : Qt.alpha(Kirigami.Theme.textColor, 0.22)
             border.width: 1
 
             MouseArea {
@@ -630,8 +641,8 @@ Window {
                     height: Layout.preferredHeight
                     radius: width / 2
                     color: (oledWidgetWindow.controller && oledWidgetWindow.controller.connected)
-                        ? "#22c55e"
-                        : "#38bdf8"
+                        ? Kirigami.Theme.positiveTextColor
+                        : Kirigami.Theme.highlightColor
 
                     QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: dotMouse.containsMouse
@@ -656,11 +667,9 @@ Window {
                     Layout.preferredHeight: Math.max(16, Math.round(18 * headerRowLayout.btnScale))
                     Layout.preferredWidth: devBadgeLabel.implicitWidth + (headerRowLayout.compactPills ? 6 : 10)
                     radius: height / 2
-                    color: oledWidgetWindow.isDuckyPad2020
-                        ? Qt.rgba(0.66, 0.33, 0.97, 0.22)
-                        : Qt.rgba(0.22, 0.74, 0.97, 0.22)
+                    color: Qt.alpha(Kirigami.Theme.highlightColor, 0.16)
                     border.width: 1
-                    border.color: oledWidgetWindow.isDuckyPad2020 ? "#a855f7" : "#38bdf8"
+                    border.color: Kirigami.Theme.highlightColor
                     Layout.alignment: Qt.AlignVCenter
 
                     QQC2.Label {
@@ -684,7 +693,7 @@ Window {
                         font.bold: true
                         font.pixelSize: Math.max(8, Math.round(9 * headerRowLayout.btnScale))
                         font.family: "monospace"
-                        color: oledWidgetWindow.isDuckyPad2020 ? "#c084fc" : "#38bdf8"
+                        color: Kirigami.Theme.textColor
                     }
                 }
 
@@ -694,9 +703,9 @@ Window {
                     Layout.preferredHeight: Math.max(16, Math.round(18 * headerRowLayout.btnScale))
                     Layout.preferredWidth: pausedLabel.implicitWidth + (headerRowLayout.compactPills ? 6 : 10)
                     radius: height / 2
-                    color: Qt.rgba(0.96, 0.62, 0.04, 0.22)
+                    color: Qt.alpha(Kirigami.Theme.neutralTextColor, 0.16)
                     border.width: 1
-                    border.color: "#f59e0b"
+                    border.color: Kirigami.Theme.neutralTextColor
                     Layout.alignment: Qt.AlignVCenter
 
                     QQC2.Label {
@@ -706,7 +715,7 @@ Window {
                         font.bold: true
                         font.pixelSize: Math.max(8, Math.round(9 * headerRowLayout.btnScale))
                         font.family: "monospace"
-                        color: "#f59e0b"
+                        color: Kirigami.Theme.textColor
                     }
 
                     QQC2.ToolTip.delay: 500
@@ -748,6 +757,11 @@ Window {
                             height: 16
                             anchors.centerIn: parent
                             scale: Math.max(0.85, Math.min(1.1, headerRowLayout.btnScale * 0.92))
+                            Connections {
+                                target: Kirigami.Theme
+                                function onTextColorChanged() { pinIconCanvas.requestPaint() }
+                                function onHighlightColorChanged() { pinIconCanvas.requestPaint() }
+                            }
                             onPaint: {
                                 const ctx = getContext("2d")
                                 ctx.reset()
@@ -758,7 +772,9 @@ Window {
                                 }
                                 ctx.translate(-8, -8)
 
-                                const col = oledWidgetWindow.alwaysOnTop ? "#38bdf8" : "#cbd5e1"
+                                const col = oledWidgetWindow.alwaysOnTop
+                                    ? String(Kirigami.Theme.highlightColor)
+                                    : String(Kirigami.Theme.textColor)
                                 ctx.strokeStyle = col
                                 ctx.fillStyle = col
                                 ctx.lineWidth = 1.5
@@ -802,10 +818,14 @@ Window {
                     background: Rectangle {
                         radius: 4
                         color: oledWidgetWindow.alwaysOnTop
-                            ? Qt.rgba(0.22, 0.74, 0.97, 0.22)
-                            : (pinTopBtn.hovered ? "#25334a" : "#1a2333")
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.18)
+                            : (pinTopBtn.hovered
+                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.12)
+                                : Kirigami.Theme.backgroundColor)
                         border.width: 1
-                        border.color: oledWidgetWindow.alwaysOnTop ? "#38bdf8" : "#344663"
+                        border.color: oledWidgetWindow.alwaysOnTop
+                            ? Kirigami.Theme.highlightColor
+                            : Qt.alpha(Kirigami.Theme.textColor, 0.25)
                     }
                     QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
@@ -833,12 +853,19 @@ Window {
                             height: 16
                             anchors.centerIn: parent
                             scale: Math.max(0.85, Math.min(1.1, headerRowLayout.btnScale * 0.92))
+                            Connections {
+                                target: Kirigami.Theme
+                                function onTextColorChanged() { allDesktopsIconCanvas.requestPaint() }
+                                function onHighlightColorChanged() { allDesktopsIconCanvas.requestPaint() }
+                            }
                             onPaint: {
                                 const ctx = getContext("2d")
                                 ctx.reset()
                                 const allDesk = oledWidgetWindow.onAllDesktops
-                                const activeCol = allDesk ? "#38bdf8" : "#cbd5e1"
-                                const dimCol = "#64748b"
+                                const activeCol = allDesk
+                                    ? String(Kirigami.Theme.highlightColor)
+                                    : String(Kirigami.Theme.textColor)
+                                const dimCol = String(Kirigami.Theme.disabledTextColor)
                                 ctx.lineWidth = 1.35
                                 ctx.lineJoin = "round"
 
@@ -852,7 +879,7 @@ Window {
                                     const c = cells[i]
                                     ctx.strokeStyle = c.active ? activeCol : dimCol
                                     ctx.fillStyle = c.active
-                                        ? (allDesk ? Qt.rgba(0.22, 0.74, 0.97, 0.45) : "#cbd5e1")
+                                        ? (allDesk ? String(Qt.alpha(Kirigami.Theme.highlightColor, 0.45)) : activeCol)
                                         : "transparent"
                                     ctx.beginPath()
                                     ctx.rect(c.x, c.y, 5.0, 5.0)
@@ -867,10 +894,14 @@ Window {
                     background: Rectangle {
                         radius: 4
                         color: oledWidgetWindow.onAllDesktops
-                            ? Qt.rgba(0.22, 0.74, 0.97, 0.22)
-                            : (allDesktopsBtn.hovered ? "#25334a" : "#1a2333")
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.18)
+                            : (allDesktopsBtn.hovered
+                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.12)
+                                : Kirigami.Theme.backgroundColor)
                         border.width: 1
-                        border.color: oledWidgetWindow.onAllDesktops ? "#38bdf8" : "#344663"
+                        border.color: oledWidgetWindow.onAllDesktops
+                            ? Kirigami.Theme.highlightColor
+                            : Qt.alpha(Kirigami.Theme.textColor, 0.25)
                     }
                     QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
@@ -903,11 +934,18 @@ Window {
                             height: 16
                             anchors.centerIn: parent
                             scale: Math.max(0.85, Math.min(1.1, headerRowLayout.btnScale * 0.92))
+                            Connections {
+                                target: Kirigami.Theme
+                                function onTextColorChanged() { transparencyIconCanvas.requestPaint() }
+                                function onHighlightColorChanged() { transparencyIconCanvas.requestPaint() }
+                            }
                             onPaint: {
                                 const ctx = getContext("2d")
                                 ctx.reset()
                                 const active = oledWidgetWindow.showTransparencySlider || oledWidgetWindow.transparencyPercent > 0
-                                const col = active ? "#38bdf8" : "#cbd5e1"
+                                const col = active
+                                    ? String(Kirigami.Theme.highlightColor)
+                                    : String(Kirigami.Theme.textColor)
                                 ctx.strokeStyle = col
                                 ctx.fillStyle = col
                                 ctx.lineWidth = 1.5
@@ -923,7 +961,7 @@ Window {
                                 ctx.closePath()
                                 ctx.fill()
 
-                                ctx.fillStyle = Qt.rgba(0.22, 0.74, 0.97, 0.35)
+                                ctx.fillStyle = String(Qt.alpha(Kirigami.Theme.highlightColor, 0.35))
                                 ctx.beginPath()
                                 ctx.arc(8, 8, 5.5, -Math.PI * 0.5, Math.PI * 0.5)
                                 ctx.closePath()
@@ -934,12 +972,14 @@ Window {
                     background: Rectangle {
                         radius: 4
                         color: (oledWidgetWindow.showTransparencySlider || oledWidgetWindow.transparencyPercent > 0)
-                            ? Qt.rgba(0.22, 0.74, 0.97, 0.22)
-                            : (transparencyToggleBtn.hovered ? "#25334a" : "#1a2333")
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.18)
+                            : (transparencyToggleBtn.hovered
+                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.12)
+                                : Kirigami.Theme.backgroundColor)
                         border.width: 1
                         border.color: (oledWidgetWindow.showTransparencySlider || oledWidgetWindow.transparencyPercent > 0)
-                            ? "#38bdf8"
-                            : "#344663"
+                            ? Kirigami.Theme.highlightColor
+                            : Qt.alpha(Kirigami.Theme.textColor, 0.25)
                     }
                     QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
@@ -972,11 +1012,18 @@ Window {
                             height: 16
                             anchors.centerIn: parent
                             scale: Math.max(0.85, Math.min(1.1, headerRowLayout.btnScale * 0.92))
+                            Connections {
+                                target: Kirigami.Theme
+                                function onTextColorChanged() { windowTitleIconCanvas.requestPaint() }
+                                function onHighlightColorChanged() { windowTitleIconCanvas.requestPaint() }
+                            }
                             onPaint: {
                                 const ctx = getContext("2d")
                                 ctx.reset()
                                 const active = oledWidgetWindow.showWindowTitle
-                                const col = active ? "#38bdf8" : "#cbd5e1"
+                                const col = active
+                                    ? String(Kirigami.Theme.highlightColor)
+                                    : String(Kirigami.Theme.textColor)
                                 ctx.strokeStyle = col
                                 ctx.fillStyle = col
                                 ctx.lineWidth = 1.5
@@ -1008,10 +1055,14 @@ Window {
                     background: Rectangle {
                         radius: 4
                         color: oledWidgetWindow.showWindowTitle
-                            ? Qt.rgba(0.22, 0.74, 0.97, 0.22)
-                            : (windowTitleToggleBtn.hovered ? "#25334a" : "#1a2333")
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.18)
+                            : (windowTitleToggleBtn.hovered
+                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.12)
+                                : Kirigami.Theme.backgroundColor)
                         border.width: 1
-                        border.color: oledWidgetWindow.showWindowTitle ? "#38bdf8" : "#344663"
+                        border.color: oledWidgetWindow.showWindowTitle
+                            ? Kirigami.Theme.highlightColor
+                            : Qt.alpha(Kirigami.Theme.textColor, 0.25)
                     }
                     QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
@@ -1045,10 +1096,17 @@ Window {
                             height: 16
                             anchors.centerIn: parent
                             scale: Math.max(0.85, Math.min(1.1, headerRowLayout.btnScale * 0.92))
+                            Connections {
+                                target: Kirigami.Theme
+                                function onTextColorChanged() { scaleIconCanvas.requestPaint() }
+                                function onHighlightColorChanged() { scaleIconCanvas.requestPaint() }
+                            }
                             onPaint: {
                                 const ctx = getContext("2d")
                                 ctx.reset()
-                                const col = oledWidgetWindow.showSizeSlider ? "#38bdf8" : "#cbd5e1"
+                                const col = oledWidgetWindow.showSizeSlider
+                                    ? String(Kirigami.Theme.highlightColor)
+                                    : String(Kirigami.Theme.textColor)
                                 ctx.strokeStyle = col
                                 ctx.lineWidth = 1.5
                                 ctx.lineCap = "round"
@@ -1078,10 +1136,14 @@ Window {
                     background: Rectangle {
                         radius: 4
                         color: oledWidgetWindow.showSizeSlider
-                            ? Qt.rgba(0.22, 0.74, 0.97, 0.22)
-                            : (scaleToggleBtn.hovered ? "#25334a" : "#1a2333")
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.18)
+                            : (scaleToggleBtn.hovered
+                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.12)
+                                : Kirigami.Theme.backgroundColor)
                         border.width: 1
-                        border.color: oledWidgetWindow.showSizeSlider ? "#38bdf8" : "#344663"
+                        border.color: oledWidgetWindow.showSizeSlider
+                            ? Kirigami.Theme.highlightColor
+                            : Qt.alpha(Kirigami.Theme.textColor, 0.25)
                     }
                     QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
@@ -1111,7 +1173,7 @@ Window {
                     }
                     contentItem: Text {
                         text: oledWidgetWindow.profileOledRotation + "°"
-                        color: oledWidgetWindow.profileOledRotation !== 0 ? "#38bdf8" : "#cbd5e1"
+                        color: Kirigami.Theme.textColor
                         font.family: "monospace"
                         font.bold: true
                         font.pointSize: Math.max(10, Math.round(10 * headerRowLayout.btnScale))
@@ -1121,10 +1183,14 @@ Window {
                     background: Rectangle {
                         radius: 4
                         color: oledWidgetWindow.profileOledRotation !== 0
-                            ? Qt.rgba(0.22, 0.74, 0.97, 0.22)
-                            : (oledRotCycleBtn.hovered ? "#25334a" : "#1a2333")
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.18)
+                            : (oledRotCycleBtn.hovered
+                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.12)
+                                : Kirigami.Theme.backgroundColor)
                         border.width: 1
-                        border.color: oledWidgetWindow.profileOledRotation !== 0 ? "#38bdf8" : "#344663"
+                        border.color: oledWidgetWindow.profileOledRotation !== 0
+                            ? Kirigami.Theme.highlightColor
+                            : Qt.alpha(Kirigami.Theme.textColor, 0.25)
                     }
                     QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
@@ -1149,11 +1215,18 @@ Window {
                             height: 16
                             anchors.centerIn: parent
                             scale: Math.max(0.85, Math.min(1.1, headerRowLayout.btnScale * 0.92))
+                            Connections {
+                                target: Kirigami.Theme
+                                function onTextColorChanged() { titlebarIconCanvas.requestPaint() }
+                                function onHighlightColorChanged() { titlebarIconCanvas.requestPaint() }
+                            }
                             onPaint: {
                                 const ctx = getContext("2d")
                                 ctx.reset()
                                 const activeTitlebar = !oledWidgetWindow.framelessMode
-                                const col = activeTitlebar ? "#38bdf8" : "#cbd5e1"
+                                const col = activeTitlebar
+                                    ? String(Kirigami.Theme.highlightColor)
+                                    : String(Kirigami.Theme.textColor)
                                 ctx.strokeStyle = col
                                 ctx.fillStyle = col
                                 ctx.lineWidth = 1.5
@@ -1183,10 +1256,14 @@ Window {
                     background: Rectangle {
                         radius: 4
                         color: !oledWidgetWindow.framelessMode
-                            ? Qt.rgba(0.22, 0.74, 0.97, 0.22)
-                            : (titlebarToggleBtn.hovered ? "#25334a" : "#1a2333")
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.18)
+                            : (titlebarToggleBtn.hovered
+                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.12)
+                                : Kirigami.Theme.backgroundColor)
                         border.width: 1
-                        border.color: !oledWidgetWindow.framelessMode ? "#38bdf8" : "#344663"
+                        border.color: !oledWidgetWindow.framelessMode
+                            ? Kirigami.Theme.highlightColor
+                            : Qt.alpha(Kirigami.Theme.textColor, 0.25)
                     }
                     QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
@@ -1209,8 +1286,8 @@ Window {
             width: 194
             height: 34
             radius: 6
-            color: "#162033"
-            border.color: "#38bdf8"
+            color: Kirigami.Theme.alternateBackgroundColor
+            border.color: Kirigami.Theme.highlightColor
             border.width: 1
 
             RowLayout {
@@ -1234,7 +1311,7 @@ Window {
 
                 Text {
                     text: oledWidgetWindow.transparencyPercent + "%"
-                    color: "#38bdf8"
+                    color: Kirigami.Theme.textColor
                     font.family: "monospace"
                     font.bold: true
                     font.pointSize: 10
@@ -1254,7 +1331,7 @@ Window {
                     }
                     contentItem: Text {
                         text: "0%"
-                        color: "#f8fafc"
+                        color: Kirigami.Theme.textColor
                         font.family: "monospace"
                         font.bold: true
                         font.pointSize: 10
@@ -1263,9 +1340,11 @@ Window {
                     }
                     background: Rectangle {
                         radius: 4
-                        color: resetTransparencyBtn.hovered ? "#25334a" : "#1a2333"
+                        color: resetTransparencyBtn.hovered
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.14)
+                            : Kirigami.Theme.backgroundColor
                         border.width: 1
-                        border.color: "#344663"
+                        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.25)
                     }
                     QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
@@ -1285,7 +1364,7 @@ Window {
                     }
                     contentItem: Text {
                         text: "✓"
-                        color: "#38bdf8"
+                        color: Kirigami.Theme.textColor
                         font.bold: true
                         font.pointSize: 10
                         horizontalAlignment: Text.AlignHCenter
@@ -1293,9 +1372,11 @@ Window {
                     }
                     background: Rectangle {
                         radius: 4
-                        color: closeTransparencyBtn.hovered ? "#25334a" : "#1a2333"
+                        color: closeTransparencyBtn.hovered
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.14)
+                            : Kirigami.Theme.backgroundColor
                         border.width: 1
-                        border.color: "#38bdf8"
+                        border.color: Kirigami.Theme.highlightColor
                     }
                     QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
@@ -1316,8 +1397,8 @@ Window {
             width: 184
             height: 34
             radius: 6
-            color: "#162033"
-            border.color: "#38bdf8"
+            color: Kirigami.Theme.alternateBackgroundColor
+            border.color: Kirigami.Theme.highlightColor
             border.width: 1
 
             RowLayout {
@@ -1342,7 +1423,7 @@ Window {
 
                 Text {
                     text: sizeSlider.value.toFixed(1) + "×"
-                    color: "#38bdf8"
+                    color: Kirigami.Theme.textColor
                     font.family: "monospace"
                     font.bold: true
                     font.pointSize: 10
@@ -1363,7 +1444,7 @@ Window {
                     }
                     contentItem: Text {
                         text: "1×"
-                        color: "#f8fafc"
+                        color: Kirigami.Theme.textColor
                         font.family: "monospace"
                         font.bold: true
                         font.pointSize: 10
@@ -1372,9 +1453,11 @@ Window {
                     }
                     background: Rectangle {
                         radius: 4
-                        color: resetScaleBtn.hovered ? "#25334a" : "#1a2333"
+                        color: resetScaleBtn.hovered
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.14)
+                            : Kirigami.Theme.backgroundColor
                         border.width: 1
-                        border.color: "#344663"
+                        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.25)
                     }
                     QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
@@ -1394,7 +1477,7 @@ Window {
                     }
                     contentItem: Text {
                         text: "✓"
-                        color: "#38bdf8"
+                        color: Kirigami.Theme.textColor
                         font.bold: true
                         font.pointSize: 10
                         horizontalAlignment: Text.AlignHCenter
@@ -1402,9 +1485,11 @@ Window {
                     }
                     background: Rectangle {
                         radius: 4
-                        color: closeScaleBtn.hovered ? "#25334a" : "#1a2333"
+                        color: closeScaleBtn.hovered
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.14)
+                            : Kirigami.Theme.backgroundColor
                         border.width: 1
-                        border.color: "#38bdf8"
+                        border.color: Kirigami.Theme.highlightColor
                     }
                     QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
@@ -1427,19 +1512,28 @@ Window {
             height: oledWidgetWindow.currentTitleBarHeight
             radius: 6
             color: oledWidgetWindow.hasAutoSwitchError
-                ? Qt.tint("#111827", Qt.rgba(0.94, 0.27, 0.27, 0.22))
-                : (oledWidgetWindow.autoSwitchPaused
-                    ? Qt.tint("#111827", Qt.rgba(0.96, 0.62, 0.04, 0.16))
-                    : "#111827")
+                ? Qt.alpha(Kirigami.Theme.negativeTextColor, 0.16)
+                : (oledWidgetWindow.modifierLayerActive
+                    ? Qt.alpha(Kirigami.Theme.highlightColor, 0.18)
+                    : (oledWidgetWindow.autoSwitchPaused
+                        ? Qt.alpha(Kirigami.Theme.neutralTextColor, 0.16)
+                        : Kirigami.Theme.alternateBackgroundColor))
             border.color: oledWidgetWindow.hasAutoSwitchError
-                ? "#ef4444"
-                : (oledWidgetWindow.autoSwitchPaused ? "#f59e0b" : "#1e293b")
-            border.width: 1
+                ? Kirigami.Theme.negativeTextColor
+                : (oledWidgetWindow.modifierLayerActive
+                    ? Kirigami.Theme.highlightColor
+                    : (oledWidgetWindow.autoSwitchPaused
+                        ? Kirigami.Theme.neutralTextColor
+                        : Qt.alpha(Kirigami.Theme.textColor, 0.22)))
+            border.width: oledWidgetWindow.modifierLayerActive ? 1.5 : 1
             clip: true
 
             readonly property string titleText: {
                 if (oledWidgetWindow.hasAutoSwitchError) {
                     return oledWidgetWindow.autoSwitchError
+                }
+                if (oledWidgetWindow.modifierLayerActive && oledWidgetWindow.modifierLayerStatus.length > 0) {
+                    return oledWidgetWindow.modifierLayerStatus
                 }
                 if (oledWidgetWindow.autoSwitchPaused) {
                     const winName = oledWidgetWindow.lastExternalWindowTitle.length > 0
@@ -1476,12 +1570,13 @@ Window {
                 anchors.leftMargin: 8
                 anchors.rightMargin: 8
                 text: windowTitleBar.titleText
-                color: oledWidgetWindow.hasAutoSwitchError
-                    ? "#fca5a5"
-                    : (oledWidgetWindow.autoSwitchPaused
-                        ? "#f59e0b"
-                        : (oledWidgetWindow.lastExternalWindowTitle.length > 0 ? "#e2e8f0" : "#64748b"))
-                font.bold: oledWidgetWindow.hasAutoSwitchError || oledWidgetWindow.autoSwitchPaused || oledWidgetWindow.lastExternalWindowTitle.length > 0
+                color: (oledWidgetWindow.hasAutoSwitchError
+                    || oledWidgetWindow.modifierLayerActive
+                    || oledWidgetWindow.autoSwitchPaused
+                    || oledWidgetWindow.lastExternalWindowTitle.length > 0)
+                    ? Kirigami.Theme.textColor
+                    : Kirigami.Theme.disabledTextColor
+                font.bold: oledWidgetWindow.hasAutoSwitchError || oledWidgetWindow.modifierLayerActive || oledWidgetWindow.autoSwitchPaused || oledWidgetWindow.lastExternalWindowTitle.length > 0
                 font.pixelSize: oledWidgetWindow.windowTitleFontPx
                 font.italic: !oledWidgetWindow.hasAutoSwitchError && !oledWidgetWindow.autoSwitchPaused && oledWidgetWindow.lastExternalWindowTitle.length === 0
                 wrapMode: Text.WrapAtWordBoundaryOrAnywhere
@@ -1512,8 +1607,10 @@ Window {
             anchors.rightMargin: oledWidgetWindow.outerPad
             height: oledWidgetWindow.footerBarHeight
             radius: 6
-            color: "#111827"
-            border.color: oledWidgetWindow.autoSwitchPaused ? "#f59e0b" : "#1e293b"
+            color: Kirigami.Theme.alternateBackgroundColor
+            border.color: oledWidgetWindow.autoSwitchPaused
+                ? Kirigami.Theme.neutralTextColor
+                : Qt.alpha(Kirigami.Theme.textColor, 0.22)
             border.width: 1
 
             readonly property int knobDiameter: Math.max(15, Math.round(oledWidgetWindow.oledSide * 0.082))
@@ -1546,8 +1643,8 @@ Window {
                         width: bottomFooterBar.knobDiameter
                         height: bottomFooterBar.knobDiameter
                         radius: width / 2
-                        color: "#0f172a"
-                        border.color: "#38bdf8"
+                        color: Kirigami.Theme.backgroundColor
+                        border.color: Kirigami.Theme.highlightColor
                         border.width: Math.max(1.5, width * 0.09)
 
                         // Top indicator notch on rotary dial
@@ -1555,7 +1652,7 @@ Window {
                             width: Math.max(2, Math.round(parent.width * 0.14))
                             height: Math.max(3, Math.round(parent.height * 0.22))
                             radius: 1
-                            color: "#38bdf8"
+                            color: Kirigami.Theme.highlightColor
                             anchors.top: parent.top
                             anchors.topMargin: 1
                             anchors.horizontalCenter: parent.horizontalCenter
@@ -1565,7 +1662,7 @@ Window {
                             anchors.centerIn: parent
                             anchors.verticalCenterOffset: 1
                             text: "1"
-                            color: "#f8fafc"
+                            color: Kirigami.Theme.textColor
                             font.family: "sans-serif"
                             font.bold: true
                             font.pixelSize: Math.max(9, Math.round(parent.height * 0.56))
@@ -1577,7 +1674,7 @@ Window {
                         font.family: "monospace"
                         font.bold: true
                         font.pixelSize: bottomFooterBar.encFontSize
-                        color: "#7dd3fc"
+                        color: Kirigami.Theme.textColor
                         elide: Text.ElideRight
                         Layout.fillWidth: true
                     }
@@ -1594,8 +1691,8 @@ Window {
                         width: bottomFooterBar.knobDiameter
                         height: bottomFooterBar.knobDiameter
                         radius: width / 2
-                        color: "#0f172a"
-                        border.color: "#38bdf8"
+                        color: Kirigami.Theme.backgroundColor
+                        border.color: Kirigami.Theme.highlightColor
                         border.width: Math.max(1.5, width * 0.09)
 
                         // Top indicator notch on rotary dial
@@ -1603,7 +1700,7 @@ Window {
                             width: Math.max(2, Math.round(parent.width * 0.14))
                             height: Math.max(3, Math.round(parent.height * 0.22))
                             radius: 1
-                            color: "#38bdf8"
+                            color: Kirigami.Theme.highlightColor
                             anchors.top: parent.top
                             anchors.topMargin: 1
                             anchors.horizontalCenter: parent.horizontalCenter
@@ -1613,7 +1710,7 @@ Window {
                             anchors.centerIn: parent
                             anchors.verticalCenterOffset: 1
                             text: "2"
-                            color: "#f8fafc"
+                            color: Kirigami.Theme.textColor
                             font.family: "sans-serif"
                             font.bold: true
                             font.pixelSize: Math.max(9, Math.round(parent.height * 0.56))
@@ -1625,7 +1722,7 @@ Window {
                         font.family: "monospace"
                         font.bold: true
                         font.pixelSize: bottomFooterBar.encFontSize
-                        color: "#7dd3fc"
+                        color: Kirigami.Theme.textColor
                         elide: Text.ElideRight
                         Layout.fillWidth: true
                     }
@@ -1654,8 +1751,8 @@ Window {
                             }
                         }
                         contentItem: Text {
-                            text: qsTr("− Profile")
-                            color: "#f8fafc"
+                            text: bottomFooterBar.width < 230 ? qsTr("− Prof") : qsTr("− Profile")
+                            color: Kirigami.Theme.textColor
                             font.bold: true
                             font.pixelSize: Math.max(10, Math.round(bottomFooterBar.profileBtnHeight * 0.52))
                             horizontalAlignment: Text.AlignHCenter
@@ -1663,9 +1760,13 @@ Window {
                         }
                         background: Rectangle {
                             radius: 4
-                            color: prevProfileBtn.hovered ? "#25334a" : "#1a2333"
+                            color: prevProfileBtn.hovered
+                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.14)
+                                : Kirigami.Theme.backgroundColor
                             border.width: 1
-                            border.color: prevProfileBtn.hovered ? "#38bdf8" : "#344663"
+                            border.color: prevProfileBtn.hovered
+                                ? Kirigami.Theme.highlightColor
+                                : Qt.alpha(Kirigami.Theme.textColor, 0.25)
                         }
                         QQC2.ToolTip.delay: 500
                         QQC2.ToolTip.visible: hovered
@@ -1690,8 +1791,8 @@ Window {
                             }
                         }
                         contentItem: Text {
-                            text: qsTr("+ Profile")
-                            color: "#f8fafc"
+                            text: bottomFooterBar.width < 230 ? qsTr("+ Prof") : qsTr("+ Profile")
+                            color: Kirigami.Theme.textColor
                             font.bold: true
                             font.pixelSize: Math.max(10, Math.round(bottomFooterBar.profileBtnHeight * 0.52))
                             horizontalAlignment: Text.AlignHCenter
@@ -1699,13 +1800,54 @@ Window {
                         }
                         background: Rectangle {
                             radius: 4
-                            color: nextProfileBtn.hovered ? "#25334a" : "#1a2333"
+                            color: nextProfileBtn.hovered
+                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.14)
+                                : Kirigami.Theme.backgroundColor
                             border.width: 1
-                            border.color: nextProfileBtn.hovered ? "#38bdf8" : "#344663"
+                            border.color: nextProfileBtn.hovered
+                                ? Kirigami.Theme.highlightColor
+                                : Qt.alpha(Kirigami.Theme.textColor, 0.25)
                         }
                         QQC2.ToolTip.delay: 500
                         QQC2.ToolTip.visible: hovered
                         QQC2.ToolTip.text: qsTr("Next Profile")
+                    }
+
+                    // Show Full Application Window Button (↗ Full App)
+                    QQC2.ToolButton {
+                        id: openFullAppBtn
+                        objectName: "oledWidgetOpenFullAppBtn"
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: bottomFooterBar.profileBtnHeight
+                        implicitHeight: Layout.preferredHeight
+                        padding: 0
+                        onClicked: {
+                            if (oledWidgetWindow.controller) {
+                                oledWidgetWindow.controller.showFromTray()
+                            }
+                            oledWidgetWindow.requestOpenMainWindow()
+                        }
+                        contentItem: Text {
+                            text: bottomFooterBar.width < 230 ? qsTr("↗ App") : qsTr("↗ Full App")
+                            color: Kirigami.Theme.textColor
+                            font.bold: true
+                            font.pixelSize: Math.max(10, Math.round(bottomFooterBar.profileBtnHeight * 0.52))
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        background: Rectangle {
+                            radius: 4
+                            color: openFullAppBtn.hovered
+                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.20)
+                                : Kirigami.Theme.backgroundColor
+                            border.width: 1
+                            border.color: openFullAppBtn.hovered
+                                ? Kirigami.Theme.highlightColor
+                                : Qt.alpha(Kirigami.Theme.highlightColor, 0.45)
+                        }
+                        QQC2.ToolTip.delay: 500
+                        QQC2.ToolTip.visible: hovered
+                        QQC2.ToolTip.text: qsTr("Show Full DuckyDeck Studio Window")
                     }
 
                     // Bottom-Right Resize Grip
@@ -1713,13 +1855,15 @@ Window {
                         width: Math.max(18, Math.round(20 * oledWidgetWindow.uiScale))
                         height: bottomFooterBar.profileBtnHeight
                         radius: 4
-                        color: resizeMouse.containsMouse ? "#1e293b" : "transparent"
+                        color: resizeMouse.containsMouse
+                            ? Qt.alpha(Kirigami.Theme.highlightColor, 0.12)
+                            : "transparent"
 
                         Text {
                             anchors.centerIn: parent
                             text: "◢"
                             font.pixelSize: Math.max(10, Math.round(bottomFooterBar.profileBtnHeight * 0.52))
-                            color: "#64748b"
+                            color: Kirigami.Theme.disabledTextColor
                         }
 
                         MouseArea {
@@ -1749,8 +1893,8 @@ Window {
             width: hudLabel.implicitWidth + 24
             height: hudLabel.implicitHeight + 12
             radius: 8
-            color: "#e6162033"
-            border.color: "#38bdf8"
+            color: Kirigami.Theme.alternateBackgroundColor
+            border.color: Kirigami.Theme.highlightColor
             border.width: 1
             opacity: 0
             visible: opacity > 0
@@ -1765,7 +1909,7 @@ Window {
                 id: hudLabel
                 anchors.centerIn: parent
                 text: qsTr("Transparency %1%").arg(oledWidgetWindow.transparencyPercent)
-                color: "#38bdf8"
+                color: Kirigami.Theme.textColor
                 font.family: "monospace"
                 font.bold: true
                 font.pixelSize: Math.max(11, Math.round(12 * oledWidgetWindow.uiScale))
@@ -1807,7 +1951,9 @@ Window {
                 color: "#000000"
                 border.color: oledWidgetWindow.hasAutoSwitchError
                     ? "#ef4444"
-                    : (oledWidgetWindow.autoSwitchPaused ? "#f59e0b" : "#38bdf8")
+                    : (oledWidgetWindow.modifierLayerActive
+                        ? "#a855f7"
+                        : (oledWidgetWindow.autoSwitchPaused ? "#f59e0b" : "#38bdf8"))
                 border.width: 2
                 clip: true
 
@@ -1841,7 +1987,9 @@ Window {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         height: oledScreenContent.bannerHeight
-                        color: oledWidgetWindow.hasAutoSwitchError ? "#ef4444" : "#38bdf8"
+                        color: oledWidgetWindow.hasAutoSwitchError
+                            ? "#ef4444"
+                            : (oledWidgetWindow.modifierLayerActive ? "#a855f7" : "#38bdf8")
 
                         Text {
                             anchors.fill: parent
@@ -1849,9 +1997,10 @@ Window {
                             anchors.rightMargin: 4
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
-                            text: "P" + oledWidgetWindow.activeProfile + ": " + oledWidgetWindow.activeProfileName
+                            text: (oledWidgetWindow.modifierLayerActive ? "⌨ " : "")
+                                + "P" + oledWidgetWindow.activeProfile + ": " + oledWidgetWindow.activeProfileName
                                 + (oledWidgetWindow.profileOledRotation !== 0 ? " [" + oledWidgetWindow.profileOledRotation + "°]" : "")
-                            color: oledWidgetWindow.hasAutoSwitchError ? "#ffffff" : "#020617"
+                            color: (oledWidgetWindow.hasAutoSwitchError || oledWidgetWindow.modifierLayerActive) ? "#ffffff" : "#020617"
                             font.family: "sans-serif"
                             font.bold: true
                             font.pixelSize: Math.max(10, Math.round(parent.height * 0.62))

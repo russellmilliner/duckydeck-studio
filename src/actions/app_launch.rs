@@ -1091,3 +1091,579 @@ impl GlobalMacroEvdevRecorder {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HidrawKeyboardFormat {
+    /// Standard 8-byte boot keyboard report without Report ID:
+    /// `buf[0]` = modifier bitmask (0xE0..0xE7), `buf[2..]` = key usage array (0x00 = none).
+    BootNoReportId,
+    /// Report-ID prefixed 6KRO/array keyboard report:
+    /// `buf[0] == report_id`, `buf[1]` = modifier bitmask, `buf[2..]` = key usage array (0x00 = none).
+    ArrayWithReportId(u8),
+    /// Report-ID prefixed NKRO bitmap keyboard report (e.g. QMK/VIA/Keychron shared EP):
+    /// `buf[0] == report_id`, `buf[1]` = modifier bitmask, `buf[2..]` = bitfield of HID usages 0x00..0xEF.
+    NkroBitmapWithReportId(u8),
+}
+
+pub fn detect_hidraw_keyboard_format(desc: &[u8]) -> Option<HidrawKeyboardFormat> {
+    // Look for Usage Page (Generic Desktop 0x01), Usage (Keyboard 0x06), Collection (Application 0x01)
+    let sig = [0x05u8, 0x01, 0x09, 0x06, 0xA1, 0x01];
+    let pos = desc.windows(sig.len()).position(|w| w == sig)?;
+    let tail = &desc[pos + sig.len()..];
+    let section = &tail[..tail.len().min(64)];
+
+    // Check if a Report ID tag (0x85 <id>) appears before the first Input item (0x81)
+    let first_input_pos = section.iter().position(|&b| b == 0x81).unwrap_or(section.len());
+    let pre_input = &section[..first_input_pos];
+    let report_id = pre_input
+        .windows(2)
+        .find(|w| w[0] == 0x85 && w[1] != 0)
+        .map(|w| w[1]);
+
+    if let Some(id) = report_id {
+        let is_nkro_bitmap = section.windows(4).any(|w| {
+            (w[0] == 0x95 && w[1] >= 0x60 && w[2] == 0x75 && w[3] == 0x01)
+                || (w[0] == 0x75 && w[1] == 0x01 && w[2] == 0x95 && w[3] >= 0x60)
+        });
+        if is_nkro_bitmap {
+            Some(HidrawKeyboardFormat::NkroBitmapWithReportId(id))
+        } else {
+            Some(HidrawKeyboardFormat::ArrayWithReportId(id))
+        }
+    } else {
+        Some(HidrawKeyboardFormat::BootNoReportId)
+    }
+}
+
+pub fn hid_usage_to_evdev(usage: u8) -> Option<u16> {
+    match usage {
+        0x00..=0x03 => None, // No event / ErrorRollOver / POSTFail / ErrorUndefined
+        0x39 => Some(58),    // Caps Lock -> KEY_CAPSLOCK
+        0x47 => Some(70),    // Scroll Lock -> KEY_SCROLLLOCK
+        0x48 => Some(119),   // Pause -> KEY_PAUSE
+        0x65 | 0x76 => Some(127), // Keyboard Application / Menu -> KEY_COMPOSE
+        0x68..=0x73 => Some(183 + (usage - 0x68) as u16), // F13..F24 -> 183..194
+        0xE0 => Some(29),    // Left Control -> KEY_LEFTCTRL
+        0xE1 => Some(42),    // Left Shift -> KEY_LEFTSHIFT
+        0xE2 => Some(56),    // Left Alt -> KEY_LEFTALT
+        0xE3 => Some(125),   // Left GUI -> KEY_LEFTMETA
+        0xE4 => Some(97),    // Right Control -> KEY_RIGHTCTRL
+        0xE5 => Some(54),    // Right Shift -> KEY_RIGHTSHIFT
+        0xE6 => Some(100),   // Right Alt -> KEY_RIGHTALT
+        0xE7 => Some(126),   // Right GUI -> KEY_RIGHTMETA
+        other => Some(1000 + other as u16), // Distinct non-trigger typing key for chord guard
+    }
+}
+
+fn insert_hid_modifier_bits(mod_bits: u8, out: &mut std::collections::HashSet<u16>) {
+    if (mod_bits & 0x01) != 0 {
+        out.insert(29); // LCTRL
+    }
+    if (mod_bits & 0x02) != 0 {
+        out.insert(42); // LSHIFT
+    }
+    if (mod_bits & 0x04) != 0 {
+        out.insert(56); // LALT
+    }
+    if (mod_bits & 0x08) != 0 {
+        out.insert(125); // LMETA (SUPER)
+    }
+    if (mod_bits & 0x10) != 0 {
+        out.insert(97); // RCTRL
+    }
+    if (mod_bits & 0x20) != 0 {
+        out.insert(54); // RSHIFT
+    }
+    if (mod_bits & 0x40) != 0 {
+        out.insert(100); // RALT
+    }
+    if (mod_bits & 0x80) != 0 {
+        out.insert(126); // RMETA (SUPER)
+    }
+}
+
+pub fn parse_hidraw_keyboard_report(
+    format: HidrawKeyboardFormat,
+    buf: &[u8],
+) -> Option<std::collections::HashSet<u16>> {
+    let mut keys = std::collections::HashSet::new();
+    match format {
+        HidrawKeyboardFormat::BootNoReportId => {
+            if buf.len() < 3 {
+                return None;
+            }
+            insert_hid_modifier_bits(buf[0], &mut keys);
+            for &u in &buf[2..buf.len().min(16)] {
+                if let Some(code) = hid_usage_to_evdev(u) {
+                    keys.insert(code);
+                }
+            }
+            Some(keys)
+        }
+        HidrawKeyboardFormat::ArrayWithReportId(report_id) => {
+            if buf.len() < 3 || buf[0] != report_id {
+                return None;
+            }
+            insert_hid_modifier_bits(buf[1], &mut keys);
+            for &u in &buf[2..buf.len().min(16)] {
+                if let Some(code) = hid_usage_to_evdev(u) {
+                    keys.insert(code);
+                }
+            }
+            Some(keys)
+        }
+        HidrawKeyboardFormat::NkroBitmapWithReportId(report_id) => {
+            if buf.len() < 4 || buf[0] != report_id {
+                return None;
+            }
+            insert_hid_modifier_bits(buf[1], &mut keys);
+            let bitmap = &buf[2..buf.len().min(32)];
+            for (byte_idx, &b) in bitmap.iter().enumerate() {
+                if b == 0 {
+                    continue;
+                }
+                for bit in 0..8u8 {
+                    if (b & (1 << bit)) != 0 {
+                        let usage = (byte_idx as u8).saturating_mul(8).saturating_add(bit);
+                        if let Some(code) = hid_usage_to_evdev(usage) {
+                            keys.insert(code);
+                        }
+                    }
+                }
+            }
+            Some(keys)
+        }
+    }
+}
+
+#[cfg(unix)]
+struct HidrawKeyboardNode {
+    path: PathBuf,
+    file: fs::File,
+    format: HidrawKeyboardFormat,
+    held_keys: std::collections::HashSet<u16>,
+}
+
+pub struct HostKeyboardModifierListener {
+    #[cfg(unix)]
+    files: Vec<(PathBuf, fs::File)>,
+    #[cfg(unix)]
+    hidraw_nodes: Vec<HidrawKeyboardNode>,
+    #[cfg(unix)]
+    evdev_held_keys: std::collections::HashSet<u16>,
+    #[cfg(unix)]
+    rescan_tick: u32,
+    held_keys: std::collections::HashSet<u16>,
+    #[cfg(target_os = "windows")]
+    prev_vk_down: [bool; 256],
+    pub engine: crate::kwin::auto_switcher::HostKeyboardModifierEngine,
+}
+
+impl Default for HostKeyboardModifierListener {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl HostKeyboardModifierListener {
+    pub fn new() -> Self {
+        let mut s = Self {
+            #[cfg(unix)]
+            files: Vec::new(),
+            #[cfg(unix)]
+            hidraw_nodes: Vec::new(),
+            #[cfg(unix)]
+            evdev_held_keys: std::collections::HashSet::new(),
+            #[cfg(unix)]
+            rescan_tick: 0,
+            held_keys: std::collections::HashSet::new(),
+            #[cfg(target_os = "windows")]
+            prev_vk_down: [false; 256],
+            engine: crate::kwin::auto_switcher::HostKeyboardModifierEngine::new(),
+        };
+        s.refresh_keyboard_nodes();
+        s
+    }
+
+    pub fn refresh_keyboard_nodes(&mut self) {
+        #[cfg(unix)]
+        {
+            use std::io::Read;
+            use std::os::unix::fs::OpenOptionsExt;
+
+            let mut drain_buf = [0u8; 240];
+            if let Ok(entries) = fs::read_dir("/sys/class/input") {
+                for entry in entries.flatten() {
+                    let fname = entry.file_name();
+                    let Some(name_str) = fname.to_str() else {
+                        continue;
+                    };
+                    if !name_str.starts_with("event") {
+                        continue;
+                    }
+                    let dev_path = Path::new("/dev/input").join(name_str);
+                    if self.files.iter().any(|(p, _)| p == &dev_path) {
+                        continue;
+                    }
+
+                    let sys_dev_dir = entry.path().join("device");
+                    let uevent_upper = fs::read_to_string(sys_dev_dir.join("uevent"))
+                        .unwrap_or_default()
+                        .to_ascii_uppercase();
+                    let dev_name_lower = fs::read_to_string(sys_dev_dir.join("name"))
+                        .unwrap_or_default()
+                        .to_ascii_lowercase();
+
+                    // Explicitly exclude duckyPad USB HID nodes so duckyPad macros never loop back
+                    if uevent_upper.contains("483/D11D")
+                        || uevent_upper.contains("483/D11C")
+                        || uevent_upper.contains("0483:D11D")
+                        || uevent_upper.contains("0483:D11C")
+                        || dev_name_lower.contains("duckypad")
+                    {
+                        continue;
+                    }
+
+                    // Only open devices that report EV_KEY capability
+                    let key_caps = fs::read_to_string(sys_dev_dir.join("capabilities/key"))
+                        .unwrap_or_default();
+                    let has_nonzero_key_caps = key_caps
+                        .chars()
+                        .any(|c| c.is_ascii_hexdigit() && c != '0');
+                    if !has_nonzero_key_caps {
+                        continue;
+                    }
+
+                    if let Ok(mut file) = fs::OpenOptions::new()
+                        .read(true)
+                        .custom_flags(0o4000) // O_NONBLOCK
+                        .open(&dev_path)
+                    {
+                        while file.read(&mut drain_buf).is_ok() {}
+                        self.files.push((dev_path, file));
+                    }
+                }
+            }
+
+            // Also discover readable USB HID keyboard `/dev/hidraw*` nodes so unprivileged users
+            // without `input` group membership can use Main-Keyboard Modifier Layer Shifting zero-config.
+            if let Ok(entries) = fs::read_dir("/sys/class/hidraw") {
+                for entry in entries.flatten() {
+                    let fname = entry.file_name();
+                    let Some(name_str) = fname.to_str() else {
+                        continue;
+                    };
+                    if !name_str.starts_with("hidraw") {
+                        continue;
+                    }
+                    let dev_path = Path::new("/dev").join(name_str);
+                    if self.hidraw_nodes.iter().any(|n| n.path == dev_path) {
+                        continue;
+                    }
+
+                    let sys_dev_dir = entry.path().join("device");
+                    let uevent_upper = fs::read_to_string(sys_dev_dir.join("uevent"))
+                        .unwrap_or_default()
+                        .to_ascii_uppercase();
+                    if uevent_upper.contains("0483:0000D11D")
+                        || uevent_upper.contains("0483:0000D11C")
+                        || uevent_upper.contains("0483:D11D")
+                        || uevent_upper.contains("0483:D11C")
+                        || uevent_upper.contains("DUCKYPAD")
+                        || uevent_upper.contains("1050:")
+                        || uevent_upper.contains("YUBIKEY")
+                    {
+                        continue;
+                    }
+
+                    let Ok(desc) = fs::read(sys_dev_dir.join("report_descriptor")) else {
+                        continue;
+                    };
+                    let Some(format) = detect_hidraw_keyboard_format(&desc) else {
+                        continue;
+                    };
+
+                    if let Ok(mut file) = fs::OpenOptions::new()
+                        .read(true)
+                        .custom_flags(0o4000) // O_NONBLOCK
+                        .open(&dev_path)
+                    {
+                        while file.read(&mut drain_buf).is_ok() {}
+                        self.hidraw_nodes.push(HidrawKeyboardNode {
+                            path: dev_path,
+                            file,
+                            format,
+                            held_keys: std::collections::HashSet::new(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn poll_modifier_layer(
+        &mut self,
+        modifier_switch_enabled: bool,
+        paused_for_editing: bool,
+        rules: &[crate::kwin::auto_switcher::ModifierLayerRule],
+    ) -> Option<crate::kwin::auto_switcher::ModifierLayerTransition> {
+        if !modifier_switch_enabled || rules.is_empty() || !rules.iter().any(|r| r.enabled) {
+            self.held_keys.clear();
+            #[cfg(unix)]
+            {
+                self.evdev_held_keys.clear();
+                for node in &mut self.hidraw_nodes {
+                    node.held_keys.clear();
+                }
+            }
+            return self.engine.force_deactivate();
+        }
+
+        let mut newly_pressed_keys: Vec<u16> = Vec::new();
+        let duckypad_keys_held = crate::hardware::storage::EVDEV_KEYS_HELD_COUNT
+            .load(std::sync::atomic::Ordering::SeqCst);
+        let last_duckypad_keydown_ms = crate::hardware::storage::LAST_EVDEV_KEYDOWN_MS
+            .load(std::sync::atomic::Ordering::SeqCst);
+        let now_ms = crate::kwin::auto_switcher::current_epoch_ms();
+        let mut intermediate_transition: Option<
+            crate::kwin::auto_switcher::ModifierLayerTransition,
+        > = None;
+
+        #[cfg(unix)]
+        {
+            use std::io::{self, Read};
+
+            self.rescan_tick = self.rescan_tick.wrapping_add(1);
+            if (self.files.is_empty() && self.hidraw_nodes.is_empty())
+                || self.rescan_tick.is_multiple_of(80)
+            {
+                self.refresh_keyboard_nodes();
+            }
+
+            let mut drop_indices = Vec::new();
+            let mut raw = [0u8; 24];
+
+            for (idx, (_path, file)) in self.files.iter_mut().enumerate() {
+                loop {
+                    match file.read_exact(&mut raw) {
+                        Ok(()) => {
+                            let ev_type = u16::from_ne_bytes([raw[16], raw[17]]);
+                            let ev_code = u16::from_ne_bytes([raw[18], raw[19]]);
+                            let ev_value =
+                                i32::from_ne_bytes([raw[20], raw[21], raw[22], raw[23]]);
+                            // EV_KEY == 1; ignore mouse buttons (0x110..0x120 = 272..288)
+                            if ev_type == 1 && (ev_code <= 248 || ev_code == 464) {
+                                if ev_value == 1 {
+                                    self.evdev_held_keys.insert(ev_code);
+                                    newly_pressed_keys.push(ev_code);
+                                } else if ev_value == 0 {
+                                    self.evdev_held_keys.remove(&ev_code);
+                                }
+                            }
+                        }
+                        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                        Err(_) => {
+                            drop_indices.push(idx);
+                            break;
+                        }
+                    }
+                }
+            }
+            for idx in drop_indices.into_iter().rev() {
+                self.files.remove(idx);
+            }
+
+            let mut drop_hidraw = Vec::new();
+            let mut hbuf = [0u8; 64];
+            for (idx, node) in self.hidraw_nodes.iter_mut().enumerate() {
+                loop {
+                    match node.file.read(&mut hbuf) {
+                        Ok(n) if n > 0 => {
+                            if let Some(new_set) =
+                                parse_hidraw_keyboard_report(node.format, &hbuf[..n])
+                            {
+                                // If a key was pressed and then released within the same 50ms poll window,
+                                // evaluate the press state first so sub-50ms taps are never missed.
+                                let released_newly_pressed = node.held_keys.iter().any(|k| {
+                                    !new_set.contains(k) && newly_pressed_keys.contains(k)
+                                });
+                                if released_newly_pressed {
+                                    let mut snap = self.evdev_held_keys.clone();
+                                    snap.extend(node.held_keys.iter().copied());
+                                    if let Some(tr) = self.engine.evaluate_tick(
+                                        modifier_switch_enabled,
+                                        paused_for_editing,
+                                        rules,
+                                        &snap,
+                                        &newly_pressed_keys,
+                                        duckypad_keys_held,
+                                        last_duckypad_keydown_ms,
+                                        now_ms,
+                                    ) {
+                                        intermediate_transition = Some(tr);
+                                    }
+                                    newly_pressed_keys.clear();
+                                }
+
+                                for &k in &new_set {
+                                    if !node.held_keys.contains(&k) {
+                                        newly_pressed_keys.push(k);
+                                    }
+                                }
+                                node.held_keys = new_set;
+                            }
+                        }
+                        Ok(_) => break,
+                        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                        Err(_) => {
+                            drop_hidraw.push(idx);
+                            break;
+                        }
+                    }
+                }
+            }
+            for idx in drop_hidraw.into_iter().rev() {
+                self.hidraw_nodes.remove(idx);
+            }
+
+            self.held_keys.clear();
+            self.held_keys.extend(self.evdev_held_keys.iter().copied());
+            for node in &self.hidraw_nodes {
+                self.held_keys.extend(node.held_keys.iter().copied());
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            self.held_keys.clear();
+            let vk_map: &[(i32, u16)] = &[
+                (0x5D, 127), // VK_APPS -> MENU
+                (0xA3, 97),  // VK_RCONTROL -> RCTRL
+                (0xA2, 29),  // VK_LCONTROL -> LCTRL
+                (0xA5, 100), // VK_RMENU -> RALT
+                (0xA4, 56),  // VK_LMENU -> LALT
+                (0xA1, 54),  // VK_RSHIFT -> RSHIFT
+                (0xA0, 42),  // VK_LSHIFT -> LSHIFT
+                (0x5B, 125), // VK_LWIN -> SUPER
+                (0x5C, 126), // VK_RWIN -> SUPER
+                (0x14, 58),  // VK_CAPITAL -> CAPSLOCK
+                (0x91, 70),  // VK_SCROLL -> SCROLLLOCK
+                (0x13, 119), // VK_PAUSE -> PAUSE
+                (0x7C, 183), // VK_F13
+                (0x7D, 184), // VK_F14
+                (0x7E, 185), // VK_F15
+                (0x7F, 186), // VK_F16
+                (0x80, 187), // VK_F17
+                (0x81, 188), // VK_F18
+                (0x82, 189), // VK_F19
+                (0x83, 190), // VK_F20
+                (0x84, 191), // VK_F21
+                (0x85, 192), // VK_F22
+                (0x86, 193), // VK_F23
+                (0x87, 194), // VK_F24
+            ];
+            for &(vk, ev_code) in vk_map {
+                // SAFETY: GetAsyncKeyState is a thread-safe Win32 query.
+                let is_down =
+                    unsafe { (win32_input::GetAsyncKeyState(vk) as u16 & 0x8000) != 0 };
+                let was_down = self.prev_vk_down[vk as usize];
+                self.prev_vk_down[vk as usize] = is_down;
+                if is_down {
+                    self.held_keys.insert(ev_code);
+                    if !was_down {
+                        newly_pressed_keys.push(ev_code);
+                    }
+                }
+            }
+            // Check standard typing keys (0x08..=0x7B, excluding modifiers) for chord guard
+            for vk in 0x08..=0x7Bi32 {
+                if matches!(
+                    vk,
+                    0x10 | 0x11 | 0x12 | 0x13 | 0x14 | 0x5B | 0x5C | 0x5D
+                ) {
+                    continue;
+                }
+                // SAFETY: GetAsyncKeyState is a thread-safe Win32 query.
+                let is_down =
+                    unsafe { (win32_input::GetAsyncKeyState(vk) as u16 & 0x8000) != 0 };
+                let was_down = self.prev_vk_down[vk as usize];
+                self.prev_vk_down[vk as usize] = is_down;
+                if is_down {
+                    self.held_keys.insert(30); // non-modifier typing key sentinel
+                    if !was_down {
+                        newly_pressed_keys.push(30);
+                    }
+                }
+            }
+        }
+
+        self.engine
+            .evaluate_tick(
+                modifier_switch_enabled,
+                paused_for_editing,
+                rules,
+                &self.held_keys,
+                &newly_pressed_keys,
+                duckypad_keys_held,
+                last_duckypad_keydown_ms,
+                now_ms,
+            )
+            .or(intermediate_transition)
+    }
+}
+
+#[cfg(test)]
+mod hidraw_modifier_tests {
+    use super::*;
+
+    #[test]
+    fn test_detect_and_parse_keychron_boot_and_nkro_reports() {
+        // Keychron C3 Pro /dev/hidraw5 Boot Keyboard report descriptor
+        let boot_desc: [u8; 28] = [
+            0x05, 0x01, 0x09, 0x06, 0xA1, 0x01, 0x05, 0x07, 0x19, 0xE0, 0x29, 0xE7, 0x15, 0x00,
+            0x25, 0x01, 0x95, 0x08, 0x75, 0x01, 0x81, 0x02, 0x95, 0x01, 0x75, 0x08, 0x81, 0x01,
+        ];
+        let fmt = detect_hidraw_keyboard_format(&boot_desc);
+        assert_eq!(fmt, Some(HidrawKeyboardFormat::BootNoReportId));
+
+        // Right Ctrl (0x10) held alone on Boot interface
+        let rctrl_pkt = [0x10u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let keys = parse_hidraw_keyboard_report(HidrawKeyboardFormat::BootNoReportId, &rctrl_pkt)
+            .expect("boot report");
+        assert!(keys.contains(&97));
+        assert_eq!(keys.len(), 1);
+
+        // Right Ctrl (0x10) + 'C' (0x06) chord on Boot interface
+        let rctrl_c_pkt = [0x10u8, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let chord_keys =
+            parse_hidraw_keyboard_report(HidrawKeyboardFormat::BootNoReportId, &rctrl_c_pkt)
+                .expect("boot chord report");
+        assert!(chord_keys.contains(&97));
+        assert!(chord_keys.contains(&1006));
+
+        // Keychron C3 Pro /dev/hidraw7 composite NKRO report descriptor snippet (Report ID 0x06)
+        let nkro_desc: [u8; 36] = [
+            0x05, 0x01, 0x09, 0x06, 0xA1, 0x01, 0x85, 0x06, 0x05, 0x07, 0x19, 0xE0, 0x29, 0xE7,
+            0x15, 0x00, 0x25, 0x01, 0x95, 0x08, 0x75, 0x01, 0x81, 0x02, 0x05, 0x07, 0x19, 0x00,
+            0x29, 0xEF, 0x15, 0x00, 0x25, 0x01, 0x95, 0xF0,
+        ];
+        // Append 75 01 81 02
+        let mut nkro_full = nkro_desc.to_vec();
+        nkro_full.extend_from_slice(&[0x75, 0x01, 0x81, 0x02, 0xC0]);
+        assert_eq!(
+            detect_hidraw_keyboard_format(&nkro_full),
+            Some(HidrawKeyboardFormat::NkroBitmapWithReportId(6))
+        );
+
+        let mut nkro_pkt = [0u8; 32];
+        nkro_pkt[0] = 0x06; // Report ID 6
+        nkro_pkt[1] = 0x10; // Right Ctrl
+        let nkro_keys = parse_hidraw_keyboard_report(
+            HidrawKeyboardFormat::NkroBitmapWithReportId(6),
+            &nkro_pkt,
+        )
+        .expect("nkro report");
+        assert!(nkro_keys.contains(&97));
+        assert_eq!(nkro_keys.len(), 1);
+    }
+}

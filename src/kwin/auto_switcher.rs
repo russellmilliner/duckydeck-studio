@@ -26,6 +26,427 @@ pub struct AutoSwitchRule {
     pub target_profile: u8,
 }
 
+pub fn default_modifier_hold_delay_ms() -> i32 {
+    200
+}
+
+pub fn default_modifier_oneshot_timeout_sec() -> i32 {
+    6
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ModifierLayerRule {
+    pub enabled: bool,
+    pub trigger_key: String,
+    pub mode: String,
+    #[serde(default = "default_modifier_hold_delay_ms")]
+    pub hold_delay_ms: i32,
+    #[serde(default = "default_modifier_oneshot_timeout_sec")]
+    pub oneshot_timeout_sec: i32,
+    pub target_profile: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModifierLayerTransition {
+    Activated {
+        target_profile: u8,
+        trigger_key: String,
+        mode: String,
+    },
+    Deactivated,
+}
+
+pub fn normalize_modifier_trigger_key(raw: &str) -> String {
+    match raw.trim().to_ascii_uppercase().as_str() {
+        "MENU" | "APPS" | "CONTEXT" | "COMPOSE" => "MENU".to_string(),
+        "RCTRL" | "RIGHT_CTRL" | "RIGHTCTRL" => "RCTRL".to_string(),
+        "RALT" | "RIGHT_ALT" | "RIGHTALT" | "ALTGR" => "RALT".to_string(),
+        "RSHIFT" | "RIGHT_SHIFT" | "RIGHTSHIFT" => "RSHIFT".to_string(),
+        "LCTRL" | "LEFT_CTRL" | "LEFTCTRL" | "CTRL" => "LCTRL".to_string(),
+        "LALT" | "LEFT_ALT" | "LEFTALT" | "ALT" => "LALT".to_string(),
+        "LSHIFT" | "LEFT_SHIFT" | "LEFTSHIFT" | "SHIFT" => "LSHIFT".to_string(),
+        "SUPER" | "META" | "WIN" | "LWIN" | "RWIN" => "SUPER".to_string(),
+        "CAPSLOCK" | "CAPS" | "CAPS_LOCK" => "CAPSLOCK".to_string(),
+        "SCROLLLOCK" | "SCROLL_LOCK" | "SCRLK" => "SCROLLLOCK".to_string(),
+        "PAUSE" | "BREAK" | "PAUSE_BREAK" => "PAUSE".to_string(),
+        "FN" | "FUNCTION" => "FN".to_string(),
+        "CTRL_ALT" | "CTRL+ALT" => "CTRL_ALT".to_string(),
+        "CTRL_SUPER" | "CTRL+SUPER" | "CTRL_META" => "CTRL_SUPER".to_string(),
+        "F13" => "F13".to_string(),
+        "F14" => "F14".to_string(),
+        "F15" => "F15".to_string(),
+        "F16" => "F16".to_string(),
+        "F17" => "F17".to_string(),
+        "F18" => "F18".to_string(),
+        "F19" => "F19".to_string(),
+        "F20" => "F20".to_string(),
+        "F21" => "F21".to_string(),
+        "F22" => "F22".to_string(),
+        "F23" => "F23".to_string(),
+        "F24" => "F24".to_string(),
+        _ => "MENU".to_string(),
+    }
+}
+
+pub fn modifier_trigger_key_label(key: &str) -> &'static str {
+    match normalize_modifier_trigger_key(key).as_str() {
+        "MENU" => "Menu / App Key",
+        "RCTRL" => "Right Ctrl",
+        "RALT" => "Right Alt (AltGr)",
+        "RSHIFT" => "Right Shift",
+        "LCTRL" => "Left Ctrl",
+        "LALT" => "Left Alt",
+        "LSHIFT" => "Left Shift",
+        "SUPER" => "Super / Meta (Win)",
+        "CAPSLOCK" => "Caps Lock",
+        "SCROLLLOCK" => "Scroll Lock",
+        "PAUSE" => "Pause / Break",
+        "FN" => "Fn (Function Key)",
+        "CTRL_ALT" => "Ctrl + Alt Chord",
+        "CTRL_SUPER" => "Ctrl + Super Chord",
+        "F13" => "F13",
+        "F14" => "F14",
+        "F15" => "F15",
+        "F16" => "F16",
+        "F17" => "F17",
+        "F18" => "F18",
+        "F19" => "F19",
+        "F20" => "F20",
+        "F21" => "F21",
+        "F22" => "F22",
+        "F23" => "F23",
+        "F24" => "F24",
+        _ => "Menu / App Key",
+    }
+}
+
+pub fn normalize_modifier_mode(raw: &str) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "hold" | "momentary" | "mo" => "hold".to_string(),
+        "oneshot" | "one_shot" | "one-shot" | "osm" | "tap" => "oneshot".to_string(),
+        "double_tap_hold" | "double-tap-hold" | "dth" => "double_tap_hold".to_string(),
+        "toggle" | "tg" | "lock" => "toggle".to_string(),
+        _ => "hold".to_string(),
+    }
+}
+
+pub fn modifier_mode_label(mode: &str) -> &'static str {
+    match normalize_modifier_mode(mode).as_str() {
+        "hold" => "Hold (Momentary Shift)",
+        "oneshot" => "One-Shot Tap (1 Key / Timeout)",
+        "double_tap_hold" => "Double-Tap & Hold",
+        "toggle" => "Toggle Lock",
+        _ => "Hold (Momentary Shift)",
+    }
+}
+
+pub fn trigger_key_requires_double_tap_for_toggle(trigger_key: &str) -> bool {
+    matches!(
+        normalize_modifier_trigger_key(trigger_key).as_str(),
+        "LCTRL" | "RCTRL" | "LALT" | "RALT" | "LSHIFT" | "RSHIFT" | "SUPER" | "CAPSLOCK"
+    )
+}
+
+pub fn trigger_key_evdev_codes(trigger_key: &str) -> &'static [u16] {
+    match trigger_key {
+        "MENU" => &[127, 139],
+        "RCTRL" => &[97],
+        "RALT" => &[100],
+        "RSHIFT" => &[54],
+        "LCTRL" => &[29],
+        "LALT" => &[56],
+        "LSHIFT" => &[42],
+        "SUPER" => &[125, 126],
+        "CAPSLOCK" => &[58],
+        "SCROLLLOCK" => &[70],
+        "PAUSE" => &[119],
+        "FN" => &[464],
+        "CTRL_ALT" => &[29, 97, 56, 100],
+        "CTRL_SUPER" => &[29, 97, 125, 126],
+        "F13" => &[183],
+        "F14" => &[184],
+        "F15" => &[185],
+        "F16" => &[186],
+        "F17" => &[187],
+        "F18" => &[188],
+        "F19" => &[189],
+        "F20" => &[190],
+        "F21" => &[191],
+        "F22" => &[192],
+        "F23" => &[193],
+        "F24" => &[194],
+        _ => &[127, 139],
+    }
+}
+
+pub fn is_modifier_trigger_pressed(
+    trigger_key: &str,
+    held_keys: &std::collections::HashSet<u16>,
+) -> bool {
+    match trigger_key {
+        "CTRL_ALT" => {
+            (held_keys.contains(&29) || held_keys.contains(&97))
+                && (held_keys.contains(&56) || held_keys.contains(&100))
+        }
+        "CTRL_SUPER" => {
+            (held_keys.contains(&29) || held_keys.contains(&97))
+                && (held_keys.contains(&125) || held_keys.contains(&126))
+        }
+        other => trigger_key_evdev_codes(other)
+            .iter()
+            .any(|code| held_keys.contains(code)),
+    }
+}
+
+pub fn has_non_trigger_key_interference(
+    trigger_key: &str,
+    held_keys: &std::collections::HashSet<u16>,
+    newly_pressed_keys: &[u16],
+) -> bool {
+    let allowed = trigger_key_evdev_codes(trigger_key);
+    held_keys.iter().any(|k| !allowed.contains(k))
+        || newly_pressed_keys.iter().any(|k| !allowed.contains(k))
+}
+
+#[derive(Debug, Clone, Default)]
+struct ModifierRuleRuntimeState {
+    was_pressed: bool,
+    pressed_since_ms: Option<u64>,
+    aborted_by_combo: bool,
+    last_clean_tap_release_ms: Option<u64>,
+    is_second_tap_hold: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct HostKeyboardModifierEngine {
+    per_rule: std::collections::HashMap<(String, String), ModifierRuleRuntimeState>,
+    active_rule_key: Option<(String, String)>,
+    active_target_profile: Option<u8>,
+    oneshot_activated_ms: u64,
+    oneshot_expires_ms: u64,
+    oneshot_saw_duckypad_keydown: bool,
+}
+
+impl HostKeyboardModifierEngine {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn active_override(&self) -> Option<(u8, String, String)> {
+        let (ref trig, ref mode) = self.active_rule_key.as_ref()?;
+        let prof = self.active_target_profile?;
+        Some((prof, trig.clone(), mode.clone()))
+    }
+
+    pub fn force_deactivate(&mut self) -> Option<ModifierLayerTransition> {
+        if self.active_rule_key.is_some() {
+            self.active_rule_key = None;
+            self.active_target_profile = None;
+            self.oneshot_activated_ms = 0;
+            self.oneshot_expires_ms = 0;
+            self.oneshot_saw_duckypad_keydown = false;
+            return Some(ModifierLayerTransition::Deactivated);
+        }
+        None
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_tick(
+        &mut self,
+        modifier_switch_enabled: bool,
+        paused_for_editing: bool,
+        rules: &[ModifierLayerRule],
+        held_keys: &std::collections::HashSet<u16>,
+        newly_pressed_keys: &[u16],
+        duckypad_keys_held: u32,
+        last_duckypad_keydown_ms: u64,
+        now_ms: u64,
+    ) -> Option<ModifierLayerTransition> {
+        if !modifier_switch_enabled || paused_for_editing {
+            self.per_rule.clear();
+            return self.force_deactivate();
+        }
+
+        let mut transition: Option<ModifierLayerTransition> = None;
+
+        // 1. Check active oneshot expiration or 1-key completion on duckyPad
+        if let Some((ref act_trig, ref act_mode)) = self.active_rule_key.clone() {
+            let still_exists = rules.iter().any(|r| {
+                r.enabled
+                    && normalize_modifier_trigger_key(&r.trigger_key) == *act_trig
+                    && normalize_modifier_mode(&r.mode) == *act_mode
+            });
+            if !still_exists {
+                return self.force_deactivate();
+            }
+
+            if act_mode == "oneshot" {
+                if last_duckypad_keydown_ms > self.oneshot_activated_ms || duckypad_keys_held > 0 {
+                    self.oneshot_saw_duckypad_keydown = true;
+                }
+                if (self.oneshot_saw_duckypad_keydown && duckypad_keys_held == 0)
+                    || (self.oneshot_expires_ms > 0 && now_ms >= self.oneshot_expires_ms)
+                {
+                    transition = self.force_deactivate();
+                }
+            }
+        }
+
+        // 2. Evaluate each enabled rule in priority order
+        for rule in rules {
+            if !rule.enabled {
+                continue;
+            }
+            let trig = normalize_modifier_trigger_key(&rule.trigger_key);
+            let mode = normalize_modifier_mode(&rule.mode);
+            let key_id = (trig.clone(), mode.clone());
+            let is_pressed = is_modifier_trigger_pressed(&trig, held_keys);
+            let combo_interference =
+                has_non_trigger_key_interference(&trig, held_keys, newly_pressed_keys);
+            let hold_delay = rule.hold_delay_ms.clamp(0, 2000) as u64;
+            let oneshot_timeout_ms =
+                (rule.oneshot_timeout_sec.clamp(1, 60) as u64).saturating_mul(1000);
+
+            let rt = self.per_rule.entry(key_id.clone()).or_default();
+
+            if is_pressed {
+                if !rt.was_pressed {
+                    rt.was_pressed = true;
+                    rt.pressed_since_ms = Some(now_ms);
+                    rt.aborted_by_combo = combo_interference;
+                    rt.is_second_tap_hold = rt
+                        .last_clean_tap_release_ms
+                        .map(|rel_ms| now_ms.saturating_sub(rel_ms) <= 400)
+                        .unwrap_or(false);
+                } else if combo_interference {
+                    rt.aborted_by_combo = true;
+                }
+
+                let held_ms = rt
+                    .pressed_since_ms
+                    .map(|t| now_ms.saturating_sub(t))
+                    .unwrap_or(0);
+
+                match mode.as_str() {
+                    "hold" => {
+                        let is_this_active = self.active_rule_key.as_ref() == Some(&key_id);
+                        if !is_this_active && !rt.aborted_by_combo && held_ms >= hold_delay {
+                            self.active_rule_key = Some(key_id);
+                            self.active_target_profile = Some(rule.target_profile);
+                            return Some(ModifierLayerTransition::Activated {
+                                target_profile: rule.target_profile,
+                                trigger_key: trig,
+                                mode,
+                            });
+                        }
+                    }
+                    "double_tap_hold" => {
+                        let is_this_active = self.active_rule_key.as_ref() == Some(&key_id);
+                        if !is_this_active
+                            && !rt.aborted_by_combo
+                            && rt.is_second_tap_hold
+                            && held_ms >= 50
+                        {
+                            self.active_rule_key = Some(key_id);
+                            self.active_target_profile = Some(rule.target_profile);
+                            return Some(ModifierLayerTransition::Activated {
+                                target_profile: rule.target_profile,
+                                trigger_key: trig,
+                                mode,
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            } else if rt.was_pressed {
+                let held_ms = rt
+                    .pressed_since_ms
+                    .map(|t| now_ms.saturating_sub(t))
+                    .unwrap_or(0);
+                let was_clean_tap = !rt.aborted_by_combo && held_ms <= 400;
+                let prev_tap_ms = rt.last_clean_tap_release_ms;
+
+                rt.was_pressed = false;
+                rt.pressed_since_ms = None;
+                rt.aborted_by_combo = false;
+                rt.is_second_tap_hold = false;
+
+                let is_this_active = self.active_rule_key.as_ref() == Some(&key_id);
+
+                match mode.as_str() {
+                    "hold" | "double_tap_hold" => {
+                        if was_clean_tap {
+                            rt.last_clean_tap_release_ms = Some(now_ms);
+                        } else {
+                            rt.last_clean_tap_release_ms = None;
+                        }
+                        if is_this_active {
+                            return self.force_deactivate();
+                        }
+                    }
+                    "oneshot" => {
+                        if was_clean_tap {
+                            let needs_double = trigger_key_requires_double_tap_for_toggle(&trig);
+                            let is_double_tap = prev_tap_ms
+                                .map(|t| now_ms.saturating_sub(t) <= 400)
+                                .unwrap_or(false);
+                            if is_this_active {
+                                rt.last_clean_tap_release_ms = None;
+                                return self.force_deactivate();
+                            } else if !needs_double || is_double_tap {
+                                rt.last_clean_tap_release_ms = None;
+                                self.active_rule_key = Some(key_id);
+                                self.active_target_profile = Some(rule.target_profile);
+                                self.oneshot_activated_ms = now_ms;
+                                self.oneshot_expires_ms = now_ms.saturating_add(oneshot_timeout_ms);
+                                self.oneshot_saw_duckypad_keydown = false;
+                                return Some(ModifierLayerTransition::Activated {
+                                    target_profile: rule.target_profile,
+                                    trigger_key: trig,
+                                    mode,
+                                });
+                            } else {
+                                rt.last_clean_tap_release_ms = Some(now_ms);
+                            }
+                        } else {
+                            rt.last_clean_tap_release_ms = None;
+                        }
+                    }
+                    "toggle" => {
+                        if was_clean_tap {
+                            let needs_double = trigger_key_requires_double_tap_for_toggle(&trig);
+                            let is_double_tap = prev_tap_ms
+                                .map(|t| now_ms.saturating_sub(t) <= 400)
+                                .unwrap_or(false);
+                            if !needs_double || is_double_tap {
+                                rt.last_clean_tap_release_ms = None;
+                                if is_this_active {
+                                    return self.force_deactivate();
+                                } else {
+                                    self.active_rule_key = Some(key_id);
+                                    self.active_target_profile = Some(rule.target_profile);
+                                    return Some(ModifierLayerTransition::Activated {
+                                        target_profile: rule.target_profile,
+                                        trigger_key: trig,
+                                        mode,
+                                    });
+                                }
+                            } else {
+                                rt.last_clean_tap_release_ms = Some(now_ms);
+                            }
+                        } else {
+                            rt.last_clean_tap_release_ms = None;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        transition
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HidSwitchOutcome {
     Switched,
@@ -190,6 +611,12 @@ pub struct PersistedSwitcherConfig {
     pub autoswitch_enable_section_expanded: bool,
     #[serde(default = "default_true")]
     pub autoswitch_rule_editor_expanded: bool,
+    #[serde(default = "default_true")]
+    pub modifier_switch_enabled: bool,
+    #[serde(default = "default_true")]
+    pub modifier_section_expanded: bool,
+    #[serde(default)]
+    pub modifier_rules: Vec<ModifierLayerRule>,
     #[serde(default)]
     pub google_search_shortcuts_permitted: bool,
     #[serde(default = "default_multi_click_interval_ms")]
@@ -230,6 +657,11 @@ pub struct SwitcherState {
     pub profile_webhook_body: String,
     pub autoswitch_enable_section_expanded: bool,
     pub autoswitch_rule_editor_expanded: bool,
+    pub modifier_switch_enabled: bool,
+    pub modifier_section_expanded: bool,
+    pub modifier_rules: Vec<ModifierLayerRule>,
+    pub active_modifier_override: Option<(u8, String, String)>,
+    pub last_window_matched_profile: Option<u8>,
     pub google_search_shortcuts_permitted: bool,
     pub multi_click_interval_ms: i32,
     pub check_updates_on_startup: bool,
@@ -305,6 +737,11 @@ impl Default for SwitcherState {
                 profile_webhook_body: cfg.profile_webhook_body,
                 autoswitch_enable_section_expanded: cfg.autoswitch_enable_section_expanded,
                 autoswitch_rule_editor_expanded: cfg.autoswitch_rule_editor_expanded,
+                modifier_switch_enabled: cfg.modifier_switch_enabled,
+                modifier_section_expanded: cfg.modifier_section_expanded,
+                modifier_rules: cfg.modifier_rules,
+                active_modifier_override: None,
+                last_window_matched_profile: None,
                 google_search_shortcuts_permitted: cfg.google_search_shortcuts_permitted,
                 multi_click_interval_ms: cfg.multi_click_interval_ms.clamp(80, 1000),
                 check_updates_on_startup: cfg.check_updates_on_startup,
@@ -370,6 +807,11 @@ impl Default for SwitcherState {
             profile_webhook_body: String::new(),
             autoswitch_enable_section_expanded: true,
             autoswitch_rule_editor_expanded: true,
+            modifier_switch_enabled: true,
+            modifier_section_expanded: true,
+            modifier_rules: Vec::new(),
+            active_modifier_override: None,
+            last_window_matched_profile: None,
             google_search_shortcuts_permitted: false,
             multi_click_interval_ms: default_multi_click_interval_ms(),
             check_updates_on_startup: true,
@@ -396,6 +838,20 @@ pub struct SdPersistedRule {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SdPersistedModifierRule {
+    pub enabled: bool,
+    pub trigger_key: String,
+    pub mode: String,
+    #[serde(default = "default_modifier_hold_delay_ms")]
+    pub hold_delay_ms: i32,
+    #[serde(default = "default_modifier_oneshot_timeout_sec")]
+    pub oneshot_timeout_sec: i32,
+    pub target_profile: u8,
+    #[serde(default)]
+    pub target_profile_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SdPersistedRulesBundle {
     #[serde(default = "default_rules_bundle_version")]
     pub version: u32,
@@ -404,6 +860,10 @@ pub struct SdPersistedRulesBundle {
     #[serde(default)]
     pub default_profile_name: String,
     pub rules: Vec<SdPersistedRule>,
+    #[serde(default = "default_true")]
+    pub modifier_switch_enabled: bool,
+    #[serde(default)]
+    pub modifier_rules: Vec<SdPersistedModifierRule>,
 }
 
 fn default_rules_bundle_version() -> u32 {
@@ -447,12 +907,41 @@ pub fn save_rules_bundle_to_dir(
             }
         })
         .collect();
+
+    let (mod_enabled, mod_rules) = SwitcherState::load_config_from_disk()
+        .map(|cfg| {
+            let m_rules: Vec<SdPersistedModifierRule> = cfg
+                .modifier_rules
+                .into_iter()
+                .map(|mr| {
+                    let p_name = profiles
+                        .iter()
+                        .find(|p| p.number == mr.target_profile)
+                        .map(|p| p.name.clone())
+                        .unwrap_or_default();
+                    SdPersistedModifierRule {
+                        enabled: mr.enabled,
+                        trigger_key: mr.trigger_key,
+                        mode: mr.mode,
+                        hold_delay_ms: mr.hold_delay_ms,
+                        oneshot_timeout_sec: mr.oneshot_timeout_sec,
+                        target_profile: mr.target_profile,
+                        target_profile_name: p_name,
+                    }
+                })
+                .collect();
+            (cfg.modifier_switch_enabled, m_rules)
+        })
+        .unwrap_or((true, Vec::new()));
+
     let bundle = SdPersistedRulesBundle {
         version: 1,
         enabled,
         default_profile: Some(fb_num),
         default_profile_name: fb_name,
         rules: sd_rules,
+        modifier_switch_enabled: mod_enabled,
+        modifier_rules: mod_rules,
     };
     let json = serde_json::to_string_pretty(&bundle)
         .map_err(|e| format!("Failed serializing SD rules bundle: {e}"))?;
@@ -726,6 +1215,9 @@ impl SwitcherState {
             profile_webhook_body: self.profile_webhook_body.clone(),
             autoswitch_enable_section_expanded: self.autoswitch_enable_section_expanded,
             autoswitch_rule_editor_expanded: self.autoswitch_rule_editor_expanded,
+            modifier_switch_enabled: self.modifier_switch_enabled,
+            modifier_section_expanded: self.modifier_section_expanded,
+            modifier_rules: self.modifier_rules.clone(),
             google_search_shortcuts_permitted: self.google_search_shortcuts_permitted,
             multi_click_interval_ms: self.multi_click_interval_ms.clamp(80, 1000),
             check_updates_on_startup: self.check_updates_on_startup,
@@ -2769,18 +3261,26 @@ impl KWinBridgeService {
             if let Ok(mut state) = self.state.lock() {
                 paused = state.picker_armed || state.paused_for_editing;
                 if !state.picker_armed && state.enabled && !state.paused_for_editing {
-                    matched_profile =
+                    let window_prof =
                         state.match_profile_for_window(&effective_class, &resolved_caption);
+                    if let Some(wp) = window_prof {
+                        state.last_window_matched_profile = Some(wp);
+                    } else if state.active_modifier_override.is_none() {
+                        state.last_window_matched_profile = None;
+                    }
 
-                    if let Some(target) = matched_profile {
-                        match send_hid_switch_profile_checked(target) {
-                            HidSwitchOutcome::Switched => {
-                                state.last_switched_profile = target;
+                    if state.active_modifier_override.is_none() {
+                        matched_profile = window_prof;
+                        if let Some(target) = matched_profile {
+                            match send_hid_switch_profile_checked(target) {
+                                HidSwitchOutcome::Switched => {
+                                    state.last_switched_profile = target;
+                                }
+                                HidSwitchOutcome::NotLoadedOnHardware => {
+                                    hid_rejected_not_on_device = true;
+                                }
+                                HidSwitchOutcome::DeviceUnavailable => {}
                             }
-                            HidSwitchOutcome::NotLoadedOnHardware => {
-                                hid_rejected_not_on_device = true;
-                            }
-                            HidSwitchOutcome::DeviceUnavailable => {}
                         }
                     }
                 }
@@ -2872,6 +3372,8 @@ pub static LAST_SW_PROFILE_SWITCH_MS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 pub static LAST_SW_PROFILE_TARGET: std::sync::atomic::AtomicU8 =
     std::sync::atomic::AtomicU8::new(0);
+pub static LAST_OBSERVED_HW_PROFILE_BEFORE_SWITCH: std::sync::atomic::AtomicU8 =
+    std::sync::atomic::AtomicU8::new(0);
 
 pub fn current_epoch_ms() -> u64 {
     std::time::SystemTime::now()
@@ -2923,13 +3425,20 @@ pub fn send_hid_switch_profile_checked_for_serial(
         if device.write(&qtx).is_ok() {
             let mut qrx = [0u8; 64];
             if let Ok(n) = crate::hardware::storage::read_hid_report4(device, &mut qrx, 200) {
-                if n >= 12 && qrx[2] == 0 && qrx[6] != 0 && qrx[11] == clamped {
-                    if is_selected_target {
-                        LAST_SW_PROFILE_TARGET.store(clamped, std::sync::atomic::Ordering::SeqCst);
-                        LAST_SW_PROFILE_SWITCH_MS
-                            .store(current_epoch_ms(), std::sync::atomic::Ordering::SeqCst);
+                if n >= 12 && qrx[2] == 0 && qrx[6] != 0 {
+                    if is_selected_target && qrx[11] >= 1 {
+                        LAST_OBSERVED_HW_PROFILE_BEFORE_SWITCH
+                            .store(qrx[11], std::sync::atomic::Ordering::SeqCst);
                     }
-                    return Ok(HidSwitchOutcome::Switched);
+                    if qrx[11] == clamped {
+                        if is_selected_target {
+                            LAST_SW_PROFILE_TARGET
+                                .store(clamped, std::sync::atomic::Ordering::SeqCst);
+                            LAST_SW_PROFILE_SWITCH_MS
+                                .store(current_epoch_ms(), std::sync::atomic::Ordering::SeqCst);
+                        }
+                        return Ok(HidSwitchOutcome::Switched);
+                    }
                 }
             }
         }
@@ -3506,18 +4015,26 @@ pub async fn run_kwin_auto_switcher(
                     if let Ok(mut st) = state_bg.lock() {
                         paused = st.picker_armed || st.paused_for_editing;
                         if !st.picker_armed && st.enabled && !st.paused_for_editing {
-                            matched_profile =
+                            let window_prof =
                                 st.match_profile_for_window(&effective_class, &resolved_caption);
+                            if let Some(wp) = window_prof {
+                                st.last_window_matched_profile = Some(wp);
+                            } else if st.active_modifier_override.is_none() {
+                                st.last_window_matched_profile = None;
+                            }
 
-                            if let Some(target) = matched_profile {
-                                match send_hid_switch_profile_checked(target) {
-                                    HidSwitchOutcome::Switched => {
-                                        st.last_switched_profile = target;
+                            if st.active_modifier_override.is_none() {
+                                matched_profile = window_prof;
+                                if let Some(target) = matched_profile {
+                                    match send_hid_switch_profile_checked(target) {
+                                        HidSwitchOutcome::Switched => {
+                                            st.last_switched_profile = target;
+                                        }
+                                        HidSwitchOutcome::NotLoadedOnHardware => {
+                                            hid_rejected_not_on_device = true;
+                                        }
+                                        HidSwitchOutcome::DeviceUnavailable => {}
                                     }
-                                    HidSwitchOutcome::NotLoadedOnHardware => {
-                                        hid_rejected_not_on_device = true;
-                                    }
-                                    HidSwitchOutcome::DeviceUnavailable => {}
                                 }
                             }
                         }
@@ -3625,32 +4142,48 @@ pub async fn run_kwin_auto_switcher(
             )
             .await
             {
-                let plugin_name = "duckydeck_kwin6_autoswitcher";
-                let fallback_name = format!("duckydeck_kwin6_autoswitcher_{}", std::process::id());
+                let base_plugin_name = "duckydeck_kwin6_autoswitcher";
+                let pid_fallback_name =
+                    format!("duckydeck_kwin6_autoswitcher_{}", std::process::id());
 
-                for _attempt in 0..8 {
+                // First unload any previous DuckyDeck KWin scripts once before searching for a clean Script{id} slot.
+                // Note: KWin 6 assigns `/Scripting/Script{scripts.size()}` on `loadScript`. If an external tool
+                // (e.g. kdotool) unloaded a lower-numbered script while a higher-numbered script remains registered
+                // on D-Bus, unloading on every retry would keep resetting `scripts.size()` back to the collided ID.
+                // By keeping inert gap-filler entries loaded across retry attempts, `scripts.size()` advances past
+                // any orphaned `/Scripting/Script{N}` objects until our hook script registers and runs cleanly.
+                {
+                    let _guard = KWIN_SCRIPT_LOCK.lock().await;
+                    let _: std::result::Result<bool, _> = kwin_scripting
+                        .call("unloadScript", &("duckydeck_oled_keep_above_oneshot",))
+                        .await;
+                    let _: std::result::Result<bool, _> =
+                        kwin_scripting.call("unloadScript", &(base_plugin_name,)).await;
+                    let _: std::result::Result<bool, _> = kwin_scripting
+                        .call("unloadScript", &(pid_fallback_name.as_str(),))
+                        .await;
+                    for slot_idx in 1..16 {
+                        let slot_name = format!("{base_plugin_name}_slot_{slot_idx}");
+                        let _: std::result::Result<bool, _> = kwin_scripting
+                            .call("unloadScript", &(slot_name.as_str(),))
+                            .await;
+                    }
+                }
+
+                for attempt in 0..16 {
+                    let candidate_name = if attempt == 0 {
+                        base_plugin_name.to_string()
+                    } else {
+                        format!("{base_plugin_name}_slot_{attempt}")
+                    };
+
+                    let mut run_succeeded = false;
                     {
                         let _guard = KWIN_SCRIPT_LOCK.lock().await;
-                        let _: std::result::Result<bool, _> = kwin_scripting
-                            .call("unloadScript", &("duckydeck_oled_keep_above_oneshot",))
-                            .await;
-                        let _: std::result::Result<bool, _> =
-                            kwin_scripting.call("unloadScript", &(plugin_name,)).await;
-                        let _: std::result::Result<bool, _> = kwin_scripting
-                            .call("unloadScript", &(fallback_name.as_str(),))
-                            .await;
-
-                        let mut script_id: i32 = kwin_scripting
-                            .call("loadScript", &(&script_path, plugin_name))
+                        let script_id: i32 = kwin_scripting
+                            .call("loadScript", &(&script_path, candidate_name.as_str()))
                             .await
                             .unwrap_or(-1);
-
-                        if script_id < 0 {
-                            script_id = kwin_scripting
-                                .call("loadScript", &(&script_path, fallback_name.as_str()))
-                                .await
-                                .unwrap_or(-1);
-                        }
 
                         if script_id >= 0 {
                             let script_obj_path = format!("/Scripting/Script{script_id}");
@@ -3662,20 +4195,29 @@ pub async fn run_kwin_auto_switcher(
                             )
                             .await
                             {
-                                if let Err(e) = kwin_script.call::<_, _, ()>("run", &()).await {
-                                    crate::bridge::device_controller::record_system_event(
-                                        "WARN",
-                                        "KWIN",
-                                        format!("Failed running KWin auto-switcher script: {e}"),
-                                    );
+                                match kwin_script.call::<_, _, ()>("run", &()).await {
+                                    Ok(()) => {
+                                        run_succeeded = true;
+                                    }
+                                    Err(e) => {
+                                        crate::bridge::device_controller::record_system_event(
+                                            "WARN",
+                                            "KWIN",
+                                            format!(
+                                                "KWin Script{script_id} slot collision on attempt {attempt} ({e}); advancing to next slot"
+                                            ),
+                                        );
+                                    }
                                 }
                             }
                         }
                     }
 
+                    if !run_succeeded {
+                        continue;
+                    }
+
                     // Wait up to 300ms for sendInitialTopWindow() to deliver the initial window over D-Bus.
-                    // If an external tool (such as kdotool) caused a transient KWin scripts.size() ID collision,
-                    // retry loading and running the hook script.
                     let mut received_initial = false;
                     for _ in 0..12 {
                         tokio::time::sleep(std::time::Duration::from_millis(25)).await;
@@ -3689,6 +4231,13 @@ pub async fn run_kwin_auto_switcher(
                         }
                     }
                     if received_initial {
+                        crate::bridge::device_controller::record_system_event(
+                            "INFO",
+                            "KWIN",
+                            format!(
+                                "KWin 6 Auto-Switcher hook active (plugin '{candidate_name}')"
+                            ),
+                        );
                         break;
                     }
                 }
@@ -4225,6 +4774,27 @@ pub fn apply_kwin_oled_keep_above(keep_above: bool, restore_geometry: bool) {
                 return;
             };
 
+            // If our persistent KWin 6 hook script is already loaded, it automatically enforces
+            // keepAbove, onAllDesktops, skipTaskbar, skipPager, and saved OLED geometry via
+            // workspace.windowAdded and win.captionChanged without creating oneshot Script{id} churn.
+            if kwin_scripting
+                .call::<_, _, bool>("isScriptLoaded", &("duckydeck_kwin6_autoswitcher",))
+                .await
+                .unwrap_or(false)
+            {
+                return;
+            }
+            for slot_idx in 1..16 {
+                let slot_name = format!("duckydeck_kwin6_autoswitcher_slot_{slot_idx}");
+                if kwin_scripting
+                    .call::<_, _, bool>("isScriptLoaded", &(slot_name.as_str(),))
+                    .await
+                    .unwrap_or(false)
+                {
+                    return;
+                }
+            }
+
             let script_path = crate::paths::kwin_runtime_dir()
                 .join("duckydeck-kwin6-oled-pin.js")
                 .to_string_lossy()
@@ -4310,4 +4880,175 @@ if (list) {{
             }
         });
     });
+}
+
+#[cfg(test)]
+mod modifier_engine_tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn test_hold_mode_activates_after_delay_and_restores_on_release() {
+        let mut engine = HostKeyboardModifierEngine::new();
+        let rules = vec![ModifierLayerRule {
+            enabled: true,
+            trigger_key: "RCTRL".to_string(),
+            mode: "hold".to_string(),
+            hold_delay_ms: 200,
+            oneshot_timeout_sec: 6,
+            target_profile: 8,
+        }];
+
+        let mut held = HashSet::new();
+        held.insert(97u16); // KEY_RIGHTCTRL
+
+        // Press at t=1000 -> pending hold
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[97], 0, 0, 1000),
+            None
+        );
+        // At t=1150 (< 200ms) -> still waiting
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[], 0, 0, 1150),
+            None
+        );
+        // At t=1210 (>= 200ms) -> activates Profile #8
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[], 0, 0, 1210),
+            Some(ModifierLayerTransition::Activated {
+                target_profile: 8,
+                trigger_key: "RCTRL".to_string(),
+                mode: "hold".to_string(),
+            })
+        );
+
+        // Release RCTRL at t=1500 -> deactivates
+        held.clear();
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[], 0, 0, 1500),
+            Some(ModifierLayerTransition::Deactivated)
+        );
+    }
+
+    #[test]
+    fn test_hold_mode_chord_guard_cancels_when_another_key_pressed() {
+        let mut engine = HostKeyboardModifierEngine::new();
+        let rules = vec![ModifierLayerRule {
+            enabled: true,
+            trigger_key: "LCTRL".to_string(),
+            mode: "hold".to_string(),
+            hold_delay_ms: 200,
+            oneshot_timeout_sec: 6,
+            target_profile: 8,
+        }];
+
+        let mut held = HashSet::new();
+        held.insert(29u16); // KEY_LEFTCTRL
+
+        // Press LCTRL at t=1000
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[29], 0, 0, 1000),
+            None
+        );
+
+        // User presses 'C' (evdev 46) at t=1080 for Ctrl+C
+        held.insert(46u16);
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[46], 0, 0, 1080),
+            None
+        );
+
+        // Release 'C' at t=1140 while still holding LCTRL past 200ms -> must NOT activate!
+        held.remove(&46u16);
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[], 0, 0, 1250),
+            None
+        );
+    }
+
+    #[test]
+    fn test_oneshot_mode_activates_on_tap_and_completes_after_duckypad_key() {
+        let mut engine = HostKeyboardModifierEngine::new();
+        let rules = vec![ModifierLayerRule {
+            enabled: true,
+            trigger_key: "MENU".to_string(),
+            mode: "oneshot".to_string(),
+            hold_delay_ms: 200,
+            oneshot_timeout_sec: 6,
+            target_profile: 5,
+        }];
+
+        let mut held = HashSet::new();
+        held.insert(127u16); // KEY_COMPOSE (Menu)
+
+        // Press Menu at t=2000
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[127], 0, 0, 2000),
+            None
+        );
+
+        // Release Menu cleanly at t=2090 -> One-Shot activates!
+        held.clear();
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[], 0, 0, 2090),
+            Some(ModifierLayerTransition::Activated {
+                target_profile: 5,
+                trigger_key: "MENU".to_string(),
+                mode: "oneshot".to_string(),
+            })
+        );
+
+        // User presses a duckyPad key at t=3000 (duckypad_keys_held = 1, last_duckypad_keydown_ms = 3000)
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[], 1, 3000, 3000),
+            None
+        );
+
+        // User releases the duckyPad key at t=3100 (duckypad_keys_held = 0) -> One-Shot completes & restores!
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[], 0, 3000, 3100),
+            Some(ModifierLayerTransition::Deactivated)
+        );
+    }
+
+    #[test]
+    fn test_toggle_mode_locks_and_unlocks() {
+        let mut engine = HostKeyboardModifierEngine::new();
+        let rules = vec![ModifierLayerRule {
+            enabled: true,
+            trigger_key: "MENU".to_string(),
+            mode: "toggle".to_string(),
+            hold_delay_ms: 200,
+            oneshot_timeout_sec: 6,
+            target_profile: 4,
+        }];
+
+        let mut held = HashSet::new();
+        held.insert(127u16);
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[127], 0, 0, 1000),
+            None
+        );
+        held.clear();
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[], 0, 0, 1080),
+            Some(ModifierLayerTransition::Activated {
+                target_profile: 4,
+                trigger_key: "MENU".to_string(),
+                mode: "toggle".to_string(),
+            })
+        );
+
+        // Tap Menu again at t=5000 to unlock
+        held.insert(127u16);
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[127], 0, 0, 5000),
+            None
+        );
+        held.clear();
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[], 0, 0, 5080),
+            Some(ModifierLayerTransition::Deactivated)
+        );
+    }
 }
