@@ -2,6 +2,32 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.14](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.14) — 2026-10-31
+
+### Highlights
+- Add Main-Keyboard Modifier Layer Shift (Hold, One-Shot, Double-Tap + Hold, Toggle) with 200 ms Chord Guard, Desktop OLED Widget Full App button, and Auto-Switcher/SD Sync UI enhancements
+
+### Commits
+- feat(autoswitch,ui,docs): add Main-Keyboard Modifier Layer Shift, widget Full App button, and profile/sync UI fixes (bad3db8)
+- chore(deps): update dependencies (js-sys 0.3.107, log 0.4.35, rustix 1.1.6, unicode-width 0.2.3, utf8_iter 1.1.0, wasm-bindgen 0.2.130 (+6 more)) (b57143d)
+
+### 📦 Bumped Dependencies (12 packages)
+
+| Package | Previous | Updated | Scope |
+| :--- | :--- | :--- | :--- |
+| `js-sys` | `0.3.106` | **`0.3.107`** | Lockfile (`Cargo.lock`) |
+| `log` | `0.4.34` | **`0.4.35`** | Lockfile (`Cargo.lock`) |
+| `rustix` | `1.1.5` | **`1.1.6`** | Lockfile (`Cargo.lock`) |
+| `unicode-width` | `0.2.2` | **`0.2.3`** | Lockfile (`Cargo.lock`) |
+| `utf8_iter` | `1.0.4` | **`1.1.0`** | Lockfile (`Cargo.lock`) |
+| `wasm-bindgen` | `0.2.129` | **`0.2.130`** | Lockfile (`Cargo.lock`) |
+| `wasm-bindgen-futures` | `0.4.79` | **`0.4.80`** | Lockfile (`Cargo.lock`) |
+| `wasm-bindgen-macro` | `0.2.129` | **`0.2.130`** | Lockfile (`Cargo.lock`) |
+| `wasm-bindgen-macro-support` | `0.2.129` | **`0.2.130`** | Lockfile (`Cargo.lock`) |
+| `wasm-bindgen-shared` | `0.2.129` | **`0.2.130`** | Lockfile (`Cargo.lock`) |
+| `web-sys` | `0.3.106` | **`0.3.107`** | Lockfile (`Cargo.lock`) |
+| `zcheapstr` | `1.1.0` | **`1.2.0`** | Lockfile (`Cargo.lock`) |
+
 ## [v0.1.13-deps](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.13-deps) — 2026-10-31
 
 ### 📦 Bumped Dependencies (12 packages)
