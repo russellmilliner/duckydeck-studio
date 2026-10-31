@@ -205,7 +205,11 @@ pub fn apply_app_launch_config_to_script(
 }
 
 #[cfg(target_os = "windows")]
+#[allow(clippy::upper_case_acronyms)]
 mod win32_input {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Once;
+
     #[repr(C)]
     #[derive(Clone, Copy, Default)]
     pub struct POINT {
@@ -213,10 +217,177 @@ mod win32_input {
         pub y: i32,
     }
 
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    pub struct KBDLLHOOKSTRUCT {
+        pub vk_code: u32,
+        pub scan_code: u32,
+        pub flags: u32,
+        pub time: u32,
+        pub dw_extra_info: usize,
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
+    pub struct MSG {
+        pub hwnd: isize,
+        pub message: u32,
+        pub w_param: usize,
+        pub l_param: isize,
+        pub time: u32,
+        pub pt: POINT,
+    }
+
+    pub type LowLevelKeyboardProc =
+        unsafe extern "system" fn(n_code: i32, w_param: usize, l_param: isize) -> isize;
+
     #[link(name = "user32")]
     extern "system" {
         pub fn GetAsyncKeyState(vKey: i32) -> i16;
         pub fn GetCursorPos(lpPoint: *mut POINT) -> i32;
+        pub fn keybd_event(bVk: u8, bScan: u8, dwFlags: u32, dwExtraInfo: usize);
+        pub fn MapVirtualKeyW(uCode: u32, uMapType: u32) -> u32;
+        pub fn SetWindowsHookExW(
+            idHook: i32,
+            lpfn: LowLevelKeyboardProc,
+            hMod: isize,
+            dwThreadId: u32,
+        ) -> isize;
+        pub fn CallNextHookEx(hhk: isize, nCode: i32, wParam: usize, lParam: isize) -> isize;
+        pub fn GetMessageW(
+            lpMsg: *mut MSG,
+            hWnd: isize,
+            wMsgFilterMin: u32,
+            wMsgFilterMax: u32,
+        ) -> i32;
+    }
+
+    pub const KEYEVENTF_EXTENDEDKEY: u32 = 0x0001;
+    pub const KEYEVENTF_KEYUP: u32 = 0x0002;
+    pub const MAPVK_VK_TO_VSC: u32 = 0;
+    const WH_KEYBOARD_LL: i32 = 13;
+    const LLKHF_INJECTED: u32 = 0x0010;
+    const WM_KEYDOWN: usize = 0x0100;
+    const WM_KEYUP: usize = 0x0101;
+    const WM_SYSKEYDOWN: usize = 0x0104;
+    const WM_SYSKEYUP: usize = 0x0105;
+
+    static PHYSICAL_VK_DOWN: [AtomicBool; 256] = [const { AtomicBool::new(false) }; 256];
+    static SUPPRESSED_VK_MASK: [AtomicBool; 256] = [const { AtomicBool::new(false) }; 256];
+    static LL_HOOK_INIT: Once = Once::new();
+
+    unsafe extern "system" fn low_level_kbd_proc(
+        n_code: i32,
+        w_param: usize,
+        l_param: isize,
+    ) -> isize {
+        if n_code >= 0 && l_param != 0 {
+            let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
+            let vk = (kb.vk_code & 0xFF) as usize;
+            let injected = (kb.flags & LLKHF_INJECTED) != 0;
+            let is_down = w_param == WM_KEYDOWN || w_param == WM_SYSKEYDOWN;
+            let is_up = w_param == WM_KEYUP || w_param == WM_SYSKEYUP;
+
+            if !injected && vk < 256 {
+                if is_down {
+                    PHYSICAL_VK_DOWN[vk].store(true, Ordering::SeqCst);
+                    // Swallow hardware typematic auto-repeat WM_KEYDOWN while this modifier
+                    // key is suppressed for an active Hold / Double-Tap+Hold layer shift.
+                    if SUPPRESSED_VK_MASK[vk].load(Ordering::SeqCst) {
+                        return 1;
+                    }
+                } else if is_up {
+                    PHYSICAL_VK_DOWN[vk].store(false, Ordering::SeqCst);
+                    SUPPRESSED_VK_MASK[vk].store(false, Ordering::SeqCst);
+                    match vk {
+                        0xA2 | 0xA3 => SUPPRESSED_VK_MASK[0x11].store(false, Ordering::SeqCst),
+                        0xA4 | 0xA5 => SUPPRESSED_VK_MASK[0x12].store(false, Ordering::SeqCst),
+                        0xA0 | 0xA1 => SUPPRESSED_VK_MASK[0x10].store(false, Ordering::SeqCst),
+                        _ => {}
+                    }
+                }
+            }
+        }
+        CallNextHookEx(0, n_code, w_param, l_param)
+    }
+
+    pub fn ensure_ll_hook_started() {
+        LL_HOOK_INIT.call_once(|| {
+            let _ = std::thread::Builder::new()
+                .name("win32-ll-kbd-hook".to_string())
+                .spawn(|| unsafe {
+                    let _hook = SetWindowsHookExW(WH_KEYBOARD_LL, low_level_kbd_proc, 0, 0);
+                    let mut msg = MSG::default();
+                    while GetMessageW(&mut msg, 0, 0, 0) > 0 {}
+                });
+        });
+    }
+
+    pub fn is_physical_vk_down(vk: usize) -> bool {
+        vk < 256 && PHYSICAL_VK_DOWN[vk].load(Ordering::SeqCst)
+    }
+
+    pub fn set_physical_vk_down(vk: usize, down: bool) {
+        if vk < 256 {
+            PHYSICAL_VK_DOWN[vk].store(down, Ordering::SeqCst);
+        }
+    }
+
+    pub fn is_vk_suppressed(vk: usize) -> bool {
+        vk < 256 && SUPPRESSED_VK_MASK[vk].load(Ordering::SeqCst)
+    }
+
+    pub fn clear_suppressed_modifiers() {
+        for flag in &SUPPRESSED_VK_MASK {
+            flag.store(false, Ordering::SeqCst);
+        }
+    }
+
+    /// Injects synthetic KEYUP events for the given trigger key and enables typematic repeat
+    /// suppression in `WH_KEYBOARD_LL` so a held modifier key (`Ctrl`, `Alt`, `Shift`, `Win`)
+    /// does not bleed into duckyPad macros (e.g. `ALT F4`) or prematurely deactivate the layer.
+    pub fn suppress_held_modifier_trigger(trigger_key: &str) {
+        ensure_ll_hook_started();
+        let vks: &[(u8, bool)] = match crate::kwin::auto_switcher::normalize_modifier_trigger_key(
+            trigger_key,
+        )
+        .as_str()
+        {
+            "LCTRL" => &[(0xA2, false), (0x11, false)],
+            "RCTRL" => &[(0xA3, true), (0x11, false)],
+            "LALT" => &[(0xA4, false), (0x12, false)],
+            "RALT" => &[(0xA5, true), (0x12, false)],
+            "LSHIFT" => &[(0xA0, false), (0x10, false)],
+            "RSHIFT" => &[(0xA1, false), (0x10, false)],
+            "SUPER" => &[(0x5B, true), (0x5C, true)],
+            "CTRL_ALT" => &[
+                (0xA2, false),
+                (0xA3, true),
+                (0x11, false),
+                (0xA4, false),
+                (0xA5, true),
+                (0x12, false),
+            ],
+            "CTRL_SUPER" => &[
+                (0xA2, false),
+                (0xA3, true),
+                (0x11, false),
+                (0x5B, true),
+                (0x5C, true),
+            ],
+            _ => &[],
+        };
+        for &(vk, _extended) in vks {
+            SUPPRESSED_VK_MASK[vk as usize].store(true, Ordering::SeqCst);
+        }
+        for &(vk, extended) in vks {
+            // SAFETY: MapVirtualKeyW and keybd_event are standard Win32 user32 input helpers.
+            unsafe {
+                let scan = MapVirtualKeyW(vk as u32, MAPVK_VK_TO_VSC) as u8;
+                let flags = KEYEVENTF_KEYUP | if extended { KEYEVENTF_EXTENDEDKEY } else { 0 };
+                keybd_event(vk, scan, flags, 0);
+            }
+        }
     }
 
     pub fn vk_to_duckyscript_key(vk: u8) -> Option<&'static str> {
@@ -348,6 +519,10 @@ mod win32_input {
 
 pub struct DuckypadEvdevListener {
     files: Vec<(PathBuf, fs::File)>,
+    #[cfg(unix)]
+    hidraw_files: Vec<(PathBuf, fs::File)>,
+    #[cfg(unix)]
+    hidraw_keys_down: bool,
     last_scan: std::time::Instant,
     #[cfg(target_os = "windows")]
     prev_fkeys: u16,
@@ -363,6 +538,10 @@ impl DuckypadEvdevListener {
     pub fn new() -> Self {
         let mut s = Self {
             files: Vec::new(),
+            #[cfg(unix)]
+            hidraw_files: Vec::new(),
+            #[cfg(unix)]
+            hidraw_keys_down: false,
             last_scan: std::time::Instant::now() - std::time::Duration::from_secs(10),
             #[cfg(target_os = "windows")]
             prev_fkeys: 0,
@@ -374,6 +553,8 @@ impl DuckypadEvdevListener {
     pub fn refresh_nodes(&mut self) {
         self.last_scan = std::time::Instant::now();
         self.files.retain(|(p, _)| p.exists());
+        #[cfg(unix)]
+        self.hidraw_files.retain(|(p, _)| p.exists());
 
         #[cfg(target_os = "windows")]
         {
@@ -389,37 +570,59 @@ impl DuckypadEvdevListener {
 
         #[cfg(unix)]
         {
+            use std::io::Read;
             use std::os::unix::fs::OpenOptionsExt;
-            let Ok(entries) = fs::read_dir("/sys/class/input") else {
-                return;
-            };
-            for entry in entries.flatten() {
-                let fname = entry.file_name();
-                let Some(name_str) = fname.to_str() else {
-                    continue;
-                };
-                if !name_str.starts_with("event") {
-                    continue;
-                }
-                let dev_path = Path::new("/dev/input").join(name_str);
-                if self.files.iter().any(|(p, _)| p == &dev_path) {
-                    continue;
-                }
-                if let Ok(uevent) = fs::read_to_string(entry.path().join("device/uevent")) {
-                    let upper = uevent.to_ascii_uppercase();
-                    // Match USB VID 0483 and PID D11D / D11C
-                    if upper.contains("483/D11D")
-                        || upper.contains("483/D11C")
-                        || upper.contains("0483:D11D")
-                        || upper.contains("0483:D11C")
-                    {
-                        if let Ok(file) = fs::OpenOptions::new()
-                            .read(true)
-                            .custom_flags(0o4000) // O_NONBLOCK
-                            .open(&dev_path)
+            if let Ok(entries) = fs::read_dir("/sys/class/input") {
+                for entry in entries.flatten() {
+                    let fname = entry.file_name();
+                    let Some(name_str) = fname.to_str() else {
+                        continue;
+                    };
+                    if !name_str.starts_with("event") {
+                        continue;
+                    }
+                    let dev_path = Path::new("/dev/input").join(name_str);
+                    if self.files.iter().any(|(p, _)| p == &dev_path) {
+                        continue;
+                    }
+                    if let Ok(uevent) = fs::read_to_string(entry.path().join("device/uevent")) {
+                        let upper = uevent.to_ascii_uppercase();
+                        // Match USB VID 0483 and PID D11D / D11C
+                        if upper.contains("483/D11D")
+                            || upper.contains("483/D11C")
+                            || upper.contains("0483:D11D")
+                            || upper.contains("0483:D11C")
                         {
-                            self.files.push((dev_path, file));
+                            if let Ok(file) = fs::OpenOptions::new()
+                                .read(true)
+                                .custom_flags(0o4000) // O_NONBLOCK
+                                .open(&dev_path)
+                            {
+                                self.files.push((dev_path, file));
+                            }
                         }
+                    }
+                }
+            }
+
+            // Fallback: also open duckyPad `/dev/hidraw*` nodes in O_RDONLY|O_NONBLOCK so users
+            // without `input` group membership still detect F13..F24 Web API / App Launch triggers
+            // and 1-key One-Shot Modifier Layer completion via Report ID 1/2/3 packets.
+            if self.files.is_empty() {
+                let mut drain = [0u8; 64];
+                for (dev_path, _pid, _uniq) in
+                    crate::hardware::storage::find_all_duckypad_hidraw_nodes()
+                {
+                    if self.hidraw_files.iter().any(|(p, _)| p == &dev_path) {
+                        continue;
+                    }
+                    if let Ok(mut file) = fs::OpenOptions::new()
+                        .read(true)
+                        .custom_flags(0o4000) // O_NONBLOCK
+                        .open(&dev_path)
+                    {
+                        while file.read(&mut drain).is_ok() {}
+                        self.hidraw_files.push((dev_path, file));
                     }
                 }
             }
@@ -524,6 +727,78 @@ impl DuckypadEvdevListener {
             for idx in drop_indices.into_iter().rev() {
                 self.files.remove(idx);
             }
+
+            if self.files.is_empty() && !self.hidraw_files.is_empty() {
+                let mut hbuf = [0u8; 64];
+                let mut drop_hidraw = Vec::new();
+                for (idx, (_, file)) in self.hidraw_files.iter_mut().enumerate() {
+                    loop {
+                        match file.read(&mut hbuf) {
+                            Ok(n) if n >= 2 => {
+                                let report_id = hbuf[0];
+                                // Report ID 1: Keyboard [1, mods, reserved, k0..k5]
+                                // Report ID 2: Media/Consumer [2, bits]
+                                // Report ID 3: Mouse [3, btns, dx, dy, wheel, hwheel]
+                                if report_id == 1 && n >= 3 {
+                                    let any_down = hbuf[1] != 0
+                                        || hbuf[3..n.min(9)].iter().any(|&b| b != 0);
+                                    let now_ms = crate::kwin::auto_switcher::current_epoch_ms();
+                                    crate::hardware::storage::LAST_EVDEV_KEY_ACTIVITY_MS
+                                        .store(now_ms, std::sync::atomic::Ordering::SeqCst);
+                                    if any_down {
+                                        crate::hardware::storage::LAST_EVDEV_KEYDOWN_MS
+                                            .store(now_ms, std::sync::atomic::Ordering::SeqCst);
+                                        crate::hardware::storage::EVDEV_KEYS_HELD_COUNT
+                                            .store(1, std::sync::atomic::Ordering::SeqCst);
+                                        self.hidraw_keys_down = true;
+                                        for &u in &hbuf[3..n.min(9)] {
+                                            if (0x68..=0x73).contains(&u) {
+                                                let f_num = 13 + (u - 0x68);
+                                                triggered.push(format!("F{f_num}"));
+                                            }
+                                        }
+                                    } else if self.hidraw_keys_down {
+                                        self.hidraw_keys_down = false;
+                                        crate::hardware::storage::EVDEV_KEYS_HELD_COUNT
+                                            .store(0, std::sync::atomic::Ordering::SeqCst);
+                                    }
+                                } else if report_id == 2 || report_id == 3 {
+                                    let any_down = hbuf[1..n.min(6)].iter().any(|&b| b != 0);
+                                    let now_ms = crate::kwin::auto_switcher::current_epoch_ms();
+                                    crate::hardware::storage::LAST_EVDEV_KEY_ACTIVITY_MS
+                                        .store(now_ms, std::sync::atomic::Ordering::SeqCst);
+                                    if any_down {
+                                        crate::hardware::storage::LAST_EVDEV_KEYDOWN_MS
+                                            .store(now_ms, std::sync::atomic::Ordering::SeqCst);
+                                        crate::hardware::storage::EVDEV_KEYS_HELD_COUNT
+                                            .store(1, std::sync::atomic::Ordering::SeqCst);
+                                        self.hidraw_keys_down = true;
+                                    } else if self.hidraw_keys_down {
+                                        self.hidraw_keys_down = false;
+                                        crate::hardware::storage::EVDEV_KEYS_HELD_COUNT
+                                            .store(0, std::sync::atomic::Ordering::SeqCst);
+                                    }
+                                }
+                            }
+                            Ok(_) => break,
+                            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                            Err(_) => {
+                                drop_hidraw.push(idx);
+                                break;
+                            }
+                        }
+                    }
+                }
+                if !drop_hidraw.is_empty() {
+                    self.hidraw_keys_down = false;
+                    crate::hardware::storage::EVDEV_KEYS_HELD_COUNT
+                        .store(0, std::sync::atomic::Ordering::SeqCst);
+                }
+                for idx in drop_hidraw.into_iter().rev() {
+                    self.hidraw_files.remove(idx);
+                }
+            }
+
             triggered
         }
     }
@@ -1237,11 +1512,449 @@ pub fn parse_hidraw_keyboard_report(
 }
 
 #[cfg(unix)]
+extern "C" {
+    fn ioctl(fd: std::ffi::c_int, request: std::ffi::c_ulong, ...) -> std::ffi::c_int;
+}
+
+#[cfg(unix)]
+struct UinputModifierSuppressor {
+    file: fs::File,
+}
+
+#[cfg(unix)]
+impl UinputModifierSuppressor {
+    const UI_SET_EVBIT: std::ffi::c_ulong = 0x4004_5564;
+    const UI_SET_KEYBIT: std::ffi::c_ulong = 0x4004_5565;
+    const UI_DEV_SETUP: std::ffi::c_ulong = 0x405c_5503;
+    const UI_DEV_CREATE: std::ffi::c_ulong = 0x5501;
+    const UI_DEV_DESTROY: std::ffi::c_ulong = 0x5502;
+
+    fn new() -> Option<Self> {
+        use std::os::unix::fs::OpenOptionsExt;
+        use std::os::unix::io::AsRawFd;
+
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .custom_flags(0o4000) // O_NONBLOCK
+            .open("/dev/uinput")
+            .ok()?;
+        let fd = file.as_raw_fd();
+
+        // SAFETY: Standard Linux uinput ioctl initialization on a valid /dev/uinput fd.
+        unsafe {
+            if ioctl(fd, Self::UI_SET_EVBIT, 1 as std::ffi::c_int) < 0 {
+                return None;
+            }
+            // Register standard keyboard keybits (1..=127) plus F13..F24 (183..=194) so
+            // systemd-udevd (`input_id`) tags this virtual device with `ID_INPUT_KEYBOARD=1`
+            // and Wayland compositors (`libinput` / KWin) monitor its epoll fd.
+            for code in 1..=127i32 {
+                let _ = ioctl(fd, Self::UI_SET_KEYBIT, code as std::ffi::c_int);
+            }
+            for code in 183..=194i32 {
+                let _ = ioctl(fd, Self::UI_SET_KEYBIT, code as std::ffi::c_int);
+            }
+
+            #[repr(C)]
+            struct UinputSetup {
+                bustype: u16,
+                vendor: u16,
+                product: u16,
+                version: u16,
+                name: [u8; 80],
+                ff_effects_max: u32,
+            }
+
+            let mut setup = UinputSetup {
+                bustype: 0x03, // BUS_USB
+                vendor: 0x1209,
+                product: 0xdd01,
+                version: 1,
+                name: [0u8; 80],
+                ff_effects_max: 0,
+            };
+            let label = b"DuckyDeck Modifier Guard";
+            setup.name[..label.len()].copy_from_slice(label);
+
+            if ioctl(fd, Self::UI_DEV_SETUP, &setup as *const UinputSetup) < 0 {
+                return None;
+            }
+            if ioctl(fd, Self::UI_DEV_CREATE) < 0 {
+                return None;
+            }
+        }
+
+        Some(Self { file })
+    }
+
+    fn emit_event(&mut self, ev_type: u16, ev_code: u16, ev_value: i32) {
+        use std::io::Write;
+        let mut pkt = [0u8; 24];
+        pkt[16..18].copy_from_slice(&ev_type.to_ne_bytes());
+        pkt[18..20].copy_from_slice(&ev_code.to_ne_bytes());
+        pkt[20..24].copy_from_slice(&ev_value.to_ne_bytes());
+        let _ = self.file.write_all(&pkt);
+    }
+
+    /// Synthesizes a momentary key-down + key-up release pulse on `/dev/uinput` so the Wayland/X11
+    /// compositor (`libinput` / `xkbcommon`) clears the logical modifier bit (`Ctrl`, `Alt`, `Shift`,
+    /// `Super`) while the user holds the physical modifier key to shift duckyPad layers.
+    fn release_held_modifier_trigger(&mut self, trigger_key: &str) {
+        let codes = trigger_key_evdev_codes(trigger_key);
+        if codes.is_empty() {
+            return;
+        }
+        for &code in codes {
+            self.emit_event(1, code, 1); // EV_KEY press
+        }
+        self.emit_event(0, 0, 0); // EV_SYN / SYN_REPORT
+        for &code in codes {
+            self.emit_event(1, code, 0); // EV_KEY release
+        }
+        self.emit_event(0, 0, 0); // EV_SYN / SYN_REPORT
+    }
+}
+
+#[cfg(unix)]
+fn trigger_key_evdev_codes(trigger_key: &str) -> &'static [u16] {
+    match crate::kwin::auto_switcher::normalize_modifier_trigger_key(trigger_key).as_str() {
+        "LCTRL" => &[29],
+        "RCTRL" => &[97],
+        "LALT" => &[56],
+        "RALT" => &[100],
+        "LSHIFT" => &[42],
+        "RSHIFT" => &[54],
+        "SUPER" => &[125, 126],
+        "CTRL_ALT" => &[29, 97, 56, 100],
+        "CTRL_SUPER" => &[29, 97, 125, 126],
+        _ => &[],
+    }
+}
+
+/// Directly injects `EV_KEY` release (`value = 0`) + `SYN_REPORT` into the physical keyboard's
+/// `/dev/input/eventN` kernel node (`drivers/input/evdev.c` -> `evdev_write` -> `input_inject_event`).
+/// When `/dev/input/eventN` is writable (via `70-duckypad.rules` `uaccess` ACL or `input` group),
+/// this clears the held modifier key inside `libinput` / `xkbcommon` across ALL Wayland and X11
+/// compositors (COSMIC `cosmic-comp`, GNOME `mutter`, Linux Mint Cinnamon/MATE/Xfce, KWin, Sway, Hyprland)
+/// while `/dev/hidraw*` continues tracking the physical USB/Bluetooth key state.
+#[cfg(unix)]
+fn try_inject_evdev_release_on_events(event_names: &[String], codes: &[u16]) -> bool {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    if event_names.is_empty() || codes.is_empty() {
+        return false;
+    }
+    let mut any_ok = false;
+    for ev in event_names {
+        let dev_path = Path::new("/dev/input").join(ev);
+        let Ok(mut file) = fs::OpenOptions::new()
+            .write(true)
+            .custom_flags(0o4000) // O_NONBLOCK
+            .open(&dev_path)
+        else {
+            continue;
+        };
+        for &code in codes {
+            let mut pkt = [0u8; 24];
+            pkt[16..18].copy_from_slice(&1u16.to_ne_bytes()); // EV_KEY
+            pkt[18..20].copy_from_slice(&code.to_ne_bytes());
+            pkt[20..24].copy_from_slice(&0i32.to_ne_bytes()); // release (0)
+            let _ = file.write_all(&pkt);
+        }
+        let mut syn = [0u8; 24];
+        syn[16..18].copy_from_slice(&0u16.to_ne_bytes()); // EV_SYN / SYN_REPORT
+        if file.write_all(&syn).is_ok() {
+            any_ok = true;
+        }
+    }
+    any_ok
+}
+
+/// On pure X11 sessions (e.g., Linux Mint Cinnamon/MATE/Xfce X11 or GNOME Xorg) where `/dev/input/event*`
+/// is not directly writable, synthesizes a `KeyRelease` via `libXtst.so.6` (`XTestFakeKeyEvent`) on the
+/// Xorg `Virtual core keyboard` master device (`x11_keycode = evdev_code + 8`).
+#[cfg(unix)]
+fn try_inject_x11_xtest_release(codes: &[u16]) {
+    if codes.is_empty()
+        || std::env::var_os("WAYLAND_DISPLAY").is_some()
+        || std::env::var_os("DISPLAY").is_none()
+    {
+        return;
+    }
+
+    extern "C" {
+        fn dlopen(filename: *const std::ffi::c_char, flags: std::ffi::c_int) -> *mut std::ffi::c_void;
+        fn dlsym(
+            handle: *mut std::ffi::c_void,
+            symbol: *const std::ffi::c_char,
+        ) -> *mut std::ffi::c_void;
+        fn dlclose(handle: *mut std::ffi::c_void) -> std::ffi::c_int;
+    }
+
+    // SAFETY: Dynamically loading standard X11/Xtst shared libraries when running in an X11 session.
+    unsafe {
+        let x11 = dlopen(c"libX11.so.6".as_ptr(), 1); // RTLD_LAZY = 1
+        if x11.is_null() {
+            return;
+        }
+        let xtst = dlopen(c"libXtst.so.6".as_ptr(), 1);
+        if xtst.is_null() {
+            let _ = dlclose(x11);
+            return;
+        }
+
+        let open_sym = dlsym(x11, c"XOpenDisplay".as_ptr());
+        let flush_sym = dlsym(x11, c"XFlush".as_ptr());
+        let close_sym = dlsym(x11, c"XCloseDisplay".as_ptr());
+        let fake_sym = dlsym(xtst, c"XTestFakeKeyEvent".as_ptr());
+
+        if !open_sym.is_null()
+            && !flush_sym.is_null()
+            && !close_sym.is_null()
+            && !fake_sym.is_null()
+        {
+            type XOpenDisplayFn =
+                unsafe extern "C" fn(*const std::ffi::c_char) -> *mut std::ffi::c_void;
+            type XFlushFn = unsafe extern "C" fn(*mut std::ffi::c_void) -> std::ffi::c_int;
+            type XCloseDisplayFn = unsafe extern "C" fn(*mut std::ffi::c_void) -> std::ffi::c_int;
+            type XTestFakeKeyEventFn = unsafe extern "C" fn(
+                *mut std::ffi::c_void,
+                std::ffi::c_uint,
+                std::ffi::c_int,
+                std::ffi::c_ulong,
+            ) -> std::ffi::c_int;
+
+            let x_open: XOpenDisplayFn = std::mem::transmute(open_sym);
+            let x_flush: XFlushFn = std::mem::transmute(flush_sym);
+            let x_close: XCloseDisplayFn = std::mem::transmute(close_sym);
+            let x_fake_key: XTestFakeKeyEventFn = std::mem::transmute(fake_sym);
+
+            let dpy = x_open(std::ptr::null());
+            if !dpy.is_null() {
+                for &code in codes {
+                    let x11_keycode = (code as u32).saturating_add(8);
+                    let _ = x_fake_key(dpy, x11_keycode, 0, 0); // is_press = False (0), delay = CurrentTime (0)
+                }
+                let _ = x_flush(dpy);
+                let _ = x_close(dpy);
+            }
+        }
+
+        let _ = dlclose(xtst);
+        let _ = dlclose(x11);
+    }
+}
+
+#[cfg(unix)]
+impl Drop for UinputModifierSuppressor {
+    fn drop(&mut self) {
+        use std::os::unix::io::AsRawFd;
+        // SAFETY: Destroying our own uinput device before closing the file descriptor.
+        unsafe {
+            let _ = ioctl(self.file.as_raw_fd(), Self::UI_DEV_DESTROY);
+        }
+    }
+}
+
+#[cfg(unix)]
+struct KWinInputDeviceSuppressor {
+    tx: std::sync::mpsc::SyncSender<(Vec<String>, bool, std::sync::mpsc::SyncSender<()>)>,
+}
+
+#[cfg(unix)]
+impl KWinInputDeviceSuppressor {
+    fn new() -> Option<Self> {
+        let (tx, rx) =
+            std::sync::mpsc::sync_channel::<(Vec<String>, bool, std::sync::mpsc::SyncSender<()>)>(
+                16,
+            );
+        std::thread::Builder::new()
+            .name("kwin-mod-guard".to_string())
+            .spawn(move || {
+                let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                else {
+                    return;
+                };
+                rt.block_on(async move {
+                    let mut conn_opt: Option<zbus::Connection> = None;
+                    while let Ok((event_names, enabled, ack_tx)) = rx.recv() {
+                        if conn_opt.is_none() {
+                            conn_opt = zbus::Connection::session().await.ok();
+                        }
+                        if let Some(ref conn) = conn_opt {
+                            for ev in &event_names {
+                                let obj_path = format!("/org/kde/KWin/InputDevice/{ev}");
+                                let res = conn
+                                    .call_method(
+                                        Some("org.kde.KWin"),
+                                        obj_path.as_str(),
+                                        Some("org.freedesktop.DBus.Properties"),
+                                        "Set",
+                                        &(
+                                            "org.kde.KWin.InputDevice",
+                                            "enabled",
+                                            zbus::zvariant::Value::from(enabled),
+                                        ),
+                                    )
+                                    .await;
+                                if res.is_err() {
+                                    conn_opt = None;
+                                    break;
+                                }
+                            }
+                        }
+                        let _ = ack_tx.send(());
+                    }
+                });
+            })
+            .ok()?;
+        Some(Self { tx })
+    }
+
+    fn set_events_enabled(&self, event_names: &[String], enabled: bool) {
+        if event_names.is_empty() {
+            return;
+        }
+        let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel(1);
+        if self
+            .tx
+            .try_send((event_names.to_vec(), enabled, ack_tx))
+            .is_ok()
+        {
+            let _ = ack_rx.recv_timeout(std::time::Duration::from_millis(120));
+        }
+    }
+}
+
+#[cfg(unix)]
+fn format_hyprland_device_name(raw_name: &str) -> String {
+    raw_name
+        .trim()
+        .chars()
+        .map(|c| {
+            let lc = c.to_ascii_lowercase();
+            if lc.is_ascii_alphanumeric() || lc == '_' || lc == '.' || lc == '-' {
+                lc
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+#[cfg(unix)]
+fn try_set_hyprland_events_enabled(event_sys_names: &[String], enabled: bool) -> bool {
+    let Ok(sig) = std::env::var("HYPRLAND_INSTANCE_SIGNATURE") else {
+        return false;
+    };
+    if sig.trim().is_empty() {
+        return false;
+    }
+    let socket_path = std::env::var("XDG_RUNTIME_DIR")
+        .ok()
+        .map(|rt| PathBuf::from(rt).join("hypr").join(&sig).join(".socket.sock"))
+        .filter(|p| p.exists())
+        .or_else(|| {
+            let fallback = PathBuf::from("/tmp/hypr").join(&sig).join(".socket.sock");
+            fallback.exists().then_some(fallback)
+        });
+    let Some(sock_path) = socket_path else {
+        return false;
+    };
+
+    let mut toggled_any = false;
+    let mut seen_names = std::collections::HashSet::new();
+    let val_str = if enabled { "true" } else { "false" };
+
+    for ev in event_sys_names {
+        let name_path = Path::new("/sys/class/input").join(ev).join("device/name");
+        let Ok(raw_name) = fs::read_to_string(name_path) else {
+            continue;
+        };
+        let hypr_name = format_hyprland_device_name(&raw_name);
+        if hypr_name.is_empty() || !seen_names.insert(hypr_name.clone()) {
+            continue;
+        }
+        if let Ok(mut stream) = std::os::unix::net::UnixStream::connect(&sock_path) {
+            let _ = stream.set_write_timeout(Some(std::time::Duration::from_millis(40)));
+            let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(40)));
+            let cmd = format!("keyword device[{hypr_name}]:enabled {val_str}");
+            if std::io::Write::write_all(&mut stream, cmd.as_bytes()).is_ok() {
+                let mut resp = [0u8; 64];
+                let _ = std::io::Read::read(&mut stream, &mut resp);
+                toggled_any = true;
+            }
+        }
+    }
+    toggled_any
+}
+
+#[cfg(unix)]
+fn is_standard_keyboard_key_caps(key_caps_raw: &str) -> bool {
+    let Some(last_word) = key_caps_raw.split_whitespace().last() else {
+        return false;
+    };
+    let Ok(low64) = u64::from_str_radix(last_word, 16) else {
+        return false;
+    };
+    // Bit 29 is KEY_LEFTCTRL (29); standard keyboards set bits 1..31 (0xfffffffe).
+    (low64 & (1u64 << 29)) != 0
+}
+
+#[cfg(unix)]
+fn resolve_hidraw_keyboard_events_and_group(sys_dev_dir: &Path) -> (Vec<String>, String) {
+    let uevent = fs::read_to_string(sys_dev_dir.join("uevent")).unwrap_or_default();
+    let group_key = uevent
+        .lines()
+        .find_map(|line| line.strip_prefix("HID_ID="))
+        .or_else(|| uevent.lines().find_map(|line| line.strip_prefix("HID_NAME=")))
+        .unwrap_or("")
+        .trim()
+        .to_ascii_uppercase();
+
+    let mut events = Vec::new();
+    if let Ok(inputs) = fs::read_dir(sys_dev_dir.join("input")) {
+        for inp in inputs.flatten() {
+            let inp_path = inp.path();
+            let dev_name_lower = fs::read_to_string(inp_path.join("name"))
+                .unwrap_or_default()
+                .trim()
+                .to_ascii_lowercase();
+            if dev_name_lower.ends_with(" mouse")
+                || dev_name_lower.contains("duckypad")
+                || dev_name_lower.contains("duckydeck")
+            {
+                continue;
+            }
+            let key_caps = fs::read_to_string(inp_path.join("capabilities/key"))
+                .unwrap_or_default();
+            if !is_standard_keyboard_key_caps(&key_caps) {
+                continue;
+            }
+            if let Ok(sub_entries) = fs::read_dir(&inp_path) {
+                for sub in sub_entries.flatten() {
+                    let sname = sub.file_name().to_string_lossy().to_string();
+                    if sname.starts_with("event") && !events.contains(&sname) {
+                        events.push(sname);
+                    }
+                }
+            }
+        }
+    }
+    (events, group_key)
+}
+
+#[cfg(unix)]
 struct HidrawKeyboardNode {
     path: PathBuf,
     file: fs::File,
     format: HidrawKeyboardFormat,
     held_keys: std::collections::HashSet<u16>,
+    event_sys_names: Vec<String>,
+    device_group_key: String,
 }
 
 pub struct HostKeyboardModifierListener {
@@ -1252,8 +1965,13 @@ pub struct HostKeyboardModifierListener {
     #[cfg(unix)]
     evdev_held_keys: std::collections::HashSet<u16>,
     #[cfg(unix)]
+    uinput_suppressor: Option<UinputModifierSuppressor>,
+    #[cfg(unix)]
+    kwin_suppressor: Option<KWinInputDeviceSuppressor>,
+    #[cfg(unix)]
     rescan_tick: u32,
     held_keys: std::collections::HashSet<u16>,
+    last_suppressed_duckypad_keydown_ms: u64,
     #[cfg(target_os = "windows")]
     prev_vk_down: [bool; 256],
     pub engine: crate::kwin::auto_switcher::HostKeyboardModifierEngine,
@@ -1275,14 +1993,132 @@ impl HostKeyboardModifierListener {
             #[cfg(unix)]
             evdev_held_keys: std::collections::HashSet::new(),
             #[cfg(unix)]
+            uinput_suppressor: UinputModifierSuppressor::new(),
+            #[cfg(unix)]
+            kwin_suppressor: KWinInputDeviceSuppressor::new(),
+            #[cfg(unix)]
             rescan_tick: 0,
             held_keys: std::collections::HashSet::new(),
+            last_suppressed_duckypad_keydown_ms: 0,
             #[cfg(target_os = "windows")]
             prev_vk_down: [false; 256],
             engine: crate::kwin::auto_switcher::HostKeyboardModifierEngine::new(),
         };
         s.refresh_keyboard_nodes();
         s
+    }
+
+    #[cfg(unix)]
+    fn collect_holding_keyboard_event_names(&self, trigger_key: &str) -> Vec<String> {
+        let norm_trig =
+            crate::kwin::auto_switcher::normalize_modifier_trigger_key(trigger_key);
+        let mut active_groups = std::collections::HashSet::new();
+        let mut out = Vec::new();
+
+        for node in &self.hidraw_nodes {
+            if crate::kwin::auto_switcher::is_modifier_trigger_pressed(
+                &norm_trig,
+                &node.held_keys,
+            ) {
+                if !node.device_group_key.is_empty() {
+                    active_groups.insert(node.device_group_key.clone());
+                }
+                for ev in &node.event_sys_names {
+                    if !out.contains(ev) {
+                        out.push(ev.clone());
+                    }
+                }
+            }
+        }
+
+        if !active_groups.is_empty() {
+            for node in &self.hidraw_nodes {
+                if active_groups.contains(&node.device_group_key) {
+                    for ev in &node.event_sys_names {
+                        if !out.contains(ev) {
+                            out.push(ev.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        if out.is_empty()
+            && crate::kwin::auto_switcher::is_modifier_trigger_pressed(
+                &norm_trig,
+                &self.evdev_held_keys,
+            )
+        {
+            for (path, _) in &self.files {
+                if let Some(ev) = path.file_name().and_then(|s| s.to_str()) {
+                    let ev_str = ev.to_string();
+                    if !out.contains(&ev_str) {
+                        out.push(ev_str);
+                    }
+                }
+            }
+        }
+
+        out
+    }
+
+    pub fn suppress_active_modifier_bleed(&mut self, trigger_key: &str) {
+        #[cfg(unix)]
+        {
+            if self.uinput_suppressor.is_none() {
+                self.uinput_suppressor = UinputModifierSuppressor::new();
+            }
+            if self.kwin_suppressor.is_none() {
+                self.kwin_suppressor = KWinInputDeviceSuppressor::new();
+            }
+            let codes = trigger_key_evdev_codes(trigger_key);
+            let target_events = self.collect_holding_keyboard_event_names(trigger_key);
+
+            // 1. Universal kernel evdev release injection (COSMIC, GNOME, Mint, Sway, Hyprland, KWin):
+            //    When physical key state is tracked via `/dev/hidraw*` and `/dev/input/event*` is
+            //    writable (via `70-duckypad.rules` uaccess ACL or `input` group), inject `EV_KEY=0`
+            //    directly into the physical keyboard's evdev node.
+            let evdev_injected = if !self.hidraw_nodes.is_empty() && !target_events.is_empty() {
+                try_inject_evdev_release_on_events(&target_events, codes)
+            } else {
+                false
+            };
+
+            // 2. KWin Wayland or Omarchy / Hyprland zero-config IPC fallback when `/dev/input/event*` is not writable:
+            let mut hyprland_toggled = false;
+            if !evdev_injected && !target_events.is_empty() {
+                if try_set_hyprland_events_enabled(&target_events, false) {
+                    hyprland_toggled = true;
+                } else if let Some(ref kwin_sup) = self.kwin_suppressor {
+                    kwin_sup.set_events_enabled(&target_events, false);
+                }
+            }
+
+            // 3. `/dev/uinput` release pulse (wakes libinput epoll fd & clears merged state):
+            if let Some(ref mut sup) = self.uinput_suppressor {
+                sup.release_held_modifier_trigger(trigger_key);
+            }
+
+            // 4. X11 / Xorg fallback (Linux Mint Cinnamon/MATE/Xfce X11, GNOME Xorg):
+            if !evdev_injected {
+                try_inject_x11_xtest_release(codes);
+            }
+
+            if !evdev_injected && !target_events.is_empty() {
+                // Allow the compositor's libinput loop 15ms to drain the synthetic KEY_RELEASED
+                // event woken by uinput before re-enabling the physical keyboard node.
+                std::thread::sleep(std::time::Duration::from_millis(15));
+                if hyprland_toggled {
+                    let _ = try_set_hyprland_events_enabled(&target_events, true);
+                } else if let Some(ref kwin_sup) = self.kwin_suppressor {
+                    kwin_sup.set_events_enabled(&target_events, true);
+                }
+            }
+        }
+        #[cfg(target_os = "windows")]
+        {
+            win32_input::suppress_held_modifier_trigger(trigger_key);
+        }
     }
 
     pub fn refresh_keyboard_nodes(&mut self) {
@@ -1314,12 +2150,13 @@ impl HostKeyboardModifierListener {
                         .unwrap_or_default()
                         .to_ascii_lowercase();
 
-                    // Explicitly exclude duckyPad USB HID nodes so duckyPad macros never loop back
+                    // Explicitly exclude duckyPad USB HID nodes and our own uinput guard so duckyPad macros never loop back
                     if uevent_upper.contains("483/D11D")
                         || uevent_upper.contains("483/D11C")
                         || uevent_upper.contains("0483:D11D")
                         || uevent_upper.contains("0483:D11C")
                         || dev_name_lower.contains("duckypad")
+                        || dev_name_lower.contains("duckydeck")
                     {
                         continue;
                     }
@@ -1389,11 +2226,20 @@ impl HostKeyboardModifierListener {
                         .open(&dev_path)
                     {
                         while file.read(&mut drain_buf).is_ok() {}
+                        let (event_sys_names, device_group_key) =
+                            resolve_hidraw_keyboard_events_and_group(&sys_dev_dir);
+                        if !event_sys_names.is_empty() {
+                            if let Some(ref kwin_sup) = self.kwin_suppressor {
+                                kwin_sup.set_events_enabled(&event_sys_names, true);
+                            }
+                        }
                         self.hidraw_nodes.push(HidrawKeyboardNode {
                             path: dev_path,
                             file,
                             format,
                             held_keys: std::collections::HashSet::new(),
+                            event_sys_names,
+                            device_group_key,
                         });
                     }
                 }
@@ -1416,6 +2262,10 @@ impl HostKeyboardModifierListener {
                     node.held_keys.clear();
                 }
             }
+            #[cfg(target_os = "windows")]
+            {
+                win32_input::clear_suppressed_modifiers();
+            }
             return self.engine.force_deactivate();
         }
 
@@ -1425,6 +2275,7 @@ impl HostKeyboardModifierListener {
         let last_duckypad_keydown_ms = crate::hardware::storage::LAST_EVDEV_KEYDOWN_MS
             .load(std::sync::atomic::Ordering::SeqCst);
         let now_ms = crate::kwin::auto_switcher::current_epoch_ms();
+        #[cfg_attr(target_os = "windows", allow(unused_mut))]
         let mut intermediate_transition: Option<
             crate::kwin::auto_switcher::ModifierLayerTransition,
         > = None;
@@ -1535,6 +2386,7 @@ impl HostKeyboardModifierListener {
 
         #[cfg(target_os = "windows")]
         {
+            win32_input::ensure_ll_hook_started();
             self.held_keys.clear();
             let vk_map: &[(i32, u16)] = &[
                 (0x5D, 127), // VK_APPS -> MENU
@@ -1563,11 +2415,24 @@ impl HostKeyboardModifierListener {
                 (0x87, 194), // VK_F24
             ];
             for &(vk, ev_code) in vk_map {
-                // SAFETY: GetAsyncKeyState is a thread-safe Win32 query.
-                let is_down =
-                    unsafe { (win32_input::GetAsyncKeyState(vk) as u16 & 0x8000) != 0 };
-                let was_down = self.prev_vk_down[vk as usize];
-                self.prev_vk_down[vk as usize] = is_down;
+                let vk_idx = vk as usize;
+                let is_down = if win32_input::is_vk_suppressed(vk_idx) {
+                    // While suppressed, GetAsyncKeyState is cleared by our synthetic KEYUP;
+                    // rely on WH_KEYBOARD_LL's un-injected hardware state so the hold layer
+                    // stays active until the user physically releases the key.
+                    win32_input::is_physical_vk_down(vk_idx)
+                } else {
+                    // SAFETY: GetAsyncKeyState is a thread-safe Win32 query.
+                    let async_down =
+                        unsafe { (win32_input::GetAsyncKeyState(vk) as u16 & 0x8000) != 0 };
+                    let phys_down = win32_input::is_physical_vk_down(vk_idx) || async_down;
+                    if async_down {
+                        win32_input::set_physical_vk_down(vk_idx, true);
+                    }
+                    phys_down
+                };
+                let was_down = self.prev_vk_down[vk_idx];
+                self.prev_vk_down[vk_idx] = is_down;
                 if is_down {
                     self.held_keys.insert(ev_code);
                     if !was_down {
@@ -1597,7 +2462,8 @@ impl HostKeyboardModifierListener {
             }
         }
 
-        self.engine
+        let out_transition = self
+            .engine
             .evaluate_tick(
                 modifier_switch_enabled,
                 paused_for_editing,
@@ -1608,7 +2474,39 @@ impl HostKeyboardModifierListener {
                 last_duckypad_keydown_ms,
                 now_ms,
             )
-            .or(intermediate_transition)
+            .or(intermediate_transition);
+
+        if let Some(crate::kwin::auto_switcher::ModifierLayerTransition::Activated {
+            ref trigger_key,
+            ref mode,
+            ..
+        }) = out_transition
+        {
+            if mode == "hold" || mode == "double_tap_hold" {
+                self.suppress_active_modifier_bleed(trigger_key);
+                self.last_suppressed_duckypad_keydown_ms = last_duckypad_keydown_ms;
+            }
+        } else if matches!(
+            out_transition,
+            Some(crate::kwin::auto_switcher::ModifierLayerTransition::Deactivated)
+        ) {
+            #[cfg(target_os = "windows")]
+            {
+                win32_input::clear_suppressed_modifiers();
+            }
+        } else if let Some((_prof, trig, mode)) = self.engine.active_override() {
+            #[cfg(not(target_os = "windows"))]
+            let _ = (&trig, &mode);
+            #[cfg(target_os = "windows")]
+            if (mode == "hold" || mode == "double_tap_hold")
+                && last_duckypad_keydown_ms > self.last_suppressed_duckypad_keydown_ms
+            {
+                self.suppress_active_modifier_bleed(&trig);
+                self.last_suppressed_duckypad_keydown_ms = last_duckypad_keydown_ms;
+            }
+        }
+
+        out_transition
     }
 }
 
@@ -1665,5 +2563,42 @@ mod hidraw_modifier_tests {
         .expect("nkro report");
         assert!(nkro_keys.contains(&97));
         assert_eq!(nkro_keys.len(), 1);
+    }
+
+    #[test]
+    fn test_held_modifier_bleed_suppression_on_activation() {
+        #[cfg(unix)]
+        {
+            // Keychron C3 Pro keyboard capabilities vs mouse/consumer control subdevices
+            assert!(is_standard_keyboard_key_caps(
+                "1000000000007 ff9f207ac14057ff febeffdfffefffff fffffffffffffffe"
+            ));
+            assert!(!is_standard_keyboard_key_caps("ff0000 0 0 0 0"));
+            assert!(!is_standard_keyboard_key_caps(
+                "733fff 0 0 483ffff17aff32d bfd4444600000000 1 130ff38b17c000 677bfad9415fed 19ed68000004400 10000002"
+            ));
+            assert_eq!(
+                format_hyprland_device_name("Keychron Keychron C3 Pro\n"),
+                "keychron-keychron-c3-pro"
+            );
+        }
+        let mut listener = HostKeyboardModifierListener::new();
+        // Verify suppressing held modifiers (Right Ctrl, Left Ctrl, Alt, Shift, Super, Chords)
+        // executes cleanly without panicking or looping back into held_keys.
+        for key in [
+            "RCTRL",
+            "LCTRL",
+            "RALT",
+            "LALT",
+            "RSHIFT",
+            "LSHIFT",
+            "SUPER",
+            "CTRL_ALT",
+            "CTRL_SUPER",
+            "MENU",
+        ] {
+            listener.suppress_active_modifier_bleed(key);
+        }
+        assert!(listener.held_keys.is_empty());
     }
 }

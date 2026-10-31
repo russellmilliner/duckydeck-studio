@@ -80,8 +80,24 @@ If you bind a common modifier such as `Right Ctrl` or `Left Ctrl` in **Hold** mo
 2. If **any other key** on your main keyboard is pressed before `hold_delay_ms` elapses, the state machine immediately transitions to `ChordingCancelled` and does **not** switch profiles for the remainder of that key hold.
 3. Once `hold_delay_ms` elapses with no other key pressed, the duckyPad switches to your target layer profile.
 
-### 4.2 Non-duckyPad Input Device Filtering
-To prevent macro feedback loops (where a duckyPad macro holding or typing `Ctrl`, `Alt`, `Shift`, or `F13–F24` would accidentally trigger or cancel a Modifier Layer Shift), DuckyDeck Studio's input listener automatically excludes all duckyPad USB Vendor/Product IDs (`0483:D11D` duckyPad Pro and `0483:D11C` duckyPad 2020) when scanning `/dev/hidraw*` and `/dev/input/event*`.
+### 4.2 Held Modifier Bleed Suppression (`evdev` / `KWin.InputDevice` / `XTest` / `uinput` & Win32 `WH_KEYBOARD_LL` + `keybd_event`)
+When holding a standard modifier key such as `Right Ctrl`, `Left Ctrl`, `Alt`, `Shift`, or `Super` on your main keyboard to shift duckyPad profiles, you do **not** want that held modifier to bleed into the shortcut or macro executed by the duckyPad (for example, holding `Right Ctrl` and pressing a duckyPad key mapped to `ALT F4` must send clean `ALT F4`, not `CTRL+ALT+F4`):
+- **Linux Multi-Desktop Suppression Architecture (KWin Wayland, Omarchy / Hyprland, COSMIC, GNOME, and Linux Mint)**:
+  1. **Tier 1 — Universal Kernel `evdev` Direct Release Injection (COSMIC `cosmic-comp`, GNOME `mutter`, Linux Mint Cinnamon/MATE/Xfce, Omarchy / Hyprland, Sway, KWin)**:
+     - When `70-duckypad.rules` is installed (`SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_KEYBOARD}=="1", MODE="0660", TAG+="uaccess"`) or the user is in the `input` group, `try_inject_evdev_release_on_events` writes `EV_KEY=0` + `SYN_REPORT` directly to the holding keyboard's `/dev/input/eventN` node (`drivers/input/evdev.c` → `evdev_write` → `input_inject_event`).
+     - This injects a kernel-level `KEY_RELEASED` event directly on that physical `eventN` device so `libinput` / `xkbcommon` (`xkb_state_update_key`) decrements `down_count` (`1 → 0`) across **all** Wayland and X11 compositors while `/dev/hidraw*` continues tracking the physical USB/Bluetooth key hold without interruption.
+  2. **Tier 2 — KWin Wayland & Omarchy / Hyprland Zero-Config IPC Fallbacks**:
+     - **KDE Plasma (KWin Wayland)**: If `/dev/input/eventN` is not directly writable, `KWinInputDeviceSuppressor` momentarily sets `org.kde.KWin.InputDevice.enabled = false` on `/org/kde/KWin/InputDevice/<eventN>`, causing KWin's `libinput` context to synthesize `LIBINPUT_KEY_STATE_RELEASED`, pulses `UinputModifierSuppressor` (`/dev/uinput`, `DuckyDeck Modifier Guard`) to wake KWin's `libinput` epoll `QSocketNotifier`, and restores `enabled = true` `15 ms` later.
+     - **Omarchy / Hyprland (`HYPRLAND_INSTANCE_SIGNATURE`)**: If `/dev/input/eventN` is not directly writable, `try_set_hyprland_events_enabled` sends `keyword device[<hypr-device-name>]:enabled false` over `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket.sock`, pulses `/dev/uinput`, and restores `enabled true` `15 ms` later.
+  3. **Tier 3 — X11 / Xorg Zero-Config Fallback (Linux Mint Cinnamon/MATE/Xfce X11, GNOME Xorg)**:
+     - On pure X11 sessions where `/dev/input/eventN` is not directly writable, `try_inject_x11_xtest_release` dynamically loads `libX11.so.6` and `libXtst.so.6` (`XTestFakeKeyEvent(dpy, evdev_code + 8, False, 0)`) to release the held modifier key on the Xorg `Virtual core keyboard` master device.
+- **Windows (`WH_KEYBOARD_LL` Low-Level Hook + `keybd_event`)**:
+  1. A dedicated background thread (`win32-ll-kbd-hook`) installs a low-level keyboard hook (`SetWindowsHookExW(WH_KEYBOARD_LL, ...)`) that tracks true physical hardware key state via `!LLKHF_INJECTED` (`(kb.flags & 0x10) == 0`).
+  2. When a `Hold` or `Double-Tap + Hold` modifier layer activates, `win32_input::suppress_held_modifier_trigger` marks the trigger's virtual keys in `SUPPRESSED_VK_MASK` and injects synthetic `KEYEVENTF_KEYUP` events via `keybd_event`, clearing `GetAsyncKeyState(VK_CONTROL)` / `VK_MENU` / `VK_SHIFT` in the OS.
+  3. While the modifier layer remains active, the `WH_KEYBOARD_LL` hook swallows Windows' `30 Hz` hardware typematic auto-repeat `WM_KEYDOWN` events (`return 1`) for the suppressed modifier key so Windows never re-asserts `Ctrl` during a long hold, while `PHYSICAL_VK_DOWN` keeps the duckyPad layer active until the physical `WM_KEYUP` arrives.
+
+### 4.3 Non-duckyPad Input Device Filtering
+To prevent macro feedback loops (where a duckyPad macro holding or typing `Ctrl`, `Alt`, `Shift`, or `F13–F24` would accidentally trigger or cancel a Modifier Layer Shift), DuckyDeck Studio's input listener automatically excludes all duckyPad USB Vendor/Product IDs (`0483:D11D` duckyPad Pro and `0483:D11C` duckyPad 2020) as well as its own `DuckyDeck Modifier Guard` virtual device when scanning `/dev/hidraw*` and `/dev/input/event*`.
 
 ---
 
@@ -127,3 +143,19 @@ Modifier Layer Shift rules are persisted alongside your Window Auto-Switcher rul
   ]
 }
 ```
+
+---
+
+## 8. Multi-Desktop Window-Focus Auto-Switching & Window Picker Matrix (`src/kwin/auto_switcher.rs`)
+
+Both **Window-Focus / Cursor-Hover Auto-Switching** and the **Interactive Window Picker** work natively across all major Linux desktops and Windows:
+
+| Desktop Environment / Compositor | Active Window & Hover Auto-Switching Backend | Interactive Window Picker (`Pick Window`) |
+| :--- | :--- | :--- |
+| **KDE Plasma 6 (`KWin` Wayland & X11)** | KWin 6 JS hook (`duckydeck_kwin6_autoswitcher`) calling `io.github.duckydeck.KWinBridge.NotifyActiveWindow` over session D-Bus | Native `org.kde.KWin` `/KWin` `queryWindowInfo` crosshair picker |
+| **Omarchy / Arch Hyprland (`Hyprland` Wayland)** | Hyprland UNIX domain socket (`$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket.sock`) querying `j/activewindow` + cursor hover hit-testing (`j/cursorpos` + `j/clients` + `j/activeworkspace`) | Click or focus target window (`j/activewindow` transition + `XQueryPointer` click / `j/clients` hit-test) |
+| **System76 COSMIC (`cosmic-comp` Wayland)** | Pure-Rust Wayland wire-protocol client (`zwlr_foreign_toplevel_manager_v1` & `zcosmic_toplevel_info_v1`) tracking `title`, `app_id`, and `STATE_ACTIVATED = 2` | Click to activate target window (`zwlr_foreign_toplevel_handle_v1` / `zcosmic_toplevel_handle_v1` activation) |
+| **GNOME (`mutter` Wayland & Xorg)** | Auto-installed GNOME Shell extension (`~/.local/share/gnome-shell/extensions/duckydeck-autoswitcher@duckydeck.github.io`) hooking `global.display.connect('notify::focus-window')` → `NotifyActiveWindow` + `org.gnome.Shell.Introspect.GetWindows` fallback | Click to focus target window (GNOME Shell extension D-Bus callback / `Introspect.GetWindows` / X11 fallback) |
+| **Linux Mint (`Cinnamon` / `MATE` / `Xfce` / `Xorg`)** | Dynamically loaded `libX11.so.6` reading `_NET_ACTIVE_WINDOW`, `XQueryPointer` cursor hover window, `WM_CLASS`, and `_NET_WM_NAME` / `WM_NAME` | Click or focus target window (`XQueryPointer` `Button1Mask` click hit-test or `_NET_ACTIVE_WINDOW` transition) |
+| **Windows 10 & 11 (`Win32`)** | `GetForegroundWindow` + `GetCursorPos` / `WindowFromPoint` polling at `50 ms` | Click or focus target window (`GetAsyncKeyState(VK_LBUTTON)` + `WindowFromPoint`) |
+

@@ -60,8 +60,10 @@ SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="d11d", MODE="06
 SUBSYSTEM=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="d11d", MODE="0660", TAG+="uaccess"
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="d11c", MODE="0660", TAG+="uaccess"
 SUBSYSTEM=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="d11c", MODE="0660", TAG+="uaccess"
+KERNEL=="uinput", SUBSYSTEM=="misc", MODE="0660", TAG+="uaccess", OPTIONS+="static_node=uinput"
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_KEYBOARD}=="1", MODE="0660", TAG+="uaccess"
 EOF
-udevadm control --reload-rules && udevadm trigger --subsystem-match=hidraw"#;
+udevadm control --reload-rules && udevadm trigger --subsystem-match=hidraw && udevadm trigger --subsystem-match=input"#;
 
     let is_flatpak = Path::new("/.flatpak-info").exists();
     let status = if is_flatpak {
