@@ -2,6 +2,14 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.15](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.15) — 2026-10-31
+
+### Highlights
+- Release v0.1.15 of duckydeck-studio.
+
+### Commits
+- feat(autoswitch,modifier): add multi-desktop Linux auto-switcher, window picker, and held-modifier bleed suppression (Omarchy/Hyprland, COSMIC, GNOME, Cinnamon/X11, Windows) (2275a51)
+
 ## [v0.1.14](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.14) — 2026-10-31
 
 ### Highlights

@@ -34,6 +34,11 @@
   <url type="bugtracker">https://github.com/russellmilliner/duckydeck-studio/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.1.15" date="2026-10-31">
+      <description>
+        <p>Release v0.1.15 of duckydeck-studio.</p>
+      </description>
+    </release>
     <release version="0.1.14" date="2026-10-31">
       <description>
         <p>Add Main-Keyboard Modifier Layer Shift (Hold, One-Shot, Double-Tap + Hold, Toggle) with 200 ms Chord Guard, Desktop OLED Widget Full App button, and Auto-Switcher/SD Sync UI enhancements</p>
