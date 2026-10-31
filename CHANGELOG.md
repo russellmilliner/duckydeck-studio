@@ -2,6 +2,25 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.13-deps](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.13-deps) — 2026-10-31
+
+### 📦 Bumped Dependencies (12 packages)
+
+| Package | Previous | Updated | Scope |
+| :--- | :--- | :--- | :--- |
+| `js-sys` | `0.3.106` | **`0.3.107`** | Lockfile (`Cargo.lock`) |
+| `log` | `0.4.34` | **`0.4.35`** | Lockfile (`Cargo.lock`) |
+| `rustix` | `1.1.5` | **`1.1.6`** | Lockfile (`Cargo.lock`) |
+| `unicode-width` | `0.2.2` | **`0.2.3`** | Lockfile (`Cargo.lock`) |
+| `utf8_iter` | `1.0.4` | **`1.1.0`** | Lockfile (`Cargo.lock`) |
+| `wasm-bindgen` | `0.2.129` | **`0.2.130`** | Lockfile (`Cargo.lock`) |
+| `wasm-bindgen-futures` | `0.4.79` | **`0.4.80`** | Lockfile (`Cargo.lock`) |
+| `wasm-bindgen-macro` | `0.2.129` | **`0.2.130`** | Lockfile (`Cargo.lock`) |
+| `wasm-bindgen-macro-support` | `0.2.129` | **`0.2.130`** | Lockfile (`Cargo.lock`) |
+| `wasm-bindgen-shared` | `0.2.129` | **`0.2.130`** | Lockfile (`Cargo.lock`) |
+| `web-sys` | `0.3.106` | **`0.3.107`** | Lockfile (`Cargo.lock`) |
+| `zcheapstr` | `1.1.0` | **`1.2.0`** | Lockfile (`Cargo.lock`) |
+
 ## [v0.1.13](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.13) — 2026-10-30
 
 ### Highlights
