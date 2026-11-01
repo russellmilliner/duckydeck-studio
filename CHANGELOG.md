@@ -2,6 +2,14 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.16](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.16) — 2026-11-01
+
+### Highlights
+- Self-healing KWin 6 Wayland auto-switcher watchdog, app/window-title-scoped Main-Keyboard Modifier Layer rules, in-app interactive Tutorials & Guides, Desktop OLED Widget sync stability, and main window screen/position persistence.
+
+### Commits
+- fix(autoswitch,modifier,ui,docs): self-healing KWin 6 auto-switcher watchdog, app/title-scoped modifier rules, interactive tutorials, and OLED widget sync stability (781109f)
+
 ## [v0.1.15](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.15) — 2026-10-31
 
 ### Highlights
