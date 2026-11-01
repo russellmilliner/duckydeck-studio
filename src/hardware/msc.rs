@@ -9,11 +9,12 @@ use crate::hardware::profile::{
     write_profiles_to_sd_root_for_model, DuckyProfile, DuckySdDeviceMeta, SdWriteSummary,
 };
 use crate::hardware::storage::{
-    model_name_for_hw_model, open_duckypad_hid_for_serial, DP_MODEL_DUCKYPAD_PRO,
+    find_all_duckypad_hidraw_nodes, invalidate_cached_hid_device, is_duckypad_in_msc_usb_mode,
+    model_name_for_hw_model, open_duckypad_hid_for_serial, MscSyncGuard, DP_MODEL_DUCKYPAD_PRO,
     DP_MODEL_OG_DUCKYPAD, HID_CMD_CLOSE_FILE, HID_CMD_CREATE_DIR, HID_CMD_DELETE_DIR,
     HID_CMD_DELETE_FILE, HID_CMD_DUMP_SD, HID_CMD_OPEN_FILE_FOR_READING,
     HID_CMD_OPEN_FILE_FOR_WRITING, HID_CMD_READ_FILE, HID_CMD_SOFTWARE_RESET, HID_CMD_WRITE_FILE,
-    HID_IO_LOCK, HID_REPORT_ID_OUT, HID_STATUS_ERROR, MSC_SYNC_IN_PROGRESS,
+    HID_IO_LOCK, HID_REPORT_ID_OUT, HID_STATUS_ERROR,
 };
 
 pub fn run_storage_cmd(program: &str, args: &[&str]) -> std::io::Result<std::process::Output> {
@@ -989,14 +990,7 @@ pub fn read_duckypad_2020_profiles_via_hid_with_progress<F>(
 where
     F: FnMut(i32, &str, &str),
 {
-    struct HidSyncGuard;
-    impl Drop for HidSyncGuard {
-        fn drop(&mut self) {
-            MSC_SYNC_IN_PROGRESS.store(false, std::sync::atomic::Ordering::SeqCst);
-        }
-    }
-    MSC_SYNC_IN_PROGRESS.store(true, std::sync::atomic::Ordering::SeqCst);
-    let _hid_sync_guard = HidSyncGuard;
+    let _hid_sync_guard = MscSyncGuard::acquire();
 
     let serial_opt = if serial.is_empty() || serial == "-" {
         None
@@ -1249,14 +1243,7 @@ pub fn write_duckypad_2020_profiles_via_hid_with_progress<F>(
 where
     F: FnMut(i32, &str, &str),
 {
-    struct HidSyncGuard;
-    impl Drop for HidSyncGuard {
-        fn drop(&mut self) {
-            MSC_SYNC_IN_PROGRESS.store(false, std::sync::atomic::Ordering::SeqCst);
-        }
-    }
-    MSC_SYNC_IN_PROGRESS.store(true, std::sync::atomic::Ordering::SeqCst);
-    let _hid_sync_guard = HidSyncGuard;
+    let _hid_sync_guard = MscSyncGuard::acquire();
 
     let serial_opt = if serial.is_empty() || serial == "-" {
         None
@@ -1503,6 +1490,73 @@ where
     Ok(summary)
 }
 
+pub(crate) fn reset_and_wait_for_normal_hid_mode(
+    disk_label: &str,
+    serial_opt: Option<&str>,
+    reset_seq: u8,
+) {
+    let pre_reset_nodes: Vec<PathBuf> = find_all_duckypad_hidraw_nodes()
+        .into_iter()
+        .map(|(p, _, _)| p)
+        .collect();
+
+    // 1. Send software reset command (0x14, tx[3] = 0) to exit USB Mass Storage mode
+    for _ in 0..20 {
+        let reset_ok = {
+            let _guard = HID_IO_LOCK.lock().ok();
+            if let Ok(dev) = open_duckypad_hid_for_serial(serial_opt) {
+                let mut tx = [0u8; 64];
+                tx[0] = HID_REPORT_ID_OUT;
+                tx[1] = reset_seq;
+                tx[2] = HID_CMD_SOFTWARE_RESET;
+                tx[3] = 0;
+                dev.write(&tx).is_ok()
+            } else {
+                false
+            }
+        };
+        if reset_ok {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(180));
+    }
+
+    invalidate_cached_hid_device();
+
+    // 2. Wait for the USB Mass Storage composite device (:1.0 usb-storage + :1.1 hidraw)
+    // to actually disconnect/tear down on the USB bus (typically takes ~1.5-2.5s after 0x14).
+    for _ in 0..35 {
+        let still_msc = is_duckypad_in_msc_usb_mode(disk_label, serial_opt);
+        let pre_nodes_unchanged = !pre_reset_nodes.is_empty()
+            && pre_reset_nodes.iter().all(|p| p.exists())
+            && still_msc;
+        if !still_msc && !pre_nodes_unchanged {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(120));
+    }
+
+    invalidate_cached_hid_device();
+
+    // 3. Wait for the normal HID mode device (:1.0 hidraw, no MSC block device) to re-enumerate
+    // and for udev / systemd-logind permissions to settle so hidapi can open it cleanly.
+    for _ in 0..40 {
+        if !is_duckypad_in_msc_usb_mode(disk_label, serial_opt) {
+            let ready = {
+                let _guard = HID_IO_LOCK.lock().ok();
+                open_duckypad_hid_for_serial(serial_opt).is_ok()
+            };
+            if ready {
+                break;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(150));
+    }
+
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    invalidate_cached_hid_device();
+}
+
 pub fn read_duckypad_pro_profiles_via_msc(
     disk_label: &str,
     serial: &str,
@@ -1577,14 +1631,7 @@ where
         return read_duckypad_2020_profiles_via_hid_with_progress(serial, on_progress);
     }
 
-    struct MscGuard;
-    impl Drop for MscGuard {
-        fn drop(&mut self) {
-            MSC_SYNC_IN_PROGRESS.store(false, std::sync::atomic::Ordering::SeqCst);
-        }
-    }
-    MSC_SYNC_IN_PROGRESS.store(true, std::sync::atomic::Ordering::SeqCst);
-    let _msc_guard = MscGuard;
+    let _msc_guard = MscSyncGuard::acquire();
 
     let already_has_block_dev = find_duckypad_msc_block_device(disk_label, true).is_some();
     if !already_has_block_dev {
@@ -1671,40 +1718,9 @@ where
         Err(e) => Err(e),
     };
 
-    // 4. Reset duckyPad Pro back to normal HID keypad mode (0x14, tx[3] = 0)
-    for _ in 0..20 {
-        let reset_ok = {
-            let _guard = HID_IO_LOCK.lock().ok();
-            if let Ok(dev) = open_duckypad_hid_for_serial(serial_opt) {
-                let mut tx = [0u8; 64];
-                tx[0] = HID_REPORT_ID_OUT;
-                tx[1] = 0x12;
-                tx[2] = HID_CMD_SOFTWARE_RESET;
-                tx[3] = 0;
-                dev.write(&tx).is_ok()
-            } else {
-                false
-            }
-        };
-        if reset_ok {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(180));
-    }
+    // 4 & 5. Reset duckyPad Pro back to normal HID mode and wait for full re-enumeration
+    reset_and_wait_for_normal_hid_mode(disk_label, serial_opt, 0x12);
 
-    // 5. Wait for normal HID mode to re-enumerate and restore active profile
-    std::thread::sleep(std::time::Duration::from_millis(1200));
-    for _ in 0..15 {
-        let ready = {
-            let _guard = HID_IO_LOCK.lock().ok();
-            open_duckypad_hid_for_serial(serial_opt).is_ok()
-        };
-        if ready {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(150));
-    }
-    drop(_msc_guard);
     if restore_profile > 0 && !crate::kwin::auto_switcher::send_hid_switch_profile(restore_profile)
     {
         crate::bridge::device_controller::record_system_event(
@@ -1824,14 +1840,7 @@ where
         );
     }
 
-    struct MscGuard;
-    impl Drop for MscGuard {
-        fn drop(&mut self) {
-            MSC_SYNC_IN_PROGRESS.store(false, std::sync::atomic::Ordering::SeqCst);
-        }
-    }
-    MSC_SYNC_IN_PROGRESS.store(true, std::sync::atomic::Ordering::SeqCst);
-    let _msc_guard = MscGuard;
+    let _msc_guard = MscSyncGuard::acquire();
 
     on_progress(
         12,
@@ -1914,40 +1923,9 @@ where
         Err(e) => Err(e),
     };
 
-    // 4. Reset duckyPad Pro back to normal HID keypad mode (0x14, tx[3] = 0)
-    for _ in 0..20 {
-        let reset_ok = {
-            let _guard = HID_IO_LOCK.lock().ok();
-            if let Ok(dev) = open_duckypad_hid_for_serial(serial_opt) {
-                let mut tx = [0u8; 64];
-                tx[0] = HID_REPORT_ID_OUT;
-                tx[1] = 0x14;
-                tx[2] = HID_CMD_SOFTWARE_RESET;
-                tx[3] = 0;
-                dev.write(&tx).is_ok()
-            } else {
-                false
-            }
-        };
-        if reset_ok {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(180));
-    }
+    // 4 & 5. Reset duckyPad Pro back to normal HID mode and wait for full re-enumeration
+    reset_and_wait_for_normal_hid_mode(disk_label, serial_opt, 0x14);
 
-    // 5. Wait for normal HID mode to re-enumerate and restore active profile
-    std::thread::sleep(std::time::Duration::from_millis(1200));
-    for _ in 0..15 {
-        let ready = {
-            let _guard = HID_IO_LOCK.lock().ok();
-            open_duckypad_hid_for_serial(serial_opt).is_ok()
-        };
-        if ready {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(150));
-    }
-    drop(_msc_guard);
     if restore_profile > 0 && !crate::kwin::auto_switcher::send_hid_switch_profile(restore_profile)
     {
         crate::bridge::device_controller::record_system_event(

@@ -1011,6 +1011,9 @@ pub fn create_showcase_instance() -> DeviceControllerRust {
             hold_delay_ms: 200,
             oneshot_timeout_sec: 6,
             target_profile: 8,
+            resource_class: String::new(),
+            title_contains: None,
+            title_is_regex: false,
         },
         crate::kwin::auto_switcher::ModifierLayerRule {
             enabled: true,
@@ -1019,6 +1022,9 @@ pub fn create_showcase_instance() -> DeviceControllerRust {
             hold_delay_ms: 200,
             oneshot_timeout_sec: 6,
             target_profile: 5,
+            resource_class: "firefox".to_string(),
+            title_contains: None,
+            title_is_regex: false,
         },
     ];
     let modifier_rules_json =
@@ -1063,6 +1069,8 @@ pub fn create_showcase_instance() -> DeviceControllerRust {
         last_switched_profile: 1,
         active_modifier_override: None,
         last_window_matched_profile: Some(1),
+        current_window_class: String::new(),
+        current_window_title: String::new(),
         picker_armed: false,
         loaded_from_disk: true,
     };

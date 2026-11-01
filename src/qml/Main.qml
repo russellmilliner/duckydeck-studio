@@ -275,9 +275,28 @@ Kirigami.ApplicationWindow {
 
     property int selectedSlotNumber: 0
     readonly property bool hasSelectedSlot: root.selectedSlotNumber >= 1 && root.selectedSlotNumber <= 58
+    readonly property bool isAnyEditorModalActive: Boolean(
+        (typeof appLaunchConfigWindow !== "undefined" && appLaunchConfigWindow && appLaunchConfigWindow.visible && appLaunchConfigWindow.active)
+        || (typeof webApiKeyConfigWindow !== "undefined" && webApiKeyConfigWindow && webApiKeyConfigWindow.visible && webApiKeyConfigWindow.active)
+        || (typeof duckyColorPickerWindow !== "undefined" && duckyColorPickerWindow && duckyColorPickerWindow.visible && duckyColorPickerWindow.active)
+        || (typeof keyPropertiesWindow !== "undefined" && keyPropertiesWindow && keyPropertiesWindow.visible && keyPropertiesWindow.active)
+        || (typeof macroRecorderDialog !== "undefined" && macroRecorderDialog && macroRecorderDialog.visible && macroRecorderDialog.active)
+        || (typeof lightingAnimatorDialog !== "undefined" && lightingAnimatorDialog && lightingAnimatorDialog.visible && lightingAnimatorDialog.active)
+        || (typeof oledIconPickerDialog !== "undefined" && oledIconPickerDialog && oledIconPickerDialog.visible && oledIconPickerDialog.active)
+    )
+    readonly property bool shouldPauseAutoSwitchForEditing: root.hasSelectedSlot
+        && root.visible
+        && root.visibility !== Window.Minimized
+        && root.visibility !== Window.Hidden
+        && (root.active || root.isAnyEditorModalActive)
+    onShouldPauseAutoSwitchForEditingChanged: {
+        if (deviceController) {
+            deviceController.setScriptEditorOpen(root.shouldPauseAutoSwitchForEditing)
+        }
+    }
     onHasSelectedSlotChanged: {
         if (deviceController) {
-            deviceController.setScriptEditorOpen(root.hasSelectedSlot)
+            deviceController.setScriptEditorOpen(root.shouldPauseAutoSwitchForEditing)
         }
         root.syncWindowWidthToEditorState()
         Qt.callLater(root.syncWindowWidthToEditorState)
@@ -1178,7 +1197,7 @@ Kirigami.ApplicationWindow {
         root.loadingSlotData = false
         root.updateCompilerStatus()
         if (root.selectedSlotNumber >= 1 && root.selectedSlotNumber <= 20) {
-            deviceController.clearKeyColor(root.selectedSlotNumber)
+            deviceController.clearKeyCustomRgb(root.selectedSlotNumber)
         }
         root.saveCurrentSlotToController()
         hardwareCanvas.syncSlotsFromController()
@@ -1540,10 +1559,14 @@ Kirigami.ApplicationWindow {
         }
         onSdSyncBusyChanged: {
             if (deviceController.sdSyncBusy) {
+                sdSyncCooldownTimer.stop()
+                root.sdSyncCooldownActive = true
                 root.clearSlotSelection()
                 root.syncWindowWidthToEditorState()
                 sdSyncDialog.open()
             } else {
+                root.sdSyncCooldownActive = true
+                sdSyncCooldownTimer.restart()
                 root.syncSidebarProfilesFromController()
                 hardwareCanvas.syncProfilesFromController()
                 root.refreshSelectedSlotFromController()
@@ -1597,6 +1620,7 @@ Kirigami.ApplicationWindow {
         onConnectedChanged: {
             if (!deviceController.connected
                 && !deviceController.sdSyncBusy
+                && !root.sdSyncCooldownActive
                 && root.connectedDevicesList.length === 0
                 && !deviceController.isUiTestSuiteMode()
                 && !deviceController.isDemoShowcaseMode()) {
@@ -1605,6 +1629,16 @@ Kirigami.ApplicationWindow {
                     oledDesktopWidget.visible = false
                 }
             }
+        }
+    }
+
+    property bool sdSyncCooldownActive: false
+    Timer {
+        id: sdSyncCooldownTimer
+        interval: 8000
+        repeat: false
+        onTriggered: {
+            root.sdSyncCooldownActive = false
         }
     }
 
@@ -2072,6 +2106,9 @@ Kirigami.ApplicationWindow {
     }
 
     onConnectedDevicesListChanged: {
+        if (deviceController && (deviceController.sdSyncBusy || root.sdSyncCooldownActive)) {
+            return
+        }
         const connectedMap = {}
         for (let i = 0; i < root.connectedDevicesList.length; ++i) {
             const d = root.connectedDevicesList[i]
@@ -2093,7 +2130,7 @@ Kirigami.ApplicationWindow {
             root.openDeviceWidgetIds = copy
         }
         if (root.connectedDevicesList.length === 0
-            && (!deviceController || (!deviceController.connected && !deviceController.sdSyncBusy && !deviceController.isUiTestSuiteMode() && !deviceController.isDemoShowcaseMode()))) {
+            && (!deviceController || (!deviceController.connected && !deviceController.sdSyncBusy && !root.sdSyncCooldownActive && !deviceController.isUiTestSuiteMode() && !deviceController.isDemoShowcaseMode()))) {
             if (oledDesktopWidget.visible) {
                 oledDesktopWidget.hide()
                 oledDesktopWidget.visible = false
@@ -2542,6 +2579,13 @@ Kirigami.ApplicationWindow {
         }
 
         QQC2.MenuItem {
+            id: menuTutorialsItem
+            icon.name: "help-contextual"
+            text: qsTr("🎓 Interactive Tutorials & Step-by-Step Guides...")
+            onTriggered: root.openTutorial("oled_vm")
+        }
+
+        QQC2.MenuItem {
             id: menuUserDocumentationItem
             icon.name: "help-contents"
             text: qsTr("User Documentation (Web Guide)...")
@@ -2625,6 +2669,16 @@ Kirigami.ApplicationWindow {
         id: profileWizardDialog
         root: root
         controller: deviceController
+    }
+
+    TutorialsDialog {
+        id: tutorialsDialog
+        root: root
+        controller: deviceController
+    }
+
+    function openTutorial(topicId) {
+        tutorialsDialog.openTopic(topicId || "oled_vm")
     }
 
     pageStack.globalToolBar.style: Kirigami.ApplicationHeaderStyle.None
@@ -2761,6 +2815,18 @@ Kirigami.ApplicationWindow {
                     QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: headerKofiMouse.containsMouse
                     QQC2.ToolTip.text: qsTr("Buy Russell Milliner a coffee on Ko-fi (https://ko-fi.com/russellmilliner)")
+                }
+
+                QQC2.Button {
+                    id: headerTutorialsBtn
+                    icon.name: "help-contextual"
+                    text: qsTr("🎓 Tutorials")
+                    font.pointSize: 10 * root.fontScale
+                    implicitHeight: 30
+                    onClicked: root.openTutorial("oled_vm")
+                    QQC2.ToolTip.delay: 400
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.text: qsTr("Open Interactive Tutorials (OLED VM & HUD, Home Assistant, Webhooks, App Launching, Auto-Switcher & Modifier Layers, Multi-Click, Global Variables)")
                 }
 
                 QQC2.Button {
@@ -3539,6 +3605,7 @@ Kirigami.ApplicationWindow {
 
                             RowLayout {
                                 Layout.fillWidth: true
+                                spacing: 4
 
                                 QQC2.Label {
                                     text: qsTr("AUTO-SWITCHER")
@@ -3546,6 +3613,19 @@ Kirigami.ApplicationWindow {
                                     font.pointSize: 10 * root.fontScale
                                     color: Kirigami.Theme.disabledTextColor
                                     Layout.fillWidth: true
+                                }
+
+                                QQC2.ToolButton {
+                                    text: "?"
+                                    font.bold: true
+                                    font.pointSize: 9.5 * root.fontScale
+                                    implicitWidth: 22
+                                    implicitHeight: 22
+                                    padding: 0
+                                    onClicked: root.openTutorial("autoswitch")
+                                    QQC2.ToolTip.delay: 400
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: qsTr("🎓 Open Tutorial: Window Auto-Switcher & Keyboard Modifier Layers")
                                 }
 
                                 QQC2.Switch {
@@ -3571,12 +3651,12 @@ Kirigami.ApplicationWindow {
                                 radius: 6
                                 color: deviceController.windowPickerArmed
                                     ? Qt.tint(Kirigami.Theme.alternateBackgroundColor, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.25))
-                                    : (root.hasSelectedSlot && deviceController.autoSwitchEnabled
+                                    : (root.shouldPauseAutoSwitchForEditing && deviceController.autoSwitchEnabled
                                         ? Qt.tint(Kirigami.Theme.alternateBackgroundColor, Qt.rgba(0.96, 0.62, 0.04, 0.16))
                                         : Kirigami.Theme.alternateBackgroundColor)
                                 border.color: deviceController.windowPickerArmed
                                     ? Kirigami.Theme.highlightColor
-                                    : (root.hasSelectedSlot && deviceController.autoSwitchEnabled
+                                    : (root.shouldPauseAutoSwitchForEditing && deviceController.autoSwitchEnabled
                                         ? "#f59e0b"
                                         : profilesSidebar.frameBorder)
                                 border.width: 1
@@ -3590,15 +3670,15 @@ Kirigami.ApplicationWindow {
                                     QQC2.Label {
                                         text: deviceController.windowPickerArmed
                                             ? qsTr("🎯 Click target window...")
-                                            : (root.hasSelectedSlot && deviceController.autoSwitchEnabled
-                                                ? qsTr("⏸ Paused while Key Editor is open")
+                                            : (root.shouldPauseAutoSwitchForEditing && deviceController.autoSwitchEnabled
+                                                ? qsTr("⏸ Paused while Key Editor is focused")
                                                 : qsTr("Active: %1").arg(deviceController.activeWindowClass))
                                         font.family: "monospace"
                                         font.bold: true
                                         font.pointSize: 10 * root.fontScale
                                         color: deviceController.windowPickerArmed
                                             ? root.highContrastHighlightText
-                                            : (root.hasSelectedSlot && deviceController.autoSwitchEnabled
+                                            : (root.shouldPauseAutoSwitchForEditing && deviceController.autoSwitchEnabled
                                                 ? root.highContrastWarningText
                                                 : Kirigami.Theme.textColor)
                                         elide: Text.ElideRight
@@ -3606,9 +3686,9 @@ Kirigami.ApplicationWindow {
                                     }
 
                                     QQC2.Label {
-                                        visible: deviceController.activeWindowTitle.length > 0 || (root.hasSelectedSlot && deviceController.autoSwitchEnabled)
-                                        text: (root.hasSelectedSlot && deviceController.autoSwitchEnabled)
-                                            ? qsTr("Auto-Switch resumes when Key Editor closes")
+                                        visible: deviceController.activeWindowTitle.length > 0 || (root.shouldPauseAutoSwitchForEditing && deviceController.autoSwitchEnabled)
+                                        text: (root.shouldPauseAutoSwitchForEditing && deviceController.autoSwitchEnabled)
+                                            ? qsTr("Auto-Switch resumes when another window is focused")
                                             : deviceController.activeWindowTitle
                                         font.pointSize: 10 * root.fontScale
                                         color: Kirigami.Theme.disabledTextColor
@@ -3643,6 +3723,11 @@ Kirigami.ApplicationWindow {
                     QQC2.SplitView.fillWidth: !root.hasSelectedSlot
                     QQC2.SplitView.fillHeight: true
                     controller: deviceController
+                    activeSlotScript: root.hasSelectedSlot ? scriptEditor.text : ""
+
+                    onOpenTutorialRequested: (topicId) => {
+                        root.openTutorial(topicId)
+                    }
 
                     onSlotSelected: (slotNumber, slotTitle, slotColor) => {
                         root.flushPendingSlotEditsIfModified()
@@ -4440,6 +4525,19 @@ Kirigami.ApplicationWindow {
                                         QQC2.ToolTip.visible: hovered
                                         QQC2.ToolTip.text: qsTr("Allow any key press to abort this script early (ab %1 / $_ALLOW_ABORT = 1)").arg(root.selectedSlotNumber)
                                     }
+
+                                    QQC2.ToolButton {
+                                        text: "?"
+                                        font.bold: true
+                                        font.pointSize: 9.5 * root.fontScale
+                                        implicitWidth: 22
+                                        implicitHeight: 22
+                                        padding: 0
+                                        onClicked: root.openTutorial("multiclick")
+                                        QQC2.ToolTip.delay: 400
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("🎓 Open Tutorial: Multi-Click (1×/2×/3×), Gaming Hold & Macro Recorder")
+                                    }
                                 }
                             }
                         }
@@ -4669,6 +4767,16 @@ Kirigami.ApplicationWindow {
                                 }
 
                                 QQC2.Button {
+                                    text: qsTr("🎓 Guide")
+                                    implicitHeight: Math.round(22 * root.inspectorScale)
+                                    font.pointSize: 9.5 * root.fontScale
+                                    onClicked: root.openTutorial("app_launch")
+                                    QQC2.ToolTip.delay: 400
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: qsTr("Open step-by-step App Launching tutorial")
+                                }
+
+                                QQC2.Button {
                                     text: qsTr("Configure Launch App...")
                                     implicitHeight: Math.round(22 * root.inspectorScale)
                                     font.pointSize: 10 * root.fontScale
@@ -4702,6 +4810,26 @@ Kirigami.ApplicationWindow {
                                     text: root.webApiEnabled
                                         ? qsTr("🌐 Web API [💻 Host App Required]: %1").arg(root.webApiSelectedDestination || webApiUrlField.text || qsTr("Configured"))
                                         : qsTr("🌐 Web API Call Configurator [💻 Host App Required]")
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("🎓 HA Guide")
+                                    implicitHeight: Math.round(22 * root.inspectorScale)
+                                    font.pointSize: 9.5 * root.fontScale
+                                    onClicked: root.openTutorial("home_assistant")
+                                    QQC2.ToolTip.delay: 400
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: qsTr("Open step-by-step Home Assistant configuration tutorial")
+                                }
+
+                                QQC2.Button {
+                                    text: qsTr("🎓 Webhooks")
+                                    implicitHeight: Math.round(22 * root.inspectorScale)
+                                    font.pointSize: 9.5 * root.fontScale
+                                    onClicked: root.openTutorial("webhooks")
+                                    QQC2.ToolTip.delay: 400
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: qsTr("Open step-by-step Webhooks & REST API tutorial")
                                 }
 
                                 QQC2.Button {
@@ -5521,10 +5649,13 @@ Kirigami.ApplicationWindow {
                                         font.pointSize: 10 * root.fontScale
                                         font.bold: true
                                         implicitHeight: Math.round(22 * root.inspectorScale)
-                                        onClicked: root.insertCommandFromReference("OLED_CLEAR\nOLED_CURSOR 10 24\nOLED_PRINT Hello!\nOLED_UPDATE")
+                                        onClicked: {
+                                            hardwareCanvas.oledScriptMode = true
+                                            root.insertCommandFromReference("OLED_CLEAR\nOLED_RECT 2 2 125 125 1\nOLED_CURSOR 0 24\nOLED_CPRINT Hello OLED!\nOLED_UPDATE")
+                                        }
                                         QQC2.ToolTip.delay: 500
                                         QQC2.ToolTip.visible: hovered
-                                        QQC2.ToolTip.text: qsTr("Insert OLED screen drawing block")
+                                        QQC2.ToolTip.text: qsTr("Insert OLED screen drawing block & switch PCB preview to OLED VM HUD")
                                     }
 
                                     QQC2.ToolButton {
@@ -6836,15 +6967,16 @@ Kirigami.ApplicationWindow {
         controller: deviceController
         targetDeviceLabel: deviceController ? deviceController.customDeviceName : ""
         selectedSlot: root.selectedSlotNumber
-        keyEditorOpen: root.hasSelectedSlot
+        keyEditorOpen: root.shouldPauseAutoSwitchForEditing
         onRequestOpenMainWindow: {
             if (deviceController) {
                 deviceController.showFromTray()
+            } else {
+                root.visible = true
+                root.showNormal()
+                root.raise()
+                root.requestActivate()
             }
-            root.visible = true
-            root.showNormal()
-            root.raise()
-            root.requestActivate()
         }
     }
 
@@ -6879,11 +7011,12 @@ Kirigami.ApplicationWindow {
             onRequestOpenMainWindow: {
                 if (deviceController) {
                     deviceController.showFromTray()
+                } else {
+                    root.visible = true
+                    root.showNormal()
+                    root.raise()
+                    root.requestActivate()
                 }
-                root.visible = true
-                root.showNormal()
-                root.raise()
-                root.requestActivate()
             }
         }
     }

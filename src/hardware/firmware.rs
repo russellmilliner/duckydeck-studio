@@ -8,8 +8,8 @@ use crate::hardware::msc::{
 };
 use crate::hardware::profile::find_mounted_duckypad_sd_for_device;
 use crate::hardware::storage::{
-    open_duckypad_hid, DP_MODEL_DUCKYPAD_PRO, HID_CMD_SOFTWARE_RESET, HID_IO_LOCK,
-    HID_REPORT_ID_OUT, MSC_SYNC_IN_PROGRESS,
+    open_duckypad_hid, MscSyncGuard, DP_MODEL_DUCKYPAD_PRO, HID_CMD_SOFTWARE_RESET, HID_IO_LOCK,
+    HID_REPORT_ID_OUT,
 };
 
 #[derive(Debug, Clone)]
@@ -1063,14 +1063,7 @@ where
         return Ok(msg);
     }
 
-    struct MscGuard;
-    impl Drop for MscGuard {
-        fn drop(&mut self) {
-            MSC_SYNC_IN_PROGRESS.store(false, std::sync::atomic::Ordering::SeqCst);
-        }
-    }
-    MSC_SYNC_IN_PROGRESS.store(true, std::sync::atomic::Ordering::SeqCst);
-    let _msc_guard = MscGuard;
+    let _msc_guard = MscSyncGuard::acquire();
 
     on_progress(
         20,

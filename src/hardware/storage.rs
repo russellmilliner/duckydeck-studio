@@ -123,8 +123,89 @@ pub fn format_disk_label_for_device(hw_model: u8, serial: &str) -> String {
 pub static HID_IO_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 pub static MSC_SYNC_IN_PROGRESS: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
+pub static LAST_MSC_SYNC_FINISHED_MS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 pub static LAST_EVDEV_KEY_ACTIVITY_MS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
+
+pub struct MscSyncGuard;
+
+impl MscSyncGuard {
+    pub fn acquire() -> Self {
+        MSC_SYNC_IN_PROGRESS.store(true, std::sync::atomic::Ordering::SeqCst);
+        LAST_MSC_SYNC_FINISHED_MS.store(
+            crate::kwin::auto_switcher::current_epoch_ms(),
+            std::sync::atomic::Ordering::SeqCst,
+        );
+        Self
+    }
+}
+
+impl Drop for MscSyncGuard {
+    fn drop(&mut self) {
+        LAST_MSC_SYNC_FINISHED_MS.store(
+            crate::kwin::auto_switcher::current_epoch_ms(),
+            std::sync::atomic::Ordering::SeqCst,
+        );
+        MSC_SYNC_IN_PROGRESS.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+pub fn is_msc_sync_or_cooldown_active(cooldown_ms: u64) -> bool {
+    if MSC_SYNC_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst) {
+        return true;
+    }
+    let last = LAST_MSC_SYNC_FINISHED_MS.load(std::sync::atomic::Ordering::SeqCst);
+    if last == 0 {
+        return false;
+    }
+    crate::kwin::auto_switcher::current_epoch_ms().saturating_sub(last) < cooldown_ms
+}
+
+/// Returns `true` if the target duckyPad Pro is currently enumerated in USB Mass Storage
+/// composite mode (where TinyUSB exposes `usb-storage` on interface `:1.0` and `hid` on `:1.1`,
+/// or a matching MSC block device is present).
+pub fn is_duckypad_in_msc_usb_mode(disk_label: &str, target_serial: Option<&str>) -> bool {
+    if crate::hardware::msc::find_duckypad_msc_block_device(disk_label, true).is_some() {
+        return true;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let req_serial = target_serial
+            .map(normalize_duckypad_serial)
+            .filter(|s| !s.is_empty());
+        if let Ok(entries) = fs::read_dir("/sys/class/hidraw") {
+            for entry in entries.flatten() {
+                let dev_link = entry.path().join("device");
+                let Ok(uevent) = fs::read_to_string(dev_link.join("uevent")) else {
+                    continue;
+                };
+                if !uevent.to_ascii_uppercase().contains("00000483:0000D11D") {
+                    continue;
+                }
+                if let Some(ref req) = req_serial {
+                    let uniq = uevent
+                        .lines()
+                        .find_map(|l| l.strip_prefix("HID_UNIQ="))
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty());
+                    if let Some(ref u) = uniq {
+                        if !serial_matches_target(u, req) {
+                            continue;
+                        }
+                    }
+                }
+                if let Ok(canon) = fs::canonicalize(&dev_link) {
+                    let canon_str = canon.to_string_lossy();
+                    if canon_str.contains(":1.1/") || canon_str.ends_with(":1.1") {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
 pub static LAST_EVDEV_KEYDOWN_MS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 pub static EVDEV_KEYS_HELD_COUNT: std::sync::atomic::AtomicU32 =
@@ -1815,5 +1896,26 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&base_tmp);
+    }
+
+    #[test]
+    fn test_msc_sync_guard_and_post_sync_cooldown() {
+        LAST_MSC_SYNC_FINISHED_MS.store(0, std::sync::atomic::Ordering::SeqCst);
+        MSC_SYNC_IN_PROGRESS.store(false, std::sync::atomic::Ordering::SeqCst);
+        assert!(!is_msc_sync_or_cooldown_active(8000));
+
+        {
+            let _guard = MscSyncGuard::acquire();
+            assert!(MSC_SYNC_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst));
+            assert!(is_msc_sync_or_cooldown_active(8000));
+        }
+
+        assert!(!MSC_SYNC_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(
+            is_msc_sync_or_cooldown_active(8000),
+            "post-MSC sync cooldown should remain active immediately after guard drop while USB HID re-enumerates"
+        );
+        assert!(!is_msc_sync_or_cooldown_active(0));
+        LAST_MSC_SYNC_FINISHED_MS.store(0, std::sync::atomic::Ordering::SeqCst);
     }
 }

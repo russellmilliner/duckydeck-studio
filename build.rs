@@ -118,6 +118,7 @@ fn main() {
                 "src/qml/SdSyncDialog.qml",
                 "src/qml/RestApiSettings.qml",
                 "src/qml/ProfileWizardDialog.qml",
+                "src/qml/TutorialsDialog.qml",
             ],
             qrc_files: &qrc_files,
         })
@@ -150,6 +151,7 @@ fn main() {
     println!("cargo:rerun-if-changed=src/qml/SdSyncDialog.qml",);
     println!("cargo:rerun-if-changed=src/qml/RestApiSettings.qml");
     println!("cargo:rerun-if-changed=src/qml/ProfileWizardDialog.qml");
+    println!("cargo:rerun-if-changed=src/qml/TutorialsDialog.qml");
     if is_windows {
         println!("cargo:rustc-link-arg=-Wl,--stack,16777216");
         let is_gnullvm = std::env::var("TARGET")

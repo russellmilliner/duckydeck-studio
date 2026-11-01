@@ -28,6 +28,7 @@ pub mod qobject {
         fn duckydeck_restore_oled_widget_geometry();
         fn duckydeck_save_oled_widget_appearance();
         fn duckydeck_record_oled_geometry(x: i32, y: i32, width: i32, height: i32);
+        fn duckydeck_record_main_geometry(x: i32, y: i32, width: i32, height: i32);
         fn duckydeck_apply_app_theme(theme_mode: &QString);
         fn duckydeck_apply_ui_font_scale(scale_percent: i32);
         fn duckydeck_send_key_to_active_window(
@@ -388,6 +389,9 @@ pub mod qobject {
             hold_delay_ms: i32,
             oneshot_timeout_sec: i32,
             target_profile: i32,
+            resource_class: QString,
+            title_contains: QString,
+            title_is_regex: bool,
         ) -> bool;
 
         #[qinvokable]
@@ -2736,7 +2740,6 @@ impl qobject::DeviceController {
                     );
 
                     let _ = qt_thread_done.queue(move |mut qobject| {
-                        qobject.as_mut().set_sd_sync_busy(false);
                         match res {
                             Ok(summary) => {
                                 let short_fp = &summary.validated_fingerprint
@@ -2747,6 +2750,9 @@ impl qobject::DeviceController {
                                     summary.files_written,
                                     summary.files_verified_unchanged
                                 );
+                                qobject.as_mut().set_connected(true);
+                                qobject.as_mut().sync_active_profile_state();
+                                let _ = qobject.as_mut().refresh_available_devices_state();
                                 qobject.as_mut().set_sd_sync_progress(100);
                                 qobject
                                     .as_mut()
@@ -2757,8 +2763,6 @@ impl qobject::DeviceController {
                                 qobject
                                     .as_mut()
                                     .set_sd_sync_result_summary(QString::from(&summary_msg));
-                                qobject.as_mut().set_connected(true);
-                                qobject.as_mut().sync_active_profile_state();
                                 qobject
                                     .as_mut()
                                     .set_status_message(QString::from(&summary_msg));
@@ -2779,11 +2783,13 @@ impl qobject::DeviceController {
                                     .as_mut()
                                     .set_sd_sync_result_summary(QString::from(&err_msg));
                                 qobject.as_mut().sync_active_profile_state();
+                                let _ = qobject.as_mut().refresh_available_devices_state();
                                 qobject
                                     .as_mut()
                                     .set_status_message(QString::from(&err_msg));
                             }
                         }
+                        qobject.as_mut().set_sd_sync_busy(false);
                     });
                 });
                 return true;
@@ -2933,7 +2939,6 @@ impl qobject::DeviceController {
                 );
 
                 let _ = qt_thread_done.queue(move |mut qobject| {
-                    qobject.as_mut().set_sd_sync_busy(false);
                     match res {
                         Ok(profiles) => {
                             let count = profiles.len();
@@ -2964,6 +2969,7 @@ impl qobject::DeviceController {
                                 .set_active_profile((active_prof as i32).clamp(1, 64));
                             qobject.as_mut().set_connected(true);
                             qobject.as_mut().sync_active_profile_state();
+                            let _ = qobject.as_mut().refresh_available_devices_state();
 
                             let summary_msg = format!(
                                 "Validated & Reloaded! {count} profile(s) loaded from {label_display} — read-back hash #{short_fp} confirmed."
@@ -2999,11 +3005,13 @@ impl qobject::DeviceController {
                                 .as_mut()
                                 .set_sd_sync_result_summary(QString::from(&err_msg));
                             qobject.as_mut().sync_active_profile_state();
+                            let _ = qobject.as_mut().refresh_available_devices_state();
                             qobject
                                 .as_mut()
                                 .set_status_message(QString::from(&err_msg));
                         }
                     }
+                    qobject.as_mut().set_sd_sync_busy(false);
                 });
             });
             return true;
@@ -5494,20 +5502,24 @@ impl qobject::DeviceController {
                         }
 
                         // 2. Poll Main-Keyboard Modifier Layer Switcher every 50ms
-                        let (mod_enabled, mod_paused, mod_rules) =
+                        let (mod_enabled, mod_paused, mod_rules, cur_win_class, cur_win_title) =
                             if let Ok(sw) = modifier_state.lock() {
                                 (
                                     sw.modifier_switch_enabled,
                                     sw.paused_for_editing,
                                     sw.modifier_rules.clone(),
+                                    sw.current_window_class.clone(),
+                                    sw.current_window_title.clone(),
                                 )
                             } else {
-                                (false, false, Vec::new())
+                                (false, false, Vec::new(), String::new(), String::new())
                             };
                         if let Some(transition) = modifier_listener.poll_modifier_layer(
                             mod_enabled,
                             mod_paused,
                             &mod_rules,
+                            &cur_win_class,
+                            &cur_win_title,
                         ) {
                             let _ = web_api_qt_thread.queue(move |mut qobject| {
                                 qobject.as_mut().handle_modifier_layer_transition(transition);
@@ -5660,9 +5672,16 @@ impl qobject::DeviceController {
                             {
                                 return;
                             }
+                            let in_msc_cooldown = *qobject.sd_sync_busy()
+                                || crate::hardware::storage::is_msc_sync_or_cooldown_active(8000);
 
                             if *qobject.connected_device_count() != new_connected_count {
-                                let _ = qobject.as_mut().refresh_available_devices_state();
+                                if !in_msc_cooldown
+                                    || (new_connected_count > 0
+                                        && new_connected_count >= *qobject.connected_device_count())
+                                {
+                                    let _ = qobject.as_mut().refresh_available_devices_state();
+                                }
                             } else if secondary_prof_changed {
                                 qobject.as_mut().sync_multi_device_oled_states();
                             }
@@ -5689,6 +5708,9 @@ impl qobject::DeviceController {
 
                             let was_connected = *qobject.connected();
                             if was_connected && !hid_present {
+                                if in_msc_cooldown {
+                                    return;
+                                }
                                 qobject.as_mut().set_connected(false);
                                 if qobject.rust().sd_root_path.is_none() {
                                     qobject
@@ -5835,7 +5857,11 @@ impl qobject::DeviceController {
                             .rust()
                             .switcher_state
                             .lock()
-                            .map(|sw| sw.paused_for_editing)
+                            .map(|mut sw| {
+                                sw.current_window_class = evt.resource_class.clone();
+                                sw.current_window_title = evt.caption.clone();
+                                sw.paused_for_editing
+                            })
                             .unwrap_or(false);
 
                         if !is_paused {
@@ -6187,11 +6213,18 @@ impl qobject::DeviceController {
     }
 
     pub fn set_script_editor_open(mut self: Pin<&mut Self>, open: bool) {
-        {
+        let was_paused = {
             let rust = self.as_mut().rust_mut().get_mut();
             if let Ok(mut sw) = rust.switcher_state.lock() {
+                let prev = sw.paused_for_editing;
                 sw.paused_for_editing = open;
+                prev
+            } else {
+                false
             }
+        };
+        if was_paused && !open {
+            self.as_mut().apply_auto_switch_for_current_window();
         }
         self.as_mut().sync_tray_state();
     }
@@ -6643,6 +6676,7 @@ impl qobject::DeviceController {
         self.as_mut().set_modifier_section_expanded(expanded);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn save_modifier_rule(
         mut self: Pin<&mut Self>,
         rule_index: i32,
@@ -6652,6 +6686,9 @@ impl qobject::DeviceController {
         hold_delay_ms: i32,
         oneshot_timeout_sec: i32,
         target_profile: i32,
+        resource_class: QString,
+        title_contains: QString,
+        title_is_regex: bool,
     ) -> bool {
         let norm_key = normalize_modifier_trigger_key(&trigger_key.to_string());
         let norm_mode = normalize_modifier_mode(&mode.to_string());
@@ -6660,6 +6697,27 @@ impl qobject::DeviceController {
         let max_prof = self.rust().profiles.len().max(1) as i32;
         let target = target_profile.clamp(1, max_prof.max(1)) as u8;
 
+        let class_raw = resource_class.to_string().trim().to_string();
+        let norm_class = if class_raw == "*"
+            || class_raw.eq_ignore_ascii_case("any")
+            || class_raw.eq_ignore_ascii_case("all")
+        {
+            String::new()
+        } else {
+            class_raw
+        };
+        let title_str = title_contains.to_string().trim().to_string();
+        let title_opt = if title_str.is_empty() {
+            None
+        } else {
+            Some(title_str)
+        };
+        let is_regex = if title_opt.is_none() {
+            false
+        } else {
+            title_is_regex
+        };
+
         let new_rule = ModifierLayerRule {
             enabled,
             trigger_key: norm_key.clone(),
@@ -6667,6 +6725,9 @@ impl qobject::DeviceController {
             hold_delay_ms: clamped_delay,
             oneshot_timeout_sec: clamped_timeout,
             target_profile: target,
+            resource_class: norm_class.clone(),
+            title_contains: title_opt,
+            title_is_regex: is_regex,
         };
 
         {
@@ -6674,11 +6735,11 @@ impl qobject::DeviceController {
             if let Ok(mut sw) = rust.switcher_state.lock() {
                 if rule_index >= 0 && (rule_index as usize) < sw.modifier_rules.len() {
                     sw.modifier_rules[rule_index as usize] = new_rule;
-                } else if let Some(existing) = sw
-                    .modifier_rules
-                    .iter_mut()
-                    .find(|r| r.trigger_key.eq_ignore_ascii_case(&norm_key))
-                {
+                } else if let Some(existing) = sw.modifier_rules.iter_mut().find(|r| {
+                    r.trigger_key.eq_ignore_ascii_case(&norm_key)
+                        && r.resource_class.trim().eq_ignore_ascii_case(&norm_class)
+                        && r.title_contains == new_rule.title_contains
+                }) {
                     *existing = new_rule;
                 } else {
                     sw.modifier_rules.push(new_rule);
@@ -6696,9 +6757,14 @@ impl qobject::DeviceController {
 
         let key_lbl = modifier_trigger_key_label(&norm_key);
         let mode_lbl = modifier_mode_label(&norm_mode);
+        let scope_lbl = if norm_class.is_empty() {
+            "All Apps".to_string()
+        } else {
+            norm_class
+        };
         self.as_mut().sync_active_profile_state();
         self.as_mut().set_status_message(QString::from(&format!(
-            "Saved Modifier Layer rule: {key_lbl} ({mode_lbl}) → Profile #{target}"
+            "Saved Modifier Layer rule [{scope_lbl}]: {key_lbl} ({mode_lbl}) → Profile #{target}"
         )));
         true
     }

@@ -15,7 +15,14 @@ Item {
     property bool isRotated: false
     property bool showExpansion: false
     property bool oledScriptMode: false
+    property string activeSlotScript: ""
     property int activeProfileOledRotation: 0
+    onOledScriptModeChanged: oledSimulator.requestPaint()
+    onActiveSlotScriptChanged: {
+        if (canvasRoot.oledScriptMode) {
+            oledSimulator.requestPaint()
+        }
+    }
     readonly property bool isDuckyPad2020: controller ? !!controller.isDuckyPad2020 : false
     readonly property int onboardKeyCount: (controller && controller.onboardKeyCount > 0)
         ? controller.onboardKeyCount
@@ -39,6 +46,7 @@ Item {
     signal profileDefaultColorPickerRequested(int profileNumber, string profileName, string currentColorHex)
     signal openLightingAnimatorRequested(string targetScope, int targetSlot)
     signal openKeyPropertiesRequested(int slotNumber)
+    signal openTutorialRequested(string topicId)
 
     // Gaming-Keyboard RGB Animation Engine State (Profile-level + Individual Key-level)
     property var profileAnimationConfig: ({
@@ -1057,7 +1065,22 @@ Item {
                     }
                     QQC2.ToolTip.delay: 500
                     QQC2.ToolTip.visible: hovered
-                    QQC2.ToolTip.text: canvasRoot.oledScriptMode ? qsTr("Switch to Profile Grid HUD") : qsTr("Switch to duckStack VM HUD")
+                    QQC2.ToolTip.text: canvasRoot.oledScriptMode
+                        ? qsTr("OLED VM HUD Active: Live-previews OLED_* script commands (OLED_CLEAR, OLED_PRINT, OLED_RECT, etc.) on the simulated 128×128 OLED screen. Click to switch back to Profile Key Grid.")
+                        : qsTr("OLED Grid Active: Shows the default 20-key label grid. Click to switch to the OLED VM HUD to preview custom DuckyScript 3 OLED_* drawing commands.")
+                }
+
+                QQC2.ToolButton {
+                    Layout.alignment: Qt.AlignVCenter
+                    text: "?"
+                    font.bold: true
+                    font.pointSize: 10.5 * canvasRoot.uiFontScale
+                    implicitWidth: 26
+                    implicitHeight: 26
+                    onClicked: canvasRoot.openTutorialRequested("oled_vm")
+                    QQC2.ToolTip.delay: 400
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.text: qsTr("🎓 Open Tutorial: What are OLED VM & OLED VM HUD, and how to draw custom graphics on the duckyPad OLED screen")
                 }
             }
         }
@@ -1676,32 +1699,155 @@ Item {
                                     ctx.restore()
                                 } else {
                                     ctx.restore()
-                                    ctx.strokeStyle = "#38bdf8"
-                                    ctx.lineWidth = 1
-                                    ctx.strokeRect(2, 2, 124, 124)
+                                    ctx.save()
+                                    const rawScript = String(canvasRoot.activeSlotScript || "")
+                                    const lines = rawScript.split(/\r?\n/)
+                                    let hasOledCmds = false
+                                    for (let i = 0; i < lines.length; ++i) {
+                                        const t = lines[i].trim()
+                                        if (/^OLED_(CLEAR|CURSOR|PRINT|CPRINT|LPRINT|LINE|RECT|CIRCLE|PIX|UPDATE)\b/i.test(t)) {
+                                            hasOledCmds = true
+                                            break
+                                        }
+                                    }
 
-                                    ctx.font = "bold 10px sans-serif"
-                                    ctx.fillStyle = "#38bdf8"
-                                    ctx.fillText("duckStack VM HUD", 14, 18)
+                                    if (hasOledCmds) {
+                                        let curX = 0
+                                        let curY = 0
+                                        ctx.strokeStyle = "#f8fafc"
+                                        ctx.fillStyle = "#f8fafc"
+                                        ctx.lineWidth = 1
+                                        ctx.font = "bold 10px monospace"
 
-                                    ctx.beginPath()
-                                    ctx.moveTo(8, 24)
-                                    ctx.lineTo(120, 24)
-                                    ctx.stroke()
+                                        for (let i = 0; i < lines.length; ++i) {
+                                            const line = lines[i].trim()
+                                            if (!line || line.startsWith("REM ") || line.startsWith("//") || line.startsWith("#")) continue
+                                            const parts = line.split(/\s+/)
+                                            const cmd = parts[0].toUpperCase()
 
-                                    ctx.beginPath()
-                                    ctx.arc(64, 68, 20, 0, Math.PI * 2)
-                                    ctx.stroke()
+                                            if (cmd === "OLED_CLEAR") {
+                                                ctx.fillStyle = "#000000"
+                                                ctx.fillRect(0, 0, 128, 128)
+                                                ctx.fillStyle = "#f8fafc"
+                                            } else if (cmd === "OLED_CURSOR" && parts.length >= 3) {
+                                                curX = Math.max(0, Math.min(127, parseInt(parts[1], 10) || 0))
+                                                curY = Math.max(0, Math.min(127, parseInt(parts[2], 10) || 0))
+                                            } else if (cmd === "OLED_PRINT") {
+                                                const txt = line.replace(/^OLED_PRINT\s+/i, "")
+                                                ctx.fillStyle = "#f8fafc"
+                                                ctx.textAlign = "left"
+                                                ctx.fillText(txt, curX, curY + 10)
+                                            } else if (cmd === "OLED_CPRINT") {
+                                                const txt = line.replace(/^OLED_CPRINT\s+/i, "")
+                                                ctx.fillStyle = "#f8fafc"
+                                                ctx.textAlign = "center"
+                                                ctx.fillText(txt, 64, curY + 10)
+                                            } else if (cmd === "OLED_LPRINT") {
+                                                const txt = line.replace(/^OLED_LPRINT\s+/i, "")
+                                                ctx.fillStyle = "#f8fafc"
+                                                ctx.textAlign = "left"
+                                                const maxChars = Math.max(4, Math.floor((128 - curX) / 6))
+                                                for (let p = 0; p < txt.length; p += maxChars) {
+                                                    ctx.fillText(txt.slice(p, p + maxChars), curX, curY + 10)
+                                                    curY += 12
+                                                }
+                                            } else if (cmd === "OLED_LINE" && parts.length >= 5) {
+                                                const x1 = parseInt(parts[1], 10) || 0
+                                                const y1 = parseInt(parts[2], 10) || 0
+                                                const x2 = parseInt(parts[3], 10) || 0
+                                                const y2 = parseInt(parts[4], 10) || 0
+                                                ctx.strokeStyle = "#f8fafc"
+                                                ctx.beginPath()
+                                                ctx.moveTo(x1, y1)
+                                                ctx.lineTo(x2, y2)
+                                                ctx.stroke()
+                                            } else if (cmd === "OLED_RECT" && parts.length >= 5) {
+                                                const x1 = parseInt(parts[1], 10) || 0
+                                                const y1 = parseInt(parts[2], 10) || 0
+                                                const x2 = parseInt(parts[3], 10) || 0
+                                                const y2 = parseInt(parts[4], 10) || 0
+                                                const opt = parts.length >= 6 ? (parseInt(parts[5], 10) || 1) : 1
+                                                const rx = Math.min(x1, x2)
+                                                const ry = Math.min(y1, y2)
+                                                const rw = Math.max(1, Math.abs(x2 - x1))
+                                                const rh = Math.max(1, Math.abs(y2 - y1))
+                                                if (opt === 0) {
+                                                    ctx.fillStyle = "#000000"
+                                                    ctx.fillRect(rx, ry, rw, rh)
+                                                    ctx.fillStyle = "#f8fafc"
+                                                } else if (opt === 2) {
+                                                    ctx.fillStyle = "#f8fafc"
+                                                    ctx.fillRect(rx, ry, rw, rh)
+                                                } else {
+                                                    ctx.strokeStyle = "#f8fafc"
+                                                    ctx.strokeRect(rx, ry, rw, rh)
+                                                }
+                                            } else if (cmd === "OLED_CIRCLE" && parts.length >= 4) {
+                                                const cx = parseInt(parts[1], 10) || 64
+                                                const cy = parseInt(parts[2], 10) || 64
+                                                const cr = Math.max(1, parseInt(parts[3], 10) || 10)
+                                                const opt = parts.length >= 5 ? (parseInt(parts[4], 10) || 1) : 1
+                                                ctx.beginPath()
+                                                ctx.arc(cx, cy, cr, 0, Math.PI * 2)
+                                                if (opt === 0) {
+                                                    ctx.fillStyle = "#000000"
+                                                    ctx.fill()
+                                                    ctx.fillStyle = "#f8fafc"
+                                                } else if (opt === 2) {
+                                                    ctx.fillStyle = "#f8fafc"
+                                                    ctx.fill()
+                                                } else {
+                                                    ctx.strokeStyle = "#f8fafc"
+                                                    ctx.stroke()
+                                                }
+                                            } else if (cmd === "OLED_PIX" && parts.length >= 3) {
+                                                const px = parseInt(parts[1], 10) || 0
+                                                const py = parseInt(parts[2], 10) || 0
+                                                const opt = parts.length >= 4 ? parseInt(parts[3], 10) : 1
+                                                ctx.fillStyle = (opt === 0) ? "#000000" : "#f8fafc"
+                                                ctx.fillRect(px, py, 1, 1)
+                                            } else if (cmd === "OLED_RESTORE") {
+                                                // If OLED_RESTORE is at the very end after a DELAY, keep showing the drawn frame in preview
+                                                // unless OLED_RESTORE is the only OLED command
+                                            }
+                                        }
+                                    } else {
+                                        ctx.strokeStyle = "#38bdf8"
+                                        ctx.lineWidth = 1
+                                        ctx.strokeRect(2, 2, 124, 124)
 
-                                    ctx.font = "bold 10px monospace"
-                                    ctx.fillStyle = "#ffffff"
-                                    ctx.fillText(
-                                        canvasRoot.selectedSlot >= 1 ? ("Slot #" + canvasRoot.selectedSlot) : "Ready",
-                                        canvasRoot.selectedSlot >= 1 ? 36 : 44,
-                                        72
-                                    )
-                                    ctx.fillStyle = "#94a3b8"
-                                    ctx.fillText("128x128 OLED", 28, 114)
+                                        ctx.fillStyle = "#38bdf8"
+                                        ctx.fillRect(2, 2, 124, 15)
+                                        ctx.font = "bold 9px sans-serif"
+                                        ctx.fillStyle = "#020617"
+                                        ctx.textAlign = "center"
+                                        ctx.fillText("duckStack OLED VM HUD", 64, 13)
+
+                                        ctx.font = "bold 9px monospace"
+                                        ctx.fillStyle = "#ffffff"
+                                        ctx.fillText(
+                                            canvasRoot.selectedSlot >= 1 ? ("Key #" + canvasRoot.selectedSlot + ": No OLED_*") : "Select a Key Slot",
+                                            64,
+                                            33
+                                        )
+
+                                        ctx.strokeStyle = "#38bdf8"
+                                        ctx.beginPath()
+                                        ctx.arc(64, 62, 15, 0, Math.PI * 2)
+                                        ctx.stroke()
+                                        ctx.font = "bold 8px monospace"
+                                        ctx.fillStyle = "#38bdf8"
+                                        ctx.fillText("128x128", 64, 65)
+
+                                        ctx.font = "8px sans-serif"
+                                        ctx.fillStyle = "#94a3b8"
+                                        ctx.fillText("Previews OLED_PRINT,", 64, 93)
+                                        ctx.fillText("OLED_RECT, OLED_CIRCLE", 64, 104)
+                                        ctx.fillStyle = "#38bdf8"
+                                        ctx.font = "bold 8px sans-serif"
+                                        ctx.fillText("Click +OLED or ? above", 64, 118)
+                                    }
+                                    ctx.restore()
                                 }
                             }
 

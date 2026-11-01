@@ -151,6 +151,18 @@ pub fn serialize_modifier_rules(
                 .unwrap_or("Unassigned");
             let trig = normalize_modifier_trigger_key(&r.trigger_key);
             let mode = normalize_modifier_mode(&r.mode);
+            let raw_class = r.resource_class.trim();
+            let raw_title = r.title_contains.as_deref().unwrap_or("");
+            let icon_name = if raw_class.is_empty() {
+                String::new()
+            } else {
+                resolve_rule_icon(
+                    raw_class,
+                    r.title_contains.as_deref(),
+                    None,
+                    Some(prof_name),
+                )
+            };
             json!({
                 "index": idx,
                 "enabled": r.enabled,
@@ -162,6 +174,10 @@ pub fn serialize_modifier_rules(
                 "oneshotTimeoutSec": r.oneshot_timeout_sec.clamp(1, 60),
                 "targetProfile": r.target_profile,
                 "targetProfileName": prof_name,
+                "resourceClass": raw_class,
+                "titleContains": raw_title,
+                "titleIsRegex": r.title_is_regex,
+                "icon": icon_name,
             })
         })
         .collect();

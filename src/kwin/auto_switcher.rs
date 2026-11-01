@@ -44,6 +44,12 @@ pub struct ModifierLayerRule {
     #[serde(default = "default_modifier_oneshot_timeout_sec")]
     pub oneshot_timeout_sec: i32,
     pub target_profile: u8,
+    #[serde(default)]
+    pub resource_class: String,
+    #[serde(default)]
+    pub title_contains: Option<String>,
+    #[serde(default)]
+    pub title_is_regex: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -208,6 +214,109 @@ pub fn has_non_trigger_key_interference(
         || newly_pressed_keys.iter().any(|k| !allowed.contains(k))
 }
 
+pub fn modifier_rule_specificity_for_window(
+    rule: &ModifierLayerRule,
+    active_window_class: &str,
+    active_window_title: &str,
+) -> Option<usize> {
+    if !rule.enabled {
+        return None;
+    }
+    let rule_class = rule.resource_class.trim();
+    let is_global_class = rule_class.is_empty()
+        || rule_class == "*"
+        || rule_class.eq_ignore_ascii_case("any")
+        || rule_class.eq_ignore_ascii_case("all");
+
+    let class_score = if is_global_class {
+        0usize
+    } else {
+        let lower_active = active_window_class.trim().to_ascii_lowercase();
+        if lower_active.is_empty()
+            || lower_active == "none"
+            || lower_active == "listening for kwin..."
+        {
+            return None;
+        }
+        if !rule_matches_window_class(rule_class, &lower_active) {
+            return None;
+        }
+        if is_any_browser_wildcard(rule_class) {
+            1000usize
+        } else {
+            2000usize
+        }
+    };
+
+    let rule_title = rule
+        .title_contains
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
+    let title_score = if let Some(sub) = rule_title {
+        let resolved_caption =
+            resolve_full_browser_caption(active_window_class, active_window_title);
+        if resolved_caption.trim().is_empty() {
+            return None;
+        }
+        let caption_lower = resolved_caption.to_lowercase();
+        let matched_len = rule_matches_window_title(
+            sub,
+            rule.title_is_regex,
+            &resolved_caption,
+            &caption_lower,
+        )?;
+        4000usize + matched_len.min(999)
+    } else {
+        0usize
+    };
+
+    Some(class_score + title_score)
+}
+
+pub fn resolve_effective_modifier_rules_for_window(
+    rules: &[ModifierLayerRule],
+    active_window_class: &str,
+    active_window_title: &str,
+) -> Vec<ModifierLayerRule> {
+    let mut scored: Vec<(String, String, usize, &ModifierLayerRule)> = Vec::new();
+    let mut max_spec_per_trig: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+
+    for rule in rules {
+        let Some(spec) =
+            modifier_rule_specificity_for_window(rule, active_window_class, active_window_title)
+        else {
+            continue;
+        };
+        let trig = normalize_modifier_trigger_key(&rule.trigger_key);
+        let mode = normalize_modifier_mode(&rule.mode);
+        max_spec_per_trig
+            .entry(trig.clone())
+            .and_modify(|cur| {
+                if spec > *cur {
+                    *cur = spec;
+                }
+            })
+            .or_insert(spec);
+        scored.push((trig, mode, spec, rule));
+    }
+
+    let mut effective = Vec::new();
+    let mut seen_trig_mode: std::collections::HashSet<(String, String)> =
+        std::collections::HashSet::new();
+
+    for (trig, mode, spec, rule) in scored {
+        if max_spec_per_trig.get(&trig).copied() == Some(spec)
+            && seen_trig_mode.insert((trig, mode))
+        {
+            effective.push(rule.clone());
+        }
+    }
+    effective
+}
+
 #[derive(Debug, Clone, Default)]
 struct ModifierRuleRuntimeState {
     was_pressed: bool,
@@ -262,22 +371,65 @@ impl HostKeyboardModifierEngine {
         last_duckypad_keydown_ms: u64,
         now_ms: u64,
     ) -> Option<ModifierLayerTransition> {
+        self.evaluate_tick_for_window(
+            modifier_switch_enabled,
+            paused_for_editing,
+            rules,
+            "",
+            "",
+            held_keys,
+            newly_pressed_keys,
+            duckypad_keys_held,
+            last_duckypad_keydown_ms,
+            now_ms,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_tick_for_window(
+        &mut self,
+        modifier_switch_enabled: bool,
+        paused_for_editing: bool,
+        rules: &[ModifierLayerRule],
+        active_window_class: &str,
+        active_window_title: &str,
+        held_keys: &std::collections::HashSet<u16>,
+        newly_pressed_keys: &[u16],
+        duckypad_keys_held: u32,
+        last_duckypad_keydown_ms: u64,
+        now_ms: u64,
+    ) -> Option<ModifierLayerTransition> {
         if !modifier_switch_enabled || paused_for_editing {
             self.per_rule.clear();
             return self.force_deactivate();
         }
 
+        let effective_rules = resolve_effective_modifier_rules_for_window(
+            rules,
+            active_window_class,
+            active_window_title,
+        );
+
         let mut transition: Option<ModifierLayerTransition> = None;
 
-        // 1. Check active oneshot expiration or 1-key completion on duckyPad
+        // 1. Check active oneshot expiration or 1-key completion on duckyPad (or window scope change)
         if let Some((ref act_trig, ref act_mode)) = self.active_rule_key.clone() {
-            let still_exists = rules.iter().any(|r| {
+            let matching_active = effective_rules.iter().find(|r| {
                 r.enabled
                     && normalize_modifier_trigger_key(&r.trigger_key) == *act_trig
                     && normalize_modifier_mode(&r.mode) == *act_mode
             });
-            if !still_exists {
+            let Some(matched_rule) = matching_active else {
                 return self.force_deactivate();
+            };
+
+            if self.active_target_profile != Some(matched_rule.target_profile) {
+                self.active_target_profile = Some(matched_rule.target_profile);
+                transition = Some(ModifierLayerTransition::Activated {
+                    target_profile: matched_rule.target_profile,
+                    trigger_key: act_trig.clone(),
+                    mode: act_mode.clone(),
+                });
             }
 
             if act_mode == "oneshot" {
@@ -292,8 +444,8 @@ impl HostKeyboardModifierEngine {
             }
         }
 
-        // 2. Evaluate each enabled rule in priority order
-        for rule in rules {
+        // 2. Evaluate each effective rule for the active window in priority order
+        for rule in &effective_rules {
             if !rule.enabled {
                 continue;
             }
@@ -440,6 +592,17 @@ impl HostKeyboardModifierEngine {
                     }
                     _ => {}
                 }
+            }
+        }
+
+        // Clean up any runtime state for trigger keys that are no longer physically pressed
+        // (e.g., if the active window changed while a key was held).
+        for ((trig, _mode), rt) in &mut self.per_rule {
+            if rt.was_pressed && !is_modifier_trigger_pressed(trig, held_keys) {
+                rt.was_pressed = false;
+                rt.pressed_since_ms = None;
+                rt.aborted_by_combo = false;
+                rt.is_second_tap_hold = false;
             }
         }
 
@@ -662,6 +825,8 @@ pub struct SwitcherState {
     pub modifier_rules: Vec<ModifierLayerRule>,
     pub active_modifier_override: Option<(u8, String, String)>,
     pub last_window_matched_profile: Option<u8>,
+    pub current_window_class: String,
+    pub current_window_title: String,
     pub google_search_shortcuts_permitted: bool,
     pub multi_click_interval_ms: i32,
     pub check_updates_on_startup: bool,
@@ -742,6 +907,8 @@ impl Default for SwitcherState {
                 modifier_rules: cfg.modifier_rules,
                 active_modifier_override: None,
                 last_window_matched_profile: None,
+                current_window_class: String::new(),
+                current_window_title: String::new(),
                 google_search_shortcuts_permitted: cfg.google_search_shortcuts_permitted,
                 multi_click_interval_ms: cfg.multi_click_interval_ms.clamp(80, 1000),
                 check_updates_on_startup: cfg.check_updates_on_startup,
@@ -812,6 +979,8 @@ impl Default for SwitcherState {
             modifier_rules: Vec::new(),
             active_modifier_override: None,
             last_window_matched_profile: None,
+            current_window_class: String::new(),
+            current_window_title: String::new(),
             google_search_shortcuts_permitted: false,
             multi_click_interval_ms: default_multi_click_interval_ms(),
             check_updates_on_startup: true,
@@ -849,6 +1018,12 @@ pub struct SdPersistedModifierRule {
     pub target_profile: u8,
     #[serde(default)]
     pub target_profile_name: String,
+    #[serde(default)]
+    pub resource_class: String,
+    #[serde(default)]
+    pub title_contains: Option<String>,
+    #[serde(default)]
+    pub title_is_regex: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -927,6 +1102,9 @@ pub fn save_rules_bundle_to_dir(
                         oneshot_timeout_sec: mr.oneshot_timeout_sec,
                         target_profile: mr.target_profile,
                         target_profile_name: p_name,
+                        resource_class: mr.resource_class,
+                        title_contains: mr.title_contains,
+                        title_is_regex: mr.title_is_regex,
                     }
                 })
                 .collect();
@@ -3262,6 +3440,10 @@ impl KWinBridgeService {
 
             if let Ok(mut state) = self.state.lock() {
                 paused = state.picker_armed || state.paused_for_editing;
+                if !state.picker_armed {
+                    state.current_window_class = effective_class.clone();
+                    state.current_window_title = resolved_caption.clone();
+                }
                 if !state.picker_armed && state.enabled && !state.paused_for_editing {
                     let window_prof =
                         state.match_profile_for_window(&effective_class, &resolved_caption);
@@ -3334,6 +3516,14 @@ impl KWinBridgeService {
 }
 
 #[cfg(not(target_os = "windows"))]
+pub static KWIN_NOTIFY_SEQ: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+#[cfg(not(target_os = "windows"))]
+pub static KWIN_HOOK_REGISTERED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(not(target_os = "windows"))]
 #[interface(name = "io.github.duckydeck.KWinBridge")]
 impl KWinBridgeService {
     fn notify_active_window(
@@ -3342,11 +3532,18 @@ impl KWinBridgeService {
         resource_name: String,
         caption: String,
     ) {
+        KWIN_NOTIFY_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.handle_active_window(resource_class, resource_name, caption);
     }
 
     fn notify_main_window_minimized(&mut self) {
         crate::bridge::device_controller::qobject::duckydeck_hide_main_window();
+    }
+
+    fn notify_main_window_geometry(&mut self, x: i32, y: i32, width: i32, height: i32) {
+        crate::bridge::device_controller::qobject::duckydeck_record_main_geometry(
+            x, y, width, height,
+        );
     }
 
     fn notify_oled_widget_geometry(&mut self, x: i32, y: i32, width: i32, height: i32) {
@@ -5230,6 +5427,10 @@ pub async fn run_kwin_auto_switcher(
 
                     if let Ok(mut st) = state_bg.lock() {
                         paused = st.picker_armed || st.paused_for_editing;
+                        if !st.picker_armed {
+                            st.current_window_class = effective_class.clone();
+                            st.current_window_title = resolved_caption.clone();
+                        }
                         if !st.picker_armed && st.enabled && !st.paused_for_editing {
                             let window_prof =
                                 st.match_profile_for_window(&effective_class, &resolved_caption);
@@ -5355,7 +5556,11 @@ pub async fn run_kwin_auto_switcher(
             .build()
             .await?;
 
-        let mut kwin_hook_active = false;
+        let mut active_kwin_hook: Option<(
+            String,
+            i32,
+            std::collections::BTreeSet<i32>,
+        )> = None;
 
         if !linux_desktop_window::is_hyprland_session() {
             if let Ok(script_path) = write_kwin6_hook_script() {
@@ -5367,113 +5572,62 @@ pub async fn run_kwin_auto_switcher(
                 )
                 .await
                 {
-                    let base_plugin_name = "duckydeck_kwin6_autoswitcher";
-                    let pid_fallback_name =
-                        format!("duckydeck_kwin6_autoswitcher_{}", std::process::id());
-
-                    // First unload any previous DuckyDeck KWin scripts once before searching for a clean Script{id} slot.
-                    // Note: KWin 6 assigns `/Scripting/Script{scripts.size()}` on `loadScript`. If an external tool
-                    // (e.g. kdotool) unloaded a lower-numbered script while a higher-numbered script remains registered
-                    // on D-Bus, unloading on every retry would keep resetting `scripts.size()` back to the collided ID.
-                    // By keeping inert gap-filler entries loaded across retry attempts, `scripts.size()` advances past
-                    // any orphaned `/Scripting/Script{N}` objects until our hook script registers and runs cleanly.
-                    {
-                        let _guard = KWIN_SCRIPT_LOCK.lock().await;
-                        let _: std::result::Result<bool, _> = kwin_scripting
-                            .call("unloadScript", &("duckydeck_oled_keep_above_oneshot",))
-                            .await;
-                        let _: std::result::Result<bool, _> =
-                            kwin_scripting.call("unloadScript", &(base_plugin_name,)).await;
-                        let _: std::result::Result<bool, _> = kwin_scripting
-                            .call("unloadScript", &(pid_fallback_name.as_str(),))
-                            .await;
-                        for slot_idx in 1..16 {
-                            let slot_name = format!("{base_plugin_name}_slot_{slot_idx}");
-                            let _: std::result::Result<bool, _> = kwin_scripting
-                                .call("unloadScript", &(slot_name.as_str(),))
-                                .await;
-                        }
-                    }
-
-                    for attempt in 0..16 {
-                        let candidate_name = if attempt == 0 {
-                            base_plugin_name.to_string()
-                        } else {
-                            format!("{base_plugin_name}_slot_{attempt}")
-                        };
-
-                        let mut run_succeeded = false;
-                        {
-                            let _guard = KWIN_SCRIPT_LOCK.lock().await;
-                            let script_id: i32 = kwin_scripting
-                                .call("loadScript", &(&script_path, candidate_name.as_str()))
-                                .await
-                                .unwrap_or(-1);
-
-                            if script_id >= 0 {
-                                let script_obj_path = format!("/Scripting/Script{script_id}");
-                                if let Ok(kwin_script) = zbus::Proxy::new(
-                                    &conn,
-                                    "org.kde.KWin",
-                                    script_obj_path.as_str(),
-                                    "org.kde.kwin.Script",
-                                )
-                                .await
-                                {
-                                    match kwin_script.call::<_, _, ()>("run", &()).await {
-                                        Ok(()) => {
-                                            run_succeeded = true;
-                                        }
-                                        Err(e) => {
-                                            crate::bridge::device_controller::record_system_event(
-                                                "WARN",
-                                                "KWIN",
-                                                format!(
-                                                    "KWin Script{script_id} slot collision on attempt {attempt} ({e}); advancing to next slot"
-                                                ),
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if !run_succeeded {
-                            continue;
-                        }
-
-                        // Wait up to 300ms for sendInitialTopWindow() to deliver the initial window over D-Bus.
-                        let mut received_initial = false;
-                        for _ in 0..12 {
-                            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-                            if pending_check
-                                .lock()
-                                .map(|p| !p.raw_class.is_empty())
-                                .unwrap_or(false)
-                            {
-                                received_initial = true;
-                                break;
-                            }
-                        }
-                        if received_initial {
-                            kwin_hook_active = true;
-                            crate::bridge::device_controller::record_system_event(
-                                "INFO",
-                                "KWIN",
-                                format!(
-                                    "KWin 6 Auto-Switcher hook active (plugin '{candidate_name}')"
-                                ),
-                            );
-                            break;
-                        }
+                    KWIN_HOOK_REGISTERED.store(true, std::sync::atomic::Ordering::SeqCst);
+                    active_kwin_hook = register_kwin6_hook_script(
+                        &conn,
+                        &kwin_scripting,
+                        &script_path,
+                        &pending_check,
+                        true,
+                    )
+                    .await;
+                    if active_kwin_hook.is_none() {
+                        KWIN_HOOK_REGISTERED.store(false, std::sync::atomic::Ordering::SeqCst);
                     }
                 }
             }
         }
 
-        if kwin_hook_active {
-            std::future::pending::<()>().await;
-            return Ok(());
+        if let Some((mut active_plugin, mut active_script_id, mut ids_below)) = active_kwin_hook {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+                let Ok(kwin_scripting) = zbus::Proxy::new(
+                    &conn,
+                    "org.kde.KWin",
+                    "/Scripting",
+                    "org.kde.kwin.Scripting",
+                )
+                .await
+                else {
+                    continue;
+                };
+
+                let is_loaded = kwin_scripting
+                    .call::<_, _, bool>("isScriptLoaded", &(active_plugin.as_str(),))
+                    .await
+                    .unwrap_or(false);
+                let current_ids = introspect_kwin_script_ids(&conn).await;
+                let node_alive = current_ids.contains(&active_script_id);
+                let lower_slot_unloaded = ids_below.iter().any(|id| !current_ids.contains(id));
+
+                if !is_loaded || !node_alive || lower_slot_unloaded {
+                    if let Ok(script_path) = write_kwin6_hook_script() {
+                        if let Some((new_plugin, new_id, new_below)) = register_kwin6_hook_script(
+                            &conn,
+                            &kwin_scripting,
+                            &script_path,
+                            &pending_check,
+                            false,
+                        )
+                        .await
+                        {
+                            active_plugin = new_plugin;
+                            active_script_id = new_id;
+                            ids_below = new_below;
+                        }
+                    }
+                }
+            }
         }
 
         // Multi-Desktop Linux Auto-Switcher Loop for:
@@ -5560,6 +5714,12 @@ fn write_kwin6_hook_script() -> std::io::Result<String> {
         }
         None => "null".to_string(),
     };
+    let initial_main_rect_js = match load_saved_main_window_geometry_tuple() {
+        Some((gx, gy, gw, gh)) => {
+            format!("{{ x: {gx}, y: {gy}, width: {gw}, height: {gh} }}")
+        }
+        None => "null".to_string(),
+    };
     let js_code = format!(
         r#"
 var trackedWindow = null;
@@ -5567,6 +5727,7 @@ var hookedWindows = [];
 var lastCursorKey = "";
 var lastMotionSentMs = 0;
 var initialSavedOledRect = {initial_rect_js};
+var initialSavedMainRect = {initial_main_rect_js};
 
 function isWindowHooked(win) {{
     for (var i = 0; i < hookedWindows.length; ++i) {{
@@ -5585,9 +5746,12 @@ function isOledWidgetWindow(win) {{
 
 function isDuckyDeckMainWindow(win) {{
     if (!win || isOledWidgetWindow(win)) return false;
+    if (win.dialog || win.modal || win.transient || win.utility || win.splash || win.tooltip || win.notification) return false;
     var cls = (win.resourceClass ? win.resourceClass.toString() : "").toLowerCase();
     var name = (win.resourceName ? win.resourceName.toString() : "").toLowerCase();
-    return cls.indexOf("duckydeck") !== -1 || name.indexOf("duckydeck") !== -1;
+    if (cls.indexOf("duckydeck") === -1 && name.indexOf("duckydeck") === -1) return false;
+    var cap = win.caption ? win.caption.toString() : "";
+    return cap.indexOf("DuckyDeck Studio v") === 0 || cap === "DuckyDeck Studio";
 }}
 
 function checkOledKeepAbove(win) {{
@@ -5736,6 +5900,55 @@ function checkOledKeepAbove(win) {{
         if (!isWindowHooked(win)) {
             hookedWindows.push(win);
             try {
+                if (win.closed) {
+                    win.closed.connect(function() {
+                        var idx = hookedWindows.indexOf(win);
+                        if (idx !== -1) {
+                            hookedWindows.splice(idx, 1);
+                        }
+                    });
+                }
+                var mainMappedAtMs = Date.now();
+                var isAdjustingMainGeometry = false;
+                if (initialSavedMainRect && win.frameGeometry) {
+                    isAdjustingMainGeometry = true;
+                    try {
+                        var curW0 = Math.round(win.frameGeometry.width);
+                        var curH0 = Math.round(win.frameGeometry.height);
+                        var targetW0 = curW0 >= 600 ? curW0 : initialSavedMainRect.width;
+                        var targetH0 = (initialSavedMainRect.height && initialSavedMainRect.height >= 680)
+                            ? initialSavedMainRect.height
+                            : (curH0 >= 400 ? curH0 : 800);
+                        win.frameGeometry = {
+                            x: initialSavedMainRect.x,
+                            y: initialSavedMainRect.y,
+                            width: targetW0,
+                            height: targetH0
+                        };
+                    } catch (e) {}
+                    isAdjustingMainGeometry = false;
+                } else if (!win.minimized && win.frameGeometry && win.frameGeometry.width >= 600 && win.frameGeometry.height >= 400) {
+                    var initX = Math.round(win.frameGeometry.x);
+                    var initY = Math.round(win.frameGeometry.y);
+                    var initW = Math.round(win.frameGeometry.width);
+                    var initH = Math.round(win.frameGeometry.height);
+                    initialSavedMainRect = {
+                        x: initX,
+                        y: initY,
+                        width: initW,
+                        height: initH
+                    };
+                    callDBus(
+                        "io.github.duckydeck.Studio",
+                        "/KWinBridge",
+                        "io.github.duckydeck.KWinBridge",
+                        "NotifyMainWindowGeometry",
+                        initX,
+                        initY,
+                        initW,
+                        initH
+                    );
+                }
                 if (win.minimizedChanged) {
                     win.minimizedChanged.connect(function() {
                         if (win.minimized) {
@@ -5752,6 +5965,66 @@ function checkOledKeepAbove(win) {{
                             win.skipTaskbar = false;
                             win.skipPager = false;
                             win.skipSwitcher = false;
+                            mainMappedAtMs = Date.now();
+                            if (initialSavedMainRect && win.frameGeometry) {
+                                isAdjustingMainGeometry = true;
+                                try {
+                                    win.frameGeometry = {
+                                        x: initialSavedMainRect.x,
+                                        y: initialSavedMainRect.y,
+                                        width: Math.round(win.frameGeometry.width),
+                                        height: Math.round(win.frameGeometry.height)
+                                    };
+                                } catch (e) {}
+                                isAdjustingMainGeometry = false;
+                            }
+                        }
+                    });
+                }
+                if (win.frameGeometryChanged) {
+                    win.frameGeometryChanged.connect(function() {
+                        if (!win.minimized && win.frameGeometry && win.frameGeometry.width >= 600 && win.frameGeometry.height >= 400) {
+                            if (isAdjustingMainGeometry) return;
+
+                            var curX = Math.round(win.frameGeometry.x);
+                            var curY = Math.round(win.frameGeometry.y);
+                            var curW = Math.round(win.frameGeometry.width);
+                            var curH = Math.round(win.frameGeometry.height);
+
+                            if (!win.move && !win.resize && initialSavedMainRect && (Date.now() - mainMappedAtMs) < 800) {
+                                if (Math.abs(curX - initialSavedMainRect.x) >= 1 || Math.abs(curY - initialSavedMainRect.y) >= 1) {
+                                    isAdjustingMainGeometry = true;
+                                    try {
+                                        win.frameGeometry = {
+                                            x: initialSavedMainRect.x,
+                                            y: initialSavedMainRect.y,
+                                            width: curW,
+                                            height: curH
+                                        };
+                                        curX = initialSavedMainRect.x;
+                                        curY = initialSavedMainRect.y;
+                                    } catch (e) {}
+                                    isAdjustingMainGeometry = false;
+                                }
+                            }
+
+                            initialSavedMainRect = {
+                                x: curX,
+                                y: curY,
+                                width: curW,
+                                height: curH
+                            };
+
+                            callDBus(
+                                "io.github.duckydeck.Studio",
+                                "/KWinBridge",
+                                "io.github.duckydeck.KWinBridge",
+                                "NotifyMainWindowGeometry",
+                                curX,
+                                curY,
+                                curW,
+                                curH
+                            );
                         }
                     });
                 }
@@ -5976,8 +6249,18 @@ function sendInitialTopWindow() {
     sendDesktop();
 }
 
+function onWindowAdded(win) {
+    if (win) {
+        var idx = hookedWindows.indexOf(win);
+        if (idx !== -1) {
+            hookedWindows.splice(idx, 1);
+        }
+    }
+    checkOledKeepAbove(win);
+}
+
 if (workspace.windowAdded) {
-    workspace.windowAdded.connect(checkOledKeepAbove);
+    workspace.windowAdded.connect(onWindowAdded);
 }
 if (workspace.cursorPosChanged) {
     workspace.cursorPosChanged.connect(onCursorPosChanged);
@@ -5999,6 +6282,24 @@ if (workspace.windowActivated) {
     let mut file = std::fs::File::create(&file_path)?;
     file.write_all(js_code.as_bytes())?;
     Ok(file_path)
+}
+
+fn load_saved_main_window_geometry_tuple() -> Option<(i32, i32, i32, i32)> {
+    let path = crate::paths::config_dir().join("main_window_geometry.json");
+    let raw = fs::read_to_string(path).ok()?;
+    let val: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    if !val
+        .get("has_position")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        return None;
+    }
+    let x = val.get("x").and_then(|v| v.as_i64())? as i32;
+    let y = val.get("y").and_then(|v| v.as_i64())? as i32;
+    let w = (val.get("width").and_then(|v| v.as_i64()).unwrap_or(1060) as i32).clamp(680, 3840);
+    let h = (val.get("height").and_then(|v| v.as_i64()).unwrap_or(800) as i32).clamp(680, 2160);
+    Some((x, y, w, h))
 }
 
 fn load_saved_oled_geometry_tuple() -> Option<(i32, i32, i32, i32)> {
@@ -6036,6 +6337,167 @@ fn load_saved_oled_on_all_desktops() -> bool {
 static KWIN_SCRIPT_LOCK: std::sync::LazyLock<tokio::sync::Mutex<()>> =
     std::sync::LazyLock::new(|| tokio::sync::Mutex::new(()));
 
+#[cfg(not(target_os = "windows"))]
+async fn introspect_kwin_script_ids(conn: &zbus::Connection) -> std::collections::BTreeSet<i32> {
+    let mut ids = std::collections::BTreeSet::new();
+    let Ok(proxy) = zbus::Proxy::new(
+        conn,
+        "org.kde.KWin",
+        "/Scripting",
+        "org.freedesktop.DBus.Introspectable",
+    )
+    .await
+    else {
+        return ids;
+    };
+    let Ok(xml) = proxy.call::<_, _, String>("Introspect", &()).await else {
+        return ids;
+    };
+    for line in xml.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("<node name=\"Script") {
+            let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+            if let Ok(id) = digits.parse::<i32>() {
+                ids.insert(id);
+            }
+        }
+    }
+    ids
+}
+
+#[cfg(not(target_os = "windows"))]
+async fn register_kwin6_hook_script(
+    conn: &zbus::Connection,
+    kwin_scripting: &zbus::Proxy<'_>,
+    script_path: &str,
+    pending_check: &Arc<Mutex<PendingWindowSwitch>>,
+    initial_startup: bool,
+) -> Option<(String, i32, std::collections::BTreeSet<i32>)> {
+    let base_plugin_name = "duckydeck_kwin6_autoswitcher";
+    let pid_fallback_name = format!("duckydeck_kwin6_autoswitcher_{}", std::process::id());
+
+    // First unload any previous DuckyDeck KWin scripts once before searching for a clean Script{id} slot.
+    // Note: KWin 6 assigns `/Scripting/Script{scripts.size()}` on `loadScript`. If an external tool
+    // (e.g. kdotool) unloaded a lower-numbered script while a higher-numbered script remains registered
+    // on D-Bus, unloading on every retry would keep resetting `scripts.size()` back to the collided ID.
+    // By keeping inert gap-filler entries loaded across retry attempts, `scripts.size()` advances past
+    // any orphaned `/Scripting/Script{N}` objects until our hook script registers and runs cleanly.
+    {
+        let _guard = KWIN_SCRIPT_LOCK.lock().await;
+        let _: std::result::Result<bool, _> = kwin_scripting
+            .call("unloadScript", &("duckydeck_oled_keep_above_oneshot",))
+            .await;
+        let _: std::result::Result<bool, _> =
+            kwin_scripting.call("unloadScript", &(base_plugin_name,)).await;
+        let _: std::result::Result<bool, _> = kwin_scripting
+            .call("unloadScript", &(pid_fallback_name.as_str(),))
+            .await;
+        for slot_idx in 1..24 {
+            let slot_name = format!("{base_plugin_name}_slot_{slot_idx}");
+            let _: std::result::Result<bool, _> = kwin_scripting
+                .call("unloadScript", &(slot_name.as_str(),))
+                .await;
+        }
+    }
+
+    if let Ok(mut p) = pending_check.lock() {
+        p.raw_class.clear();
+        p.settled_and_dispatched = false;
+    }
+
+    for attempt in 0..24 {
+        let candidate_name = if attempt == 0 {
+            base_plugin_name.to_string()
+        } else {
+            format!("{base_plugin_name}_slot_{attempt}")
+        };
+
+        let seq_before = KWIN_NOTIFY_SEQ.load(std::sync::atomic::Ordering::SeqCst);
+        let mut run_succeeded = false;
+        let mut assigned_id: i32 = -1;
+        {
+            let _guard = KWIN_SCRIPT_LOCK.lock().await;
+            let pre_ids = introspect_kwin_script_ids(conn).await;
+            let script_id: i32 = kwin_scripting
+                .call("loadScript", &(script_path, candidate_name.as_str()))
+                .await
+                .unwrap_or(-1);
+
+            if script_id >= 0 {
+                assigned_id = script_id;
+                if pre_ids.contains(&script_id) {
+                    // `/Scripting/Script{script_id}` was already owned by another script before `loadScript`!
+                    // Keep `candidate_name` in KWin's `scripts` list as an inert gap-filler to advance
+                    // `scripts.size()`, and do NOT call `.run()` on the foreign D-Bus object.
+                    continue;
+                }
+                let script_obj_path = format!("/Scripting/Script{script_id}");
+                if let Ok(kwin_script) = zbus::Proxy::new(
+                    conn,
+                    "org.kde.KWin",
+                    script_obj_path.as_str(),
+                    "org.kde.kwin.Script",
+                )
+                .await
+                {
+                    match kwin_script.call::<_, _, ()>("run", &()).await {
+                        Ok(()) => {
+                            run_succeeded = true;
+                        }
+                        Err(e) => {
+                            crate::bridge::device_controller::record_system_event(
+                                "WARN",
+                                "KWIN",
+                                format!(
+                                    "KWin Script{script_id} slot collision on attempt {attempt} ({e}); advancing to next slot"
+                                ),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        if !run_succeeded || assigned_id < 0 {
+            continue;
+        }
+
+        // Wait up to 400ms for sendInitialTopWindow() to deliver the initial window over D-Bus.
+        let mut received_initial = false;
+        for _ in 0..16 {
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+            let seq_now = KWIN_NOTIFY_SEQ.load(std::sync::atomic::Ordering::SeqCst);
+            let has_class = pending_check
+                .lock()
+                .map(|p| !p.raw_class.is_empty())
+                .unwrap_or(false);
+            if seq_now > seq_before || has_class {
+                received_initial = true;
+                break;
+            }
+        }
+        if received_initial {
+            let post_ids = introspect_kwin_script_ids(conn).await;
+            let ids_below: std::collections::BTreeSet<i32> = post_ids
+                .into_iter()
+                .filter(|&id| id < assigned_id)
+                .collect();
+            let msg = if initial_startup {
+                format!(
+                    "KWin 6 Auto-Switcher hook active (plugin '{candidate_name}', Script{assigned_id})"
+                )
+            } else {
+                format!(
+                    "KWin 6 Auto-Switcher hook self-healed & re-registered (plugin '{candidate_name}', Script{assigned_id})"
+                )
+            };
+            crate::bridge::device_controller::record_system_event("INFO", "KWIN", msg);
+            return Some((candidate_name, assigned_id, ids_below));
+        }
+    }
+    None
+}
+
 pub fn apply_kwin_oled_keep_above(keep_above: bool, restore_geometry: bool) {
     let on_all_desktops = load_saved_oled_on_all_desktops();
     #[cfg(target_os = "windows")]
@@ -6049,68 +6511,76 @@ pub fn apply_kwin_oled_keep_above(keep_above: bool, restore_geometry: bool) {
         return;
     }
     #[cfg(not(target_os = "windows"))]
-    std::thread::spawn(move || {
-        let geom_opt = if restore_geometry {
-            load_saved_oled_geometry_tuple()
-        } else {
-            None
-        };
-        let rt = match tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-        {
-            Ok(r) => r,
-            Err(_) => return,
-        };
-        rt.block_on(async move {
-            let Ok(conn) = zbus::Connection::session().await else {
-                return;
-            };
-            let Ok(kwin_scripting) = zbus::Proxy::new(
-                &conn,
-                "org.kde.KWin",
-                "/Scripting",
-                "org.kde.kwin.Scripting",
-            )
-            .await
-            else {
-                return;
-            };
-
-            // If our persistent KWin 6 hook script is already loaded, it automatically enforces
-            // keepAbove, onAllDesktops, skipTaskbar, skipPager, and saved OLED geometry via
-            // workspace.windowAdded and win.captionChanged without creating oneshot Script{id} churn.
-            if kwin_scripting
-                .call::<_, _, bool>("isScriptLoaded", &("duckydeck_kwin6_autoswitcher",))
-                .await
-                .unwrap_or(false)
-            {
+    {
+        if KWIN_HOOK_REGISTERED.load(std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        std::thread::spawn(move || {
+            if KWIN_HOOK_REGISTERED.load(std::sync::atomic::Ordering::SeqCst) {
                 return;
             }
-            for slot_idx in 1..16 {
-                let slot_name = format!("duckydeck_kwin6_autoswitcher_slot_{slot_idx}");
-                if kwin_scripting
-                    .call::<_, _, bool>("isScriptLoaded", &(slot_name.as_str(),))
-                    .await
-                    .unwrap_or(false)
+            let geom_opt = if restore_geometry {
+                load_saved_oled_geometry_tuple()
+            } else {
+                None
+            };
+            let rt = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(r) => r,
+                Err(_) => return,
+            };
+            rt.block_on(async move {
+                let Ok(conn) = zbus::Connection::session().await else {
+                    return;
+                };
+                let Ok(kwin_scripting) = zbus::Proxy::new(
+                    &conn,
+                    "org.kde.KWin",
+                    "/Scripting",
+                    "org.kde.kwin.Scripting",
+                )
+                .await
+                else {
+                    return;
+                };
+
+                // If our persistent KWin 6 hook script is already loaded, it automatically enforces
+                // keepAbove, onAllDesktops, skipTaskbar, skipPager, and saved OLED geometry via
+                // workspace.windowAdded and win.captionChanged without creating oneshot Script{id} churn.
+                if KWIN_HOOK_REGISTERED.load(std::sync::atomic::Ordering::SeqCst)
+                    || kwin_scripting
+                        .call::<_, _, bool>("isScriptLoaded", &("duckydeck_kwin6_autoswitcher",))
+                        .await
+                        .unwrap_or(false)
                 {
                     return;
                 }
-            }
+                for slot_idx in 1..24 {
+                    let slot_name = format!("duckydeck_kwin6_autoswitcher_slot_{slot_idx}");
+                    if kwin_scripting
+                        .call::<_, _, bool>("isScriptLoaded", &(slot_name.as_str(),))
+                        .await
+                        .unwrap_or(false)
+                    {
+                        return;
+                    }
+                }
 
-            let script_path = crate::paths::kwin_runtime_dir()
-                .join("duckydeck-kwin6-oled-pin.js")
-                .to_string_lossy()
-                .to_string();
-            let flag_str = if keep_above { "true" } else { "false" };
-            let all_desk_str = if on_all_desktops { "true" } else { "false" };
-            let geom_js = if let Some((gx, gy, gw, gh)) = geom_opt {
-                format!("w.frameGeometry = {{ x: {gx}, y: {gy}, width: {gw}, height: {gh} }};")
-            } else {
-                String::new()
-            };
-            let js = format!(
-                r#"
+                let script_path = crate::paths::kwin_runtime_dir()
+                    .join("duckydeck-kwin6-oled-pin.js")
+                    .to_string_lossy()
+                    .to_string();
+                let flag_str = if keep_above { "true" } else { "false" };
+                let all_desk_str = if on_all_desktops { "true" } else { "false" };
+                let geom_js = if let Some((gx, gy, gw, gh)) = geom_opt {
+                    format!("w.frameGeometry = {{ x: {gx}, y: {gy}, width: {gw}, height: {gh} }};")
+                } else {
+                    String::new()
+                };
+                let js = format!(
+                    r#"
 var list = workspace.stackingOrder || workspace.windowList();
 if (list) {{
     for (var i = 0; i < list.length; ++i) {{
@@ -6136,53 +6606,60 @@ if (list) {{
     }}
 }}
 "#
-            );
-            let plugin_name = "duckydeck_oled_keep_above_oneshot";
-            let delays_ms: &[u64] = if geom_opt.is_some() {
-                &[0, 60, 180, 420]
-            } else {
-                &[0]
-            };
-            for &delay in delays_ms {
-                if delay > 0 {
-                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
-                }
-                let _guard = KWIN_SCRIPT_LOCK.lock().await;
-                if std::fs::write(&script_path, js.as_bytes()).is_err() {
-                    return;
-                }
-                let _: std::result::Result<bool, _> =
-                    kwin_scripting.call("unloadScript", &(plugin_name,)).await;
-                if let Ok(script_id) = kwin_scripting
-                    .call::<_, _, i32>("loadScript", &(&script_path, plugin_name))
-                    .await
-                {
-                    if script_id >= 0 {
-                        let obj_path = format!("/Scripting/Script{script_id}");
-                        if let Ok(script_proxy) = zbus::Proxy::new(
-                            &conn,
-                            "org.kde.KWin",
-                            obj_path.as_str(),
-                            "org.kde.kwin.Script",
-                        )
+                );
+                let plugin_name = "duckydeck_oled_keep_above_oneshot";
+                let delays_ms: &[u64] = if geom_opt.is_some() {
+                    &[0, 60, 180, 420]
+                } else {
+                    &[0]
+                };
+                for &delay in delays_ms {
+                    if delay > 0 {
+                        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                    }
+                    if KWIN_HOOK_REGISTERED.load(std::sync::atomic::Ordering::SeqCst) {
+                        return;
+                    }
+                    let _guard = KWIN_SCRIPT_LOCK.lock().await;
+                    if KWIN_HOOK_REGISTERED.load(std::sync::atomic::Ordering::SeqCst) {
+                        return;
+                    }
+                    if std::fs::write(&script_path, js.as_bytes()).is_err() {
+                        return;
+                    }
+                    let _: std::result::Result<bool, _> =
+                        kwin_scripting.call("unloadScript", &(plugin_name,)).await;
+                    if let Ok(script_id) = kwin_scripting
+                        .call::<_, _, i32>("loadScript", &(&script_path, plugin_name))
                         .await
-                        {
-                            if let Err(e) = script_proxy.call::<_, _, ()>("run", &()).await {
-                                crate::bridge::device_controller::record_system_event(
-                                    "WARN",
-                                    "KWIN",
-                                    format!("Failed running KWin OLED keep-above script: {e}"),
-                                );
+                    {
+                        if script_id >= 0 {
+                            let obj_path = format!("/Scripting/Script{script_id}");
+                            if let Ok(script_proxy) = zbus::Proxy::new(
+                                &conn,
+                                "org.kde.KWin",
+                                obj_path.as_str(),
+                                "org.kde.kwin.Script",
+                            )
+                            .await
+                            {
+                                if let Err(e) = script_proxy.call::<_, _, ()>("run", &()).await {
+                                    crate::bridge::device_controller::record_system_event(
+                                        "WARN",
+                                        "KWIN",
+                                        format!("Failed running KWin OLED keep-above script: {e}"),
+                                    );
+                                }
                             }
+                            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                            let _: std::result::Result<bool, _> =
+                                kwin_scripting.call("unloadScript", &(plugin_name,)).await;
                         }
-                        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-                        let _: std::result::Result<bool, _> =
-                            kwin_scripting.call("unloadScript", &(plugin_name,)).await;
                     }
                 }
-            }
+            });
         });
-    });
+    }
 }
 
 #[cfg(test)]
@@ -6200,6 +6677,9 @@ mod modifier_engine_tests {
             hold_delay_ms: 200,
             oneshot_timeout_sec: 6,
             target_profile: 8,
+            resource_class: String::new(),
+            title_contains: None,
+            title_is_regex: false,
         }];
 
         let mut held = HashSet::new();
@@ -6243,6 +6723,9 @@ mod modifier_engine_tests {
             hold_delay_ms: 200,
             oneshot_timeout_sec: 6,
             target_profile: 8,
+            resource_class: String::new(),
+            title_contains: None,
+            title_is_regex: false,
         }];
 
         let mut held = HashSet::new();
@@ -6279,6 +6762,9 @@ mod modifier_engine_tests {
             hold_delay_ms: 200,
             oneshot_timeout_sec: 6,
             target_profile: 5,
+            resource_class: String::new(),
+            title_contains: None,
+            title_is_regex: false,
         }];
 
         let mut held = HashSet::new();
@@ -6324,6 +6810,9 @@ mod modifier_engine_tests {
             hold_delay_ms: 200,
             oneshot_timeout_sec: 6,
             target_profile: 4,
+            resource_class: String::new(),
+            title_contains: None,
+            title_is_regex: false,
         }];
 
         let mut held = HashSet::new();
@@ -6351,6 +6840,181 @@ mod modifier_engine_tests {
         held.clear();
         assert_eq!(
             engine.evaluate_tick(true, false, &rules, &held, &[], 0, 0, 5080),
+            Some(ModifierLayerTransition::Deactivated)
+        );
+    }
+
+    #[test]
+    fn test_app_and_title_scoped_modifier_rules_override_global_all_rule() {
+        let mut engine = HostKeyboardModifierEngine::new();
+        let rules = vec![
+            // 1. Global ("All Applications") fallback for RCTRL -> Profile #2
+            ModifierLayerRule {
+                enabled: true,
+                trigger_key: "RCTRL".to_string(),
+                mode: "hold".to_string(),
+                hold_delay_ms: 200,
+                oneshot_timeout_sec: 6,
+                target_profile: 2,
+                resource_class: String::new(),
+                title_contains: None,
+                title_is_regex: false,
+            },
+            // 2. All Web Browsers (*browser*) rule for RCTRL -> Profile #4
+            ModifierLayerRule {
+                enabled: true,
+                trigger_key: "RCTRL".to_string(),
+                mode: "hold".to_string(),
+                hold_delay_ms: 200,
+                oneshot_timeout_sec: 6,
+                target_profile: 4,
+                resource_class: "*browser*".to_string(),
+                title_contains: None,
+                title_is_regex: false,
+            },
+            // 3. Specific App ("firefox") rule for RCTRL -> Profile #5
+            ModifierLayerRule {
+                enabled: true,
+                trigger_key: "RCTRL".to_string(),
+                mode: "hold".to_string(),
+                hold_delay_ms: 200,
+                oneshot_timeout_sec: 6,
+                target_profile: 5,
+                resource_class: "firefox".to_string(),
+                title_contains: None,
+                title_is_regex: false,
+            },
+            // 4. Specific App + Title ("firefox" + "YouTube") rule for RCTRL -> Profile #6
+            ModifierLayerRule {
+                enabled: true,
+                trigger_key: "RCTRL".to_string(),
+                mode: "hold".to_string(),
+                hold_delay_ms: 200,
+                oneshot_timeout_sec: 6,
+                target_profile: 6,
+                resource_class: "firefox".to_string(),
+                title_contains: Some("YouTube".to_string()),
+                title_is_regex: false,
+            },
+        ];
+
+        let mut held = HashSet::new();
+        held.insert(97u16); // KEY_RIGHTCTRL
+
+        // A. In Firefox on YouTube -> activates Profile #6 (App + Title specificity)
+        assert_eq!(
+            engine.evaluate_tick_for_window(
+                true,
+                false,
+                &rules,
+                "firefox",
+                "Watch Rust Tutorials - YouTube — Mozilla Firefox",
+                &held,
+                &[97],
+                0,
+                0,
+                1000,
+            ),
+            None
+        );
+        assert_eq!(
+            engine.evaluate_tick_for_window(
+                true,
+                false,
+                &rules,
+                "firefox",
+                "Watch Rust Tutorials - YouTube — Mozilla Firefox",
+                &held,
+                &[],
+                0,
+                0,
+                1220,
+            ),
+            Some(ModifierLayerTransition::Activated {
+                target_profile: 6,
+                trigger_key: "RCTRL".to_string(),
+                mode: "hold".to_string(),
+            })
+        );
+
+        // B. While still holding RCTRL, user switches tab in Firefox to GitHub -> shifts to Profile #5!
+        assert_eq!(
+            engine.evaluate_tick_for_window(
+                true,
+                false,
+                &rules,
+                "firefox",
+                "duckydeck-studio — GitHub — Mozilla Firefox",
+                &held,
+                &[],
+                0,
+                0,
+                1300,
+            ),
+            Some(ModifierLayerTransition::Activated {
+                target_profile: 5,
+                trigger_key: "RCTRL".to_string(),
+                mode: "hold".to_string(),
+            })
+        );
+
+        // C. While still holding RCTRL, user focuses Chrome -> shifts to Profile #4 (*browser*)!
+        assert_eq!(
+            engine.evaluate_tick_for_window(
+                true,
+                false,
+                &rules,
+                "google-chrome",
+                "Docs — Google Chrome",
+                &held,
+                &[],
+                0,
+                0,
+                1400,
+            ),
+            Some(ModifierLayerTransition::Activated {
+                target_profile: 4,
+                trigger_key: "RCTRL".to_string(),
+                mode: "hold".to_string(),
+            })
+        );
+
+        // D. While still holding RCTRL, user focuses Konsole -> falls back to Profile #2 (All Apps)!
+        assert_eq!(
+            engine.evaluate_tick_for_window(
+                true,
+                false,
+                &rules,
+                "org.kde.konsole",
+                "millinr@eos-russdesk:~",
+                &held,
+                &[],
+                0,
+                0,
+                1500,
+            ),
+            Some(ModifierLayerTransition::Activated {
+                target_profile: 2,
+                trigger_key: "RCTRL".to_string(),
+                mode: "hold".to_string(),
+            })
+        );
+
+        // Release RCTRL -> deactivates
+        held.clear();
+        assert_eq!(
+            engine.evaluate_tick_for_window(
+                true,
+                false,
+                &rules,
+                "org.kde.konsole",
+                "millinr@eos-russdesk:~",
+                &held,
+                &[],
+                0,
+                0,
+                1600,
+            ),
             Some(ModifierLayerTransition::Deactivated)
         );
     }

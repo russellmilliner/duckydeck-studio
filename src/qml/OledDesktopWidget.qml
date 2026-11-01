@@ -1822,9 +1822,6 @@ Window {
                         implicitHeight: Layout.preferredHeight
                         padding: 0
                         onClicked: {
-                            if (oledWidgetWindow.controller) {
-                                oledWidgetWindow.controller.showFromTray()
-                            }
                             oledWidgetWindow.requestOpenMainWindow()
                         }
                         contentItem: Text {

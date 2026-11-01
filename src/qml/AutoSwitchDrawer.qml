@@ -32,6 +32,13 @@ Window {
     property bool ruleEditorSectionExpanded: controller ? controller.autoswitchRuleEditorExpanded : true
     property bool modifierSectionExpanded: controller ? controller.modifierSectionExpanded : true
     property int editingModifierRuleIndex: -1
+    property bool modifierPickerTarget: false
+
+    readonly property var modifierScopeOptions: [
+        { code: "all", label: qsTr("🌐 All Applications (Global)") },
+        { code: "app", label: qsTr("🪟 Specific Application / Window Title") },
+        { code: "browser", label: qsTr("🌐 All Web Browsers (*browser*)") }
+    ]
 
     readonly property var modifierKeyOptions: [
         { code: "MENU", label: qsTr("Menu / App Key (KEY_COMPOSE)") },
@@ -237,7 +244,7 @@ Window {
         id: modifierRulesModel
     }
 
-    function loadModifierRuleIntoEditor(mIdx, trigKey, modeStr, holdDelay, oneshotTimeout, targetProf) {
+    function loadModifierRuleIntoEditor(mIdx, trigKey, modeStr, holdDelay, oneshotTimeout, targetProf, resClass, titleSub, isRegex) {
         drawerRoot.modifierSectionExpanded = true
         drawerRoot.editingModifierRuleIndex = mIdx
         for (let i = 0; i < drawerRoot.modifierKeyOptions.length; ++i) {
@@ -252,6 +259,20 @@ Window {
                 break
             }
         }
+        const cls = String(resClass || "").trim()
+        const ttl = String(titleSub || "").trim()
+        if (cls.toLowerCase() === "*browser*") {
+            modifierScopeCombo.currentIndex = 2
+            modifierClassInput.text = "*browser*"
+        } else if (cls.length > 0 || ttl.length > 0) {
+            modifierScopeCombo.currentIndex = 1
+            modifierClassInput.text = cls
+        } else {
+            modifierScopeCombo.currentIndex = 0
+            modifierClassInput.text = ""
+        }
+        modifierTitleInput.text = ttl
+        modifierTitleRegexCheck.checked = !!isRegex
         modifierHoldDelayInput.text = String(holdDelay || 200)
         modifierOneshotTimeoutInput.text = String(oneshotTimeout || 6)
         const pIdx = drawerRoot.profileNumbers.indexOf(targetProf)
@@ -439,7 +460,10 @@ Window {
                     holdDelayMs: m.holdDelayMs !== undefined ? Number(m.holdDelayMs) : 200,
                     oneshotTimeoutSec: m.oneshotTimeoutSec !== undefined ? Number(m.oneshotTimeoutSec) : 6,
                     targetProfile: m.targetProfile || 1,
-                    targetProfileName: String(m.targetProfileName || "Default")
+                    targetProfileName: String(m.targetProfileName || "Default"),
+                    resourceClass: String(m.resourceClass || ""),
+                    titleContains: String(m.titleContains || ""),
+                    titleIsRegex: !!m.titleIsRegex
                 })
             }
         } catch (e) {}
@@ -572,14 +596,30 @@ Window {
         }
         function onLastPickedWindowClassChanged() {
             if (drawerRoot.controller && drawerRoot.controller.lastPickedWindowClass.length > 0) {
-                drawerRoot.ruleEditorSectionExpanded = true
-                classInput.text = drawerRoot.controller.lastPickedWindowClass
-                titleInput.text = drawerRoot.controller.lastPickedWindowTitle
+                if (drawerRoot.modifierPickerTarget) {
+                    drawerRoot.modifierPickerTarget = false
+                    drawerRoot.modifierSectionExpanded = true
+                    if (modifierScopeCombo.currentIndex === 0) {
+                        modifierScopeCombo.currentIndex = 1
+                    }
+                    if (modifierScopeCombo.currentIndex !== 2) {
+                        modifierClassInput.text = drawerRoot.controller.lastPickedWindowClass
+                    }
+                    modifierTitleInput.text = drawerRoot.controller.lastPickedWindowTitle
+                } else {
+                    drawerRoot.ruleEditorSectionExpanded = true
+                    classInput.text = drawerRoot.controller.lastPickedWindowClass
+                    titleInput.text = drawerRoot.controller.lastPickedWindowTitle
+                }
             }
         }
         function onLastPickedWindowTitleChanged() {
             if (drawerRoot.controller && drawerRoot.controller.lastPickedWindowClass.length > 0) {
-                titleInput.text = drawerRoot.controller.lastPickedWindowTitle
+                if (drawerRoot.modifierPickerTarget) {
+                    modifierTitleInput.text = drawerRoot.controller.lastPickedWindowTitle
+                } else {
+                    titleInput.text = drawerRoot.controller.lastPickedWindowTitle
+                }
             }
         }
     }
@@ -1111,7 +1151,7 @@ Window {
                                     wrapMode: Text.WordWrap
                                     font.pointSize: 10 * drawerRoot.fontScale
                                     color: Kirigami.Theme.disabledTextColor
-                                    text: qsTr("Hold or tap a modifier/dedicated key on your main PC keyboard to shift the duckyPad to a global desktop profile and restore your window's profile on release. Includes a chord guard so normal shortcuts (like Ctrl+C) never flicker the keypad.")
+                                    text: qsTr("Hold or tap a modifier/dedicated key on your main PC keyboard to shift the duckyPad to a target profile (either globally across All Applications or scoped to a specific Application / Window Title) and restore your window's profile on release.")
                                 }
 
                                 // Row 1: Trigger Key + Activation Mode
@@ -1159,6 +1199,152 @@ Window {
                                         valueRole: "code"
                                         model: drawerRoot.modifierModeOptions
                                         currentIndex: 0 // Default Hold
+                                    }
+                                }
+
+                                // Row 1b: Application / Window Title Scope
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    QQC2.Label {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr("Scope:")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        color: Kirigami.Theme.disabledTextColor
+                                    }
+
+                                    QQC2.ComboBox {
+                                        id: modifierScopeCombo
+                                        objectName: "modifierScopeCombo"
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 160
+                                        Layout.preferredWidth: 1
+                                        Layout.alignment: Qt.AlignVCenter
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        textRole: "label"
+                                        valueRole: "code"
+                                        model: drawerRoot.modifierScopeOptions
+                                        currentIndex: 0 // Default All Applications
+                                        onActivated: function(idx) {
+                                            if (idx === 0) {
+                                                modifierClassInput.text = ""
+                                                modifierTitleInput.text = ""
+                                                modifierTitleRegexCheck.checked = false
+                                            } else if (idx === 2) {
+                                                modifierClassInput.text = "*browser*"
+                                            } else if (idx === 1 && modifierClassInput.text.trim().toLowerCase() === "*browser*") {
+                                                modifierClassInput.text = ""
+                                            }
+                                        }
+                                    }
+
+                                    QQC2.Button {
+                                        visible: modifierScopeCombo.currentIndex > 0
+                                        Layout.alignment: Qt.AlignVCenter
+                                        icon.name: "crosshairs"
+                                        text: drawerRoot.controller && drawerRoot.controller.windowPickerArmed && drawerRoot.modifierPickerTarget
+                                            ? qsTr("Armed...")
+                                            : qsTr("🎯 Pick Window")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        highlighted: drawerRoot.controller && drawerRoot.controller.windowPickerArmed && drawerRoot.modifierPickerTarget
+                                        onClicked: {
+                                            drawerRoot.modifierPickerTarget = true
+                                            if (drawerRoot.controller) {
+                                                drawerRoot.controller.armWindowPicker(false)
+                                            }
+                                        }
+                                        QQC2.ToolTip.delay: 500
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Click any open window to fill its application class and title for this modifier layer")
+                                    }
+
+                                    QQC2.Button {
+                                        visible: modifierScopeCombo.currentIndex > 0
+                                        Layout.alignment: Qt.AlignVCenter
+                                        icon.name: "edit-paste"
+                                        text: qsTr("Use Current")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        enabled: drawerRoot.controller
+                                            && drawerRoot.controller.activeWindowClass.length > 0
+                                            && drawerRoot.controller.activeWindowClass !== "Listening for KWin..."
+                                        onClicked: {
+                                            if (!drawerRoot.controller) return
+                                            const cls = drawerRoot.controller.activeWindowClass
+                                            const rawTitle = drawerRoot.controller.activeWindowTitle
+                                            const isBrowser = drawerRoot.controller.isBrowserWindowClass(cls)
+                                            if (modifierScopeCombo.currentIndex === 2) {
+                                                modifierClassInput.text = "*browser*"
+                                            } else {
+                                                modifierClassInput.text = cls
+                                            }
+                                            modifierTitleInput.text = isBrowser
+                                                ? drawerRoot.controller.cleanBrowserWindowTitle(rawTitle)
+                                                : rawTitle
+                                        }
+                                        QQC2.ToolTip.delay: 500
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Copy the currently active window's class and title into this modifier rule")
+                                    }
+                                }
+
+                                // Row 1c: Specific App Class + Window Title Filter (when Scope != All Applications)
+                                RowLayout {
+                                    visible: modifierScopeCombo.currentIndex > 0
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    QQC2.Label {
+                                        visible: modifierScopeCombo.currentIndex === 1
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr("App Class:")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        color: Kirigami.Theme.disabledTextColor
+                                    }
+
+                                    QQC2.TextField {
+                                        id: modifierClassInput
+                                        objectName: "modifierClassInput"
+                                        visible: modifierScopeCombo.currentIndex === 1
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 90
+                                        Layout.preferredWidth: 1
+                                        placeholderText: qsTr("e.g. firefox, code, kdenlive (or leave blank for any app)")
+                                        font.family: "monospace"
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        selectByMouse: true
+                                    }
+
+                                    QQC2.Label {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr("Window Title:")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        color: Kirigami.Theme.disabledTextColor
+                                    }
+
+                                    QQC2.TextField {
+                                        id: modifierTitleInput
+                                        objectName: "modifierTitleInput"
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 100
+                                        Layout.preferredWidth: 1
+                                        placeholderText: modifierTitleRegexCheck.checked
+                                            ? qsTr("Optional regex (e.g. YouTube|Twitch)")
+                                            : qsTr("Optional title substring (e.g. YouTube, Gmail)")
+                                        font.family: modifierTitleRegexCheck.checked ? "monospace" : Kirigami.Theme.defaultFont.family
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        selectByMouse: true
+                                    }
+
+                                    HighContrastCheckBox {
+                                        id: modifierTitleRegexCheck
+                                        objectName: "modifierTitleRegexCheck"
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: qsTr(".* Regex")
+                                        font.pointSize: 10 * drawerRoot.fontScale
+                                        QQC2.ToolTip.delay: 500
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Match window title using a case-insensitive regular expression")
                                     }
                                 }
 
@@ -1262,6 +1448,10 @@ Window {
                                         font.pointSize: 10 * drawerRoot.fontScale
                                         onClicked: {
                                             drawerRoot.editingModifierRuleIndex = -1
+                                            modifierScopeCombo.currentIndex = 0
+                                            modifierClassInput.text = ""
+                                            modifierTitleInput.text = ""
+                                            modifierTitleRegexCheck.checked = false
                                         }
                                     }
 
@@ -1274,6 +1464,10 @@ Window {
                                         font.pointSize: 10 * drawerRoot.fontScale
                                         highlighted: true
                                         enabled: modifierTargetProfileCombo.currentIndex >= 0
+                                            && (modifierScopeCombo.currentIndex === 0
+                                                || modifierScopeCombo.currentIndex === 2
+                                                || modifierClassInput.text.trim().length > 0
+                                                || modifierTitleInput.text.trim().length > 0)
                                         onClicked: {
                                             if (!drawerRoot.controller) return
                                             const keyOpt = drawerRoot.modifierKeyOptions[Math.max(0, modifierKeyCombo.currentIndex)]
@@ -1281,6 +1475,12 @@ Window {
                                             const parsedDelay = parseInt(modifierHoldDelayInput.text, 10)
                                             const parsedTimeout = parseInt(modifierOneshotTimeoutInput.text, 10)
                                             const profNum = drawerRoot.profileNumbers[modifierTargetProfileCombo.currentIndex] || 1
+                                            const scopeIdx = modifierScopeCombo.currentIndex
+                                            const effClass = scopeIdx === 0
+                                                ? ""
+                                                : (scopeIdx === 2 ? "*browser*" : modifierClassInput.text.trim())
+                                            const effTitle = scopeIdx === 0 ? "" : modifierTitleInput.text.trim()
+                                            const effRegex = scopeIdx === 0 ? false : modifierTitleRegexCheck.checked
                                             drawerRoot.controller.saveModifierRule(
                                                 drawerRoot.editingModifierRuleIndex,
                                                 true,
@@ -1288,7 +1488,10 @@ Window {
                                                 modeOpt ? modeOpt.code : "hold",
                                                 isNaN(parsedDelay) ? 200 : parsedDelay,
                                                 isNaN(parsedTimeout) ? 6 : parsedTimeout,
-                                                profNum
+                                                profNum,
+                                                effClass,
+                                                effTitle,
+                                                effRegex
                                             )
                                             drawerRoot.editingModifierRuleIndex = -1
                                         }
@@ -1316,6 +1519,9 @@ Window {
                                             required property int oneshotTimeoutSec
                                             required property int targetProfile
                                             required property string targetProfileName
+                                            required property string resourceClass
+                                            required property string titleContains
+                                            required property bool titleIsRegex
 
                                             Layout.fillWidth: true
                                             implicitHeight: modRuleInnerRow.implicitHeight + 10
@@ -1336,7 +1542,10 @@ Window {
                                                         modRuleRow.mode,
                                                         modRuleRow.holdDelayMs,
                                                         modRuleRow.oneshotTimeoutSec,
-                                                        modRuleRow.targetProfile
+                                                        modRuleRow.targetProfile,
+                                                        modRuleRow.resourceClass,
+                                                        modRuleRow.titleContains,
+                                                        modRuleRow.titleIsRegex
                                                     )
                                                 }
                                             }
@@ -1361,6 +1570,48 @@ Window {
                                                     QQC2.ToolTip.delay: 500
                                                     QQC2.ToolTip.visible: hovered
                                                     QQC2.ToolTip.text: qsTr("Enable or disable this modifier layer rule")
+                                                }
+
+                                                Rectangle {
+                                                    Layout.alignment: Qt.AlignVCenter
+                                                    Layout.maximumWidth: Math.max(110, modRuleRow.width * 0.34)
+                                                    implicitWidth: Math.min(modScopeBadgeLabel.implicitWidth + 12, Math.max(110, modRuleRow.width * 0.34))
+                                                    implicitHeight: 22
+                                                    radius: 4
+                                                    color: (modRuleRow.resourceClass.length > 0 || modRuleRow.titleContains.length > 0)
+                                                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.16)
+                                                        : Qt.alpha(Kirigami.Theme.textColor, 0.08)
+                                                    border.color: (modRuleRow.resourceClass.length > 0 || modRuleRow.titleContains.length > 0)
+                                                        ? Qt.alpha(Kirigami.Theme.highlightColor, 0.55)
+                                                        : drawerRoot.subtleBorder
+                                                    border.width: 1
+
+                                                    QQC2.Label {
+                                                        id: modScopeBadgeLabel
+                                                        anchors.fill: parent
+                                                        anchors.leftMargin: 6
+                                                        anchors.rightMargin: 6
+                                                        verticalAlignment: Text.AlignVCenter
+                                                        horizontalAlignment: Text.AlignHCenter
+                                                        font.bold: true
+                                                        font.family: "monospace"
+                                                        font.pointSize: 9.5 * drawerRoot.fontScale
+                                                        elide: Text.ElideRight
+                                                        color: Kirigami.Theme.textColor
+                                                        text: {
+                                                            const cls = modRuleRow.resourceClass.trim()
+                                                            const ttl = modRuleRow.titleContains.trim()
+                                                            const clsText = cls.length === 0
+                                                                ? (ttl.length > 0 ? qsTr("🪟 Any App") : qsTr("🌐 All Apps"))
+                                                                : (cls.toLowerCase() === "*browser*" ? qsTr("🌐 Browsers") : ("🪟 " + cls))
+                                                            if (ttl.length > 0) {
+                                                                return modRuleRow.titleIsRegex
+                                                                    ? (clsText + " • /" + ttl + "/")
+                                                                    : (clsText + " • \"" + ttl + "\"")
+                                                            }
+                                                            return clsText
+                                                        }
+                                                    }
                                                 }
 
                                                 QQC2.Label {
@@ -1402,7 +1653,10 @@ Window {
                                                             modRuleRow.mode,
                                                             modRuleRow.holdDelayMs,
                                                             modRuleRow.oneshotTimeoutSec,
-                                                            modRuleRow.targetProfile
+                                                            modRuleRow.targetProfile,
+                                                            modRuleRow.resourceClass,
+                                                            modRuleRow.titleContains,
+                                                            modRuleRow.titleIsRegex
                                                         )
                                                     }
                                                 }
@@ -1500,6 +1754,7 @@ Window {
                                 font.pointSize: 10 * drawerRoot.fontScale
                                 highlighted: drawerRoot.controller && drawerRoot.controller.windowPickerArmed
                                 onClicked: {
+                                    drawerRoot.modifierPickerTarget = false
                                     drawerRoot.ruleEditorSectionExpanded = true
                                     if (drawerRoot.controller) {
                                         drawerRoot.controller.armWindowPicker(false)

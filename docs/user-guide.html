@@ -673,6 +673,14 @@
       <a class="nav-link" href="#pgv">🔢 Global Variables (_GV0.._GV31)</a>
       <a class="nav-link" href="#ai">✨ Macro Template Generator (experimental)</a>
 
+      <div class="nav-group-title">Step-by-Step Tutorials</div>
+      <a class="nav-link" href="#tutorial-oled-vm">🎓 Tutorial 1: OLED VM &amp; OLED VM HUD</a>
+      <a class="nav-link" href="#tutorial-home-assistant">🎓 Tutorial 2: Home Assistant Setup</a>
+      <a class="nav-link" href="#tutorial-webhooks">🎓 Tutorial 3: Webhooks &amp; REST API</a>
+      <a class="nav-link" href="#tutorial-app-launch">🎓 Tutorial 4: App Launching (APP)</a>
+      <a class="nav-link" href="#tutorial-autoswitcher">🎓 Tutorial 5: Auto-Switcher &amp; Layers</a>
+      <a class="nav-link" href="#tutorial-multiclick-gv">🎓 Tutorial 6: Multi-Click, Hold &amp; _GV</a>
+
       <div class="nav-group-title">Diagnostics &amp; Community</div>
       <a class="nav-link" href="#eventlog">📋 System Event Log</a>
       <a class="nav-link" href="#settings">⚙️ UI Text Scaling &amp; System Tray</a>
@@ -1483,6 +1491,266 @@ bash scripts/build-windows.sh</code></pre>
         <li><strong>Global UI Text Zoom (`75%`–`160%`, Minimum `10pt` Base Font) &amp; High-Contrast Controls:</strong> Adjust UI text zoom across the entire application using <kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>Ctrl</kbd>+<kbd>=</kbd> (zoom in), <kbd>Ctrl</kbd>+<kbd>-</kbd> (zoom out), or <kbd>Ctrl</kbd>+<kbd>0</kbd> (reset to `100%`), or via `Settings → Global Text Scale`. All checkboxes and scrollbars feature high-contrast borders in both Dark and Light modes, and all popup windows can be closed with <kbd>Esc</kbd>.</li>
         <li><strong>System Tray &amp; Autostart (Linux &amp; Windows):</strong> DuckyDeck Studio integrates natively with the KDE Plasma 6 System Tray (`StatusNotifierItem`) and the Windows 10/11 Notification Area, displaying a custom dynamic icon with your active profile number and color badge, live Profile &amp; SD Sync status headers, <strong>Show / Hide DuckyDeck Studio</strong>, <strong>Toggle Desktop OLED Widget</strong>, <strong>Enable Window Auto-Switcher</strong>, <strong>Autostart at Login</strong> (XDG <code>~/.config/autostart/</code> on Linux; Registry <code>HKCU\Software\Microsoft\Windows\CurrentVersion\Run\DuckyDeckStudio</code> on Windows), <strong>About DuckyDeck Studio</strong>, and <strong>Quit DuckyDeck Studio</strong>.</li>
       </ul>
+    </section>
+
+    <!-- Step-by-Step Tutorials -->
+    <section id="tutorial-oled-vm">
+      <h2>🎓 Tutorial 1: Using the OLED VM &amp; OLED VM HUD (`OLED_*` Custom Screen Graphics)</h2>
+      <div class="callout info">
+        <div class="callout-title">🖥️ What Are "OLED Grid", "OLED VM", and the "OLED VM HUD"?</div>
+        Your physical duckyPad features a <code>128×128</code> monochrome OLED screen (or <code>128×64</code> on the 2020 model). That display operates in two distinct modes:
+        <ul style="margin-top:8px;">
+          <li><strong>1. OLED Grid Mode (Default):</strong> When idle, the duckyPad firmware automatically draws the active Profile Name at the top and a 4×5 (or 3×5) grid of your 2-line key labels.</li>
+          <li><strong>2. OLED VM Mode (Custom DuckyScript 3 Drawing):</strong> Inside any key's DuckyScript 3 macro, you can write <code>OLED_*</code> commands (such as <code>OLED_CLEAR</code>, <code>OLED_PRINT</code>, <code>OLED_CPRINT</code>, <code>OLED_RECT</code>, <code>OLED_CIRCLE</code>, <code>OLED_LINE</code>) that execute on the duckyPad's onboard bytecode virtual machine (<code>duckStack VM</code>). When you press that key, your script takes over the physical OLED screen to render custom status banners, mute warnings, progress bars, or live variable counters!</li>
+          <li><strong>3. What the <code>OLED Grid / OLED VM</code> button in DuckyDeck Studio does:</strong> Located in the top-right corner of the Hardware Canvas, toggling <code>OLED Grid</code> &rarr; <code>OLED VM</code> switches the simulated OLED screen on the virtual PCB into the <strong>OLED VM HUD</strong>. It live-interprets and previews the <code>OLED_*</code> drawing commands in your currently selected key's script as you type—without needing to sync to the microSD card first!</li>
+        </ul>
+      </div>
+
+      <h3>Step-by-Step: Writing &amp; Previewing Custom OLED Graphics</h3>
+      <ol>
+        <li>Click any key (<code>1–20</code>) or rotary encoder action (<code>21–26</code>) on the Hardware Canvas.</li>
+        <li>In the Right Key Editor, select the <strong>📜 DuckyScript IDE</strong> tab.</li>
+        <li>Click the <strong><code>+OLED</code></strong> button in the script editor toolbar (or open <strong>🎓 Tutorials &rarr; 🖥️ OLED VM &amp; HUD</strong> and click <strong>⚡ Insert &amp; Preview on OLED VM</strong>).</li>
+        <li>Notice that the toggle at the top-right of the Hardware Canvas automatically switches to <strong><code>OLED VM</code></strong>, and the simulated 128×128 OLED screen immediately renders your script's <code>OLED_*</code> commands in real time!</li>
+        <li>Always finish a batch of drawing commands with <code>OLED_UPDATE</code> to push the framebuffer to the physical screen. If you want the screen to return to the normal 20-key label grid after a pause, add <code>DELAY 1500</code> followed by <code>OLED_RESTORE</code>.</li>
+      </ol>
+
+      <h3>DuckyScript 3 `OLED_*` Command Reference</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th>Arguments</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>OLED_CLEAR</code></td>
+              <td><em>(none)</em></td>
+              <td>Clears the internal OLED framebuffer to black (call <code>OLED_UPDATE</code> after drawing to display).</td>
+            </tr>
+            <tr>
+              <td><code>OLED_CURSOR x y</code></td>
+              <td><code>x: 0..127</code>, <code>y: 0..127</code></td>
+              <td>Moves the text cursor to pixel coordinates <code>(x, y)</code> (<code>y: 0..63</code> on duckyPad 2020).</td>
+            </tr>
+            <tr>
+              <td><code>OLED_PRINT text</code></td>
+              <td>Text string + <code>$_GVn</code></td>
+              <td>Prints left-aligned text at the current cursor position (interpolates variables like <code>$_GV0</code>).</td>
+            </tr>
+            <tr>
+              <td><code>OLED_CPRINT text</code></td>
+              <td>Text string + <code>$_GVn</code></td>
+              <td>Prints horizontally centered text at the current cursor <code>y</code> row.</td>
+            </tr>
+            <tr>
+              <td><code>OLED_LPRINT text</code></td>
+              <td>Text string</td>
+              <td>Prints text with automatic line wrapping across the OLED width.</td>
+            </tr>
+            <tr>
+              <td><code>OLED_LINE x1 y1 x2 y2</code></td>
+              <td>Pixel endpoints</td>
+              <td>Draws a straight 1px line between <code>(x1, y1)</code> and <code>(x2, y2)</code>.</td>
+            </tr>
+            <tr>
+              <td><code>OLED_RECT x1 y1 x2 y2 opt</code></td>
+              <td><code>opt: 0|1|2</code></td>
+              <td>Draws a rectangle from <code>(x1, y1)</code> to <code>(x2, y2)</code> (<code>0</code>=erase, <code>1</code>=outline, <code>2</code>=filled).</td>
+            </tr>
+            <tr>
+              <td><code>OLED_CIRCLE x y r opt</code></td>
+              <td><code>opt: 0|1|2</code></td>
+              <td>Draws a circle centered at <code>(x, y)</code> with radius <code>r</code> (<code>0</code>=erase, <code>1</code>=outline, <code>2</code>=filled).</td>
+            </tr>
+            <tr>
+              <td><code>OLED_PIX x y opt</code></td>
+              <td><code>opt: 0|1</code></td>
+              <td>Draws or erases a single pixel at <code>(x, y)</code> (<code>0</code>=black, <code>1</code>=white).</td>
+            </tr>
+            <tr>
+              <td><code>OLED_UPDATE</code></td>
+              <td><em>(none)</em></td>
+              <td>Pushes the drawn framebuffer to the physical OLED display.</td>
+            </tr>
+            <tr>
+              <td><code>OLED_RESTORE</code></td>
+              <td><em>(none)</em></td>
+              <td>Restores the normal profile name and 20-key label grid on the OLED display.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h4>Example A: Temporary Macro Status Banner</h4>
+          <pre><code>REM Show a bordered status screen for 1.5s
+OLED_CLEAR
+OLED_RECT 2 2 125 125 1
+OLED_LINE 2 26 125 26
+OLED_CURSOR 0 10
+OLED_CPRINT 🚀 DEPLOYING
+OLED_CURSOR 0 54
+OLED_CPRINT Running cargo
+OLED_CURSOR 0 70
+OLED_CPRINT build --release
+OLED_UPDATE
+DELAY 1500
+OLED_RESTORE</code></pre>
+        </div>
+        <div class="card">
+          <h4>Example B: Persistent "MIC MUTED" Toggle HUD (`_GV0`)</h4>
+          <pre><code>IF $_GV0 == 0 THEN
+    $_GV0 = 1
+    SWCF 1 255 0 0
+    OLED_CLEAR
+    OLED_RECT 4 4 123 123 1
+    OLED_CIRCLE 64 46 20 1
+    OLED_LINE 50 32 78 60
+    OLED_CURSOR 0 82
+    OLED_CPRINT MICROPHONE
+    OLED_CURSOR 0 98
+    OLED_CPRINT [ MUTED ]
+    OLED_UPDATE
+ELSE
+    $_GV0 = 0
+    SWCF 1 0 255 80
+    OLED_RESTORE
+END_IF</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="tutorial-home-assistant">
+      <h2>🎓 Tutorial 2: Configuring Home Assistant &amp; Smart Home Control</h2>
+      <p>
+        DuckyDeck Studio includes a native <strong>Home Assistant Entity Browser &amp; Service Builder</strong> that lets you control lights, switches, scenes, scripts, automations, climate, covers, locks, and media players from any duckyPad key.
+      </p>
+      <div class="grid-2">
+        <div class="card">
+          <h4>Step 1: Generate a Long-Lived Access Token</h4>
+          <ol>
+            <li>Open your Home Assistant web UI (e.g. <code>http://homeassistant.local:8123</code>).</li>
+            <li>Click your <strong>User Profile</strong> icon at the bottom of the left sidebar.</li>
+            <li>Switch to the <strong>Security</strong> tab at the top of your profile page.</li>
+            <li>Scroll to the bottom section (<strong>Long-Lived Access Tokens</strong>) and click <strong>Create Token</strong>.</li>
+            <li>Name it <code>DuckyDeck Studio</code> and copy the token string.</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h4>Step 2: Connect &amp; Bind Entities to Keys</h4>
+          <ol>
+            <li>Select any key on the Hardware Canvas &rarr; click the <strong>🌐 Web API</strong> tab &rarr; click <strong>Configure Web API...</strong>.</li>
+            <li>Select the <strong>🏠 Home Assistant</strong> tab, enter your Home Assistant URL and Long-Lived Access Token, and click <strong>Save &amp; Fetch Entities</strong>.</li>
+            <li>Filter by domain (<code>light</code>, <code>switch</code>, <code>scene</code>, <code>script</code>, <code>automation</code>) or search by friendly name.</li>
+            <li>Pick your service (<code>toggle</code>, <code>turn_on</code>, <code>turn_off</code>, <code>trigger</code>), click <strong>⚡ Test Call</strong> to verify live response, and click <strong>Save / Apply to Key</strong>.</li>
+            <li>Sync your profile to the duckyPad microSD card (<strong>⬆ Sync to SD</strong>).</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section id="tutorial-webhooks">
+      <h2>🎓 Tutorial 3: Configuring Webhooks &amp; the Built-In HTTP REST API</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h4>1. Outbound Key-Press Webhooks (`GET` / `POST` / `PUT` / `DELETE`)</h4>
+          <p>Trigger n8n workflows, Node-RED flows, Discord webhooks, or custom local APIs when a key is pressed:</p>
+          <ol>
+            <li>Select a key &rarr; <strong>🌐 Web API</strong> tab &rarr; <strong>Configure Web API...</strong> &rarr; <strong>🌐 Custom HTTP Webhook</strong>.</li>
+            <li>Select the HTTP method (e.g. <code>POST</code>) and enter the destination URL.</li>
+            <li>Configure optional authentication (<code>Bearer Token</code> or custom header such as <code>X-API-Key</code>) and JSON request body.</li>
+            <li>Click <strong>⚡ Test Call</strong> to inspect the live HTTP response status and body.</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h4>2. Per-Profile &amp; Global Profile-Change Webhooks</h4>
+          <p>Automatically notify external services whenever the duckyPad switches profiles:</p>
+          <ul>
+            <li><strong>Per-Profile Webhook:</strong> Right-click a profile in the sidebar &rarr; <strong>Properties...</strong> &rarr; enable <em>Trigger Webhook on Profile Activation</em>.</li>
+            <li><strong>Global Webhook:</strong> Open <strong>☰ &rarr; Settings... &rarr; REST API &amp; Webhooks</strong> &rarr; enable <em>Global Profile-Change Webhook</em>.</li>
+            <li>Supports template variables: <code>{{profile_number}}</code>, <code>{{profile_name}}</code>, <code>{{previous_profile_number}}</code>, <code>{{previous_profile_name}}</code>, <code>{{source}}</code>, and <code>{{timestamp}}</code>.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <h4>3. Inbound Control via DuckyDeck Studio's Built-In HTTP REST API (`127.0.0.1:28491`)</h4>
+        <p>Enable the local HTTP server in <strong>☰ &rarr; Settings... &rarr; REST API &amp; Webhooks</strong> and copy your Bearer token to remotely switch profiles, set key RGB LEDs, or update <code>_GV0.._GV31</code> from external scripts or Home Assistant:</p>
+        <pre><code># Switch duckyPad to Profile #2
+curl -X POST http://127.0.0.1:28491/api/v1/profile/select \
+  -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" \
+  -d '{"profile": 2}'
+
+# Set Key #1 LED to Red and update _GV0 = 1
+curl -X POST http://127.0.0.1:28491/api/v1/leds/set \
+  -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" \
+  -d '{"key": 1, "r": 255, "g": 0, "b": 0}'</code></pre>
+      </div>
+    </section>
+
+    <section id="tutorial-app-launch">
+      <h2>🎓 Tutorial 4: Configuring App Launching (`APP` Builder)</h2>
+      <ol>
+        <li>Select a key (<code>1–20</code>) on the Hardware Canvas &rarr; click the <strong>🚀 Launch App</strong> tab &rarr; click <strong>Configure Launch App...</strong>.</li>
+        <li>Search or pick from automatically discovered applications (XDG <code>.desktop</code> and Flatpak apps on Linux; Start Menu <code>.lnk</code> shortcuts and installed apps on Windows), or click <strong>Browse...</strong> to select a custom binary or script.</li>
+        <li>Choose your trigger mechanism:
+          <ul>
+            <li><strong>Silent USB HID Listener (`_GV31`, Recommended):</strong> Writes a unique slot code to <code>_GV31</code> on the duckyPad so DuckyDeck Studio launches the app silently over USB HID without emitting any keyboard shortcut into your active window.</li>
+            <li><strong>`F13–F24` Global Hotkey Mode:</strong> Sends a high function key (with optional <code>Ctrl</code>/<code>Shift</code>/<code>Alt</code>/<code>Super</code> modifiers) over USB HID keyboard.</li>
+          </ul>
+        </li>
+        <li>Click <strong>⚡ Test Launch</strong> to verify, then save and sync to your duckyPad microSD card.</li>
+      </ol>
+    </section>
+
+    <section id="tutorial-autoswitcher">
+      <h2>🎓 Tutorial 5: Window Auto-Switcher, Browser Tab Regex &amp; Keyboard Modifier Layers</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h4>1. Window-Focus Auto-Switching &amp; Crosshair Picker</h4>
+          <ol>
+            <li>Toggle on <strong>AUTO-SWITCHER</strong> at the bottom of the left Profiles sidebar and click <strong>Rules</strong>.</li>
+            <li>Click <strong>🎯 Pick Window</strong> and click any open desktop window to auto-fill its <strong>Window Class</strong> and <strong>Window Title</strong> (supported across KDE Plasma 6 Wayland/X11, GNOME, COSMIC, Hyprland/Omarchy, Linux Mint Cinnamon/MATE/Xfce, and Windows 10/11).</li>
+            <li><strong>Browser Tab Matching:</strong> Combine a browser class (e.g. <code>zen</code>, <code>firefox</code>, <code>chrome</code>) with a Title substring (e.g. <code>YouTube</code>) or regex (<code>/^(YouTube|Twitch)/i</code>) to switch profiles per website tab!</li>
+            <li><strong>Protected Fallback Profile (`★ FALLBACK`):</strong> Automatically activates whenever you focus an unmatched desktop window.</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h4>2. Main-Keyboard Modifier Layer Shift</h4>
+          <p>Shift your duckyPad into a secondary layer profile using modifier keys on your main keyboard (e.g. <code>Ctrl+Alt</code> or <code>CapsLock</code>):</p>
+          <ul>
+            <li><strong>Hold (Momentary):</strong> Active while held; snaps back on release.</li>
+            <li><strong>One-Shot (Sticky Next Key):</strong> Tap to arm for the next single duckyPad key press, then auto-return.</li>
+            <li><strong>Double-Tap + Hold:</strong> Requires a rapid double-tap + hold to activate.</li>
+            <li><strong>Toggle (Press to Lock / Unlock):</strong> Tap once to lock layer; tap again to return.</li>
+            <li><strong>Chord Guard &amp; Held-Modifier Bleed Suppression:</strong> Cancels layer switches if you type a normal shortcut (like <code>Ctrl+Alt+T</code>) and neutralizes held main-keyboard modifiers when you press a duckyPad key.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="tutorial-multiclick-gv">
+      <h2>🎓 Tutorial 6: Multi-Click (`1×`/`2×`/`3×`), Gaming Hold &amp; Global Variables (`_GV`)</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h4>1. Multi-Click Phases (`1× Single`, `2× Double`, `3× Triple`)</h4>
+          <p>Assign up to 3 independent scripts to a single physical key using the <strong>⬇ 1× Single</strong>, <strong>⚡ 2× Double</strong>, and <strong>⚡⚡ 3× Triple</strong> phase tabs in the Key Editor, and tune the <strong>⏱ Gap</strong> (default <code>250 ms</code>). Multi-click compiles directly into standalone DuckyScript 3 bytecode (<code>keyN.dsb</code>).</p>
+          <h4>2. Gaming Mode (Hold Key) &amp; `⬆ On Release`</h4>
+          <p>Enable <strong>🎮 Gaming Mode (Hold Key)</strong> to send <code>KEYDOWN</code> when pressed and <code>KEYUP</code> in <code>keyN-release.txt</code> when released—ideal for WASD movement, sprinting, crouching, and Push-to-Talk.</p>
+        </div>
+        <div class="card">
+          <h4>3. Persistent Global Variables (`_GV0`..`_GV31`) &amp; RGB Animator</h4>
+          <ul>
+            <li><strong>`$_GV0` .. `$_GV30`:</strong> 32-bit integers shared across all keys and profiles on the duckyPad hardware for building stateful toggles and encoder counters. Inspect or edit them live via <strong>☰ &rarr; Variables (`_GV`)...</strong>.</li>
+            <li><strong>`$_GV31`:</strong> Reserved for DuckyDeck Studio's silent USB HID host bridge.</li>
+            <li><strong>RGB Lighting:</strong> Use <code>SWCF</code> / <code>SWCC</code> / <code>SWCR</code> inside DuckyScript 3 for standalone hardware LED state changes, or right-click any key &rarr; <strong>✨ Key RGB Lighting Animation...</strong> for 20 FPS animated effects.</li>
+          </ul>
+        </div>
+      </div>
     </section>
 
     <!-- 15. Troubleshooting -->

@@ -2252,6 +2252,8 @@ impl HostKeyboardModifierListener {
         modifier_switch_enabled: bool,
         paused_for_editing: bool,
         rules: &[crate::kwin::auto_switcher::ModifierLayerRule],
+        active_window_class: &str,
+        active_window_title: &str,
     ) -> Option<crate::kwin::auto_switcher::ModifierLayerTransition> {
         if !modifier_switch_enabled || rules.is_empty() || !rules.iter().any(|r| r.enabled) {
             self.held_keys.clear();
@@ -2341,10 +2343,12 @@ impl HostKeyboardModifierListener {
                                 if released_newly_pressed {
                                     let mut snap = self.evdev_held_keys.clone();
                                     snap.extend(node.held_keys.iter().copied());
-                                    if let Some(tr) = self.engine.evaluate_tick(
+                                    if let Some(tr) = self.engine.evaluate_tick_for_window(
                                         modifier_switch_enabled,
                                         paused_for_editing,
                                         rules,
+                                        active_window_class,
+                                        active_window_title,
                                         &snap,
                                         &newly_pressed_keys,
                                         duckypad_keys_held,
@@ -2464,10 +2468,12 @@ impl HostKeyboardModifierListener {
 
         let out_transition = self
             .engine
-            .evaluate_tick(
+            .evaluate_tick_for_window(
                 modifier_switch_enabled,
                 paused_for_editing,
                 rules,
+                active_window_class,
+                active_window_title,
                 &self.held_keys,
                 &newly_pressed_keys,
                 duckypad_keys_held,
