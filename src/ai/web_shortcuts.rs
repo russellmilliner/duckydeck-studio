@@ -756,6 +756,9 @@ pub fn split_multi_click_script(on_press_script: &str) -> (String, String, Strin
     let single = extract_section(SINGLE_CLICK_BEGIN, SINGLE_CLICK_END);
     let double = extract_section(DOUBLE_CLICK_BEGIN, DOUBLE_CLICK_END);
     let triple = extract_section(TRIPLE_CLICK_BEGIN, TRIPLE_CLICK_END);
+    if single.trim().is_empty() && double.trim().is_empty() && !triple.trim().is_empty() {
+        return (triple, String::new(), String::new());
+    }
     (single, double, triple)
 }
 
@@ -769,6 +772,12 @@ pub fn compose_multi_click_script(
     triple_script: &str,
     interval_ms: u32,
 ) -> String {
+    if single_script.trim().is_empty()
+        && double_script.trim().is_empty()
+        && !triple_script.trim().is_empty()
+    {
+        return triple_script.to_string();
+    }
     let has_double = !double_script.trim().is_empty();
     let has_triple = !triple_script.trim().is_empty();
     if !has_double && !has_triple {

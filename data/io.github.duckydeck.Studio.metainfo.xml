@@ -34,6 +34,11 @@
   <url type="bugtracker">https://github.com/russellmilliner/duckydeck-studio/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.1.17" date="2026-11-03">
+      <description>
+        <p>Update dependencies: cc 1.11.0</p>
+      </description>
+    </release>
     <release version="0.1.16" date="2026-11-01">
       <description>
         <p>Self-healing KWin 6 Wayland auto-switcher watchdog, app/window-title-scoped Main-Keyboard Modifier Layer rules, in-app interactive Tutorials &amp; Guides, Desktop OLED Widget sync stability, and main window screen/position persistence.</p>

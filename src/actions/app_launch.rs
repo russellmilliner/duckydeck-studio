@@ -2501,13 +2501,21 @@ impl HostKeyboardModifierListener {
                 win32_input::clear_suppressed_modifiers();
             }
         } else if let Some((_prof, trig, mode)) = self.engine.active_override() {
-            #[cfg(not(target_os = "windows"))]
-            let _ = (&trig, &mode);
-            #[cfg(target_os = "windows")]
             if (mode == "hold" || mode == "double_tap_hold")
                 && last_duckypad_keydown_ms > self.last_suppressed_duckypad_keydown_ms
             {
-                self.suppress_active_modifier_bleed(&trig);
+                #[cfg(unix)]
+                {
+                    let codes = trigger_key_evdev_codes(&trig);
+                    let target_events = self.collect_holding_keyboard_event_names(&trig);
+                    if !self.hidraw_nodes.is_empty() && !target_events.is_empty() {
+                        let _ = try_inject_evdev_release_on_events(&target_events, codes);
+                    }
+                }
+                #[cfg(target_os = "windows")]
+                {
+                    self.suppress_active_modifier_bleed(&trig);
+                }
                 self.last_suppressed_duckypad_keydown_ms = last_duckypad_keydown_ms;
             }
         }

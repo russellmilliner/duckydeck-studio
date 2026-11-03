@@ -2,6 +2,17 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.17](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.17) — 2026-11-03
+
+### Highlights
+- Update dependencies: cc 1.11.0
+
+### 📦 Bumped Dependencies (1 package)
+
+| Package | Previous | Updated | Scope |
+| :--- | :--- | :--- | :--- |
+| `cc` | `1.10.0` | **`1.11.0`** | Lockfile (`Cargo.lock`) |
+
 ## [v0.1.16](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.16) — 2026-11-01
 
 ### Highlights

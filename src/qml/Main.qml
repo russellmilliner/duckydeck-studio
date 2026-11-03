@@ -220,6 +220,7 @@ Kirigami.ApplicationWindow {
             { name: "AiModal", win: aiModal, openFn: function() { aiModal.open() } },
             { name: "PgvDrawer", win: pgvDrawer, openFn: function() { pgvDrawer.open() } },
             { name: "AutoSwitchDrawer", win: autoSwitchDrawer, openFn: function() { autoSwitchDrawer.open() } },
+            { name: "TutorialsDialog", win: tutorialsDialog, openFn: function() { tutorialsDialog.openTopic("oled_vm") } },
             { name: "OledDesktopWidget", win: oledDesktopWidget, openFn: function() { oledDesktopWidget.show(); oledDesktopWidget.syncFromController() } }
         ]
     }
@@ -1218,7 +1219,7 @@ Kirigami.ApplicationWindow {
         root.selectedSlotNumber = slotNumber
         root.selectedSlotTitle = slotTitle
         root.selectedSlotColor = slotColor
-        if (slotNumber > 20 && (root.editingClickPhase === 1 || root.editingClickPhase === 2)) {
+        if (isDifferentSlotOrProfile || slotNumber > 20) {
             root.editingClickPhase = 0
             root.editingReleaseScript = false
         }
@@ -2642,6 +2643,7 @@ Kirigami.ApplicationWindow {
         settingsDialog: settingsDialog
         pgvDrawer: pgvDrawer
         autoSwitchDrawer: autoSwitchDrawer
+        tutorialsDialog: tutorialsDialog
         aiModal: aiModal
         oledDesktopWidget: oledDesktopWidget
         hardwareCanvas: root.mainHardwareCanvas
@@ -3615,19 +3617,6 @@ Kirigami.ApplicationWindow {
                                     Layout.fillWidth: true
                                 }
 
-                                QQC2.ToolButton {
-                                    text: "?"
-                                    font.bold: true
-                                    font.pointSize: 9.5 * root.fontScale
-                                    implicitWidth: 22
-                                    implicitHeight: 22
-                                    padding: 0
-                                    onClicked: root.openTutorial("autoswitch")
-                                    QQC2.ToolTip.delay: 400
-                                    QQC2.ToolTip.visible: hovered
-                                    QQC2.ToolTip.text: qsTr("🎓 Open Tutorial: Window Auto-Switcher & Keyboard Modifier Layers")
-                                }
-
                                 QQC2.Switch {
                                     font.pointSize: 10 * root.fontScale
                                     checked: deviceController.autoSwitchEnabled
@@ -4300,6 +4289,9 @@ Kirigami.ApplicationWindow {
                                         padding: 0
                                         spacing: 2
                                         background: Item {}
+                                        currentIndex: root.editingReleaseScript
+                                            ? (inspectorCard.isMechanicalKey ? 3 : 1)
+                                            : root.editingClickPhase
 
                                         // 1x Single Click (On Press) Tab
                                         QQC2.TabButton {

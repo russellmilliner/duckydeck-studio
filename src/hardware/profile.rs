@@ -1235,14 +1235,24 @@ impl DuckyProfile {
             let release_dsb_path = dir_path.join(format!("key{slot_idx}-release.dsb"));
 
             if press_path.exists() {
-                let script = fs::read_to_string(&press_path)?;
+                let mut script = fs::read_to_string(&press_path)?;
+                let mut healed_multiclick = false;
+                if script.contains(crate::ai::web_shortcuts::SINGLE_CLICK_BEGIN) {
+                    let (s1, s2, s3) =
+                        crate::ai::web_shortcuts::split_multi_click_script(&script);
+                    if s2.trim().is_empty() && s3.trim().is_empty() && !s1.trim().is_empty() {
+                        script = s1;
+                        healed_multiclick = true;
+                        let _ = fs::write(&press_path, &script);
+                    }
+                }
                 let (allow_abort, disable_autorepeat) = {
                     let slot = profile.ensure_slot(slot_idx);
                     slot.on_press_script = script.clone();
                     (slot.allow_abort, slot.disable_autorepeat)
                 };
-                // Auto-compile missing .dsb if keyN.txt exists without keyN.dsb
-                if !press_dsb_path.exists() && !script.trim().is_empty() {
+                // Auto-compile missing .dsb if keyN.txt exists without keyN.dsb (or if healed)
+                if (!press_dsb_path.exists() || healed_multiclick) && !script.trim().is_empty() {
                     let compiled = crate::vm::compiler::compile_duckyscript_to_dsb(
                         &script,
                         allow_abort,

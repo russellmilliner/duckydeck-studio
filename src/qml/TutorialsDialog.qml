@@ -1,32 +1,42 @@
 import QtQuick
+import QtQuick.Window
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
 
-QQC2.Dialog {
+Window {
     id: tutorialsDialog
     objectName: "tutorialsDialog"
     readonly property bool closableWithEscape: true
-    enter: null
-    exit: null
 
     property var root: null
     property var controller: null
-    property real fontScale: root ? root.fontScale : 1.0
+    readonly property real fontScale: (controller && controller.uiTextScale > 0
+        ? controller.uiTextScale
+        : (root ? root.fontScale * 100 : 100)) / 100.0
     property bool isLightTheme: root ? root.isLightTheme : false
     property int currentTopicIndex: 0
     property string copiedFeedbackText: ""
 
-    parent: QQC2.Overlay.overlay
-    anchors.centerIn: parent
-    modal: true
-    padding: 14
-    topPadding: 10
-    bottomPadding: 12
-    width: root ? Math.min(Math.max(820, Math.round(920 * fontScale)), root.width - 28) : 900
-    height: root ? Math.min(Math.max(600, Math.round(690 * fontScale)), root.height - 28) : 660
     title: qsTr("🎓 DuckyDeck Studio — Interactive Tutorials & Step-by-Step Guides")
-    standardButtons: QQC2.Dialog.NoButton
+    width: Math.min(1040, Screen.desktopAvailableWidth >= 800 ? Screen.desktopAvailableWidth - 80 : 1040)
+    height: Math.min(760, Screen.desktopAvailableHeight >= 600 ? Screen.desktopAvailableHeight - 80 : 760)
+    minimumWidth: 760
+    minimumHeight: 540
+    visible: false
+    transientParent: root
+    modality: Qt.NonModal
+    flags: Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint | Qt.WindowMinMaxButtonsHint | ((root && root.visible) ? Qt.WindowStaysOnTopHint : 0)
+
+    Kirigami.Theme.colorSet: Kirigami.Theme.Window
+    Kirigami.Theme.inherit: false
+    color: Kirigami.Theme.backgroundColor
+
+    function open() {
+        tutorialsDialog.show()
+        tutorialsDialog.raise()
+        tutorialsDialog.requestActivate()
+    }
 
     Shortcut {
         sequence: "Escape"
@@ -89,14 +99,21 @@ QQC2.Dialog {
     component TutorialScrollBar: QQC2.ScrollBar {
         id: sbControl
         objectName: "highContrastScrollBar"
-        implicitWidth: orientation === Qt.Vertical ? 12 : 100
-        implicitHeight: orientation === Qt.Vertical ? 100 : 12
-        padding: 2
+        readonly property bool isProfileBoxStyleScrollBar: true
+        readonly property int styleTrackThickness: 11
+        readonly property int styleThumbThickness: 7
+        readonly property int styleTrackRadius: 5
+        readonly property int styleThumbRadius: 4
+
+        implicitWidth: orientation === Qt.Vertical ? styleTrackThickness : 100
+        implicitHeight: orientation === Qt.Vertical ? 100 : styleTrackThickness
+        padding: 1
+        z: 50
         policy: size < 1.0 ? QQC2.ScrollBar.AlwaysOn : QQC2.ScrollBar.AsNeeded
         minimumSize: 0.14
 
         background: Rectangle {
-            radius: 5
+            radius: sbControl.styleTrackRadius
             color: Qt.alpha(Kirigami.Theme.textColor, 0.14)
             border.width: 1
             border.color: Qt.alpha(Kirigami.Theme.textColor, 0.28)
@@ -104,9 +121,9 @@ QQC2.Dialog {
         }
 
         contentItem: Rectangle {
-            implicitWidth: sbControl.orientation === Qt.Vertical ? 8 : 44
-            implicitHeight: sbControl.orientation === Qt.Vertical ? 44 : 8
-            radius: 4
+            implicitWidth: sbControl.orientation === Qt.Vertical ? sbControl.styleThumbThickness : 44
+            implicitHeight: sbControl.orientation === Qt.Vertical ? 44 : sbControl.styleThumbThickness
+            radius: sbControl.styleThumbRadius
             visible: sbControl.size < 1.0
             color: sbControl.pressed
                 ? Kirigami.Theme.highlightColor
@@ -159,13 +176,15 @@ QQC2.Dialog {
                         anchors.centerIn: parent
                         text: cardRoot.badgeText
                         font.bold: true
-                        font.pointSize: 9 * tutorialsDialog.fontScale
+                        font.pointSize: 10 * tutorialsDialog.fontScale
                         color: Kirigami.Theme.textColor
                     }
                 }
 
                 QQC2.Label {
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 1
                     wrapMode: Text.WordWrap
                     text: cardRoot.heading
                     font.bold: true
@@ -209,19 +228,21 @@ QQC2.Dialog {
 
                 QQC2.Label {
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 1
                     wrapMode: Text.WordWrap
                     text: codeBox.title
                     font.bold: true
-                    font.pointSize: 9.5 * tutorialsDialog.fontScale
-                    color: Kirigami.Theme.highlightColor
+                    font.pointSize: 10 * tutorialsDialog.fontScale
+                    color: Kirigami.Theme.textColor
                 }
 
                 QQC2.Button {
                     visible: codeBox.canPreviewOled
                     icon.name: "video-television"
-                    text: qsTr("⚡ Insert & Preview on OLED VM")
-                    implicitHeight: Math.round(24 * tutorialsDialog.fontScale)
-                    font.pointSize: 9 * tutorialsDialog.fontScale
+                    text: qsTr("⚡ Try on OLED VM")
+                    implicitHeight: Math.round(26 * tutorialsDialog.fontScale)
+                    font.pointSize: 10 * tutorialsDialog.fontScale
                     highlighted: true
                     onClicked: tutorialsDialog.tryOledExampleInEditor(codeBox.code)
                 }
@@ -229,79 +250,94 @@ QQC2.Dialog {
                 QQC2.Button {
                     icon.name: "edit-copy"
                     text: qsTr("Copy")
-                    implicitHeight: Math.round(24 * tutorialsDialog.fontScale)
-                    font.pointSize: 9 * tutorialsDialog.fontScale
+                    implicitHeight: Math.round(26 * tutorialsDialog.fontScale)
+                    font.pointSize: 10 * tutorialsDialog.fontScale
                     onClicked: tutorialsDialog.copyTextToClipboard(codeBox.code, codeBox.title)
                 }
             }
 
             QQC2.Label {
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 wrapMode: Text.WrapAnywhere
                 text: codeBox.code
                 font.family: "monospace"
-                font.pointSize: 9.5 * tutorialsDialog.fontScale
+                font.pointSize: 10 * tutorialsDialog.fontScale
                 color: Kirigami.Theme.textColor
             }
         }
     }
 
-    ColumnLayout {
+    Rectangle {
         anchors.fill: parent
-        spacing: 8
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
+        color: Kirigami.Theme.backgroundColor
 
-        // Standard KDE Plasma UI TabBar (Rule 7.6)
-        QQC2.TabBar {
-            id: tutorialTabBar
-            Layout.fillWidth: true
-            currentIndex: tutorialsDialog.currentTopicIndex
-            onCurrentIndexChanged: {
-                if (tutorialsDialog.currentTopicIndex !== currentIndex) {
-                    tutorialsDialog.currentTopicIndex = currentIndex
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 8
+
+            // Standard KDE Plasma UI TabBar (Rule 7.6)
+            QQC2.TabBar {
+                id: tutorialTabBar
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: 1
+                clip: true
+                currentIndex: tutorialsDialog.currentTopicIndex
+                onCurrentIndexChanged: {
+                    if (tutorialsDialog.currentTopicIndex !== currentIndex) {
+                        tutorialsDialog.currentTopicIndex = currentIndex
+                    }
+                }
+
+                QQC2.TabButton {
+                    text: qsTr("🖥️ OLED VM")
+                    font.pointSize: 10 * tutorialsDialog.fontScale
+                    width: Math.max(70, Math.floor((tutorialTabBar.width - 12) / 7))
+                }
+                QQC2.TabButton {
+                    text: qsTr("🏠 Home Asst")
+                    font.pointSize: 10 * tutorialsDialog.fontScale
+                    width: Math.max(70, Math.floor((tutorialTabBar.width - 12) / 7))
+                }
+                QQC2.TabButton {
+                    text: qsTr("🌐 Webhooks")
+                    font.pointSize: 10 * tutorialsDialog.fontScale
+                    width: Math.max(70, Math.floor((tutorialTabBar.width - 12) / 7))
+                }
+                QQC2.TabButton {
+                    text: qsTr("🚀 Launch App")
+                    font.pointSize: 10 * tutorialsDialog.fontScale
+                    width: Math.max(70, Math.floor((tutorialTabBar.width - 12) / 7))
+                }
+                QQC2.TabButton {
+                    text: qsTr("🪟 Auto-Switch")
+                    font.pointSize: 10 * tutorialsDialog.fontScale
+                    width: Math.max(70, Math.floor((tutorialTabBar.width - 12) / 7))
+                }
+                QQC2.TabButton {
+                    text: qsTr("⚡ Multi-Click")
+                    font.pointSize: 10 * tutorialsDialog.fontScale
+                    width: Math.max(70, Math.floor((tutorialTabBar.width - 12) / 7))
+                }
+                QQC2.TabButton {
+                    text: qsTr("🔢 Vars & RGB")
+                    font.pointSize: 10 * tutorialsDialog.fontScale
+                    width: Math.max(70, Math.floor((tutorialTabBar.width - 12) / 7))
                 }
             }
-
-            QQC2.TabButton {
-                text: qsTr("🖥️ OLED VM & HUD")
-                font.pointSize: 9.5 * tutorialsDialog.fontScale
-                width: implicitWidth
-            }
-            QQC2.TabButton {
-                text: qsTr("🏠 Home Assistant")
-                font.pointSize: 9.5 * tutorialsDialog.fontScale
-                width: implicitWidth
-            }
-            QQC2.TabButton {
-                text: qsTr("🌐 Webhooks & API")
-                font.pointSize: 9.5 * tutorialsDialog.fontScale
-                width: implicitWidth
-            }
-            QQC2.TabButton {
-                text: qsTr("🚀 App Launching")
-                font.pointSize: 9.5 * tutorialsDialog.fontScale
-                width: implicitWidth
-            }
-            QQC2.TabButton {
-                text: qsTr("🪟 Auto-Switch & Layers")
-                font.pointSize: 9.5 * tutorialsDialog.fontScale
-                width: implicitWidth
-            }
-            QQC2.TabButton {
-                text: qsTr("⚡ Multi-Click & Hold")
-                font.pointSize: 9.5 * tutorialsDialog.fontScale
-                width: implicitWidth
-            }
-            QQC2.TabButton {
-                text: qsTr("🔢 Variables & RGB")
-                font.pointSize: 9.5 * tutorialsDialog.fontScale
-                width: implicitWidth
-            }
-        }
 
         // Scrollable Tutorial Content Area
         StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.minimumWidth: 0
+            Layout.preferredWidth: 1
+            Layout.minimumHeight: 120
+            Layout.preferredHeight: 1
             currentIndex: tutorialsDialog.currentTopicIndex
 
             // =================================================================
@@ -366,7 +402,7 @@ QQC2.Dialog {
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             font.family: "monospace"
-                            font.pointSize: 9.5 * tutorialsDialog.fontScale
+                            font.pointSize: 10 * tutorialsDialog.fontScale
                             color: Kirigami.Theme.textColor
                             text: "• OLED_CLEAR                     — Erase the OLED framebuffer to black\n" +
                                   "• OLED_CURSOR <x> <y>            — Move text cursor to pixel (x: 0..127, y: 0..127)\n" +
@@ -947,12 +983,14 @@ QQC2.Dialog {
 
             QQC2.Label {
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: 1
                 elide: Text.ElideRight
                 font.bold: true
-                font.pointSize: 9.5 * tutorialsDialog.fontScale
+                font.pointSize: 10 * tutorialsDialog.fontScale
                 color: tutorialsDialog.copiedFeedbackText.length > 0
                     ? Kirigami.Theme.positiveTextColor
-                    : Kirigami.Theme.disabledTextColor
+                    : Qt.alpha(Kirigami.Theme.textColor, 0.78)
                 text: tutorialsDialog.copiedFeedbackText.length > 0
                     ? tutorialsDialog.copiedFeedbackText
                     : qsTr("Tip: Click any tab above to switch tutorials, or click '📖 Open Full Web User Guide' for the searchable manual.")
@@ -961,7 +999,7 @@ QQC2.Dialog {
             QQC2.Button {
                 icon.name: "help-contents"
                 text: qsTr("📖 Open Full Web User Guide")
-                font.pointSize: 9.5 * tutorialsDialog.fontScale
+                font.pointSize: 10 * tutorialsDialog.fontScale
                 onClicked: {
                     if (tutorialsDialog.controller) {
                         tutorialsDialog.controller.openUserGuide()
@@ -972,10 +1010,11 @@ QQC2.Dialog {
             QQC2.Button {
                 icon.name: "window-close"
                 text: qsTr("Close")
-                font.pointSize: 9.5 * tutorialsDialog.fontScale
+                font.pointSize: 10 * tutorialsDialog.fontScale
                 highlighted: true
                 onClicked: tutorialsDialog.close()
             }
+        }
         }
     }
 }

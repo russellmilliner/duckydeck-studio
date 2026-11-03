@@ -1595,7 +1595,7 @@ Window {
                                                         horizontalAlignment: Text.AlignHCenter
                                                         font.bold: true
                                                         font.family: "monospace"
-                                                        font.pointSize: 9.5 * drawerRoot.fontScale
+                                                        font.pointSize: 10 * drawerRoot.fontScale
                                                         elide: Text.ElideRight
                                                         color: Kirigami.Theme.textColor
                                                         text: {
@@ -2503,6 +2503,20 @@ Window {
                 spacing: 8
 
                 Item { Layout.fillWidth: true }
+
+                QQC2.Button {
+                    font.pointSize: 10 * drawerRoot.fontScale
+                    icon.name: "help-contents"
+                    text: qsTr("Help")
+                    onClicked: {
+                        if (drawerRoot.root && typeof drawerRoot.root.openTutorial === "function") {
+                            drawerRoot.root.openTutorial("autoswitch")
+                        }
+                    }
+                    QQC2.ToolTip.delay: 500
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.text: qsTr("Open Tutorial: Window Auto-Switcher & Keyboard Modifier Layers")
+                }
 
                 QQC2.Button {
                     font.pointSize: 10 * drawerRoot.fontScale

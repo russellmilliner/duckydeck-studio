@@ -23,6 +23,7 @@ Window {
     property var settingsDialog: null
     property var pgvDrawer: null
     property var autoSwitchDrawer: null
+    property var tutorialsDialog: null
     property var aiModal: null
     property var oledDesktopWidget: null
     property var hardwareCanvas: null
@@ -1156,6 +1157,7 @@ Window {
                 { name: "OledIconPickerDialog", root: oledIconPickerDialog.contentItem },
                 { name: "PgvDrawer", root: pgvDrawer.contentItem },
                 { name: "AutoSwitchDrawer", root: autoSwitchDrawer.contentItem },
+                { name: "TutorialsDialog", root: tutorialsDialog ? tutorialsDialog.contentItem : null },
                 { name: "AiModal", root: aiModal.contentItem }
             ]
             var missingScrollBarWindows = []
@@ -1890,6 +1892,23 @@ Window {
                 },
                 close: function() {
                     autoSwitchDrawer.close()
+                }
+            },
+            {
+                name: "TutorialsDialog",
+                open: function() {
+                    if (tutorialsDialog) tutorialsDialog.openTopic("oled_vm")
+                },
+                audit: function() {
+                    if (tutorialsDialog) {
+                        for (var t = 0; t < 7; ++t) {
+                            tutorialsDialog.currentTopicIndex = t
+                            auditItemTree("TutorialsDialog_Tab" + t, tutorialsDialog.contentItem, tutorialsDialog.width, tutorialsDialog.height, Kirigami.Theme.backgroundColor)
+                        }
+                    }
+                },
+                close: function() {
+                    if (tutorialsDialog) tutorialsDialog.close()
                 }
             },
             {
