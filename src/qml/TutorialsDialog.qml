@@ -802,7 +802,7 @@ Window {
                             wrapMode: Text.WordWrap
                             font.pointSize: 10 * tutorialsDialog.fontScale
                             color: Kirigami.Theme.textColor
-                            text: qsTr("In the Auto-Switcher Rules drawer, you can bind modifier keys on your MAIN keyboard (such as Right Ctrl, Menu, Ctrl+Alt, Right Alt, or F13–F24) to shift your duckyPad into a secondary layer profile:\n\n" +
+                            text: qsTr("In the Auto-Switcher Rules drawer, you can bind modifier keys or chords on your MAIN keyboard (such as Right Ctrl, Menu, Right Ctrl + Right Shift, Menu + Right Shift, Ctrl+Alt, Right Alt, Scroll Lock, or F13–F24) to shift your duckyPad into a secondary layer profile:\n\n" +
                                 "• Hold (Momentary): Switches to the target profile while you hold the modifier keys down, and snaps back to your window's profile the instant you release them.\n" +
                                 "• One-Shot (Sticky Next Key): Tap and release the modifier key to arm the layer for your next single duckyPad key press, then automatically return.\n" +
                                 "• Double-Tap + Hold: Requires a quick double-tap and hold on the modifier key so single holds never trigger a layer switch.\n" +

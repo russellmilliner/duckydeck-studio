@@ -375,6 +375,16 @@ mod win32_input {
                 (0x5B, true),
                 (0x5C, true),
             ],
+            "RCTRL_RSHIFT" => &[
+                (0xA3, true),
+                (0x11, false),
+                (0xA1, true),
+                (0x10, false),
+            ],
+            "MENU_RSHIFT" => &[
+                (0xA1, true),
+                (0x10, false),
+            ],
             _ => &[],
         };
         for &(vk, _extended) in vks {
@@ -1627,6 +1637,8 @@ fn trigger_key_evdev_codes(trigger_key: &str) -> &'static [u16] {
         "SUPER" => &[125, 126],
         "CTRL_ALT" => &[29, 97, 56, 100],
         "CTRL_SUPER" => &[29, 97, 125, 126],
+        "RCTRL_RSHIFT" => &[97, 54],
+        "MENU_RSHIFT" => &[54],
         _ => &[],
     }
 }
@@ -2012,6 +2024,7 @@ impl HostKeyboardModifierListener {
     fn collect_holding_keyboard_event_names(&self, trigger_key: &str) -> Vec<String> {
         let norm_trig =
             crate::kwin::auto_switcher::normalize_modifier_trigger_key(trigger_key);
+        let mod_codes = trigger_key_evdev_codes(&norm_trig);
         let mut active_groups = std::collections::HashSet::new();
         let mut out = Vec::new();
 
@@ -2019,7 +2032,8 @@ impl HostKeyboardModifierListener {
             if crate::kwin::auto_switcher::is_modifier_trigger_pressed(
                 &norm_trig,
                 &node.held_keys,
-            ) {
+            ) || mod_codes.iter().any(|c| node.held_keys.contains(c))
+            {
                 if !node.device_group_key.is_empty() {
                     active_groups.insert(node.device_group_key.clone());
                 }
@@ -2609,6 +2623,8 @@ mod hidraw_modifier_tests {
             "SUPER",
             "CTRL_ALT",
             "CTRL_SUPER",
+            "RCTRL_RSHIFT",
+            "MENU_RSHIFT",
             "MENU",
         ] {
             listener.suppress_active_modifier_bleed(key);

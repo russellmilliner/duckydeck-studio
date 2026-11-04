@@ -49,6 +49,8 @@ Window {
         { code: "LALT", label: qsTr("Left Alt") },
         { code: "LSHIFT", label: qsTr("Left Shift") },
         { code: "SUPER", label: qsTr("Super / Windows Key") },
+        { code: "RCTRL_RSHIFT", label: qsTr("Right Ctrl + Right Shift (Chord)") },
+        { code: "MENU_RSHIFT", label: qsTr("Menu + Right Shift (Chord)") },
         { code: "CTRL_ALT", label: qsTr("Ctrl + Alt (Chord)") },
         { code: "CTRL_SUPER", label: qsTr("Ctrl + Super (Chord)") },
         { code: "CAPSLOCK", label: qsTr("Caps Lock") },

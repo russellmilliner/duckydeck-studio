@@ -76,8 +76,26 @@ pub fn normalize_modifier_trigger_key(raw: &str) -> String {
         "SCROLLLOCK" | "SCROLL_LOCK" | "SCRLK" => "SCROLLLOCK".to_string(),
         "PAUSE" | "BREAK" | "PAUSE_BREAK" => "PAUSE".to_string(),
         "FN" | "FUNCTION" => "FN".to_string(),
-        "CTRL_ALT" | "CTRL+ALT" => "CTRL_ALT".to_string(),
-        "CTRL_SUPER" | "CTRL+SUPER" | "CTRL_META" => "CTRL_SUPER".to_string(),
+        "CTRL_ALT" | "CTRL+ALT" | "CTRL-ALT" => "CTRL_ALT".to_string(),
+        "CTRL_SUPER" | "CTRL+SUPER" | "CTRL-SUPER" | "CTRL_META" => "CTRL_SUPER".to_string(),
+        "RCTRL_RSHIFT"
+        | "RCTRL+RSHIFT"
+        | "RCTRL-RSHIFT"
+        | "RIGHTCTRL_RIGHTSHIFT"
+        | "RIGHTCTRL+RIGHTSHIFT"
+        | "RIGHTCTRL-RIGHTSHIFT"
+        | "RIGHT_CTRL_RIGHT_SHIFT"
+        | "RIGHT_CTRL+RIGHT_SHIFT"
+        | "RIGHT_CTRL-RIGHT_SHIFT" => "RCTRL_RSHIFT".to_string(),
+        "MENU_RSHIFT"
+        | "MENU+RSHIFT"
+        | "MENU-RSHIFT"
+        | "MENU_RIGHTSHIFT"
+        | "MENU+RIGHTSHIFT"
+        | "MENU-RIGHTSHIFT"
+        | "MENU_RIGHT_SHIFT"
+        | "MENU+RIGHT_SHIFT"
+        | "MENU-RIGHT_SHIFT" => "MENU_RSHIFT".to_string(),
         "F13" => "F13".to_string(),
         "F14" => "F14".to_string(),
         "F15" => "F15".to_string(),
@@ -110,6 +128,8 @@ pub fn modifier_trigger_key_label(key: &str) -> &'static str {
         "FN" => "Fn (Function Key)",
         "CTRL_ALT" => "Ctrl + Alt Chord",
         "CTRL_SUPER" => "Ctrl + Super Chord",
+        "RCTRL_RSHIFT" => "Right Ctrl + Right Shift Chord",
+        "MENU_RSHIFT" => "Menu + Right Shift Chord",
         "F13" => "F13",
         "F14" => "F14",
         "F15" => "F15",
@@ -169,6 +189,8 @@ pub fn trigger_key_evdev_codes(trigger_key: &str) -> &'static [u16] {
         "FN" => &[464],
         "CTRL_ALT" => &[29, 97, 56, 100],
         "CTRL_SUPER" => &[29, 97, 125, 126],
+        "RCTRL_RSHIFT" => &[97, 54],
+        "MENU_RSHIFT" => &[54, 127, 139],
         "F13" => &[183],
         "F14" => &[184],
         "F15" => &[185],
@@ -197,6 +219,10 @@ pub fn is_modifier_trigger_pressed(
         "CTRL_SUPER" => {
             (held_keys.contains(&29) || held_keys.contains(&97))
                 && (held_keys.contains(&125) || held_keys.contains(&126))
+        }
+        "RCTRL_RSHIFT" => held_keys.contains(&97) && held_keys.contains(&54),
+        "MENU_RSHIFT" => {
+            (held_keys.contains(&127) || held_keys.contains(&139)) && held_keys.contains(&54)
         }
         other => trigger_key_evdev_codes(other)
             .iter()
@@ -7015,6 +7041,114 @@ mod modifier_engine_tests {
                 0,
                 1600,
             ),
+            Some(ModifierLayerTransition::Deactivated)
+        );
+    }
+
+    #[test]
+    fn test_rctrl_rshift_and_menu_rshift_modifier_chords() {
+        assert_eq!(
+            normalize_modifier_trigger_key("rightctrl-rightshift"),
+            "RCTRL_RSHIFT"
+        );
+        assert_eq!(normalize_modifier_trigger_key("menu-rightshift"), "MENU_RSHIFT");
+        assert_eq!(
+            modifier_trigger_key_label("RCTRL_RSHIFT"),
+            "Right Ctrl + Right Shift Chord"
+        );
+        assert_eq!(
+            modifier_trigger_key_label("MENU_RSHIFT"),
+            "Menu + Right Shift Chord"
+        );
+
+        let mut engine = HostKeyboardModifierEngine::new();
+        let rules = vec![
+            ModifierLayerRule {
+                enabled: true,
+                trigger_key: "RCTRL".to_string(),
+                mode: "hold".to_string(),
+                hold_delay_ms: 200,
+                oneshot_timeout_sec: 6,
+                target_profile: 2,
+                resource_class: String::new(),
+                title_contains: None,
+                title_is_regex: false,
+            },
+            ModifierLayerRule {
+                enabled: true,
+                trigger_key: "RCTRL_RSHIFT".to_string(),
+                mode: "hold".to_string(),
+                hold_delay_ms: 200,
+                oneshot_timeout_sec: 6,
+                target_profile: 10,
+                resource_class: String::new(),
+                title_contains: None,
+                title_is_regex: false,
+            },
+            ModifierLayerRule {
+                enabled: true,
+                trigger_key: "MENU_RSHIFT".to_string(),
+                mode: "hold".to_string(),
+                hold_delay_ms: 200,
+                oneshot_timeout_sec: 6,
+                target_profile: 11,
+                resource_class: String::new(),
+                title_contains: None,
+                title_is_regex: false,
+            },
+        ];
+
+        // 1. Press Right Ctrl (97) at t=1000, then Right Shift (54) at t=1030
+        let mut held = HashSet::new();
+        held.insert(97u16);
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[97], 0, 0, 1000),
+            None
+        );
+        held.insert(54u16);
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[54], 0, 0, 1030),
+            None
+        );
+        // At t=1240 (>= 200ms after chord completed), RCTRL_RSHIFT activates Profile #10 (and RCTRL alone did not!)
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[], 0, 0, 1240),
+            Some(ModifierLayerTransition::Activated {
+                target_profile: 10,
+                trigger_key: "RCTRL_RSHIFT".to_string(),
+                mode: "hold".to_string(),
+            })
+        );
+        // Release Right Shift (54) at t=1500 while Right Ctrl (97) is still briefly held -> deactivates cleanly
+        held.remove(&54u16);
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[], 0, 0, 1500),
+            Some(ModifierLayerTransition::Deactivated)
+        );
+        held.clear();
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[], 0, 0, 1530),
+            None
+        );
+
+        // 2. Press Menu (127) + Right Shift (54) at t=2000 -> activates Profile #11 after 200ms
+        held.insert(127u16);
+        held.insert(54u16);
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[127, 54], 0, 0, 2000),
+            None
+        );
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[], 0, 0, 2210),
+            Some(ModifierLayerTransition::Activated {
+                target_profile: 11,
+                trigger_key: "MENU_RSHIFT".to_string(),
+                mode: "hold".to_string(),
+            })
+        );
+        held.clear();
+        assert_eq!(
+            engine.evaluate_tick(true, false, &rules, &held, &[], 0, 0, 2500),
             Some(ModifierLayerTransition::Deactivated)
         );
     }
