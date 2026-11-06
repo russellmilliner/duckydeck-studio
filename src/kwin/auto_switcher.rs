@@ -6216,13 +6216,14 @@ function topWindowAtPoint(pt) {
 }
 
 function onCursorPosChanged() {
+    var now = Date.now();
+    if ((now - lastMotionSentMs) < 120) return;
+    lastMotionSentMs = now;
     var pt = workspace.cursorPos;
     if (!pt) return;
-    var now = Date.now();
     var topWin = topWindowAtPoint(pt);
     if (!topWin || isDesktopOrPanelWindow(topWin)) {
-        if (lastCursorKey !== "plasmashell::Desktop" || (now - lastMotionSentMs) >= 50) {
-            lastMotionSentMs = now;
+        if (lastCursorKey !== "plasmashell::Desktop") {
             disconnectTrackedWindow();
             sendDesktop();
         }
@@ -6235,8 +6236,7 @@ function onCursorPosChanged() {
     var cls = effectiveWindowClass(topWin);
     var cap = topWin.caption ? topWin.caption.toString() : "";
     var key = cls + "::" + cap;
-    if (lastCursorKey !== key || (now - lastMotionSentMs) >= 50) {
-        lastMotionSentMs = now;
+    if (lastCursorKey !== key) {
         onWindowActivated(topWin);
     }
 }
