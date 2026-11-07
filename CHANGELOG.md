@@ -2,6 +2,14 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.19](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.19) — 2026-11-06
+
+### Highlights
+- Release v0.1.19 of duckydeck-studio.
+
+### Commits
+- fix(updater,flatpak): stage Flatpak self-updates and user guide in host-shared data dir instead of sandbox-private /tmp (cbca0a9)
+
 ## [v0.1.18](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.18) — 2026-11-06
 
 ### Highlights

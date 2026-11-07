@@ -34,6 +34,11 @@
   <url type="bugtracker">https://github.com/russellmilliner/duckydeck-studio/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.1.19" date="2026-11-06">
+      <description>
+        <p>Release v0.1.19 of duckydeck-studio.</p>
+      </description>
+    </release>
     <release version="0.1.18" date="2026-11-06">
       <description>
         <p>Release v0.1.18 of duckydeck-studio.</p>
