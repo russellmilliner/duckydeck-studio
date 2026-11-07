@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub const GITHUB_RELEASES_LATEST_API: &str =
@@ -205,6 +205,65 @@ pub fn check_for_app_updates_blocking(
     rt.block_on(check_for_app_updates_async(current_version))
 }
 
+fn is_system_flatpak_install() -> bool {
+    if let Ok(info) = fs::read_to_string("/.flatpak-info") {
+        if info.contains("/var/lib/flatpak/") {
+            return true;
+        }
+        if info.contains(".local/share/flatpak/") {
+            return false;
+        }
+    }
+    false
+}
+
+#[cfg(not(target_os = "windows"))]
+fn run_flatpak_bundle_install(pkg_str: &str, scope_flag: &str) -> bool {
+    let status = if Path::new("/.flatpak-info").exists() {
+        Command::new("flatpak-spawn")
+            .args([
+                "--host",
+                "flatpak",
+                "install",
+                scope_flag,
+                "-y",
+                "--reinstall",
+                pkg_str,
+            ])
+            .status()
+    } else {
+        Command::new("flatpak")
+            .args(["install", scope_flag, "-y", "--reinstall", pkg_str])
+            .status()
+    };
+    matches!(status, Ok(st) if st.success())
+}
+
+pub fn update_staging_dir(latest_version: &str) -> PathBuf {
+    let ver_clean = latest_version.trim_start_matches(['v', 'V']);
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Inside a Flatpak sandbox, `/tmp` (`std::env::temp_dir()`) is a private tmpfs invisible
+        // to `flatpak-spawn --host flatpak install` and host `xdg-open` / `kioclient`.
+        // Stage updates inside `~/.local/share/duckydeck-studio/updates/`, which is shared with
+        // the host via `--filesystem=xdg-data/duckydeck-studio:create`.
+        let updates_root = crate::paths::host_data_dir().join("updates");
+        if let Ok(entries) = fs::read_dir(&updates_root) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    let _ = fs::remove_dir_all(&p);
+                }
+            }
+        }
+        updates_root.join(format!("duckydeck-studio-update-{ver_clean}"))
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::env::temp_dir().join(format!("duckydeck-studio-update-{ver_clean}"))
+    }
+}
+
 pub async fn download_and_install_app_update_async(
     download_url: &str,
     latest_version: &str,
@@ -223,10 +282,7 @@ pub async fn download_and_install_app_update_async(
             "duckydeck-studio-update.tar.gz"
         });
 
-    let tmp_dir = std::env::temp_dir().join(format!(
-        "duckydeck-studio-update-{}",
-        latest_version.trim_start_matches(['v', 'V'])
-    ));
+    let tmp_dir = update_staging_dir(latest_version);
     fs::create_dir_all(&tmp_dir)
         .map_err(|e| format!("Failed creating temporary update directory: {e}"))?;
     let pkg_path = tmp_dir.join(filename);
@@ -289,37 +345,27 @@ pub async fn download_and_install_app_update_async(
     {
         let pkg_str = pkg_path.to_string_lossy().to_string();
         if filename.ends_with(".flatpak") {
-            let status = if Path::new("/.flatpak-info").exists() {
-                Command::new("flatpak-spawn")
-                    .args([
-                        "--host",
-                        "flatpak",
-                        "install",
-                        "--user",
-                        "-y",
-                        "--reinstall",
-                        &pkg_str,
-                    ])
-                    .status()
+            let scopes = if is_system_flatpak_install() {
+                ["--system", "--user"]
             } else {
-                Command::new("flatpak")
-                    .args(["install", "--user", "-y", "--reinstall", &pkg_str])
-                    .status()
+                ["--user", "--system"]
             };
 
-            match status {
-                Ok(st) if st.success() => {
-                    return Ok(format!(
-                        "Installed DuckyDeck Studio v{ver_clean} Flatpak update. Restart DuckyDeck Studio to apply."
-                    ));
-                }
-                _ => {
-                    let _ = crate::paths::open_url_or_path_in_os(&pkg_str);
-                    return Ok(format!(
-                        "Downloaded Flatpak bundle to {pkg_str} (opened in software installer)."
-                    ));
-                }
+            let installed = scopes
+                .iter()
+                .any(|scope| run_flatpak_bundle_install(&pkg_str, scope));
+
+            if installed {
+                let _ = fs::remove_dir_all(&tmp_dir);
+                return Ok(format!(
+                    "Installed DuckyDeck Studio v{ver_clean} Flatpak update. Restart DuckyDeck Studio to apply."
+                ));
             }
+
+            let _ = crate::paths::open_url_or_path_in_os(&pkg_str);
+            return Ok(format!(
+                "Downloaded Flatpak bundle to {pkg_str} (opened in software installer)."
+            ));
         }
 
         if filename.ends_with(".tar.gz") {
@@ -455,5 +501,14 @@ mod tests {
 
         let res_current = parse_github_release_json(sample, "0.1.9", false, true).unwrap();
         assert!(!res_current.update_available);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn test_update_staging_dir_is_host_shared_not_private_tmp() {
+        let dir = update_staging_dir("v0.1.19");
+        let dir_str = dir.to_string_lossy();
+        assert!(dir_str.contains("duckydeck-studio/updates/duckydeck-studio-update-0.1.19"));
+        assert!(!dir.starts_with("/tmp/"));
     }
 }

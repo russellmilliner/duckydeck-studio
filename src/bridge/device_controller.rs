@@ -8595,7 +8595,7 @@ impl qobject::DeviceController {
             None
         }
         .unwrap_or_else(|| {
-            let cache = crate::paths::cache_dir();
+            let cache = crate::paths::host_data_dir();
             if let Err(e) = fs::create_dir_all(&cache) {
                 record_system_event(
                     "WARN",
