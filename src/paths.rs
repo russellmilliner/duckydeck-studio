@@ -271,8 +271,24 @@ pub fn open_url_or_path_in_os(target: &str) -> std::io::Result<std::process::Chi
     #[cfg(not(target_os = "windows"))]
     {
         if is_flatpak() {
-            Command::new("flatpak-spawn")
-                .args(["--host", "xdg-open", target])
+            // Try flatpak-spawn --host xdg-open first (works for both URLs and host file paths);
+            // if the user revoked org.freedesktop.Flatpak in Flatseal, fall back to the sandbox's
+            // portal-backed /usr/bin/xdg-open.
+            let is_web_url =
+                target.starts_with("http://") || target.starts_with("https://") || target.starts_with("mailto:");
+            if !is_web_url {
+                if let Ok(child) = Command::new("flatpak-spawn")
+                    .args(["--host", "xdg-open", target])
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                {
+                    return Ok(child);
+                }
+            }
+            Command::new("xdg-open")
+                .arg(target)
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())

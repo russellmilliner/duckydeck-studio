@@ -20,15 +20,13 @@ finish-args:
   # 3. Network Access (Cloud AI APIs & Local Ollama on localhost:11434)
   - --share=network
 
-  # 4. SD Card Mass Storage Access (auto-mounted duckyPad Pro microSD)
-  - --filesystem=xdg-run/gvfs:ro
+  # 4. SD Card Mass Storage Access (auto-mounted duckyPad Pro / 2020 microSD & libudev HID enumeration)
   - --filesystem=/run/media:rw
   - --filesystem=/media:rw
   - --filesystem=/run/udev:ro
 
-  # 5. Read-Only Access to KDE Shortcut Configs & Legacy dekuNukem Configs
+  # 5. Scoped Config & Data Access (App state, KDE global shortcuts, and legacy dekuNukem import)
   - --filesystem=xdg-config/kglobalshortcutsrc:ro
-  - --filesystem=xdg-data/kxmlgui5:ro
   - --filesystem=xdg-config/duckydeck-studio:create
   - --filesystem=xdg-data/duckydeck-studio:create
   - --filesystem=xdg-data/duckypad_config:ro
@@ -38,13 +36,15 @@ finish-args:
   # 6. KWin hook scripts directory in XDG_RUNTIME_DIR
   - --filesystem=xdg-run/duckydeck-studio:create
 
-  # 7. D-Bus Permissions (KWin Auto-Switch, Tray Icon, Keyring, UDisks2, Host Spawn)
+  # 7. Session D-Bus Permissions:
+  #    - org.kde.KWin: Native Wayland active-window & cursor tracking for Auto-Switcher
+  #    - org.kde.StatusNotifierWatcher: System tray icon & quick-switch menu
+  #    - org.freedesktop.Flatpak: Host command spawning (flatpak-spawn --host) for duckyPad
+  #      "Launch App" keys, udisksctl microSD auto-mount/unmount, and pkexec udev rule installer.
+  #      (Note: Software centers label org.freedesktop.Flatpak as "Arbitrary Permissions".)
   - --talk-name=org.kde.KWin
   - --talk-name=org.kde.StatusNotifierWatcher
-  - --talk-name=org.freedesktop.Notifications
-  - --talk-name=org.freedesktop.secrets
   - --talk-name=org.freedesktop.Flatpak
-  - --system-talk-name=org.freedesktop.UDisks2
 
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm22/bin

@@ -1306,29 +1306,33 @@ pub fn encode_pgv31_trigger(profile_num: u8, slot_num: u8, is_release: bool) -&g
         <thead>
           <tr>
             <th>Sandbox Permission</th>
-            <th>Purpose</th>
+            <th>Purpose &amp; Security Justification</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><code>--device=all</code>, <code>--filesystem=/run/udev:ro</code></td>
-            <td>Direct USB HID access to <code>/dev/hidraw*</code> and block device symlink discovery in <code>/dev/disk/by-label</code> and <code>/dev/disk/by-id</code>.</td>
+            <td>Direct USB HID access to <code>/dev/hidraw*</code> (<code>0483:d11d</code> / <code>0483:d11c</code>), keyboard modifier listener nodes (<code>/dev/input/event*</code>, <code>/dev/uinput</code>), and block device symlink discovery in <code>/dev/disk/by-label</code> and <code>/dev/disk/by-id</code>. Flatpak does not provide a granular <code>--device=hidraw</code> filter.</td>
           </tr>
           <tr>
-            <td><code>--filesystem=/run/media:rw</code>, <code>--filesystem=/media:rw</code>, <code>--filesystem=xdg-run/gvfs:ro</code></td>
-            <td>Read/write access to mounted duckyPad microSD volumes for profile sync and firmware staging.</td>
+            <td><code>--filesystem=/run/media:rw</code>, <code>--filesystem=/media:rw</code></td>
+            <td>Read/write access exclusively to mounted duckyPad microSD volumes for profile sync and firmware staging (never requests <code>--filesystem=home</code> or <code>--filesystem=host</code>).</td>
           </tr>
           <tr>
-            <td><code>--talk-name=org.freedesktop.Flatpak</code>, <code>--system-talk-name=org.freedesktop.UDisks2</code></td>
-            <td>Allows invoking <code>flatpak-spawn --host udisksctl</code> / <code>umount</code> / <code>pkexec</code> / <code>xdg-open</code> and launching host desktop applications.</td>
+            <td><code>--talk-name=org.freedesktop.Flatpak</code></td>
+            <td>Allows invoking <code>flatpak-spawn --host</code> solely to launch user-configured host applications/scripts on duckyPad key presses, run <code>udisksctl mount/unmount</code> for microSD sync, and invoke <code>pkexec</code> for the one-click udev rule installer. <em>(Note: Software centers label <code>org.freedesktop.Flatpak</code> as &ldquo;Arbitrary Permissions&rdquo;; users who do not use host App Launch can revoke it via Flatseal or <code>flatpak override --user --no-talk-name=org.freedesktop.Flatpak io.github.duckydeck.Studio</code>.)</em></td>
           </tr>
           <tr>
             <td><code>--talk-name=org.kde.KWin</code>, <code>--filesystem=xdg-run/duckydeck-studio:create</code></td>
             <td>Allows loading the KWin 6 Wayland active-window tracking script and receiving focus callbacks over session D-Bus.</td>
           </tr>
           <tr>
-            <td><code>--talk-name=org.kde.StatusNotifierWatcher</code>, <code>--talk-name=org.freedesktop.secrets</code></td>
-            <td>System tray icon integration and OS keyring credential storage.</td>
+            <td><code>--talk-name=org.kde.StatusNotifierWatcher</code></td>
+            <td>KDE Plasma 6 system tray icon (<code>KStatusNotifierItem</code>) integration. (Does not request <code>org.freedesktop.secrets</code> keyring, <code>org.freedesktop.Notifications</code>, or <code>gvfs</code> access.)</td>
+          </tr>
+          <tr>
+            <td><code>--filesystem=xdg-config/duckydeck-studio:create</code>, <code>--filesystem=xdg-data/duckydeck-studio:create</code>, <code>--filesystem=xdg-config/kglobalshortcutsrc:ro</code>, <code>--filesystem=xdg-data/duckypad_config:ro</code>, <code>--filesystem=xdg-data/duckypad_autoswitcher:ro</code>, <code>--filesystem=xdg-config/duckypad_autoprofile:ro</code></td>
+            <td>Scoped access to DuckyDeck Studio's own configuration/cache directories, read-only KDE shortcut scraping, and read-only legacy dekuNukem profile/rule importing.</td>
           </tr>
         </tbody>
       </table>

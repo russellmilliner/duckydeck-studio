@@ -953,6 +953,12 @@ flatpak run io.github.duckydeck.Studio
 
 # 4. Run CLI status or automation commands via Flatpak:
 flatpak run io.github.duckydeck.Studio --status</code></pre>
+          <p style="margin-top: 10px; font-size: 0.86rem; color: var(--text-secondary);">
+            🔒 <strong>Why Software Centers Show &ldquo;Arbitrary Permissions&rdquo;:</strong>
+            GNOME Software, Bazaar, and KDE Discover flag any Flatpak that requests <code>--talk-name=org.freedesktop.Flatpak</code> (<code>flatpak-spawn --host</code>) as having <em>&ldquo;Arbitrary Permissions&rdquo;</em>.
+            DuckyDeck Studio only uses <code>flatpak-spawn --host</code> to launch host desktop applications/scripts when you press a duckyPad <strong>Launch App</strong> key, to auto-mount/unmount the duckyPad microSD card via <code>udisksctl</code>, and for the one-click <code>pkexec</code> udev rule installer.
+            It <strong>never</strong> requests <code>--filesystem=home</code>, <code>--filesystem=host</code>, or password keyring (<code>org.freedesktop.secrets</code>) access. If you don't use host App Launch keys, you can optionally revoke it via <code>flatpak override --user --no-talk-name=org.freedesktop.Flatpak io.github.duckydeck.Studio</code>.
+          </p>
         </div>
       </div>
 

@@ -616,6 +616,30 @@ flatpak run io.github.duckydeck.Studio
 flatpak run io.github.duckydeck.Studio --status
 ```
 
+#### 🔒 Flatpak Sandbox Permissions & Why Software Centers Show *"Arbitrary Permissions"*
+
+When inspecting `io.github.duckydeck.Studio` in **GNOME Software**, **Bazaar**, or **KDE Discover**, you may see an **"Arbitrary Permissions"** warning dialog stating that the app *"has a permission that indirectly allows it to grant itself any other permission it wants, bypassing the Flatpak sandbox."*
+
+- **Why that warning appears:** Software centers display the *"Arbitrary Permissions"* badge for any Flatpak that requests `--talk-name=org.freedesktop.Flatpak` (`flatpak-spawn --host`). Because DuckyDeck Studio is a **hardware macro pad daemon & application launcher**, it needs `flatpak-spawn --host` to launch host desktop applications/scripts when you press **Launch App** keys on your duckyPad, to run `udisksctl mount/unmount` when syncing profiles to the duckyPad microSD card, and to launch `pkexec` if you click the one-click **Install udev Rule** button.
+- **What DuckyDeck Studio does NOT request:** DuckyDeck Studio **never** requests full home directory access (`--filesystem=home`), full host filesystem access (`--filesystem=host`), system password keyring access (`org.freedesktop.secrets`), or remote network share access (`gvfs`).
+- **Optional Lockdown (Flatseal / CLI Override):** If you do not use duckyPad **Launch App** keys and mount your microSD card manually, you can revoke host-spawning permission at any time while keeping full USB HID, OLED, and KWin Auto-Switcher functionality:
+  ```bash
+  flatpak override --user --no-talk-name=org.freedesktop.Flatpak io.github.duckydeck.Studio
+  ```
+
+| Flatpak Permission | Why DuckyDeck Studio Requires It |
+| :--- | :--- |
+| `--device=all`, `--filesystem=/run/udev:ro` | Direct USB HID communication (`/dev/hidraw*`) with `duckyPad Pro` (`0483:d11d`) and `duckyPad (2020)` (`0483:d11c`), plus `/dev/input/event*` & `/dev/uinput` for Main-Keyboard Modifier Layer Shifting. *(Flatpak does not yet offer a device-specific `--device=hidraw` filter, so all Linux hardware configurators like VIA, Vial, Piper, and OpenRGB require `--device=all`.)* |
+| `--talk-name=org.freedesktop.Flatpak` | Enables `flatpak-spawn --host` for three hardware-bridging features: **(1)** launching host desktop apps/scripts from duckyPad **Launch App** keys, **(2)** auto-mounting/ejecting the duckyPad microSD card via host `udisksctl`, and **(3)** running the one-click Polkit `pkexec` USB udev rule installer. *(Triggers the software center "Arbitrary Permissions" notice.)* |
+| `--filesystem=/run/media:rw`, `--filesystem=/media:rw` | Reads and writes profiles (`profile_1`..`profile_64`), compiled `.dsb` bytecode, and OLED bitmaps directly on the mounted duckyPad microSD card. |
+| `--talk-name=org.kde.KWin`, `--filesystem=xdg-run/duckydeck-studio:create` | Registers the transient KWin 6 Wayland script (`org.kde.kwin.Scripting`) that reports active window class/title changes for automatic profile switching. |
+| `--talk-name=org.kde.StatusNotifierWatcher` | Displays the KDE Plasma 6 system tray icon (`KStatusNotifierItem`) and quick-switch menu. |
+| `--filesystem=xdg-config/duckydeck-studio:create`, `--filesystem=xdg-data/duckydeck-studio:create` | Stores DuckyDeck Studio's own settings (`~/.config/duckydeck-studio`) and local profile cache (`~/.local/share/duckydeck-studio`). |
+| `--filesystem=xdg-config/kglobalshortcutsrc:ro` | Read-only access to `~/.config/kglobalshortcutsrc` so the Shortcut Scraper and AI Macro Architect can reference your local KDE Plasma keybindings. |
+| `--filesystem=xdg-data/duckypad_config:ro`, `--filesystem=xdg-data/duckypad_autoswitcher:ro`, `--filesystem=xdg-config/duckypad_autoprofile:ro` | Read-only access to legacy dekuNukem configurator/autoswitcher folders for one-click profile backup and rule importing. |
+| `--share=network` | Executes Home Assistant REST actions, HTTP Webhooks, optional AI Macro Architect queries (including local Ollama on `127.0.0.1:11434`), and GitHub release checks. |
+| `--socket=wayland`, `--socket=fallback-x11`, `--device=dri`, `--share=ipc` | Native KDE Plasma 6 Wayland windowing, X11 fallback, and GPU-accelerated QtQuick rendering. |
+
 ---
 
 ### 3. Download Prebuilt Linux Tarball or Clone from GitHub

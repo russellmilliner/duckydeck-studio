@@ -296,37 +296,37 @@ Window {
                 QQC2.TabButton {
                     text: qsTr("🖥️ OLED VM")
                     font.pointSize: 10 * tutorialsDialog.fontScale
-                    width: Math.max(70, Math.floor((tutorialTabBar.width - 12) / 7))
+                    width: Math.max(70, Math.floor((tutorialsDialog.width - 36) / 7))
                 }
                 QQC2.TabButton {
                     text: qsTr("🏠 Home Asst")
                     font.pointSize: 10 * tutorialsDialog.fontScale
-                    width: Math.max(70, Math.floor((tutorialTabBar.width - 12) / 7))
+                    width: Math.max(70, Math.floor((tutorialsDialog.width - 36) / 7))
                 }
                 QQC2.TabButton {
                     text: qsTr("🌐 Webhooks")
                     font.pointSize: 10 * tutorialsDialog.fontScale
-                    width: Math.max(70, Math.floor((tutorialTabBar.width - 12) / 7))
+                    width: Math.max(70, Math.floor((tutorialsDialog.width - 36) / 7))
                 }
                 QQC2.TabButton {
                     text: qsTr("🚀 Launch App")
                     font.pointSize: 10 * tutorialsDialog.fontScale
-                    width: Math.max(70, Math.floor((tutorialTabBar.width - 12) / 7))
+                    width: Math.max(70, Math.floor((tutorialsDialog.width - 36) / 7))
                 }
                 QQC2.TabButton {
                     text: qsTr("🪟 Auto-Switch")
                     font.pointSize: 10 * tutorialsDialog.fontScale
-                    width: Math.max(70, Math.floor((tutorialTabBar.width - 12) / 7))
+                    width: Math.max(70, Math.floor((tutorialsDialog.width - 36) / 7))
                 }
                 QQC2.TabButton {
                     text: qsTr("⚡ Multi-Click")
                     font.pointSize: 10 * tutorialsDialog.fontScale
-                    width: Math.max(70, Math.floor((tutorialTabBar.width - 12) / 7))
+                    width: Math.max(70, Math.floor((tutorialsDialog.width - 36) / 7))
                 }
                 QQC2.TabButton {
                     text: qsTr("🔢 Vars & RGB")
                     font.pointSize: 10 * tutorialsDialog.fontScale
-                    width: Math.max(70, Math.floor((tutorialTabBar.width - 12) / 7))
+                    width: Math.max(70, Math.floor((tutorialsDialog.width - 36) / 7))
                 }
             }
 
@@ -731,6 +731,26 @@ Window {
                                 "• 2. F13–F24 Global Hotkey Mode:\n" +
                                 "  Emits a high function key (F13–F24) with optional Ctrl / Shift / Alt / Super modifiers over USB HID keyboard, useful if you also want the key bound in your desktop environment's native shortcut settings.\n\n" +
                                 "💡 Note: Because the application is launched on your PC, keys with the amber 'APP' badge require DuckyDeck Studio to be running on your computer (or minimized in the system tray) and synced to the duckyPad SD card.")
+                        }
+                    }
+
+                    SectionCard {
+                        badgeText: qsTr("FLATPAK SANDBOX")
+                        heading: qsTr("Why Linux Software Centers Show 'Arbitrary Permissions' for the Flatpak")
+
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            font.pointSize: 10 * tutorialsDialog.fontScale
+                            color: Kirigami.Theme.textColor
+                            text: qsTr("If you install DuckyDeck Studio via Flatpak, GNOME Software, Bazaar, or KDE Discover may display an 'Arbitrary Permissions' notice:\n\n" +
+                                "• Why It Appears (--talk-name=org.freedesktop.Flatpak):\n" +
+                                "  Software centers show 'Arbitrary Permissions' whenever a Flatpak requests 'org.freedesktop.Flatpak' ('flatpak-spawn --host'). Because a sandboxed container cannot see or launch applications installed on your host OS, DuckyDeck Studio uses 'flatpak-spawn --host' solely to launch your configured desktop apps/scripts when you press a duckyPad key, to run 'udisksctl mount/unmount' during microSD Sync, and to run 'pkexec' for the one-click udev rule installer.\n\n" +
+                                "• Why --device=all Is Needed:\n" +
+                                "  Flatpak does not yet have a granular '--device=hidraw' filter, so '--device=all' is required by Flatpak to communicate with your duckyPad over '/dev/hidraw*' and read keyboard modifier layers.\n\n" +
+                                "• Strict Least-Privilege Sandbox:\n" +
+                                "  DuckyDeck Studio NEVER requests access to your home folder (--filesystem=home), host root (--filesystem=host), password keyring (org.freedesktop.secrets), or remote network shares (gvfs). If you do not use host App Launch keys, you can optionally revoke host-spawning at any time via Flatseal or:\n" +
+                                "  flatpak override --user --no-talk-name=org.freedesktop.Flatpak io.github.duckydeck.Studio")
                         }
                     }
                 }

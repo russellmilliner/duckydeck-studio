@@ -367,9 +367,9 @@ DuckyDeck Studio embeds a bounded, stoppable/restartable HTTP/1.1 REST API serve
 ## 10. Packaging, Cross-Compilation, Building & Testing (Linux, Flatpak & Windows)
 
 ### 10.1 Linux Flatpak Sandbox & Host Command Bridging (`io.github.duckydeck.Studio.yml` & `scripts/build-flatpak.sh`)
-- Built against `org.kde.Platform//6.11` and `org.kde.Sdk//6.11` with `rust-stable` and `llvm22` SDK extensions.
-- **USB HID & Block Device Discovery:** Uses `--device=all` and `--filesystem=/run/udev:ro` for direct `/dev/hidraw*` and `/dev/disk/by-label` / `/dev/disk/by-id` enumeration.
-- **USB Mass Storage (`udisksctl`) Host Bridging:** Inside Flatpak (`/.flatpak-info` present), [`src/hardware/msc.rs`](../src/hardware/msc.rs) invokes `udisksctl`, `umount`, `sync`, and host `/proc/mounts` checks via `flatpak-spawn --host` (`--talk-name=org.freedesktop.Flatpak` and `--system-talk-name=org.freedesktop.UDisks2`) while reading/writing mounted volumes via `--filesystem=/run/media:rw` and `--filesystem=/media:rw`.
+- Built against `org.kde.Platform//6.11` and `org.kde.Sdk//6.11` with `rust-stable` and `llvm22` SDK extensions, requesting only strictly required permissions (no `--filesystem=home`, no `--filesystem=host`, no `org.freedesktop.secrets` password keyring access, no `org.freedesktop.UDisks2` system bus access, and no `gvfs` access).
+- **USB HID & Block Device Discovery:** Uses `--device=all` and `--filesystem=/run/udev:ro` for direct `/dev/hidraw*`, `/dev/input/event*`, `/dev/uinput`, and `/dev/disk/by-label` / `/dev/disk/by-id` enumeration.
+- **Host Application Launching & USB Mass Storage (`udisksctl`) Bridging:** Inside Flatpak (`/.flatpak-info` present), [`src/actions/app_launch.rs`](../src/actions/app_launch.rs) and [`src/hardware/msc.rs`](../src/hardware/msc.rs) invoke host desktop apps, `udisksctl`, `umount`, `sync`, and `pkexec` via `flatpak-spawn --host` (`--talk-name=org.freedesktop.Flatpak`, which software centers label as *"Arbitrary Permissions"*) while reading/writing mounted microSD volumes via `--filesystem=/run/media:rw` and `--filesystem=/media:rw`.
 - **Bundled Custom Firmware Discovery:** [`src/hardware/firmware.rs`](../src/hardware/firmware.rs) scans `/app/share/duckydeck-studio/firmware`, `/app/share/duckydeck-studio/firmware/releases`, and embeds `DDS_FW_1.1.2_0f85dab1.bin` as a compile-time fallback so the DuckyDeck Studio `v1.1.2` firmware is always available in the Firmware Manager.
 
 ### 10.2 Windows `x86_64` Architecture, Kirigami Compatibility & Cross-Compilation (`scripts/build-windows.sh`)
