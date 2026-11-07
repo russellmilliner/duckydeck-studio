@@ -2,6 +2,26 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.18](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.18) — 2026-11-06
+
+### Highlights
+- Release v0.1.18 of duckydeck-studio.
+
+### Commits
+- fix(flatpak,docs): remove unused Flatpak permissions and document sandbox permission justifications (ab3a33b)
+- chore(deps): update dependencies (cc 1.11.1, toml_datetime 1.1.3+spec-1.1.0, toml_edit 0.25.19+spec-1.1.0) (37a7f67)
+- chore(deps): update dependencies (winnow 1.0.5) (32edec1)
+- chore(deps): update dependencies (toml_edit 0.25.18+spec-1.1.0) (0f74772)
+
+### 📦 Bumped Dependencies (4 packages)
+
+| Package | Previous | Updated | Scope |
+| :--- | :--- | :--- | :--- |
+| `cc` | `1.11.0` | **`1.11.1`** | Lockfile (`Cargo.lock`) |
+| `toml_datetime` | `1.1.2+spec-1.1.0` | **`1.1.3+spec-1.1.0`** | Lockfile (`Cargo.lock`) |
+| `toml_edit` | `0.25.17+spec-1.1.0` | **`0.25.19+spec-1.1.0`** | Lockfile (`Cargo.lock`) |
+| `winnow` | `1.0.4` | **`1.0.5`** | Lockfile (`Cargo.lock`) |
+
 ## [v0.1.17-deps](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.17-deps) — 2026-11-06
 
 ### 📦 Bumped Dependencies (3 packages)
