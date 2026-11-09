@@ -1729,8 +1729,8 @@ Window {
                                             anchors.top: parent.top
                                             anchors.bottom: parent.bottom
                                             anchors.left: parent.left
-                                            anchors.right: quickAssignBtn.left
-                                            anchors.rightMargin: 6
+                                            anchors.right: parent.right
+                                            anchors.rightMargin: quickAssignBtn.width + 22
                                             hoverEnabled: true
                                             preventStealing: true
                                             cursorShape: didDrag ? Qt.ClosedHandCursor : Qt.OpenHandCursor

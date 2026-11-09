@@ -5415,8 +5415,8 @@ Kirigami.ApplicationWindow {
                                             anchors.top: parent.top
                                             anchors.bottom: parent.bottom
                                             anchors.left: parent.left
-                                            anchors.right: keApplyBtn.left
-                                            anchors.rightMargin: 6
+                                            anchors.right: parent.right
+                                            anchors.rightMargin: keApplyBtn.width + 22
                                             hoverEnabled: true
                                             preventStealing: true
                                             cursorShape: didDrag ? Qt.ClosedHandCursor : Qt.OpenHandCursor
