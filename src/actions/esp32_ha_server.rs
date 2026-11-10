@@ -27,21 +27,43 @@ const DUCKYPAD_KEY_COUNT: usize = 26;
 const MAX_STATE_COLORS: usize = 6;
 const STATE_LABEL_REVERT_MS: u64 = 3000;
 
-/// Loads the Web UI HTML directly from `/home/millinr/Builds/duckypad-esp32-ha/src/web_ui.h`
-/// when available on disk so the ESP32-S3 firmware Web UI and DuckyDeck Studio Web UI stay
-/// automatically in 100% feature sync, falling back to the embedded `data/esp32_ha_web_ui.html`.
+/// Loads the embedded ESP32-S3 Home Assistant Bridge Web UI HTML (`data/esp32_ha_web_ui.html`),
+/// or in debug builds optionally reads an override header specified via `DUCKYDECK_ESP32_WEB_UI_HEADER`.
 pub fn get_esp32_ha_web_ui_html() -> String {
-    let esp32_header = PathBuf::from("/home/millinr/Builds/duckypad-esp32-ha/src/web_ui.h");
-    if let Ok(raw) = fs::read_to_string(&esp32_header) {
-        if let Some((_, after_delim)) = raw.split_once("R\"rawliteral(") {
-            if let Some((html, _)) = after_delim.rsplit_once(")rawliteral\"") {
-                if !html.trim().is_empty() {
-                    return html.to_string();
+    #[cfg(debug_assertions)]
+    if let Ok(custom_path) = std::env::var("DUCKYDECK_ESP32_WEB_UI_HEADER") {
+        let esp32_header = PathBuf::from(custom_path);
+        if let Ok(raw) = fs::read_to_string(&esp32_header) {
+            if let Some((_, after_delim)) = raw.split_once("R\"rawliteral(") {
+                if let Some((html, _)) = after_delim.rsplit_once(")rawliteral\"") {
+                    if !html.trim().is_empty() {
+                        return html.to_string();
+                    }
                 }
             }
         }
     }
     ESP32_HA_WEB_UI_HTML.to_string()
+}
+
+/// Validates that a Home Assistant `entity_id` follows strict `domain.object_id` syntax
+/// (`[a-z0-9_]+\.[a-z0-9_]+`) and contains no path traversal or URL query characters.
+pub fn is_valid_ha_entity_id(entity_id: &str) -> bool {
+    let trimmed = entity_id.trim();
+    if trimmed.is_empty() || trimmed.len() > 128 {
+        return false;
+    }
+    let Some((domain, object_id)) = trimmed.split_once('.') else {
+        return false;
+    };
+    if domain.is_empty() || object_id.is_empty() || object_id.contains('.') {
+        return false;
+    }
+    let valid_part = |s: &str| {
+        s.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+    };
+    valid_part(domain) && valid_part(object_id)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -62,8 +84,14 @@ pub struct Esp32HaKeyMeta {
 pub struct PersistedEsp32HaConfig {
     #[serde(default)]
     pub enabled: bool,
+    #[serde(default = "default_bind_ip")]
+    pub bind_ip: String,
     #[serde(default = "default_port")]
     pub port: u16,
+    #[serde(default)]
+    pub require_auth: bool,
+    #[serde(default = "default_auth_token")]
+    pub auth_token: String,
     #[serde(default = "default_model_mode")]
     pub model_mode: String,
     #[serde(default = "default_ssid")]
@@ -76,8 +104,14 @@ pub struct PersistedEsp32HaConfig {
     pub key_meta: HashMap<String, Esp32HaKeyMeta>,
 }
 
+fn default_bind_ip() -> String {
+    "127.0.0.1".to_string()
+}
 fn default_port() -> u16 {
     DEFAULT_ESP32_HA_PORT
+}
+fn default_auth_token() -> String {
+    crate::kwin::auto_switcher::generate_rest_api_token()
 }
 fn default_model_mode() -> String {
     "auto".to_string()
@@ -86,14 +120,17 @@ fn default_ssid() -> String {
     "DuckyDeck-Studio-Host".to_string()
 }
 fn default_mqtt_uri() -> String {
-    "mqtt://mqtt.milliner.me:1883".to_string()
+    "mqtt://homeassistant.local:1883".to_string()
 }
 
 impl Default for PersistedEsp32HaConfig {
     fn default() -> Self {
         Self {
             enabled: false,
+            bind_ip: default_bind_ip(),
             port: default_port(),
+            require_auth: false,
+            auth_token: default_auth_token(),
             model_mode: default_model_mode(),
             ssid: default_ssid(),
             mqtt_uri: default_mqtt_uri(),
@@ -110,7 +147,13 @@ fn config_file_path() -> PathBuf {
 pub fn load_esp32_ha_config() -> PersistedEsp32HaConfig {
     let path = config_file_path();
     if let Ok(raw) = fs::read_to_string(&path) {
-        if let Ok(cfg) = serde_json::from_str::<PersistedEsp32HaConfig>(&raw) {
+        if let Ok(mut cfg) = serde_json::from_str::<PersistedEsp32HaConfig>(&raw) {
+            if cfg.bind_ip.trim().is_empty() {
+                cfg.bind_ip = default_bind_ip();
+            }
+            if cfg.auth_token.trim().is_empty() {
+                cfg.auth_token = default_auth_token();
+            }
             return cfg;
         }
     }
@@ -119,11 +162,8 @@ pub fn load_esp32_ha_config() -> PersistedEsp32HaConfig {
 
 pub fn save_esp32_ha_config(cfg: &PersistedEsp32HaConfig) {
     let path = config_file_path();
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
     if let Ok(json) = serde_json::to_string_pretty(cfg) {
-        let _ = fs::write(&path, json);
+        let _ = crate::paths::write_private_file_atomic(&path, json.as_bytes());
     }
 }
 
@@ -249,6 +289,38 @@ pub fn stop_esp32_ha_web_server() {
     stop_esp32_ha_server();
 }
 
+const MAX_ESP32_CONCURRENT_CONNECTIONS: usize = 8;
+static ESP32_ACTIVE_CONNECTIONS: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+struct Esp32ConnectionGuard;
+
+impl Esp32ConnectionGuard {
+    fn try_acquire() -> Option<Self> {
+        let mut current = ESP32_ACTIVE_CONNECTIONS.load(Ordering::Relaxed);
+        loop {
+            if current >= MAX_ESP32_CONCURRENT_CONNECTIONS {
+                return None;
+            }
+            match ESP32_ACTIVE_CONNECTIONS.compare_exchange_weak(
+                current,
+                current + 1,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return Some(Self),
+                Err(actual) => current = actual,
+            }
+        }
+    }
+}
+
+impl Drop for Esp32ConnectionGuard {
+    fn drop(&mut self) {
+        ESP32_ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
 pub fn start_esp32_ha_server(port: u16, target_serial: Option<String>) -> Result<String, String> {
     stop_esp32_ha_server();
 
@@ -261,6 +333,12 @@ pub fn start_esp32_ha_server(port: u16, target_serial: Option<String>) -> Result
     let mut cfg = load_esp32_ha_config();
     cfg.enabled = true;
     cfg.port = bind_port;
+    if cfg.bind_ip.trim().is_empty() {
+        cfg.bind_ip = default_bind_ip();
+    }
+    if cfg.auth_token.trim().is_empty() {
+        cfg.auth_token = default_auth_token();
+    }
     if let Some(ref s) = target_serial {
         let clean = normalize_duckypad_serial(s);
         if !clean.is_empty() {
@@ -269,7 +347,8 @@ pub fn start_esp32_ha_server(port: u16, target_serial: Option<String>) -> Result
     }
     save_esp32_ha_config(&cfg);
 
-    let addr = format!("0.0.0.0:{bind_port}");
+    let bind_ip = cfg.bind_ip.trim().to_string();
+    let addr = format!("{bind_ip}:{bind_port}");
     let listener = TcpListener::bind(&addr)
         .map_err(|e| format!("Failed binding ESP32-HA Web Server on {addr}: {e}"))?;
     let _ = listener.set_nonblocking(true);
@@ -292,9 +371,20 @@ pub fn start_esp32_ha_server(port: u16, target_serial: Option<String>) -> Result
     std::thread::spawn(move || {
         while !thread_stop.load(Ordering::Relaxed) {
             match listener.accept() {
-                Ok((stream, _peer)) => {
+                Ok((mut stream, _peer)) => {
+                    let Some(conn_guard) = Esp32ConnectionGuard::try_acquire() else {
+                        let _ = write_http_response(
+                            &mut stream,
+                            503,
+                            "application/json",
+                            br#"{"ok":false,"error":"Too many concurrent connections"}"#,
+                        );
+                        let _ = stream.shutdown(Shutdown::Both);
+                        continue;
+                    };
                     let stop_inner = thread_stop.clone();
                     std::thread::spawn(move || {
+                        let _guard = conn_guard;
                         if !stop_inner.load(Ordering::Relaxed) {
                             handle_http_connection(stream);
                         }
@@ -367,11 +457,91 @@ fn handle_http_connection(mut stream: TcpStream) {
     };
 
     let mut content_len = 0usize;
+    let mut host_hdr: Option<String> = None;
+    let mut origin_hdr: Option<String> = None;
+    let mut auth_hdr: Option<String> = None;
+    let mut api_token_hdr: Option<String> = None;
     for line in lines {
         if let Some((k, v)) = line.split_once(':') {
-            if k.trim().eq_ignore_ascii_case("content-length") {
-                content_len = v.trim().parse::<usize>().unwrap_or(0);
+            let key = k.trim();
+            let val = v.trim();
+            if key.eq_ignore_ascii_case("content-length") {
+                content_len = val.parse::<usize>().unwrap_or(0);
+            } else if key.eq_ignore_ascii_case("host") {
+                host_hdr = Some(val.to_string());
+            } else if key.eq_ignore_ascii_case("origin") {
+                origin_hdr = Some(val.to_string());
+            } else if key.eq_ignore_ascii_case("authorization") {
+                auth_hdr = Some(val.to_string());
+            } else if key.eq_ignore_ascii_case("x-api-token") {
+                api_token_hdr = Some(val.to_string());
             }
+        }
+    }
+
+    let cfg_now = load_esp32_ha_config();
+    if !crate::api_server::is_valid_host_header_for_bind(host_hdr.as_deref(), &cfg_now.bind_ip) {
+        let _ = write_http_response(
+            &mut stream,
+            403,
+            "application/json",
+            br#"{"ok":false,"error":"Forbidden Host header"}"#,
+        );
+        let _ = stream.shutdown(Shutdown::Both);
+        return;
+    }
+    if let Some(ref origin) = origin_hdr {
+        if !crate::api_server::is_allowed_local_origin(origin, &cfg_now.bind_ip) {
+            let _ = write_http_response(
+                &mut stream,
+                403,
+                "application/json",
+                br#"{"ok":false,"error":"Forbidden cross-origin request"}"#,
+            );
+            let _ = stream.shutdown(Shutdown::Both);
+            return;
+        }
+    }
+
+    let is_loopback_bind = matches!(
+        cfg_now.bind_ip.trim(),
+        "" | "127.0.0.1" | "localhost" | "::1" | "[::1]"
+    );
+    let requires_token = cfg_now.require_auth || !is_loopback_bind;
+    if requires_token {
+        let expected = cfg_now.auth_token.trim();
+        let mut provided = api_token_hdr.unwrap_or_default();
+        if provided.is_empty() {
+            if let Some(ref a) = auth_hdr {
+                if let Some(rest) = a
+                    .strip_prefix("Bearer ")
+                    .or_else(|| a.strip_prefix("bearer "))
+                {
+                    provided = rest.trim().to_string();
+                } else {
+                    provided = a.trim().to_string();
+                }
+            }
+        }
+        if provided.is_empty() {
+            for pair in query.split('&') {
+                if let Some((k, v)) = pair.split_once('=') {
+                    if k == "token" {
+                        provided = url_decode(v);
+                        break;
+                    }
+                }
+            }
+        }
+        if expected.is_empty() || !crate::paths::constant_time_str_eq(&provided, expected) {
+            let _ = write_http_response(
+                &mut stream,
+                401,
+                "application/json",
+                br#"{"ok":false,"error":"Unauthorized"}"#,
+            );
+            let _ = stream.shutdown(Shutdown::Both);
+            return;
         }
     }
 
@@ -471,11 +641,14 @@ fn write_http_response(
     let reason = match status {
         200 => "OK",
         400 => "Bad Request",
+        401 => "Unauthorized",
+        403 => "Forbidden",
         404 => "Not Found",
+        503 => "Service Unavailable",
         _ => "Server Error",
     };
     let hdr = format!(
-        "HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nX-Content-Type-Options: nosniff\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
         body.len()
     );
     stream.write_all(hdr.as_bytes())?;
@@ -997,9 +1170,12 @@ fn handle_profiles_post(body: &str) -> String {
 }
 
 fn fetch_ha_state_json(entity_id: &str) -> Option<serde_json::Value> {
+    if !is_valid_ha_entity_id(entity_id) {
+        return None;
+    }
     let ha_cfg = crate::actions::web_api::load_home_assistant_config();
     let base_url = if ha_cfg.base_url.trim().is_empty() {
-        "http://192.168.1.205:8123".to_string()
+        "http://homeassistant.local:8123".to_string()
     } else {
         ha_cfg.base_url.trim().trim_end_matches('/').to_string()
     };
@@ -1007,30 +1183,22 @@ fn fetch_ha_state_json(entity_id: &str) -> Option<serde_json::Value> {
     if token.is_empty() {
         return None;
     }
-    let url = format!("{base_url}/api/states/{entity_id}");
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .ok()
-        .and_then(|rt| {
-            rt.block_on(async move {
-                let client = reqwest::Client::builder()
-                    .timeout(Duration::from_millis(2000))
-                    .build()
-                    .ok()?;
-                let resp = client
-                    .get(&url)
-                    .bearer_auth(&token)
-                    .header("Content-Type", "application/json")
-                    .send()
-                    .await
-                    .ok()?;
-                if !resp.status().is_success() {
-                    return None;
-                }
-                resp.json::<serde_json::Value>().await.ok()
-            })
-        })
+    let url = format!("{base_url}/api/states/{}", entity_id.trim());
+    let client = crate::actions::web_api::shared_ha_poll_client()?;
+    let rt = crate::actions::web_api::shared_async_runtime()?;
+    rt.block_on(async move {
+        let resp = client
+            .get(&url)
+            .bearer_auth(&token)
+            .header("Content-Type", "application/json")
+            .send()
+            .await
+            .ok()?;
+        if !resp.status().is_success() {
+            return None;
+        }
+        resp.json::<serde_json::Value>().await.ok()
+    })
 }
 
 fn ha_entity_poll_loop(stop_flag: Arc<AtomicBool>) {
@@ -1131,6 +1299,13 @@ fn handle_ha_entity_get(query: &str) -> String {
         return json!({
             "ok": false,
             "error": "Missing entity_id"
+        })
+        .to_string();
+    }
+    if !is_valid_ha_entity_id(&entity_id) {
+        return json!({
+            "ok": false,
+            "error": "Invalid entity_id format (expected domain.object_id)"
         })
         .to_string();
     }
@@ -1371,7 +1546,9 @@ mod tests {
 
     #[test]
     fn test_esp32_ha_web_ui_html_in_sync_with_firmware_repo() {
-        let fw_header = PathBuf::from("/home/millinr/Builds/duckypad-esp32-ha/src/web_ui.h");
+        let fw_header = std::env::var("DUCKYDECK_ESP32_WEB_UI_HEADER")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("../duckypad-esp32-ha/src/web_ui.h"));
         if fw_header.exists() {
             let raw = fs::read_to_string(&fw_header).expect("read web_ui.h");
             let (_, after) = raw.split_once("R\"rawliteral(").expect("rawliteral start");
@@ -1382,6 +1559,26 @@ mod tests {
                 "data/esp32_ha_web_ui.html must stay in 100% sync with duckypad-esp32-ha/src/web_ui.h"
             );
         }
+    }
+
+    #[test]
+    fn test_is_valid_ha_entity_id_blocks_path_traversal() {
+        assert!(is_valid_ha_entity_id("light.office_lamp"));
+        assert!(is_valid_ha_entity_id("sensor.temp_1"));
+        assert!(!is_valid_ha_entity_id(""));
+        assert!(!is_valid_ha_entity_id("light"));
+        assert!(!is_valid_ha_entity_id("../config"));
+        assert!(!is_valid_ha_entity_id("light.office/../config"));
+        assert!(!is_valid_ha_entity_id("light.office?foo=bar"));
+        assert!(!is_valid_ha_entity_id("Light.Office"));
+    }
+
+    #[test]
+    fn test_esp32_ha_default_config_is_loopback_bound() {
+        let cfg = PersistedEsp32HaConfig::default();
+        assert_eq!(cfg.bind_ip, "127.0.0.1");
+        assert_eq!(cfg.mqtt_uri, "mqtt://homeassistant.local:1883");
+        assert!(!cfg.auth_token.is_empty());
     }
 
     #[test]

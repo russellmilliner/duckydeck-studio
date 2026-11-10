@@ -970,6 +970,18 @@ pub fn handle_rest_api_request_impl(
             })
             .filter(|s| !s.is_empty())
             .map(PathBuf::from);
+        if let Some(ref custom_sd) = requested_sd_root {
+            if !crate::hardware::profile::is_duckypad_sd_root(custom_sd) {
+                return (
+                    400,
+                    serde_json::json!({
+                        "ok": false,
+                        "error": "Rejected sdRootPath: path is not a valid mounted duckyPad microSD card root"
+                    })
+                    .to_string(),
+                );
+            }
+        }
         let mounted_sd = requested_sd_root.or_else(|| {
             controller
                 .rust()

@@ -2,6 +2,24 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.20](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.20) — 2026-11-10
+
+### Highlights
+- Security &amp; architecture hardening: loopback-bound ESP32-HA server with token auth, HMAC-SHA256 host command signing for App Launch, SHA-256 update verification, REST API DNS rebinding/CORS defense, and 0600 atomic secret writes.
+
+### Commits
+- chore(deps): update dependencies (itoa 1.0.19, syn 3.0.10, uuid 1.29.2) (a2d29ab)
+- chore(deps): update dependencies (smallvec 1.16.5, uuid 1.29.1) (bf26b66)
+
+### 📦 Bumped Dependencies (4 packages)
+
+| Package | Previous | Updated | Scope |
+| :--- | :--- | :--- | :--- |
+| `itoa` | `1.0.18` | **`1.0.19`** | Lockfile (`Cargo.lock`) |
+| `smallvec` | `1.16.4` | **`1.16.5`** | Lockfile (`Cargo.lock`) |
+| `syn` | `3.0.9` | **`3.0.10`** | Lockfile (`Cargo.lock`) |
+| `uuid` | `1.29.0` | **`1.29.2`** | Lockfile (`Cargo.lock`) |
+
 ## [v0.1.19-deps](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.19-deps) — 2026-11-09
 
 ### 📦 Bumped Dependencies (3 packages)

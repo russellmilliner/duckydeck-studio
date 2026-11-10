@@ -7904,6 +7904,7 @@ impl qobject::DeviceController {
         let active_prof = (*self.active_profile()).clamp(1, 64) as u8;
         let restore_rgb = self.lookup_slot_rgb(active_prof, slot_idx);
         let source_label = format!("Test Launch (Profile #{active_prof}, Key {slot_idx})");
+        crate::actions::app_launch::approve_app_launch_config(&cfg);
         self.as_mut()
             .dispatch_app_launch_execution(cfg, slot_idx, restore_rgb, &source_label);
     }

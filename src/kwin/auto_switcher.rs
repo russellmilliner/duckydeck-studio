@@ -1354,10 +1354,7 @@ impl SwitcherState {
                 // while the host config has the user's richer rule set, adopt the host config!
                 if h_cfg.rules.len() > p_cfg.rules.len() && p_cfg.rules.len() <= 14 {
                     if let Ok(json) = serde_json::to_string_pretty(&h_cfg) {
-                        if let Some(parent) = path.parent() {
-                            let _ = fs::create_dir_all(parent); // ignore: best-effort
-                        }
-                        let _ = fs::write(&path, json); // ignore: best-effort sync to Flatpak config
+                        let _ = crate::paths::write_private_file_atomic(&path, json.as_bytes()); // ignore: best-effort sync to Flatpak config
                     }
                     Some(h_cfg)
                 } else {
@@ -1366,10 +1363,7 @@ impl SwitcherState {
             }
             (None, Some(h_cfg)) => {
                 if let Ok(json) = serde_json::to_string_pretty(&h_cfg) {
-                    if let Some(parent) = path.parent() {
-                        let _ = fs::create_dir_all(parent); // ignore: best-effort
-                    }
-                    let _ = fs::write(&path, json); // ignore: best-effort sync to Flatpak config
+                    let _ = crate::paths::write_private_file_atomic(&path, json.as_bytes()); // ignore: best-effort sync to Flatpak config
                 }
                 Some(h_cfg)
             }
@@ -1428,15 +1422,13 @@ impl SwitcherState {
         };
         let json = serde_json::to_string_pretty(&payload)
             .map_err(|e| format!("Failed serializing KWin rules: {e}"))?;
-        fs::write(&path, &json).map_err(|e| format!("Failed writing {}: {e}", path.display()))?;
+        crate::paths::write_private_file_atomic(&path, json.as_bytes())
+            .map_err(|e| format!("Failed writing {}: {e}", path.display()))?;
 
         if std::env::var("DUCKYDECK_UI_TEST_SUITE").as_deref() != Ok("1") {
             let host_path = Self::host_config_file_path();
             if host_path != path {
-                if let Some(h_parent) = host_path.parent() {
-                    let _ = fs::create_dir_all(h_parent); // ignore: best-effort host mirror
-                }
-                let _ = fs::write(&host_path, &json); // ignore: best-effort host mirror
+                let _ = crate::paths::write_private_file_atomic(&host_path, json.as_bytes()); // ignore: best-effort host mirror
             }
         }
         Ok(())

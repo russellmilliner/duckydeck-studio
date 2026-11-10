@@ -60,13 +60,10 @@ pub fn load_web_api_destinations() -> Vec<WebApiDestination> {
 
 pub fn save_web_api_destinations(destinations: &[WebApiDestination]) -> Result<(), String> {
     let path = web_api_destinations_path();
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed creating config dir {}: {e}", parent.display()))?;
-    }
     let json = serde_json::to_string_pretty(destinations)
         .map_err(|e| format!("Failed serializing Web API destinations: {e}"))?;
-    fs::write(&path, json).map_err(|e| format!("Failed writing {}: {e}", path.display()))
+    crate::paths::write_private_file_atomic(&path, json.as_bytes())
+        .map_err(|e| format!("Failed writing {}: {e}", path.display()))
 }
 
 pub fn upsert_web_api_destination(
@@ -679,6 +676,50 @@ fn resolve_home_assistant_service_url(url: &str, body: &str) -> (String, Option<
     (url.to_string(), None)
 }
 
+pub fn shared_http_client() -> Result<&'static reqwest::Client, String> {
+    static SHARED_CLIENT: std::sync::OnceLock<Result<reqwest::Client, String>> =
+        std::sync::OnceLock::new();
+    SHARED_CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .user_agent(concat!("DuckyDeck-Studio/", env!("CARGO_PKG_VERSION")))
+                .timeout(std::time::Duration::from_secs(10))
+                .pool_max_idle_per_host(4)
+                .build()
+                .map_err(|e| format!("{e}"))
+        })
+        .as_ref()
+        .map_err(|e| e.clone())
+}
+
+pub fn shared_ha_poll_client() -> Option<&'static reqwest::Client> {
+    static HA_CLIENT: std::sync::OnceLock<Option<reqwest::Client>> = std::sync::OnceLock::new();
+    HA_CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .user_agent(concat!("DuckyDeck-Studio/", env!("CARGO_PKG_VERSION")))
+                .timeout(std::time::Duration::from_millis(2000))
+                .pool_max_idle_per_host(4)
+                .build()
+                .ok()
+        })
+        .as_ref()
+}
+
+pub fn shared_async_runtime() -> Option<&'static tokio::runtime::Runtime> {
+    static SHARED_RT: std::sync::OnceLock<Option<tokio::runtime::Runtime>> =
+        std::sync::OnceLock::new();
+    SHARED_RT
+        .get_or_init(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()
+                .ok()
+        })
+        .as_ref()
+}
+
 pub async fn execute_web_api_request(input_cfg: &WebApiConfig) -> WebApiExecutionResult {
     let mut resolved_cfg = input_cfg.clone();
     resolve_web_api_config_destination(&mut resolved_cfg);
@@ -698,11 +739,7 @@ pub async fn execute_web_api_request(input_cfg: &WebApiConfig) -> WebApiExecutio
     let (effective_url, route_note) = resolve_home_assistant_service_url(raw_url, &cfg.body);
 
     let start = std::time::Instant::now();
-    let client = match reqwest::Client::builder()
-        .user_agent(concat!("DuckyDeck-Studio/", env!("CARGO_PKG_VERSION")))
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-    {
+    let client = match shared_http_client() {
         Ok(c) => c,
         Err(e) => {
             return WebApiExecutionResult {
@@ -914,12 +951,10 @@ pub fn save_home_assistant_config(
         access_token: clean_token,
     };
     let path = home_assistant_config_path();
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("Failed creating config dir: {e}"))?;
-    }
     let json = serde_json::to_string_pretty(&cfg)
         .map_err(|e| format!("Failed serializing Home Assistant config: {e}"))?;
-    fs::write(&path, json).map_err(|e| format!("Failed writing {}: {e}", path.display()))?;
+    crate::paths::write_private_file_atomic(&path, json.as_bytes())
+        .map_err(|e| format!("Failed writing {}: {e}", path.display()))?;
     Ok(cfg)
 }
 
@@ -956,11 +991,7 @@ pub async fn fetch_and_search_home_assistant_entities(
     }
 
     let states_url = format!("{}/api/states", saved.base_url);
-    let client = reqwest::Client::builder()
-        .user_agent(concat!("DuckyDeck-Studio/", env!("CARGO_PKG_VERSION")))
-        .timeout(std::time::Duration::from_secs(8))
-        .build()
-        .map_err(|e| format!("HTTP client error: {e}"))?;
+    let client = shared_http_client()?;
 
     let resp = client
         .get(&states_url)

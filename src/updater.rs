@@ -264,6 +264,62 @@ pub fn update_staging_dir(latest_version: &str) -> PathBuf {
     }
 }
 
+/// Parses a `.sha256` manifest (single-line or multi-line `sha256sum` output) and verifies
+/// that the SHA-256 digest of `asset_bytes` matches the expected 64-character hex digest.
+pub fn verify_sha256_manifest_text(
+    asset_bytes: &[u8],
+    asset_filename: &str,
+    sha256_text: &str,
+) -> Result<String, String> {
+    let actual_hex = crate::paths::sha256_hex(asset_bytes);
+    let clean_name = asset_filename.trim();
+    let mut matched_expected: Option<String> = None;
+    let mut single_line_candidate: Option<String> = None;
+
+    for raw_line in sha256_text.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let mut parts = line.split_whitespace();
+        let Some(first) = parts.next() else {
+            continue;
+        };
+        let is_hex64 = first.len() == 64 && first.bytes().all(|b| b.is_ascii_hexdigit());
+        if !is_hex64 {
+            continue;
+        }
+        let hex_lower = first.to_ascii_lowercase();
+        if let Some(second) = parts.next() {
+            let entry_file = second
+                .trim_start_matches('*')
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap_or(second);
+            if entry_file.eq_ignore_ascii_case(clean_name) {
+                matched_expected = Some(hex_lower);
+                break;
+            }
+            if single_line_candidate.is_none() {
+                single_line_candidate = Some(hex_lower);
+            }
+        } else if single_line_candidate.is_none() {
+            single_line_candidate = Some(hex_lower);
+        }
+    }
+
+    let expected_hex = matched_expected
+        .or(single_line_candidate)
+        .ok_or_else(|| "Could not parse a valid 64-character SHA-256 digest from .sha256 file".to_string())?;
+
+    if !crate::paths::constant_time_str_eq(&actual_hex, &expected_hex) {
+        return Err(format!(
+            "SHA-256 checksum mismatch for {clean_name}: expected {expected_hex}, computed {actual_hex}"
+        ));
+    }
+    Ok(actual_hex)
+}
+
 pub async fn download_and_install_app_update_async(
     download_url: &str,
     latest_version: &str,
@@ -307,6 +363,25 @@ pub async fn download_and_install_app_update_async(
         .bytes()
         .await
         .map_err(|e| format!("Failed reading downloaded asset bytes: {e}"))?;
+
+    // Fetch and verify the companion `{download_url}.sha256` checksum published by the release pipeline
+    let sha256_url = format!("{}.sha256", download_url.trim());
+    let sha_resp = client
+        .get(&sha256_url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed downloading SHA-256 checksum file ({sha256_url}): {e}"))?;
+    if !sha_resp.status().is_success() {
+        return Err(format!(
+            "Refusing to install unverified update: SHA-256 checksum file ({sha256_url}) returned HTTP {}",
+            sha_resp.status()
+        ));
+    }
+    let sha_text = sha_resp
+        .text()
+        .await
+        .map_err(|e| format!("Failed reading SHA-256 checksum response: {e}"))?;
+    verify_sha256_manifest_text(&bytes, filename, &sha_text)?;
 
     fs::write(&pkg_path, &bytes).map_err(|e| {
         format!(
@@ -510,5 +585,29 @@ mod tests {
         let dir_str = dir.to_string_lossy();
         assert!(dir_str.contains("duckydeck-studio/updates/duckydeck-studio-update-0.1.19"));
         assert!(!dir.starts_with("/tmp/"));
+    }
+
+    #[test]
+    fn test_verify_sha256_manifest_text_accepts_matching_and_rejects_tampered() {
+        let payload = b"duckydeck-studio-release-binary-payload";
+        let expected = crate::paths::sha256_hex(payload);
+        let manifest = format!(
+            "{expected}  duckydeck-studio-v0.1.19-x86_64.flatpak\n0000000000000000000000000000000000000000000000000000000000000000  other.tar.gz\n"
+        );
+        assert_eq!(
+            verify_sha256_manifest_text(
+                payload,
+                "duckydeck-studio-v0.1.19-x86_64.flatpak",
+                &manifest
+            )
+            .unwrap(),
+            expected
+        );
+        assert!(verify_sha256_manifest_text(
+            b"tampered-payload",
+            "duckydeck-studio-v0.1.19-x86_64.flatpak",
+            &manifest
+        )
+        .is_err());
     }
 }

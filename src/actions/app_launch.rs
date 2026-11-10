@@ -110,6 +110,218 @@ pub fn strip_app_launch_from_script(script: &str) -> String {
     }
 }
 
+const HOST_TRUST_KEY_FILE: &str = "host_trust.key";
+const TRUSTED_APP_LAUNCHES_FILE: &str = "trusted_app_launches.json";
+
+static TRUSTED_APP_LAUNCH_HMACS: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashSet<String>>,
+> = std::sync::OnceLock::new();
+
+fn host_trust_key_path() -> PathBuf {
+    crate::paths::data_dir().join(HOST_TRUST_KEY_FILE)
+}
+
+fn trusted_app_launches_path() -> PathBuf {
+    crate::paths::data_dir().join(TRUSTED_APP_LAUNCHES_FILE)
+}
+
+fn load_or_create_host_trust_key() -> Vec<u8> {
+    let path = host_trust_key_path();
+    if let Ok(existing) = fs::read(&path) {
+        let trimmed = String::from_utf8_lossy(&existing).trim().to_string();
+        if trimmed.len() >= 32 {
+            return trimmed.into_bytes();
+        }
+    }
+    let seed = format!(
+        "{}:{}:{}",
+        crate::kwin::auto_switcher::generate_rest_api_token(),
+        crate::kwin::auto_switcher::generate_rest_api_token(),
+        std::process::id()
+    );
+    let key_hex = crate::paths::sha256_hex(seed.as_bytes());
+    let _ = crate::paths::write_private_file_atomic(&path, key_hex.as_bytes());
+    key_hex.into_bytes()
+}
+
+/// Computes the canonical HMAC-SHA256 digest for an `AppLaunchConfig`'s executable payload
+/// (`desktop_id`, `command`, `args`, `working_dir`, `run_in_terminal`) using the host's private key.
+pub fn compute_app_launch_hmac(cfg: &AppLaunchConfig) -> String {
+    let key = load_or_create_host_trust_key();
+    let canonical = format!(
+        "v1|desktop={}|cmd={}|args={}|cwd={}|term={}",
+        cfg.desktop_id.trim(),
+        cfg.command.trim(),
+        cfg.args.trim(),
+        cfg.working_dir.trim(),
+        cfg.run_in_terminal
+    );
+    crate::paths::hmac_sha256_hex(&key, canonical.as_bytes())
+}
+
+fn collect_app_launch_hmacs_from_profiles_dir(
+    dir: &Path,
+    out: &mut std::collections::HashSet<String>,
+) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            let Ok(sub_entries) = fs::read_dir(&path) else {
+                continue;
+            };
+            for sub in sub_entries.flatten() {
+                let sp = sub.path();
+                if sp.is_dir() {
+                    collect_app_launch_hmacs_from_profiles_dir(&sp, out);
+                } else if sp.extension().and_then(|e| e.to_str()) == Some("txt") {
+                    if let Ok(raw) = fs::read_to_string(&sp) {
+                        if has_app_launch_config(&raw) {
+                            let cfg = extract_app_launch_config(&raw, 1);
+                            out.insert(compute_app_launch_hmac(&cfg));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn trusted_hmac_store() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    TRUSTED_APP_LAUNCH_HMACS.get_or_init(|| {
+        let path = trusted_app_launches_path();
+        if let Ok(raw) = fs::read_to_string(&path) {
+            if let Ok(list) = serde_json::from_str::<Vec<String>>(&raw) {
+                let set: std::collections::HashSet<String> = list.into_iter().collect();
+                return std::sync::Mutex::new(set);
+            }
+        }
+        // First-time initialization: grandfather existing local cached profiles so existing user
+        // macros continue working seamlessly without false-positive prompts.
+        let mut initial = std::collections::HashSet::new();
+        let cache_root = crate::hardware::storage::profile_cache_dir();
+        collect_app_launch_hmacs_from_profiles_dir(&cache_root, &mut initial);
+        let devices_root = crate::paths::data_dir().join("devices");
+        collect_app_launch_hmacs_from_profiles_dir(&devices_root, &mut initial);
+        persist_trusted_hmac_set(&initial);
+        std::sync::Mutex::new(initial)
+    })
+}
+
+fn persist_trusted_hmac_set(set: &std::collections::HashSet<String>) {
+    if is_headless_or_ui_test_mode() || cfg!(test) {
+        return;
+    }
+    let path = trusted_app_launches_path();
+    let mut sorted: Vec<&String> = set.iter().collect();
+    sorted.sort();
+    if let Ok(json) = serde_json::to_string_pretty(&sorted) {
+        let _ = crate::paths::write_private_file_atomic(&path, json.as_bytes());
+    }
+}
+
+/// Marks an `AppLaunchConfig` command payload as trusted on this host and persists its HMAC-SHA256 digest.
+pub fn approve_app_launch_config(cfg: &AppLaunchConfig) {
+    if cfg.command.trim().is_empty() && cfg.desktop_id.trim().is_empty() {
+        return;
+    }
+    let hmac = compute_app_launch_hmac(cfg);
+    if let Ok(mut guard) = trusted_hmac_store().lock() {
+        if guard.insert(hmac) {
+            persist_trusted_hmac_set(&guard);
+        }
+    }
+}
+
+/// Checks whether an `AppLaunchConfig` has been signed/approved on this host.
+pub fn is_app_launch_trusted(cfg: &AppLaunchConfig) -> bool {
+    if cfg.command.trim().is_empty() && cfg.desktop_id.trim().is_empty() {
+        return true;
+    }
+    let hmac = compute_app_launch_hmac(cfg);
+    trusted_hmac_store()
+        .lock()
+        .map(|guard| guard.contains(&hmac))
+        .unwrap_or(false)
+}
+
+fn is_headless_or_ui_test_mode() -> bool {
+    if std::env::var("DUCKYDECK_UI_TEST_SUITE").as_deref() == Ok("1") {
+        return true;
+    }
+    if std::env::var("QT_QPA_PLATFORM")
+        .map(|v| v.eq_ignore_ascii_case("offscreen"))
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    false
+}
+
+fn prompt_user_to_approve_untrusted_app_launch(
+    cfg: &AppLaunchConfig,
+    full_cmd_display: &str,
+) -> bool {
+    if is_headless_or_ui_test_mode() {
+        return false;
+    }
+    let msg = format!(
+        "DuckyDeck Studio blocked an unapproved App Launch command from an imported profile or external microSD card:\n\nCommand: {}\nWorking Dir: {}\n\nDo you want to trust and execute this command on your computer?",
+        full_cmd_display,
+        if cfg.working_dir.trim().is_empty() {
+            "(default)"
+        } else {
+            cfg.working_dir.trim()
+        }
+    );
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(status) = std::process::Command::new("kdialog")
+            .args([
+                "--title",
+                "DuckyDeck Studio — Untrusted Command Approval",
+                "--warningyesno",
+                &msg,
+            ])
+            .status()
+        {
+            return status.success();
+        }
+        if let Ok(status) = std::process::Command::new("zenity")
+            .args([
+                "--question",
+                "--title=DuckyDeck Studio — Untrusted Command Approval",
+                &format!("--text={msg}"),
+            ])
+            .status()
+        {
+            return status.success();
+        }
+        false
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let escaped = msg.replace('\'', "''").replace('\r', "").replace('\n', "`n");
+        if let Ok(output) = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                &format!(
+                    "Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('{escaped}', 'DuckyDeck Studio - Untrusted Command', 'YesNo', 'Warning')"
+                ),
+            ])
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return stdout.trim().eq_ignore_ascii_case("Yes");
+        }
+        false
+    }
+}
+
 pub fn apply_app_launch_config_to_script(
     existing_script: &str,
     cfg: &AppLaunchConfig,
@@ -155,6 +367,7 @@ pub fn apply_app_launch_config_to_script(
         }
     };
     normalized.fkey = valid_fkey.clone();
+    approve_app_launch_config(&normalized);
 
     let meta_json = serde_json::to_string(&normalized).unwrap_or_else(|_| "{}".to_string());
     let trigger_code = encode_pgv31_trigger(profile_num, slot_num, is_release);
@@ -851,6 +1064,22 @@ pub fn execute_app_launch(cfg: &AppLaunchConfig) -> AppLaunchExecutionResult {
     } else {
         format!("{raw_cmd} {raw_args}")
     };
+
+    if !is_app_launch_trusted(cfg) {
+        if prompt_user_to_approve_untrusted_app_launch(cfg, &full_cmd_display) {
+            approve_app_launch_config(cfg);
+        } else {
+            return AppLaunchExecutionResult {
+                ok: false,
+                pid: 0,
+                summary: format!(
+                    "Blocked untrusted App Launch command '{}'. Edit and save the key in DuckyDeck Studio to approve it.",
+                    full_cmd_display
+                ),
+                command_line: full_cmd_display,
+            };
+        }
+    }
 
     let needs_shell = full_cmd_display.contains('|')
         || full_cmd_display.contains("&&")
@@ -2630,5 +2859,34 @@ mod hidraw_modifier_tests {
             listener.suppress_active_modifier_bleed(key);
         }
         assert!(listener.held_keys.is_empty());
+    }
+
+    #[test]
+    fn test_untrusted_app_launch_is_blocked_until_approved() {
+        std::env::set_var("DUCKYDECK_UI_TEST_SUITE", "1");
+        let unique_nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(1);
+        let untrusted_cfg = AppLaunchConfig {
+            enabled: true,
+            app_name: "Untrusted Foreign SD Payload".to_string(),
+            command: format!("echo untrusted_foreign_sd_payload_{unique_nonce}"),
+            args: "--flag".to_string(),
+            ..Default::default()
+        };
+        assert!(!is_app_launch_trusted(&untrusted_cfg));
+        let blocked_res = execute_app_launch(&untrusted_cfg);
+        assert!(!blocked_res.ok);
+        assert!(blocked_res.summary.contains("Blocked untrusted App Launch"));
+
+        // Applying via apply_app_launch_config_to_script (local user save) approves its HMAC
+        let _script = apply_app_launch_config_to_script("", &untrusted_cfg, 1, 1, false);
+        assert!(is_app_launch_trusted(&untrusted_cfg));
+
+        // Modifying the command invalidates trust immediately
+        let mut tampered_cfg = untrusted_cfg.clone();
+        tampered_cfg.command = format!("echo tampered_payload_{unique_nonce}");
+        assert!(!is_app_launch_trusted(&tampered_cfg));
     }
 }

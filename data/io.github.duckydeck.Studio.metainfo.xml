@@ -34,6 +34,11 @@
   <url type="bugtracker">https://github.com/russellmilliner/duckydeck-studio/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.1.20" date="2026-11-10">
+      <description>
+        <p>Security &amp; architecture hardening: loopback-bound ESP32-HA server with token auth, HMAC-SHA256 host command signing for App Launch, SHA-256 update verification, REST API DNS rebinding/CORS defense, and 0600 atomic secret writes.</p>
+      </description>
+    </release>
     <release version="0.1.19" date="2026-11-06">
       <description>
         <p>Release v0.1.19 of duckydeck-studio.</p>

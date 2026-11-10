@@ -583,6 +583,81 @@ fn read_http_request(stream: &mut TcpStream) -> Result<ParsedHttpRequest, HttpRe
     })
 }
 
+/// Validates the HTTP `Host` header against DNS rebinding attacks when bound to loopback.
+pub fn is_valid_host_header_for_bind(host: Option<&str>, bind_ip: &str) -> bool {
+    let clean_bind = bind_ip.trim();
+    let is_loopback = matches!(clean_bind, "" | "127.0.0.1" | "localhost" | "::1" | "[::1]");
+    let Some(raw_host) = host.map(str::trim).filter(|s| !s.is_empty()) else {
+        return true;
+    };
+    let host_only = if raw_host.starts_with('[') {
+        raw_host
+            .split_once(']')
+            .map(|(h, _)| format!("{h}]"))
+            .unwrap_or_else(|| raw_host.to_string())
+    } else {
+        raw_host
+            .split_once(':')
+            .map(|(h, _)| h.to_string())
+            .unwrap_or_else(|| raw_host.to_string())
+    };
+    let lower = host_only.to_ascii_lowercase();
+    if matches!(lower.as_str(), "127.0.0.1" | "localhost" | "[::1]" | "::1") {
+        return true;
+    }
+    if !is_loopback {
+        if clean_bind == "0.0.0.0" || clean_bind == "::" {
+            // When explicitly bound to all interfaces, reject domain names that are not IP literals or .local/.lan/.ts.net
+            if lower.parse::<std::net::IpAddr>().is_ok()
+                || lower.ends_with(".local")
+                || lower.ends_with(".lan")
+                || lower.ends_with(".ts.net")
+            {
+                return true;
+            }
+        } else if lower == clean_bind.to_ascii_lowercase() {
+            return true;
+        }
+    }
+    false
+}
+
+/// Validates browser `Origin` headers so arbitrary external websites cannot issue cross-origin
+/// requests to the local DuckyDeck Studio HTTP server.
+pub fn is_allowed_local_origin(origin: &str, bind_ip: &str) -> bool {
+    let trimmed = origin.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("null") {
+        return false;
+    }
+    let without_scheme = trimmed
+        .strip_prefix("http://")
+        .or_else(|| trimmed.strip_prefix("https://"))
+        .unwrap_or("");
+    if without_scheme.is_empty() {
+        return false;
+    }
+    let host_port = without_scheme.split('/').next().unwrap_or("");
+    is_valid_host_header_for_bind(Some(host_port), bind_ip)
+}
+
+/// Returns `true` for high-privilege routes that can execute host commands (`appLaunch` / `/trigger`)
+/// or write to the filesystem (`/api/v1/sd/sync`). These routes always require a valid API token
+/// even if unauthenticated mode is toggled on for read-only/profile-switch endpoints.
+pub fn route_always_requires_auth(method: &str, path: &str, body: &str) -> bool {
+    let m = method.trim().to_ascii_uppercase();
+    let p = path.trim().trim_end_matches('/');
+    if m == "POST" && (p == "/api/v1/sd/sync" || p.ends_with("/trigger")) {
+        return true;
+    }
+    if matches!(m.as_str(), "PUT" | "PATCH" | "POST") && p.starts_with("/api/v1/profiles") {
+        let lower_body = body.to_ascii_lowercase();
+        if lower_body.contains("\"applaunch\"") || lower_body.contains("@duckydeck_app_launch") {
+            return true;
+        }
+    }
+    false
+}
+
 fn write_http_response(stream: &mut TcpStream, status_code: u16, content_type: &str, body: &str) {
     let reason = match status_code {
         200 => "OK",
@@ -605,9 +680,8 @@ fn write_http_response(stream: &mut TcpStream, status_code: u16, content_type: &
         "HTTP/1.1 {status_code} {reason}\r\n\
          Content-Type: {content_type}\r\n\
          Content-Length: {}\r\n\
-         Access-Control-Allow-Origin: *\r\n\
-         Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS\r\n\
-         Access-Control-Allow-Headers: Authorization, Content-Type, X-API-Token\r\n\
+         X-Content-Type-Options: nosniff\r\n\
+         Cache-Control: no-store\r\n\
          Connection: close\r\n\r\n",
         bytes.len()
     );
@@ -669,6 +743,38 @@ fn handle_client_connection(
         }
     };
 
+    if !is_valid_host_header_for_bind(req.headers.get("host").map(String::as_str), &cfg.bind_ip) {
+        let err_json = serde_json::json!({
+            "ok": false,
+            "error": "Forbidden: invalid Host header for local REST API server"
+        })
+        .to_string();
+        write_http_response(
+            &mut stream,
+            403,
+            "application/json; charset=utf-8",
+            &err_json,
+        );
+        return;
+    }
+
+    if let Some(origin) = req.headers.get("origin") {
+        if !is_allowed_local_origin(origin, &cfg.bind_ip) {
+            let err_json = serde_json::json!({
+                "ok": false,
+                "error": "Forbidden: cross-origin requests from external websites are not permitted"
+            })
+            .to_string();
+            write_http_response(
+                &mut stream,
+                403,
+                "application/json; charset=utf-8",
+                &err_json,
+            );
+            return;
+        }
+    }
+
     if req.method == "OPTIONS" {
         write_http_response(&mut stream, 204, "text/plain", "");
         return;
@@ -712,8 +818,8 @@ fn handle_client_connection(
         return;
     }
 
-    // Enforce Bearer token authentication when enabled
-    if cfg.require_auth {
+    // Enforce Bearer token authentication when enabled, or unconditionally on high-privilege routes
+    if cfg.require_auth || route_always_requires_auth(&req.method, &req.path, &req.body) {
         let expected = cfg.token.trim().as_bytes();
         let provided = extract_bearer_token(&req).unwrap_or_default();
         if !constant_time_eq(provided.as_bytes(), expected) {
@@ -903,5 +1009,50 @@ mod tests {
         let val: serde_json::Value = serde_json::from_str(&get_body).unwrap();
         assert_eq!(val["job"]["status"], "completed");
         assert_eq!(val["job"]["ok"], true);
+    }
+
+    #[test]
+    fn test_host_header_and_origin_validation_blocks_dns_rebinding_and_csrf() {
+        assert!(is_valid_host_header_for_bind(
+            Some("127.0.0.1:28491"),
+            "127.0.0.1"
+        ));
+        assert!(is_valid_host_header_for_bind(
+            Some("localhost:28491"),
+            "127.0.0.1"
+        ));
+        assert!(!is_valid_host_header_for_bind(
+            Some("evil-rebind.example.com:28491"),
+            "127.0.0.1"
+        ));
+        assert!(is_allowed_local_origin(
+            "http://127.0.0.1:28491",
+            "127.0.0.1"
+        ));
+        assert!(!is_allowed_local_origin(
+            "https://attacker.example.com",
+            "127.0.0.1"
+        ));
+        assert!(!is_allowed_local_origin("null", "127.0.0.1"));
+    }
+
+    #[test]
+    fn test_route_always_requires_auth_for_rce_and_sd_sync() {
+        assert!(route_always_requires_auth(
+            "POST",
+            "/api/v1/profiles/1/slots/1/trigger",
+            ""
+        ));
+        assert!(route_always_requires_auth("POST", "/api/v1/sd/sync", "{}"));
+        assert!(route_always_requires_auth(
+            "PUT",
+            "/api/v1/profiles/1/slots/1",
+            r#"{"appLaunch":{"enabled":true,"command":"id"}}"#
+        ));
+        assert!(!route_always_requires_auth(
+            "POST",
+            "/api/v1/profiles/1/activate",
+            "{}"
+        ));
     }
 }
