@@ -554,10 +554,14 @@ Window {
     Connections {
         target: drawerRoot.controller
         function onAutoSwitchRulesJsonChanged() {
-            drawerRoot.syncFromController()
+            if (drawerRoot.visible) {
+                drawerRoot.syncFromController()
+            }
         }
         function onModifierRulesJsonChanged() {
-            drawerRoot.syncFromController()
+            if (drawerRoot.visible) {
+                drawerRoot.syncFromController()
+            }
         }
         function onModifierSectionExpandedChanged() {
             if (drawerRoot.controller) {
@@ -565,10 +569,14 @@ Window {
             }
         }
         function onProfilesJsonChanged() {
-            drawerRoot.syncFromController()
+            if (drawerRoot.visible) {
+                drawerRoot.syncFromController()
+            }
         }
         function onDefaultFallbackProfileChanged() {
-            drawerRoot.syncFromController()
+            if (drawerRoot.visible) {
+                drawerRoot.syncFromController()
+            }
         }
         function onAutoswitchEnableSectionExpandedChanged() {
             if (drawerRoot.controller) {
@@ -826,6 +834,65 @@ Window {
                                                     drawerRoot.fallbackNumbers[index]
                                                 )
                                             }
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    height: 1
+                                    color: drawerRoot.subtleBorder
+                                }
+
+                                // Unfocused Window Hover Toggle (Opt-In, Default Off)
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 10
+
+                                    QQC2.Switch {
+                                        id: unfocusedHoverSwitch
+                                        objectName: "unfocusedHoverSwitch"
+                                        Layout.alignment: Qt.AlignTop
+                                        checked: drawerRoot.controller ? drawerRoot.controller.autoSwitchUnfocusedHover : false
+                                        onToggled: {
+                                            if (drawerRoot.controller) {
+                                                drawerRoot.controller.updateAutoSwitchUnfocusedHover(checked)
+                                            }
+                                        }
+                                        QQC2.ToolTip.delay: 500
+                                        QQC2.ToolTip.visible: hovered
+                                        QQC2.ToolTip.text: qsTr("Only needed when KWin focus policy is Click-to-Focus rather than Focus-Follows-Mouse. Leave off for zero KWin cursor-polling overhead.")
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 0
+                                        spacing: 2
+
+                                        QQC2.Label {
+                                            Layout.fillWidth: true
+                                            text: qsTr("Switch profiles when hovering unfocused windows")
+                                            font.bold: true
+                                            font.pointSize: 10.5 * drawerRoot.fontScale
+                                            color: Kirigami.Theme.textColor
+                                            wrapMode: Text.WordWrap
+                                            TapHandler {
+                                                onTapped: {
+                                                    const next = !unfocusedHoverSwitch.checked
+                                                    unfocusedHoverSwitch.checked = next
+                                                    if (drawerRoot.controller) {
+                                                        drawerRoot.controller.updateAutoSwitchUnfocusedHover(next)
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        QQC2.Label {
+                                            Layout.fillWidth: true
+                                            text: qsTr("Only needed when KWin focus policy is Click-to-Focus rather than Focus-Follows-Mouse (off = 0 Hz KWin cursor overhead).")
+                                            font.pointSize: 10 * drawerRoot.fontScale
+                                            color: Qt.alpha(Kirigami.Theme.textColor, 0.78)
+                                            wrapMode: Text.WordWrap
                                         }
                                     }
                                 }

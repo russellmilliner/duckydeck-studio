@@ -748,6 +748,8 @@ pub struct PersistedSwitcherConfig {
     pub enabled: bool,
     pub default_profile: Option<u8>,
     pub rules: Vec<AutoSwitchRule>,
+    #[serde(default)]
+    pub auto_switch_unfocused_hover: bool,
     #[serde(default = "default_mouse_settle_ms")]
     pub mouse_settle_ms: i32,
     #[serde(default = "default_window_dwell_ms")]
@@ -820,6 +822,7 @@ pub struct SwitcherState {
     pub paused_for_editing: bool,
     pub default_profile: Option<u8>,
     pub rules: Vec<AutoSwitchRule>,
+    pub auto_switch_unfocused_hover: bool,
     pub mouse_settle_ms: i32,
     pub window_dwell_ms: i32,
     pub tray_icon_mode: String,
@@ -902,6 +905,7 @@ impl Default for SwitcherState {
                 paused_for_editing: false,
                 default_profile: Some(cfg.default_profile.unwrap_or(1).max(1)),
                 rules: cfg.rules,
+                auto_switch_unfocused_hover: cfg.auto_switch_unfocused_hover,
                 mouse_settle_ms: cfg.mouse_settle_ms.clamp(0, 5000),
                 window_dwell_ms: cfg.window_dwell_ms.clamp(0, 5000),
                 tray_icon_mode: mode,
@@ -974,6 +978,7 @@ impl Default for SwitcherState {
                     target_profile: 4,
                 },
             ],
+            auto_switch_unfocused_hover: false,
             mouse_settle_ms: default_mouse_settle_ms(),
             window_dwell_ms: default_window_dwell_ms(),
             tray_icon_mode: "auto".to_string(),
@@ -1387,6 +1392,7 @@ impl SwitcherState {
             enabled: self.enabled,
             default_profile: self.default_profile,
             rules: self.rules.clone(),
+            auto_switch_unfocused_hover: self.auto_switch_unfocused_hover,
             mouse_settle_ms: self.mouse_settle_ms.clamp(0, 5000),
             window_dwell_ms: self.window_dwell_ms.clamp(0, 5000),
             tray_icon_mode: self.tray_icon_mode.clone(),
@@ -1704,8 +1710,13 @@ pub fn strip_browser_title_suffix(caption: &str) -> String {
 }
 
 static RESOLVED_BROWSER_TITLES: std::sync::LazyLock<
-    std::sync::Mutex<std::collections::HashMap<String, String>>,
+    std::sync::Mutex<std::collections::HashMap<String, Option<String>>>,
 > = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+const MAX_BROWSER_RECOVERY_COMPRESSED_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_BROWSER_RECOVERY_UNCOMPRESSED_BYTES: usize = 16 * 1024 * 1024;
+const MAX_BROWSER_SQLITE_SCAN_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_RESOLVED_BROWSER_TITLE_CACHE_ENTRIES: usize = 256;
 
 static LAST_BROWSER_SITE_SUFFIX: std::sync::LazyLock<
     std::sync::Mutex<std::collections::HashMap<String, String>>,
@@ -1845,10 +1856,30 @@ fn lookup_full_title_in_browser_storage(search_prefix: &str) -> Option<String> {
     }
     profile_dirs.sort_by_key(|a| std::cmp::Reverse(a.0));
 
-    // 1. Check recovery.jsonlz4 first (live sessionstore with exact tab title & URL)
+    // 1. Check recovery.jsonlz4 first (live sessionstore with exact tab title & URL),
+    //    checking the 12-byte mozLz40 header first so multi-tens-of-MB session files never spike RSS.
     for (_, prof_dir) in &profile_dirs {
         let recovery_path = prof_dir.join("sessionstore-backups/recovery.jsonlz4");
-        if let Ok(compressed) = fs::read(&recovery_path) {
+        let Ok(mut file) = fs::File::open(&recovery_path) else {
+            continue;
+        };
+        let Ok(meta) = file.metadata() else {
+            continue;
+        };
+        if meta.len() < 12 || meta.len() > MAX_BROWSER_RECOVERY_COMPRESSED_BYTES {
+            continue;
+        }
+        let mut hdr = [0u8; 12];
+        if std::io::Read::read_exact(&mut file, &mut hdr).is_err() || &hdr[..8] != b"mozLz40\0" {
+            continue;
+        }
+        let uncomp_len = u32::from_le_bytes([hdr[8], hdr[9], hdr[10], hdr[11]]) as usize;
+        if uncomp_len == 0 || uncomp_len > MAX_BROWSER_RECOVERY_UNCOMPRESSED_BYTES {
+            continue;
+        }
+        let mut compressed = Vec::with_capacity(meta.len() as usize);
+        compressed.extend_from_slice(&hdr);
+        if std::io::Read::read_to_end(&mut file, &mut compressed).is_ok() {
             if let Some(raw_json) = decompress_mozlz4(&compressed) {
                 if let Some(pos) = raw_json
                     .windows(prefix_bytes.len())
@@ -1874,10 +1905,16 @@ fn lookup_full_title_in_browser_storage(search_prefix: &str) -> Option<String> {
         }
     }
 
-    // 2. Check places.sqlite-wal and places.sqlite (contains full untruncated moz_places title & rev_host)
+    // 2. Check places.sqlite-wal and places.sqlite (bounded to <= 16 MB to prevent large heap spikes)
     for (_, prof_dir) in &profile_dirs {
         for fname in ["places.sqlite-wal", "places.sqlite"] {
             let db_path = prof_dir.join(fname);
+            let Ok(meta) = fs::metadata(&db_path) else {
+                continue;
+            };
+            if meta.len() == 0 || meta.len() > MAX_BROWSER_SQLITE_SCAN_BYTES {
+                continue;
+            }
             let Ok(data) = fs::read(&db_path) else {
                 continue;
             };
@@ -1932,14 +1969,20 @@ pub fn resolve_full_browser_caption(resource_class: &str, caption: &str) -> Stri
     }
 
     if let Ok(cache) = RESOLVED_BROWSER_TITLES.lock() {
-        if let Some(full_stripped) = cache.get(&search_prefix) {
-            return format!("{full_stripped}{browser_suffix}");
+        if let Some(cached_entry) = cache.get(&search_prefix) {
+            return match cached_entry {
+                Some(full_stripped) => format!("{full_stripped}{browser_suffix}"),
+                None => caption.to_string(),
+            };
         }
     }
 
     if let Some(full_stripped) = lookup_full_title_in_browser_storage(&search_prefix) {
         if let Ok(mut cache) = RESOLVED_BROWSER_TITLES.lock() {
-            cache.insert(search_prefix, full_stripped.clone());
+            if cache.len() >= MAX_RESOLVED_BROWSER_TITLE_CACHE_ENTRIES {
+                cache.clear();
+            }
+            cache.insert(search_prefix, Some(full_stripped.clone()));
         }
         if full_stripped.to_ascii_lowercase().contains("gmail") {
             if let Ok(mut last_map) = LAST_BROWSER_SITE_SUFFIX.lock() {
@@ -1956,11 +1999,21 @@ pub fn resolve_full_browser_caption(resource_class: &str, caption: &str) -> Stri
             if let Some(site_suf) = last_map.get(&lower_class) {
                 let augmented = format!("{stripped} …{site_suf}");
                 if let Ok(mut cache) = RESOLVED_BROWSER_TITLES.lock() {
-                    cache.insert(search_prefix, augmented.clone());
+                    if cache.len() >= MAX_RESOLVED_BROWSER_TITLE_CACHE_ENTRIES {
+                        cache.clear();
+                    }
+                    cache.insert(search_prefix, Some(augmented.clone()));
                 }
                 return format!("{augmented}{browser_suffix}");
             }
         }
+    }
+
+    if let Ok(mut cache) = RESOLVED_BROWSER_TITLES.lock() {
+        if cache.len() >= MAX_RESOLVED_BROWSER_TITLE_CACHE_ENTRIES {
+            cache.clear();
+        }
+        cache.insert(search_prefix, None);
     }
 
     caption.to_string()
@@ -5132,7 +5185,7 @@ export default class DuckyDeckAutoSwitcherExtension {
         });
 
         if first_time {
-            if let Ok(proxy) = zbus::Proxy::new(
+            if let Ok(proxy) = super::build_uncached_proxy(
                 conn,
                 "org.gnome.Shell.Extensions",
                 "/org/gnome/Shell/Extensions",
@@ -5156,7 +5209,7 @@ export default class DuckyDeckAutoSwitcherExtension {
         if !is_gnome_session() {
             return None;
         }
-        let proxy = zbus::Proxy::new(
+        let proxy = super::build_uncached_proxy(
             conn,
             "org.gnome.Shell.Introspect",
             "/org/gnome/Shell/Introspect",
@@ -5214,13 +5267,58 @@ export default class DuckyDeckAutoSwitcherExtension {
 }
 
 #[cfg(not(target_os = "windows"))]
+pub(crate) async fn build_uncached_proxy<'a>(
+    conn: &'a zbus::Connection,
+    dest: &'a str,
+    path: &'a str,
+    iface: &'a str,
+) -> zbus::Result<zbus::Proxy<'a>> {
+    zbus::proxy::Builder::new(conn)
+        .destination(dest)?
+        .path(path)?
+        .interface(iface)?
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
+        .await
+}
+
+static KWIN_HOOK_RELOAD_REQUESTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(not(target_os = "windows"))]
+static KWIN_HOOK_RELOAD_NOTIFY: std::sync::OnceLock<tokio::sync::Notify> =
+    std::sync::OnceLock::new();
+
+#[cfg(not(target_os = "windows"))]
+fn kwin_hook_reload_notify() -> &'static tokio::sync::Notify {
+    KWIN_HOOK_RELOAD_NOTIFY.get_or_init(tokio::sync::Notify::new)
+}
+
+pub fn request_kwin6_hook_reload() {
+    KWIN_HOOK_RELOAD_REQUESTED.store(true, std::sync::atomic::Ordering::SeqCst);
+    #[cfg(not(target_os = "windows"))]
+    {
+        kwin_hook_reload_notify().notify_one();
+    }
+}
+
+fn read_unfocused_hover_enabled(state: &Arc<Mutex<SwitcherState>>) -> bool {
+    state
+        .lock()
+        .map(|s| s.auto_switch_unfocused_hover)
+        .unwrap_or(false)
+}
+
+#[cfg(not(target_os = "windows"))]
 pub async fn pick_window_via_kwin_dbus() -> std::result::Result<WindowChangeEvent, String> {
     let conn = zbus::Connection::session()
         .await
         .map_err(|e| format!("D-Bus session error: {e}"))?;
 
     // 1. Try native KWin interactive crosshair picker first (KDE Plasma 6 Wayland & X11)
-    if let Ok(kwin_proxy) = zbus::Proxy::new(&conn, "org.kde.KWin", "/KWin", "org.kde.KWin").await {
+    if let Ok(kwin_proxy) =
+        build_uncached_proxy(&conn, "org.kde.KWin", "/KWin", "org.kde.KWin").await
+    {
         if let Ok(info) = kwin_proxy
             .call::<_, _, std::collections::HashMap<String, zbus::zvariant::OwnedValue>>(
                 "queryWindowInfo",
@@ -5502,6 +5600,7 @@ pub async fn run_kwin_auto_switcher(
 
     #[cfg(target_os = "windows")]
     {
+        let state_for_hover = Arc::clone(&state);
         let mut service = KWinBridgeService {
             state,
             ui_event_tx,
@@ -5526,18 +5625,23 @@ pub async fn run_kwin_auto_switcher(
                     }
                 }
             }
-            // Poll active foreground window AND cursor hover window on Windows every 50ms
+            let unfocused_hover = read_unfocused_hover_enabled(&state_for_hover);
+            // Poll active foreground window (and optional cursor hover window) on Windows every 50ms
             // SAFETY: GetForegroundWindow, GetCursorPos, and WindowFromPoint are thread-safe Win32 queries.
             let (fg_info, cursor_moved_info) = unsafe {
                 let fg = win32_window::inspect_hwnd(win32_window::GetForegroundWindow());
-                let mut pt = win32_window::POINT::default();
                 let mut hover = None;
-                if win32_window::GetCursorPos(&mut pt) != 0 {
-                    let cur_xy = (pt.x, pt.y);
-                    if last_pt != Some(cur_xy) {
-                        last_pt = Some(cur_xy);
-                        hover = win32_window::inspect_hwnd(win32_window::WindowFromPoint(pt));
+                if unfocused_hover {
+                    let mut pt = win32_window::POINT::default();
+                    if win32_window::GetCursorPos(&mut pt) != 0 {
+                        let cur_xy = (pt.x, pt.y);
+                        if last_pt != Some(cur_xy) {
+                            last_pt = Some(cur_xy);
+                            hover = win32_window::inspect_hwnd(win32_window::WindowFromPoint(pt));
+                        }
                     }
+                } else {
+                    last_pt = None;
                 }
                 (fg, hover)
             };
@@ -5556,6 +5660,7 @@ pub async fn run_kwin_auto_switcher(
     #[cfg(not(target_os = "windows"))]
     {
         let pending_check = Arc::clone(&pending);
+        let state_for_hook = Arc::clone(&state);
         let mut fallback_service = KWinBridgeService {
             state: Arc::clone(&state),
             ui_event_tx: ui_event_tx.clone(),
@@ -5574,74 +5679,103 @@ pub async fn run_kwin_auto_switcher(
             .build()
             .await?;
 
-        let mut active_kwin_hook: Option<(
-            String,
-            i32,
-            std::collections::BTreeSet<i32>,
-        )> = None;
+        let mut active_kwin_hook: Option<(String, i32)> = None;
+        let mut kwin_scripting_opt: Option<zbus::Proxy<'_>> = None;
+        let mut kwin_introspect_opt: Option<zbus::Proxy<'_>> = None;
 
         if !linux_desktop_window::is_hyprland_session() {
-            if let Ok(script_path) = write_kwin6_hook_script() {
-                if let Ok(kwin_scripting) = zbus::Proxy::new(
-                    &conn,
-                    "org.kde.KWin",
-                    "/Scripting",
-                    "org.kde.kwin.Scripting",
-                )
-                .await
-                {
+            let initial_unfocused_hover = read_unfocused_hover_enabled(&state_for_hook);
+            if let Ok(script_path) = write_kwin6_hook_script(initial_unfocused_hover) {
+                if let (Ok(kwin_scripting), Ok(kwin_introspect)) = (
+                    build_uncached_proxy(
+                        &conn,
+                        "org.kde.KWin",
+                        "/Scripting",
+                        "org.kde.kwin.Scripting",
+                    )
+                    .await,
+                    build_uncached_proxy(
+                        &conn,
+                        "org.kde.KWin",
+                        "/Scripting",
+                        "org.freedesktop.DBus.Introspectable",
+                    )
+                    .await,
+                ) {
                     KWIN_HOOK_REGISTERED.store(true, std::sync::atomic::Ordering::SeqCst);
                     active_kwin_hook = register_kwin6_hook_script(
                         &conn,
                         &kwin_scripting,
+                        &kwin_introspect,
                         &script_path,
                         &pending_check,
                         true,
+                        false,
                     )
                     .await;
                     if active_kwin_hook.is_none() {
                         KWIN_HOOK_REGISTERED.store(false, std::sync::atomic::Ordering::SeqCst);
                     }
+                    kwin_scripting_opt = Some(kwin_scripting);
+                    kwin_introspect_opt = Some(kwin_introspect);
                 }
             }
         }
 
-        if let Some((mut active_plugin, mut active_script_id, mut ids_below)) = active_kwin_hook {
+        if let (
+            Some((mut active_plugin, mut active_script_id)),
+            Some(kwin_scripting),
+            Some(kwin_introspect),
+        ) = (active_kwin_hook, kwin_scripting_opt, kwin_introspect_opt)
+        {
+            let notify = kwin_hook_reload_notify();
             loop {
-                tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
-                let Ok(kwin_scripting) = zbus::Proxy::new(
-                    &conn,
-                    "org.kde.KWin",
-                    "/Scripting",
-                    "org.kde.kwin.Scripting",
-                )
-                .await
-                else {
-                    continue;
+                if !KWIN_HOOK_RELOAD_REQUESTED.load(std::sync::atomic::Ordering::SeqCst) {
+                    tokio::select! {
+                        _ = tokio::time::sleep(std::time::Duration::from_millis(30_000)) => {}
+                        _ = notify.notified() => {}
+                    }
+                }
+                let reload_requested =
+                    KWIN_HOOK_RELOAD_REQUESTED.swap(false, std::sync::atomic::Ordering::SeqCst);
+
+                let (is_loaded, node_alive) = if reload_requested {
+                    (true, true)
+                } else {
+                    let loaded = kwin_scripting
+                        .call::<_, _, bool>("isScriptLoaded", &(active_plugin.as_str(),))
+                        .await
+                        .unwrap_or(false);
+                    let current_ids = introspect_kwin_script_ids_with_proxy(&kwin_introspect).await;
+                    (loaded, current_ids.contains(&active_script_id))
                 };
 
-                let is_loaded = kwin_scripting
-                    .call::<_, _, bool>("isScriptLoaded", &(active_plugin.as_str(),))
-                    .await
-                    .unwrap_or(false);
-                let current_ids = introspect_kwin_script_ids(&conn).await;
-                let node_alive = current_ids.contains(&active_script_id);
-                let lower_slot_unloaded = ids_below.iter().any(|id| !current_ids.contains(id));
-
-                if !is_loaded || !node_alive || lower_slot_unloaded {
-                    if let Ok(script_path) = write_kwin6_hook_script() {
-                        if let Some((new_plugin, new_id, new_below)) = register_kwin6_hook_script(
+                if reload_requested || !is_loaded || !node_alive {
+                    {
+                        let _guard = KWIN_SCRIPT_LOCK.lock().await;
+                        stop_and_unload_kwin_script(
                             &conn,
                             &kwin_scripting,
+                            &active_plugin,
+                            Some(active_script_id),
+                        )
+                        .await;
+                    }
+                    let unfocused_hover = read_unfocused_hover_enabled(&state_for_hook);
+                    if let Ok(script_path) = write_kwin6_hook_script(unfocused_hover) {
+                        if let Some((new_plugin, new_id)) = register_kwin6_hook_script(
+                            &conn,
+                            &kwin_scripting,
+                            &kwin_introspect,
                             &script_path,
                             &pending_check,
                             false,
+                            reload_requested,
                         )
                         .await
                         {
                             active_plugin = new_plugin;
                             active_script_id = new_id;
-                            ids_below = new_below;
                         }
                     }
                 }
@@ -5670,15 +5804,22 @@ pub async fn run_kwin_auto_switcher(
 
         loop {
             tick_counter = tick_counter.wrapping_add(1);
+            let unfocused_hover = read_unfocused_hover_enabled(&state_for_hook);
+            if !unfocused_hover {
+                last_hypr_cursor = None;
+                last_x11_cursor = None;
+            }
             let mut fg_info: Option<(String, String, String)> = None;
             let mut hover_info: Option<(String, String, String)> = None;
 
-            // 1. Omarchy / Hyprland IPC socket (`j/activewindow` + `j/cursorpos` + `j/clients`)
+            // 1. Omarchy / Hyprland IPC socket (`j/activewindow` + optional `j/cursorpos` + `j/clients`)
             if let Some((hypr_act, hypr_hover)) =
                 linux_desktop_window::query_hyprland_window_and_hover(&mut last_hypr_cursor)
             {
                 fg_info = hypr_act;
-                hover_info = hypr_hover;
+                if unfocused_hover {
+                    hover_info = hypr_hover;
+                }
             }
 
             // 2. COSMIC / wlroots / Sway / Niri Wayland foreign-toplevel watcher
@@ -5693,14 +5834,14 @@ pub async fn run_kwin_auto_switcher(
                 }
             }
 
-            // 3. Cinnamon / Linux Mint / MATE / Xfce / Xorg (`_NET_ACTIVE_WINDOW` + `XQueryPointer`)
-            if fg_info.is_none() || hover_info.is_none() {
+            // 3. Cinnamon / Linux Mint / MATE / Xfce / Xorg (`_NET_ACTIVE_WINDOW` + optional `XQueryPointer`)
+            if fg_info.is_none() || (unfocused_hover && hover_info.is_none()) {
                 let (x11_act, x11_hover, _) =
                     linux_desktop_window::query_x11_window_and_hover(&mut last_x11_cursor, false);
                 if fg_info.is_none() {
                     fg_info = x11_act;
                 }
-                if hover_info.is_none() {
+                if unfocused_hover && hover_info.is_none() {
                     hover_info = x11_hover;
                 }
             }
@@ -5725,7 +5866,7 @@ pub async fn run_kwin_auto_switcher(
 }
 
 #[cfg(not(target_os = "windows"))]
-fn write_kwin6_hook_script() -> std::io::Result<String> {
+fn write_kwin6_hook_script(unfocused_hover: bool) -> std::io::Result<String> {
     let initial_rect_js = match load_saved_oled_geometry_tuple() {
         Some((gx, gy, gw, gh)) => {
             format!("{{ x: {gx}, y: {gy}, width: {gw}, height: {gh} }}")
@@ -5738,12 +5879,118 @@ fn write_kwin6_hook_script() -> std::io::Result<String> {
         }
         None => "null".to_string(),
     };
-    let js_code = format!(
+    let js_code = generate_kwin6_hook_js(unfocused_hover, &initial_rect_js, &initial_main_rect_js);
+    let file_path = crate::paths::kwin_runtime_dir()
+        .join("duckydeck-kwin6-hook.js")
+        .to_string_lossy()
+        .to_string();
+
+    let mut file = std::fs::File::create(&file_path)?;
+    file.write_all(js_code.as_bytes())?;
+    Ok(file_path)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn generate_kwin6_hook_js(
+    unfocused_hover: bool,
+    initial_rect_js: &str,
+    initial_main_rect_js: &str,
+) -> String {
+    let hover_functions_js = if unfocused_hover {
+        r#"
+var lastMotionSentMs = 0;
+
+function isWindowOnCurrentDesktop(w) {
+    if (!w) return false;
+    if (w.onAllDesktops || w.desktopWindow || w.dock) return true;
+    if (!workspace.currentDesktop || !w.desktops || w.desktops.length === 0) return true;
+    for (var d = 0; d < w.desktops.length; ++d) {
+        if (w.desktops[d] === workspace.currentDesktop) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function topWindowAtPoint(pt) {
+    if (!pt) return null;
+    var order = workspace.stackingOrder || (workspace.windowList ? workspace.windowList() : null);
+    if (!order || !order.length) return null;
+    for (var i = order.length - 1; i >= 0; --i) {
+        var w = order[i];
+        if (!w || w.minimized || w.hidden || w.deleted) continue;
+        if (w.tooltip || w.notification || w.criticalNotification || w.onScreenDisplay || w.dndIcon || w.splash) continue;
+        if (!isWindowOnCurrentDesktop(w)) continue;
+        var fg = w.frameGeometry;
+        if (!fg || fg.width <= 0 || fg.height <= 0) continue;
+        if (pt.x >= fg.x && pt.x < (fg.x + fg.width) && pt.y >= fg.y && pt.y < (fg.y + fg.height)) {
+            return w;
+        }
+    }
+    return null;
+}
+
+function onCursorPosChanged() {
+    var now = Date.now();
+    if ((now - lastMotionSentMs) < 120) return;
+    lastMotionSentMs = now;
+    var pt = workspace.cursorPos;
+    if (!pt) return;
+    var topWin = topWindowAtPoint(pt);
+    if (!topWin || isDesktopOrPanelWindow(topWin)) {
+        if (lastCursorKey !== "plasmashell::Desktop") {
+            disconnectTrackedWindow();
+            sendDesktop();
+        }
+        return;
+    }
+    if (isDuckyDeckWindow(topWin)) {
+        lastCursorKey = "__duckydeck__";
+        return;
+    }
+    var cls = effectiveWindowClass(topWin);
+    var cap = topWin.caption ? topWin.caption.toString() : "";
+    var key = cls + "::" + cap;
+    if (lastCursorKey !== key) {
+        onWindowActivated(topWin);
+    }
+}
+"#
+    } else {
+        ""
+    };
+
+    let initial_hover_check_js = if unfocused_hover {
+        r#"    if (workspace.cursorPos) {
+        var underCursor = topWindowAtPoint(workspace.cursorPos);
+        if (!underCursor || isDesktopOrPanelWindow(underCursor)) {
+            sendDesktop();
+            return;
+        }
+        if (!isDuckyDeckWindow(underCursor)) {
+            onWindowActivated(underCursor);
+            return;
+        }
+    }
+"#
+    } else {
+        ""
+    };
+
+    let cursor_connect_js = if unfocused_hover {
+        r#"if (workspace.cursorPosChanged) {
+    workspace.cursorPosChanged.connect(onCursorPosChanged);
+}
+"#
+    } else {
+        ""
+    };
+
+    format!(
         r#"
 var trackedWindow = null;
 var hookedWindows = [];
 var lastCursorKey = "";
-var lastMotionSentMs = 0;
 var initialSavedOledRect = {initial_rect_js};
 var initialSavedMainRect = {initial_main_rect_js};
 
@@ -6176,63 +6423,8 @@ function onWindowActivated(win) {
     }
     sendWindow(win);
 }
-
-function isWindowOnCurrentDesktop(w) {
-    if (!w) return false;
-    if (w.onAllDesktops || w.desktopWindow || w.dock) return true;
-    if (!workspace.currentDesktop || !w.desktops || w.desktops.length === 0) return true;
-    for (var d = 0; d < w.desktops.length; ++d) {
-        if (w.desktops[d] === workspace.currentDesktop) {
-            return true;
-        }
-    }
-    return false;
-}
-
-function topWindowAtPoint(pt) {
-    if (!pt) return null;
-    var order = workspace.stackingOrder || (workspace.windowList ? workspace.windowList() : null);
-    if (!order || !order.length) return null;
-    for (var i = order.length - 1; i >= 0; --i) {
-        var w = order[i];
-        if (!w || w.minimized || w.hidden || w.deleted) continue;
-        if (w.tooltip || w.notification || w.criticalNotification || w.onScreenDisplay || w.dndIcon || w.splash) continue;
-        if (!isWindowOnCurrentDesktop(w)) continue;
-        var fg = w.frameGeometry;
-        if (!fg || fg.width <= 0 || fg.height <= 0) continue;
-        if (pt.x >= fg.x && pt.x < (fg.x + fg.width) && pt.y >= fg.y && pt.y < (fg.y + fg.height)) {
-            return w;
-        }
-    }
-    return null;
-}
-
-function onCursorPosChanged() {
-    var now = Date.now();
-    if ((now - lastMotionSentMs) < 120) return;
-    lastMotionSentMs = now;
-    var pt = workspace.cursorPos;
-    if (!pt) return;
-    var topWin = topWindowAtPoint(pt);
-    if (!topWin || isDesktopOrPanelWindow(topWin)) {
-        if (lastCursorKey !== "plasmashell::Desktop") {
-            disconnectTrackedWindow();
-            sendDesktop();
-        }
-        return;
-    }
-    if (isDuckyDeckWindow(topWin)) {
-        lastCursorKey = "__duckydeck__";
-        return;
-    }
-    var cls = effectiveWindowClass(topWin);
-    var cap = topWin.caption ? topWin.caption.toString() : "";
-    var key = cls + "::" + cap;
-    if (lastCursorKey !== key) {
-        onWindowActivated(topWin);
-    }
-}
-
+"# + hover_functions_js
+        + r#"
 function sendInitialTopWindow() {
     var order = workspace.stackingOrder || (workspace.windowList ? workspace.windowList() : null);
     if (order && order.length) {
@@ -6240,18 +6432,8 @@ function sendInitialTopWindow() {
             checkOledKeepAbove(order[j]);
         }
     }
-    if (workspace.cursorPos) {
-        var underCursor = topWindowAtPoint(workspace.cursorPos);
-        if (!underCursor || isDesktopOrPanelWindow(underCursor)) {
-            sendDesktop();
-            return;
-        }
-        if (!isDuckyDeckWindow(underCursor)) {
-            onWindowActivated(underCursor);
-            return;
-        }
-    }
-    if (workspace.activeWindow && !isDuckyDeckWindow(workspace.activeWindow)) {
+"# + initial_hover_check_js
+        + r#"    if (workspace.activeWindow && !isDuckyDeckWindow(workspace.activeWindow)) {
         onWindowActivated(workspace.activeWindow);
         return;
     }
@@ -6280,26 +6462,15 @@ function onWindowAdded(win) {
 if (workspace.windowAdded) {
     workspace.windowAdded.connect(onWindowAdded);
 }
-if (workspace.cursorPosChanged) {
-    workspace.cursorPosChanged.connect(onCursorPosChanged);
-}
-if (workspace.windowActivated) {
+"# + cursor_connect_js
+        + r#"if (workspace.windowActivated) {
     workspace.windowActivated.connect(onWindowActivated);
     sendInitialTopWindow();
 } else if (workspace.clientActivated) {
     workspace.clientActivated.connect(onWindowActivated);
     onWindowActivated(workspace.activeClient);
 }
-"#;
-
-    let file_path = crate::paths::kwin_runtime_dir()
-        .join("duckydeck-kwin6-hook.js")
-        .to_string_lossy()
-        .to_string();
-
-    let mut file = std::fs::File::create(&file_path)?;
-    file.write_all(js_code.as_bytes())?;
-    Ok(file_path)
+"#
 }
 
 fn load_saved_main_window_geometry_tuple() -> Option<(i32, i32, i32, i32)> {
@@ -6356,19 +6527,71 @@ static KWIN_SCRIPT_LOCK: std::sync::LazyLock<tokio::sync::Mutex<()>> =
     std::sync::LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 #[cfg(not(target_os = "windows"))]
-async fn introspect_kwin_script_ids(conn: &zbus::Connection) -> std::collections::BTreeSet<i32> {
+static ACTIVE_KWIN_HOOK_SLOT: std::sync::LazyLock<std::sync::Mutex<Option<(String, i32)>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
+
+#[cfg(not(target_os = "windows"))]
+fn kwin_hook_sid_path() -> PathBuf {
+    crate::paths::kwin_runtime_dir().join("duckydeck-kwin6-hook.sid")
+}
+
+#[cfg(not(target_os = "windows"))]
+fn load_persisted_kwin_hook_sid() -> Option<(String, i32)> {
+    let raw = fs::read_to_string(kwin_hook_sid_path()).ok()?;
+    let line = raw.lines().next()?.trim();
+    let (plugin, id_str) = line.split_once('\t')?;
+    let plugin = plugin.trim();
+    if plugin.is_empty() {
+        return None;
+    }
+    let id = id_str.trim().parse::<i32>().ok()?;
+    if id < 0 {
+        return None;
+    }
+    Some((plugin.to_string(), id))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn save_persisted_kwin_hook_sid(plugin_name: &str, script_id: i32) {
+    if let Ok(mut guard) = ACTIVE_KWIN_HOOK_SLOT.lock() {
+        *guard = Some((plugin_name.to_string(), script_id));
+    }
+    let sid_path = kwin_hook_sid_path();
+    let payload = format!("{plugin_name}\t{script_id}\n");
+    let _ = fs::write(sid_path, payload.as_bytes());
+}
+
+#[cfg(not(target_os = "windows"))]
+async fn stop_and_unload_kwin_script(
+    conn: &zbus::Connection,
+    kwin_scripting: &zbus::Proxy<'_>,
+    plugin_name: &str,
+    script_id: Option<i32>,
+) {
+    if let Some(id) = script_id.filter(|&i| i >= 0) {
+        let script_obj_path = format!("/Scripting/Script{id}");
+        if let Ok(script_proxy) = build_uncached_proxy(
+            conn,
+            "org.kde.KWin",
+            script_obj_path.as_str(),
+            "org.kde.kwin.Script",
+        )
+        .await
+        {
+            let _: std::result::Result<(), _> = script_proxy.call("stop", &()).await;
+        }
+    }
+    let _: std::result::Result<bool, _> = kwin_scripting
+        .call("unloadScript", &(plugin_name,))
+        .await;
+}
+
+#[cfg(not(target_os = "windows"))]
+async fn introspect_kwin_script_ids_with_proxy(
+    kwin_introspect: &zbus::Proxy<'_>,
+) -> std::collections::BTreeSet<i32> {
     let mut ids = std::collections::BTreeSet::new();
-    let Ok(proxy) = zbus::Proxy::new(
-        conn,
-        "org.kde.KWin",
-        "/Scripting",
-        "org.freedesktop.DBus.Introspectable",
-    )
-    .await
-    else {
-        return ids;
-    };
-    let Ok(xml) = proxy.call::<_, _, String>("Introspect", &()).await else {
+    let Ok(xml) = kwin_introspect.call::<_, _, String>("Introspect", &()).await else {
         return ids;
     };
     for line in xml.lines() {
@@ -6387,34 +6610,51 @@ async fn introspect_kwin_script_ids(conn: &zbus::Connection) -> std::collections
 async fn register_kwin6_hook_script(
     conn: &zbus::Connection,
     kwin_scripting: &zbus::Proxy<'_>,
+    kwin_introspect: &zbus::Proxy<'_>,
     script_path: &str,
     pending_check: &Arc<Mutex<PendingWindowSwitch>>,
     initial_startup: bool,
-) -> Option<(String, i32, std::collections::BTreeSet<i32>)> {
+    reload_requested: bool,
+) -> Option<(String, i32)> {
     let base_plugin_name = "duckydeck_kwin6_autoswitcher";
     let pid_fallback_name = format!("duckydeck_kwin6_autoswitcher_{}", std::process::id());
 
-    // First unload any previous DuckyDeck KWin scripts once before searching for a clean Script{id} slot.
-    // Note: KWin 6 assigns `/Scripting/Script{scripts.size()}` on `loadScript`. If an external tool
-    // (e.g. kdotool) unloaded a lower-numbered script while a higher-numbered script remains registered
-    // on D-Bus, unloading on every retry would keep resetting `scripts.size()` back to the collided ID.
-    // By keeping inert gap-filler entries loaded across retry attempts, `scripts.size()` advances past
-    // any orphaned `/Scripting/Script{N}` objects until our hook script registers and runs cleanly.
+    // Cleanly stop & unload any active/persisted DuckyDeck KWin hook script first without
+    // firing 24 blind `_slot_{1..23}` unloadScript D-Bus calls unless a collision actually occurs.
     {
         let _guard = KWIN_SCRIPT_LOCK.lock().await;
-        let _: std::result::Result<bool, _> = kwin_scripting
-            .call("unloadScript", &("duckydeck_oled_keep_above_oneshot",))
-            .await;
-        let _: std::result::Result<bool, _> =
-            kwin_scripting.call("unloadScript", &(base_plugin_name,)).await;
-        let _: std::result::Result<bool, _> = kwin_scripting
-            .call("unloadScript", &(pid_fallback_name.as_str(),))
-            .await;
-        for slot_idx in 1..24 {
-            let slot_name = format!("{base_plugin_name}_slot_{slot_idx}");
-            let _: std::result::Result<bool, _> = kwin_scripting
-                .call("unloadScript", &(slot_name.as_str(),))
-                .await;
+        let mut prior_slots: Vec<(String, i32)> = Vec::new();
+        if let Ok(guard) = ACTIVE_KWIN_HOOK_SLOT.lock() {
+            if let Some(entry) = guard.clone() {
+                prior_slots.push(entry);
+            }
+        }
+        if let Some(persisted) = load_persisted_kwin_hook_sid() {
+            if !prior_slots.iter().any(|(p, id)| p == &persisted.0 && *id == persisted.1) {
+                prior_slots.push(persisted);
+            }
+        }
+        let mut unloaded_names: Vec<String> = Vec::new();
+        for (prev_plugin, prev_id) in prior_slots {
+            stop_and_unload_kwin_script(conn, kwin_scripting, &prev_plugin, Some(prev_id)).await;
+            unloaded_names.push(prev_plugin);
+        }
+        for known_name in [
+            "duckydeck_oled_keep_above_oneshot",
+            base_plugin_name,
+            pid_fallback_name.as_str(),
+        ] {
+            if unloaded_names.iter().any(|n| n == known_name) {
+                continue;
+            }
+            if kwin_scripting
+                .call::<_, _, bool>("isScriptLoaded", &(known_name,))
+                .await
+                .unwrap_or(false)
+            {
+                let _: std::result::Result<bool, _> =
+                    kwin_scripting.call("unloadScript", &(known_name,)).await;
+            }
         }
     }
 
@@ -6435,7 +6675,17 @@ async fn register_kwin6_hook_script(
         let mut assigned_id: i32 = -1;
         {
             let _guard = KWIN_SCRIPT_LOCK.lock().await;
-            let pre_ids = introspect_kwin_script_ids(conn).await;
+            if attempt > 0
+                && kwin_scripting
+                    .call::<_, _, bool>("isScriptLoaded", &(candidate_name.as_str(),))
+                    .await
+                    .unwrap_or(false)
+            {
+                let _: std::result::Result<bool, _> = kwin_scripting
+                    .call("unloadScript", &(candidate_name.as_str(),))
+                    .await;
+            }
+            let pre_ids = introspect_kwin_script_ids_with_proxy(kwin_introspect).await;
             let script_id: i32 = kwin_scripting
                 .call("loadScript", &(script_path, candidate_name.as_str()))
                 .await
@@ -6450,7 +6700,7 @@ async fn register_kwin6_hook_script(
                     continue;
                 }
                 let script_obj_path = format!("/Scripting/Script{script_id}");
-                if let Ok(kwin_script) = zbus::Proxy::new(
+                if let Ok(kwin_script) = build_uncached_proxy(
                     conn,
                     "org.kde.KWin",
                     script_obj_path.as_str(),
@@ -6463,6 +6713,8 @@ async fn register_kwin6_hook_script(
                             run_succeeded = true;
                         }
                         Err(e) => {
+                            let _: std::result::Result<(), _> =
+                                kwin_script.call("stop", &()).await;
                             crate::bridge::device_controller::record_system_event(
                                 "WARN",
                                 "KWIN",
@@ -6495,14 +6747,14 @@ async fn register_kwin6_hook_script(
             }
         }
         if received_initial {
-            let post_ids = introspect_kwin_script_ids(conn).await;
-            let ids_below: std::collections::BTreeSet<i32> = post_ids
-                .into_iter()
-                .filter(|&id| id < assigned_id)
-                .collect();
+            save_persisted_kwin_hook_sid(&candidate_name, assigned_id);
             let msg = if initial_startup {
                 format!(
                     "KWin 6 Auto-Switcher hook active (plugin '{candidate_name}', Script{assigned_id})"
+                )
+            } else if reload_requested {
+                format!(
+                    "KWin 6 Auto-Switcher hook reloaded after settings update (plugin '{candidate_name}', Script{assigned_id})"
                 )
             } else {
                 format!(
@@ -6510,7 +6762,7 @@ async fn register_kwin6_hook_script(
                 )
             };
             crate::bridge::device_controller::record_system_event("INFO", "KWIN", msg);
-            return Some((candidate_name, assigned_id, ids_below));
+            return Some((candidate_name, assigned_id));
         }
     }
     None
@@ -6553,7 +6805,7 @@ pub fn apply_kwin_oled_keep_above(keep_above: bool, restore_geometry: bool) {
                 let Ok(conn) = zbus::Connection::session().await else {
                     return;
                 };
-                let Ok(kwin_scripting) = zbus::Proxy::new(
+                let Ok(kwin_scripting) = build_uncached_proxy(
                     &conn,
                     "org.kde.KWin",
                     "/Scripting",
@@ -6575,14 +6827,15 @@ pub fn apply_kwin_oled_keep_above(keep_above: bool, restore_geometry: bool) {
                 {
                     return;
                 }
-                for slot_idx in 1..24 {
-                    let slot_name = format!("duckydeck_kwin6_autoswitcher_slot_{slot_idx}");
-                    if kwin_scripting
-                        .call::<_, _, bool>("isScriptLoaded", &(slot_name.as_str(),))
-                        .await
-                        .unwrap_or(false)
-                    {
-                        return;
+                if let Ok(guard) = ACTIVE_KWIN_HOOK_SLOT.lock() {
+                    if let Some((ref active_name, _)) = *guard {
+                        if kwin_scripting
+                            .call::<_, _, bool>("isScriptLoaded", &(active_name.as_str(),))
+                            .await
+                            .unwrap_or(false)
+                        {
+                            return;
+                        }
                     }
                 }
 
@@ -6653,14 +6906,15 @@ if (list) {{
                     {
                         if script_id >= 0 {
                             let obj_path = format!("/Scripting/Script{script_id}");
-                            if let Ok(script_proxy) = zbus::Proxy::new(
+                            let script_proxy_opt = build_uncached_proxy(
                                 &conn,
                                 "org.kde.KWin",
                                 obj_path.as_str(),
                                 "org.kde.kwin.Script",
                             )
                             .await
-                            {
+                            .ok();
+                            if let Some(ref script_proxy) = script_proxy_opt {
                                 if let Err(e) = script_proxy.call::<_, _, ()>("run", &()).await {
                                     crate::bridge::device_controller::record_system_event(
                                         "WARN",
@@ -6670,6 +6924,10 @@ if (list) {{
                                 }
                             }
                             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                            if let Some(ref script_proxy) = script_proxy_opt {
+                                let _: std::result::Result<(), _> =
+                                    script_proxy.call("stop", &()).await;
+                            }
                             let _: std::result::Result<bool, _> =
                                 kwin_scripting.call("unloadScript", &(plugin_name,)).await;
                         }
@@ -7600,5 +7858,33 @@ mod modifier_engine_tests {
         assert_eq!(after.1, "org.gnome.Nautilus");
         assert_eq!(after.2, "Downloads — Files");
         assert!(after.3 > before_seq);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn test_kwin6_hook_js_omits_cursor_pos_changed_by_default() {
+        let js_default = generate_kwin6_hook_js(false, "null", "null");
+        assert!(!js_default.contains("cursorPosChanged"));
+        assert!(!js_default.contains("onCursorPosChanged"));
+        assert!(!js_default.contains("topWindowAtPoint"));
+        assert!(js_default.contains("workspace.windowActivated.connect(onWindowActivated)"));
+        assert!(js_default.contains("workspace.activeWindow && !isDuckyDeckWindow(workspace.activeWindow)"));
+
+        let js_hover = generate_kwin6_hook_js(true, "null", "null");
+        assert!(js_hover.contains("workspace.cursorPosChanged.connect(onCursorPosChanged)"));
+        assert!(js_hover.contains("function onCursorPosChanged()"));
+        assert!(js_hover.contains("topWindowAtPoint(workspace.cursorPos)"));
+    }
+
+    #[test]
+    fn test_persisted_switcher_config_unfocused_hover_defaults_false() {
+        let json_without_field = r#"{
+            "enabled": true,
+            "default_profile": 1,
+            "rules": []
+        }"#;
+        let parsed: PersistedSwitcherConfig =
+            serde_json::from_str(json_without_field).expect("deserialize legacy config");
+        assert!(!parsed.auto_switch_unfocused_hover);
     }
 }

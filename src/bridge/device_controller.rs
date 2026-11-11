@@ -66,6 +66,7 @@ pub mod qobject {
         #[qproperty(bool, ai_busy)]
         #[qproperty(QString, generated_script_preview)]
         #[qproperty(bool, auto_switch_enabled)]
+        #[qproperty(bool, auto_switch_unfocused_hover)]
         #[qproperty(i32, default_fallback_profile)]
         #[qproperty(i32, auto_switch_settle_ms)]
         #[qproperty(i32, auto_switch_dwell_ms)]
@@ -303,6 +304,13 @@ pub mod qobject {
 
         #[qinvokable]
         fn set_auto_switch_timings(self: Pin<&mut DeviceController>, settle_ms: i32, dwell_ms: i32);
+
+        #[qinvokable]
+        #[cxx_name = "updateAutoSwitchUnfocusedHover"]
+        fn update_auto_switch_unfocused_hover(
+            self: Pin<&mut DeviceController>,
+            enabled: bool,
+        );
 
         #[qinvokable]
         #[cxx_name = "setAutoSwitchSectionsExpanded"]
@@ -1177,6 +1185,7 @@ pub struct DeviceControllerRust {
     pub(crate) ai_busy: bool,
     pub(crate) generated_script_preview: QString,
     pub(crate) auto_switch_enabled: bool,
+    pub(crate) auto_switch_unfocused_hover: bool,
     pub(crate) default_fallback_profile: i32,
     pub(crate) auto_switch_settle_ms: i32,
     pub(crate) auto_switch_dwell_ms: i32,
@@ -1520,6 +1529,7 @@ impl Default for DeviceControllerRust {
             .clamp(1, max_init_prof);
         switcher.default_profile = Some(clamped_fb);
         let fallback_prof = clamped_fb as i32;
+        let auto_unfocused_hover = switcher.auto_switch_unfocused_hover;
         let settle_ms = switcher.mouse_settle_ms.clamp(0, 5000);
         let dwell_ms = switcher.window_dwell_ms.clamp(0, 5000);
         let enable_sec_expanded = switcher.autoswitch_enable_section_expanded;
@@ -1643,6 +1653,7 @@ impl Default for DeviceControllerRust {
                 "// Slot 1: Front View\nDEFAULTDELAY 20\nOLED_CLEAR\nOLED_CPRINT Front View\nOLED_UPDATE\nKP_1\n",
             ),
             auto_switch_enabled: auto_enabled,
+            auto_switch_unfocused_hover: auto_unfocused_hover,
             default_fallback_profile: fallback_prof,
             auto_switch_settle_ms: settle_ms,
             auto_switch_dwell_ms: dwell_ms,
@@ -6295,6 +6306,40 @@ impl qobject::DeviceController {
         )));
     }
 
+    pub fn update_auto_switch_unfocused_hover(mut self: Pin<&mut Self>, enabled: bool) {
+        let mut changed = false;
+        {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if let Ok(mut sw) = rust.switcher_state.lock() {
+                if sw.auto_switch_unfocused_hover != enabled {
+                    sw.auto_switch_unfocused_hover = enabled;
+                    changed = true;
+                    if let Err(e) = sw.save_to_disk() {
+                        record_system_event(
+                            "WARN",
+                            "CONFIG",
+                            format!("Failed saving unfocused hover setting: {e}"),
+                        );
+                    }
+                }
+            }
+        }
+
+        self.as_mut().set_auto_switch_unfocused_hover(enabled);
+        if changed {
+            crate::kwin::auto_switcher::request_kwin6_hook_reload();
+            let msg = if enabled {
+                "Auto-Switcher unfocused window hover polling enabled (Click-to-Focus hover mode)"
+            } else {
+                "Auto-Switcher unfocused window hover polling disabled (focus-only, 0 Hz cursor overhead)"
+            };
+            record_system_event("INFO", "AUTOSWITCH", msg);
+            self.as_mut().sync_event_log_properties();
+            self.as_mut().set_status_message(QString::from(msg));
+            self.as_mut().apply_auto_switch_for_current_window();
+        }
+    }
+
     pub fn set_auto_switch_sections_expanded(
         mut self: Pin<&mut Self>,
         enable_expanded: bool,
@@ -6325,24 +6370,28 @@ impl qobject::DeviceController {
     }
 
     pub fn reload_auto_switch_sections_from_disk(mut self: Pin<&mut Self>) {
-        let (enable_exp, rule_exp) = SwitcherState::load_config_from_disk()
+        let (enable_exp, rule_exp, unfocused_hover) = SwitcherState::load_config_from_disk()
             .map(|c| {
                 (
                     c.autoswitch_enable_section_expanded,
                     c.autoswitch_rule_editor_expanded,
+                    c.auto_switch_unfocused_hover,
                 )
             })
-            .unwrap_or((true, true));
+            .unwrap_or((true, true, false));
         {
             let rust = self.as_mut().rust_mut().get_mut();
             if let Ok(mut sw) = rust.switcher_state.lock() {
                 sw.autoswitch_enable_section_expanded = enable_exp;
                 sw.autoswitch_rule_editor_expanded = rule_exp;
+                sw.auto_switch_unfocused_hover = unfocused_hover;
             }
         }
         self.as_mut()
             .set_autoswitch_enable_section_expanded(enable_exp);
         self.as_mut().set_autoswitch_rule_editor_expanded(rule_exp);
+        self.as_mut()
+            .set_auto_switch_unfocused_hover(unfocused_hover);
     }
 
     pub fn arm_window_picker(mut self: Pin<&mut Self>, bind_to_active_profile: bool) {

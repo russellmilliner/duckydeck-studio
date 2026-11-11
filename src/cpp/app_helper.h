@@ -1042,19 +1042,27 @@ public:
             (void)find_oled_widget_window();
         }
 
-        m_tray->setToolTip(tooltipText);
+        if (m_lastTooltipText != tooltipText) {
+            m_lastTooltipText = tooltipText;
+            m_tray->setToolTip(tooltipText);
+        }
 
-        if (m_statusAction) {
+        if (m_statusAction && m_lastStatusHeader != statusHeader) {
+            m_lastStatusHeader = statusHeader;
             m_statusAction->setText(statusHeader);
         }
-        if (m_profileAction) {
+        if (m_profileAction && m_lastProfileHeader != profileHeader) {
+            m_lastProfileHeader = profileHeader;
             m_profileAction->setText(profileHeader);
         }
-        if (m_sdSpaceAction) {
+        if (m_sdSpaceAction && m_lastSdSpaceHeader != sdSpaceHeader) {
+            m_lastSdSpaceHeader = sdSpaceHeader;
             m_sdSpaceAction->setText(sdSpaceHeader);
             m_sdSpaceAction->setVisible(!sdSpaceHeader.isEmpty());
         }
-        if (m_autoSwitchAction) {
+        if (m_autoSwitchAction && (!m_hasAutoSwitchState || m_lastAutoSwitchEnabled != autoSwitchEnabled)) {
+            m_hasAutoSwitchState = true;
+            m_lastAutoSwitchEnabled = autoSwitchEnabled;
             const bool oldBlock = m_autoSwitchAction->blockSignals(true);
             m_autoSwitchAction->setChecked(autoSwitchEnabled);
             m_autoSwitchAction->setText(
@@ -1064,12 +1072,15 @@ public:
             );
             m_autoSwitchAction->blockSignals(oldBlock);
         }
-        if (m_autostartAction) {
+        if (m_autostartAction && (!m_hasAutostartState || m_lastAutostartEnabled != autostartEnabled)) {
+            m_hasAutostartState = true;
+            m_lastAutostartEnabled = autostartEnabled;
             const bool oldBlock = m_autostartAction->blockSignals(true);
             m_autostartAction->setChecked(autostartEnabled);
             m_autostartAction->blockSignals(oldBlock);
         }
-        if (m_iconAutoAction && m_iconDarkAction && m_iconLightAction) {
+        if (m_iconAutoAction && m_iconDarkAction && m_iconLightAction && m_lastIconMode != iconMode) {
+            m_lastIconMode = iconMode;
             m_iconAutoAction->blockSignals(true);
             m_iconDarkAction->blockSignals(true);
             m_iconLightAction->blockSignals(true);
@@ -1384,6 +1395,15 @@ private:
     QAction* m_showAction = nullptr;
     QAction* m_hideAction = nullptr;
     QString m_lastIconPath;
+    QString m_lastTooltipText;
+    QString m_lastStatusHeader;
+    QString m_lastProfileHeader;
+    QString m_lastSdSpaceHeader;
+    QString m_lastIconMode;
+    bool m_hasAutoSwitchState = false;
+    bool m_lastAutoSwitchEnabled = false;
+    bool m_hasAutostartState = false;
+    bool m_lastAutostartEnabled = false;
 };
 
 inline void update_tray_window_actions() {
@@ -1745,13 +1765,21 @@ protected:
         if (!watched->isWindowType()) {
             return false;
         }
-        if (evType == QEvent::Show || evType == QEvent::PlatformSurface) {
-            QWindow* win = qobject_cast<QWindow*>(watched);
-            QWindow* mainWin = main_window_ref().data();
-            if (win && mainWin && win != mainWin
-                && win->objectName() != QStringLiteral("duckydeckOledWidgetWindow")
-                && mainWin->screen() && win->screen() != mainWin->screen()) {
-                win->setScreen(mainWin->screen());
+        if (evType == QEvent::Show || evType == QEvent::PlatformSurface || evType == QEvent::Hide) {
+            if (QQuickWindow* qw = qobject_cast<QQuickWindow*>(watched)) {
+                if (qw->objectName() != QStringLiteral("duckydeckOledWidgetWindow")) {
+                    qw->setPersistentSceneGraph(false);
+                    qw->setPersistentGraphics(false);
+                }
+            }
+            if (evType != QEvent::Hide) {
+                QWindow* win = qobject_cast<QWindow*>(watched);
+                QWindow* mainWin = main_window_ref().data();
+                if (win && mainWin && win != mainWin
+                    && win->objectName() != QStringLiteral("duckydeckOledWidgetWindow")
+                    && mainWin->screen() && win->screen() != mainWin->screen()) {
+                    win->setScreen(mainWin->screen());
+                }
             }
             return false;
         }

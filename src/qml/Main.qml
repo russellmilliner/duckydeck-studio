@@ -48,6 +48,23 @@ Kirigami.ApplicationWindow {
         deviceController && deviceController.isDemoShowcaseMode() && !deviceController.isUiTestSuiteMode()
     )
     visible: false
+    property bool pendingHiddenSync: false
+    readonly property bool shouldSyncUiLive: root.visible
+        || Boolean(deviceController && (deviceController.isUiTestSuiteMode() || deviceController.isDemoShowcaseMode()))
+
+    onVisibleChanged: {
+        if (root.visible && root.pendingHiddenSync) {
+            root.pendingHiddenSync = false
+            root.syncSidebarProfilesFromController()
+            hardwareCanvas.syncProfilesFromController()
+            hardwareCanvas.syncSlotsFromController()
+            hardwareCanvas.syncActiveProfileSelection()
+            root.refreshSelectedSlotFromController()
+            root.ensureActiveProfileVisibleInList()
+            Qt.callLater(root.ensureActiveProfileVisibleInList)
+            root.syncLightingAnimationsForActiveProfile()
+        }
+    }
     width: root.isShowcaseCaptureWindow ? 1600 : compactWindowWidth
     height: root.isShowcaseCaptureWindow ? 900 : 800
     minimumWidth: root.isShowcaseCaptureWindow ? 1600 : (root.hasSelectedSlot ? root.expandedWindowWidth : root.compactWindowWidth)
@@ -1576,31 +1593,50 @@ Kirigami.ApplicationWindow {
             }
         }
         onActiveProfileChanged: {
-            if (!root.selectingProfileFromClick) {
-                root.ensureActiveProfileVisibleInList()
-                Qt.callLater(root.ensureActiveProfileVisibleInList)
+            if (root.shouldSyncUiLive) {
+                if (!root.selectingProfileFromClick) {
+                    root.ensureActiveProfileVisibleInList()
+                    Qt.callLater(root.ensureActiveProfileVisibleInList)
+                }
+                root.syncLightingAnimationsForActiveProfile()
+            } else {
+                root.pendingHiddenSync = true
+                if (deviceController && deviceController.connected) {
+                    root.syncLightingAnimationsForActiveProfile()
+                }
             }
-            root.syncLightingAnimationsForActiveProfile()
         }
         onActiveWindowClassChanged: {
-            if (deviceController.autoSwitchEnabled) {
+            if (root.shouldSyncUiLive && deviceController.autoSwitchEnabled) {
                 Qt.callLater(root.ensureActiveProfileVisibleInList)
             }
         }
         onAutoSwitchEnabledChanged: {
-            if (deviceController.autoSwitchEnabled) {
+            if (root.shouldSyncUiLive && deviceController.autoSwitchEnabled) {
                 Qt.callLater(root.ensureActiveProfileVisibleInList)
             }
         }
         onActiveProfileSlotsJsonChanged: {
-            root.refreshSelectedSlotFromController()
+            if (root.shouldSyncUiLive) {
+                root.refreshSelectedSlotFromController()
+            } else {
+                root.pendingHiddenSync = true
+            }
         }
         onProfilesJsonChanged: {
-            root.syncSidebarProfilesFromController()
-            hardwareCanvas.syncProfilesFromController()
+            if (root.shouldSyncUiLive) {
+                root.syncSidebarProfilesFromController()
+                hardwareCanvas.syncProfilesFromController()
+            } else {
+                root.pendingHiddenSync = true
+            }
         }
         onAutoSwitchRulesJsonChanged: {
-            root.syncSidebarProfilesFromController()
+            if (root.shouldSyncUiLive) {
+                root.syncSidebarProfilesFromController()
+            } else {
+                root.pendingHiddenSync = true
+            }
         }
         onGeneratedScriptPreviewChanged: {
             if (deviceController.generatedScriptPreview.length > 0) {

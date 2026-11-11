@@ -25,6 +25,7 @@ Item {
         id: img
         anchors.fill: parent
         visible: iconRoot.isImageSource && status === Image.Ready
+        cache: !iconRoot.srcStr.startsWith("data:")
         source: iconRoot.isImageSource
             ? (iconRoot.srcStr.startsWith(":/") ? ("qrc" + iconRoot.srcStr) : iconRoot.srcStr)
             : ""

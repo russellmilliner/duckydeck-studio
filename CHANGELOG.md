@@ -2,6 +2,11 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.21](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.21) — 2026-11-10
+
+### Highlights
+- Opt-in KWin unfocused hover polling, 30s uncached watchdog with Script.stop hygiene, and 2.73 GB heap leak + 57-thread fix
+
 ## [v0.1.20](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.20) — 2026-11-10
 
 ### Highlights

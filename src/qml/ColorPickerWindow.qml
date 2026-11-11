@@ -499,6 +499,30 @@ Window {
         property bool animPushToHardware: true
         property bool animCompileIntoScript: true
         property string statusBannerText: ""
+        property var keySelectorChoices: []
+
+        function rebuildKeySelectorChoices() {
+            let arr = []
+            for (let k = 1; k <= 20; k++) {
+                const t = hardwareCanvas ? hardwareCanvas.slotTitleFor(k) : ("Key " + k)
+                arr.push(qsTr("Key %1 — %2").arg(k).arg(t))
+            }
+            lightingAnimatorDialog.keySelectorChoices = arr
+        }
+
+        onVisibleChanged: {
+            if (visible) {
+                lightingAnimatorDialog.rebuildKeySelectorChoices()
+            }
+        }
+
+        Connections {
+            target: duckyColorPickerWindow.controller
+            enabled: lightingAnimatorDialog.visible
+            function onActiveProfileSlotsJsonChanged() {
+                Qt.callLater(lightingAnimatorDialog.rebuildKeySelectorChoices)
+            }
+        }
 
         readonly property var presetCatalog: [
             { id: "pulse", icon: "💓", title: qsTr("Breathing / Pulse"), desc: qsTr("Smooth sinusoidal breathing between Primary & Secondary RGB colors") },
@@ -564,6 +588,7 @@ Window {
             } else {
                 lightingAnimatorDialog.targetKeySlot = 1
             }
+            lightingAnimatorDialog.rebuildKeySelectorChoices()
             lightingAnimatorDialog.loadTargetConfig()
             lightingAnimatorDialog.show()
             lightingAnimatorDialog.raise()
@@ -672,14 +697,7 @@ Window {
                         id: animKeySelectorCombo
                         visible: lightingAnimatorDialog.targetScope === "key"
                         Layout.preferredWidth: 150
-                        model: {
-                            let arr = []
-                            for (let k = 1; k <= 20; k++) {
-                                const t = hardwareCanvas.slotTitleFor(k)
-                                arr.push(qsTr("Key %1 — %2").arg(k).arg(t))
-                            }
-                            return arr
-                        }
+                        model: lightingAnimatorDialog.keySelectorChoices
                         currentIndex: Math.max(0, Math.min(19, lightingAnimatorDialog.targetKeySlot - 1))
                         onActivated: (idx) => {
                             lightingAnimatorDialog.targetKeySlot = idx + 1

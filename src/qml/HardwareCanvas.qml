@@ -325,11 +325,49 @@ Item {
         return false
     }
 
+    readonly property bool hostWindowVisible: Boolean(canvasRoot.Window.window && canvasRoot.Window.window.visible)
+        || Boolean(canvasRoot.controller && (canvasRoot.controller.isUiTestSuiteMode() || canvasRoot.controller.isDemoShowcaseMode()))
+    property bool pendingSlotsSync: false
+    property bool pendingProfilesSync: false
+
+    onHostWindowVisibleChanged: {
+        if (canvasRoot.hostWindowVisible) {
+            if (canvasRoot.pendingProfilesSync) {
+                canvasRoot.pendingProfilesSync = false
+                canvasRoot.syncProfilesFromController()
+            }
+            if (canvasRoot.pendingSlotsSync) {
+                canvasRoot.pendingSlotsSync = false
+                canvasRoot.syncSlotsFromController()
+            }
+            canvasRoot.syncActiveProfileSelection()
+            oledSimulator.requestPaint()
+        }
+    }
+
+    readonly property bool hasHardwareStreamedIdleAnim: {
+        const profCfg = canvasRoot.profileAnimationConfig || {}
+        if (profCfg.enabled && profCfg.streamToHardware !== false && (profCfg.trigger === "idle" || profCfg.trigger === "both")) {
+            return true
+        }
+        const keyCfgs = canvasRoot.keyAnimationConfigs || {}
+        for (let k in keyCfgs) {
+            const kc = keyCfgs[k]
+            if (kc && kc.enabled && kc.streamToHardware !== false && (kc.trigger === "idle" || kc.trigger === "both")) {
+                return true
+            }
+        }
+        return false
+    }
+
     Timer {
         id: rgbAnimTimer
         interval: 55
         repeat: true
-        running: canvasRoot.visible && (canvasRoot.hasAnyIdleAnimationConfigured || canvasRoot.idleAnimationActive || (canvasRoot.activeKeyBursts && canvasRoot.activeKeyBursts.length > 0))
+        running: canvasRoot.visible && (
+            (canvasRoot.hostWindowVisible && (canvasRoot.hasAnyIdleAnimationConfigured || canvasRoot.idleAnimationActive || (canvasRoot.activeKeyBursts && canvasRoot.activeKeyBursts.length > 0)))
+            || (Boolean(canvasRoot.controller && canvasRoot.controller.connected) && (canvasRoot.hasHardwareStreamedIdleAnim || (canvasRoot.activeKeyBursts && canvasRoot.activeKeyBursts.length > 0)))
+        )
         onTriggered: {
             if (keyModel.count < 20) return
             const now = Date.now()
@@ -453,10 +491,12 @@ Item {
                     if (burst.streamToHardware !== false) shouldStreamHw = true
                 }
 
-                keyModel.setProperty(i, "animR", outR)
-                keyModel.setProperty(i, "animG", outG)
-                keyModel.setProperty(i, "animB", outB)
-                keyModel.setProperty(i, "animActive", isAnim)
+                if (canvasRoot.hostWindowVisible) {
+                    keyModel.setProperty(i, "animR", outR)
+                    keyModel.setProperty(i, "animG", outG)
+                    keyModel.setProperty(i, "animB", outB)
+                    keyModel.setProperty(i, "animActive", isAnim)
+                }
                 hwFrame.push({ slot: slot, r: outR, g: outG, b: outB })
             }
 
@@ -563,17 +603,29 @@ Item {
     Connections {
         target: canvasRoot.controller
         function onActiveProfileSlotsJsonChanged() {
-            canvasRoot.syncSlotsFromController()
+            if (canvasRoot.hostWindowVisible) {
+                canvasRoot.syncSlotsFromController()
+            } else {
+                canvasRoot.pendingSlotsSync = true
+            }
         }
         function onProfilesJsonChanged() {
-            canvasRoot.syncProfilesFromController()
+            if (canvasRoot.hostWindowVisible) {
+                canvasRoot.syncProfilesFromController()
+            } else {
+                canvasRoot.pendingProfilesSync = true
+            }
         }
         function onActiveProfileChanged() {
-            canvasRoot.syncActiveProfileSelection()
-            oledSimulator.requestPaint()
+            if (canvasRoot.hostWindowVisible) {
+                canvasRoot.syncActiveProfileSelection()
+                oledSimulator.requestPaint()
+            }
         }
         function onActiveProfileNameChanged() {
-            oledSimulator.requestPaint()
+            if (canvasRoot.hostWindowVisible) {
+                oledSimulator.requestPaint()
+            }
         }
         function onIsDuckyPad2020Changed() {
             if (canvasRoot.isDuckyPad2020) {
