@@ -41,6 +41,8 @@ setsid --wait flatpak build \
     cargo build --release --manifest-path '$REPO_ROOT/Cargo.toml'
     install -Dm755 \"\$CARGO_TARGET_DIR/release/duckydeck-studio\" -t /app/bin/
     install -Dm644 '$REPO_ROOT/data/io.github.duckydeck.Studio.desktop' -t /app/share/applications/
+    install -Dm644 '$REPO_ROOT/data/io.github.duckydeck.Studio.desktop' -t /app/share/kglobalaccel/
+    install -Dm644 '$REPO_ROOT/data/io.github.duckydeck.Studio.notifyrc' -t /app/share/knotifications6/
     install -Dm644 '$REPO_ROOT/data/io.github.duckydeck.Studio.metainfo.xml' -t /app/share/metainfo/
     install -Dm644 '$REPO_ROOT/data/icons/io.github.duckydeck.Studio.svg' -t /app/share/icons/hicolor/scalable/apps/
     install -Dm644 '$REPO_ROOT/data/udev/70-duckypad.rules' -t /app/share/udev/rules.d/
@@ -74,6 +76,9 @@ flatpak build-finish "$WORK_DIR/build-dir" \
   --filesystem=/media:rw \
   --filesystem=/run/udev:ro \
   --filesystem=xdg-config/kglobalshortcutsrc:ro \
+  --filesystem=xdg-config/io.github.duckydeck.Studio.notifyrc:ro \
+  --filesystem=xdg-data/knotifications6:create \
+  --filesystem=xdg-data/kglobalaccel:create \
   --filesystem=xdg-config/duckydeck-studio:create \
   --filesystem=xdg-data/duckydeck-studio:create \
   --filesystem=xdg-data/duckypad_config:ro \
@@ -82,6 +87,8 @@ flatpak build-finish "$WORK_DIR/build-dir" \
   --filesystem=xdg-run/duckydeck-studio:create \
   --talk-name=org.kde.KWin \
   --talk-name=org.kde.StatusNotifierWatcher \
+  --talk-name=org.freedesktop.Notifications \
+  --talk-name=org.kde.kglobalaccel \
   --talk-name=org.freedesktop.Flatpak
 
 flatpak build-export "$WORK_DIR/repo" "$WORK_DIR/build-dir" stable
@@ -93,4 +100,7 @@ echo "==> Built Flatpak bundle: $OUT_DIR/$BUNDLE_NAME"
 if [[ "${1:-}" != "--no-install" ]]; then
   echo "==> Installing Flatpak bundle into user installation..."
   flatpak install --user -y --reinstall "$OUT_DIR/$BUNDLE_NAME"
+  mkdir -p "$HOME/.local/share/knotifications6" "$HOME/.local/share/kglobalaccel"
+  cp -f "$REPO_ROOT/data/io.github.duckydeck.Studio.notifyrc" "$HOME/.local/share/knotifications6/io.github.duckydeck.Studio.notifyrc"
+  cp -f "$REPO_ROOT/data/io.github.duckydeck.Studio.desktop" "$HOME/.local/share/kglobalaccel/io.github.duckydeck.Studio.desktop"
 fi

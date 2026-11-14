@@ -8,3 +8,74 @@ Type=Application
 Categories=Utility;HardwareSettings;Qt;KDE;
 Keywords=duckyPad;macropad;duckyScript;mechanical;keyboard;macro;
 StartupWMClass=duckydeck-studio
+X-GNOME-UsesNotifications=true
+X-KDE-Notifications=io.github.duckydeck.Studio
+Actions=ToggleMainWindow;ShowMainWindow;MinimizeToTray;ToggleOledWidget;ToggleAutoSwitcher;NextProfile;PrevProfile;SyncSdCard;SleepDevice;WakeDevice;OpenAiArchitect;OpenEventLog;ArmWindowPicker;SwitchProfile1;SwitchProfile2;SwitchProfile3;SwitchProfile4;
+
+[Desktop Action ToggleMainWindow]
+Name=Show / Hide DuckyDeck Studio
+Exec=duckydeck-studio --toggle
+
+[Desktop Action ShowMainWindow]
+Name=Show Main Window
+Exec=duckydeck-studio --show
+
+[Desktop Action MinimizeToTray]
+Name=Minimize to System Tray
+Exec=duckydeck-studio --minimize
+
+[Desktop Action ToggleOledWidget]
+Name=Show / Hide Live OLED Companion
+Exec=duckydeck-studio --oled-widget
+
+[Desktop Action ToggleAutoSwitcher]
+Name=Toggle Window Auto-Switcher
+Exec=duckydeck-studio --toggle-autoswitch
+
+[Desktop Action NextProfile]
+Name=Switch to Next Profile
+Exec=duckydeck-studio --next-profile
+
+[Desktop Action PrevProfile]
+Name=Switch to Previous Profile
+Exec=duckydeck-studio --prev-profile
+
+[Desktop Action SyncSdCard]
+Name=Sync Profiles to microSD Card
+Exec=duckydeck-studio --sync-sd
+
+[Desktop Action SleepDevice]
+Name=Put duckyPad to Sleep
+Exec=duckydeck-studio --sleep
+
+[Desktop Action WakeDevice]
+Name=Wake duckyPad
+Exec=duckydeck-studio --wake
+
+[Desktop Action OpenAiArchitect]
+Name=Open AI Macro Architect
+Exec=duckydeck-studio --ai-architect
+
+[Desktop Action OpenEventLog]
+Name=Open Device Event Log
+Exec=duckydeck-studio --event-log
+
+[Desktop Action ArmWindowPicker]
+Name=Pick Active Window for Auto-Switcher
+Exec=duckydeck-studio --window-picker
+
+[Desktop Action SwitchProfile1]
+Name=Switch to Profile 1
+Exec=duckydeck-studio --switch-profile 1
+
+[Desktop Action SwitchProfile2]
+Name=Switch to Profile 2
+Exec=duckydeck-studio --switch-profile 2
+
+[Desktop Action SwitchProfile3]
+Name=Switch to Profile 3
+Exec=duckydeck-studio --switch-profile 3
+
+[Desktop Action SwitchProfile4]
+Name=Switch to Profile 4
+Exec=duckydeck-studio --switch-profile 4

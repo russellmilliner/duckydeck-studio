@@ -2,14 +2,14 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
-## [v0.1.21-deps](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.21-deps) — 2026-11-13
+## [v0.1.21-deps](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.21-deps) — 2026-11-14
 
 ### 📦 Bumped Dependencies (2 packages)
 
 | Package | Previous | Updated | Scope |
 | :--- | :--- | :--- | :--- |
-| `cc` | `1.11.1` | **`1.11.2`** | Lockfile (`Cargo.lock`) |
-| `rustls-webpki` | `0.103.16` | **`0.103.17`** | Lockfile (`Cargo.lock`) |
+| `bumpalo` | `3.20.3` | **`3.20.4`** | Lockfile (`Cargo.lock`) |
+| `mio` | `1.2.4` | **`1.2.5`** | Lockfile (`Cargo.lock`) |
 
 ## [v0.1.21](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.21) — 2026-11-10
 

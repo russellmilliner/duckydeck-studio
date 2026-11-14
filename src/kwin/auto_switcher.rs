@@ -2550,6 +2550,281 @@ pub fn is_kde_autostart_enabled() -> bool {
     }
 }
 
+pub const DESKTOP_NOTIFICATIONS_NOTIFYRC: &str =
+    include_str!("../../data/io.github.duckydeck.Studio.notifyrc");
+
+pub const GLOBAL_SHORTCUT_ACTIONS: &[(&str, &str, &str, &str)] = &[
+    (
+        "ToggleMainWindow",
+        "Show / Hide DuckyDeck Studio",
+        "--toggle",
+        "toggle",
+    ),
+    ("ShowMainWindow", "Show Main Window", "--show", "show"),
+    (
+        "MinimizeToTray",
+        "Minimize to System Tray",
+        "--minimize",
+        "hide",
+    ),
+    (
+        "ToggleOledWidget",
+        "Show / Hide Live OLED Companion",
+        "--oled-widget",
+        "toggle-oled-widget",
+    ),
+    (
+        "ToggleAutoSwitcher",
+        "Toggle Window Auto-Switcher",
+        "--toggle-autoswitch",
+        "auto-switch:toggle",
+    ),
+    (
+        "NextProfile",
+        "Switch to Next Profile",
+        "--next-profile",
+        "next-profile",
+    ),
+    (
+        "PrevProfile",
+        "Switch to Previous Profile",
+        "--prev-profile",
+        "prev-profile",
+    ),
+    (
+        "SyncSdCard",
+        "Sync Profiles to microSD Card",
+        "--sync-sd",
+        "sync-sd",
+    ),
+    (
+        "SleepDevice",
+        "Put duckyPad to Sleep",
+        "--sleep",
+        "sleep-device",
+    ),
+    ("WakeDevice", "Wake duckyPad", "--wake", "wake-device"),
+    (
+        "OpenAiArchitect",
+        "Open AI Macro Architect",
+        "--ai-architect",
+        "open-ai-architect",
+    ),
+    (
+        "OpenEventLog",
+        "Open Device Event Log",
+        "--event-log",
+        "open-event-log",
+    ),
+    (
+        "ArmWindowPicker",
+        "Pick Active Window for Auto-Switcher",
+        "--window-picker",
+        "arm-window-picker",
+    ),
+    (
+        "SwitchProfile1",
+        "Switch to Profile 1",
+        "--switch-profile 1",
+        "switch-profile:1",
+    ),
+    (
+        "SwitchProfile2",
+        "Switch to Profile 2",
+        "--switch-profile 2",
+        "switch-profile:2",
+    ),
+    (
+        "SwitchProfile3",
+        "Switch to Profile 3",
+        "--switch-profile 3",
+        "switch-profile:3",
+    ),
+    (
+        "SwitchProfile4",
+        "Switch to Profile 4",
+        "--switch-profile 4",
+        "switch-profile:4",
+    ),
+];
+
+pub fn global_shortcut_action_to_ipc_command(action_id: &str) -> Option<&'static str> {
+    let trimmed = action_id.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    for &(id, friendly, _, ipc) in GLOBAL_SHORTCUT_ACTIONS {
+        if trimmed.eq_ignore_ascii_case(id) || trimmed.eq_ignore_ascii_case(friendly) {
+            return Some(ipc);
+        }
+    }
+    None
+}
+
+pub fn generate_desktop_entry_content(exe_cmd: &str) -> String {
+    let actions_list: String = GLOBAL_SHORTCUT_ACTIONS
+        .iter()
+        .map(|(id, _, _, _)| format!("{id};"))
+        .collect();
+    let mut out = format!(
+        "[Desktop Entry]\n\
+         Type=Application\n\
+         Name=DuckyDeck Studio\n\
+         Comment=KDE Plasma 6 Configurator & AI Macro Architect for duckyPad Pro\n\
+         Exec={exe_cmd}\n\
+         Icon=io.github.duckydeck.Studio\n\
+         Terminal=false\n\
+         Categories=Utility;HardwareSettings;Qt;KDE;\n\
+         Keywords=duckyPad;macropad;duckyScript;mechanical;keyboard;macro;\n\
+         StartupWMClass=io.github.duckydeck.Studio\n\
+         X-GNOME-UsesNotifications=true\n\
+         X-KDE-Notifications=io.github.duckydeck.Studio\n\
+         Actions={actions_list}\n"
+    );
+    for &(id, friendly, cli_args, _) in GLOBAL_SHORTCUT_ACTIONS {
+        out.push_str(&format!(
+            "\n[Desktop Action {id}]\n\
+             Name={friendly}\n\
+             Exec={exe_cmd} {cli_args}\n"
+        ));
+    }
+    out
+}
+
+pub fn parse_notifyrc_event_popup_enabled(notifyrc_content: &str, event_id: &str) -> bool {
+    let target_section = format!("[Event/{}]", event_id.trim());
+    let mut in_target = false;
+    for line in notifyrc_content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with(';') {
+            continue;
+        }
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            in_target = trimmed.eq_ignore_ascii_case(&target_section);
+            continue;
+        }
+        if in_target {
+            if let Some((k, v)) = trimmed.split_once('=') {
+                if k.trim().eq_ignore_ascii_case("Action") {
+                    return v
+                        .split('|')
+                        .any(|part| part.trim().eq_ignore_ascii_case("Popup"));
+                }
+            }
+        }
+    }
+    true
+}
+
+pub fn is_kde_notification_event_popup_enabled(event_id: &str) -> bool {
+    let mut candidates = vec![crate::paths::xdg_config_home().join("io.github.duckydeck.Studio.notifyrc")];
+    if let Some(home) = crate::paths::home_dir() {
+        let host_cfg = home.join(".config/io.github.duckydeck.Studio.notifyrc");
+        if !candidates.contains(&host_cfg) {
+            candidates.push(host_cfg);
+        }
+    }
+    for path in candidates {
+        if let Ok(content) = fs::read_to_string(&path) {
+            let section_header = format!("[Event/{}]", event_id.trim()).to_ascii_lowercase();
+            if content.to_ascii_lowercase().contains(&section_header) {
+                return parse_notifyrc_event_popup_enabled(&content, event_id);
+            }
+        }
+    }
+    true
+}
+
+pub fn send_kde_notification(event_id: &str, title: &str, body: &str, urgency: u8) {
+    if std::env::var("DUCKYDECK_UI_TEST_SUITE").as_deref() == Ok("1") {
+        return;
+    }
+    if !is_kde_notification_event_popup_enabled(event_id) {
+        return;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = urgency;
+        let qtitle = cxx_qt_lib::QString::from(title);
+        let qbody = cxx_qt_lib::QString::from(body);
+        crate::bridge::device_controller::qobject::duckydeck_show_tray_notification(&qtitle, &qbody);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let ev = event_id.trim().to_string();
+        let summary = title.to_string();
+        let message = body.to_string();
+        let urg = urgency.min(2);
+        std::thread::spawn(move || {
+            let sent_via_dbus = if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                rt.block_on(async {
+                    let conn = zbus::Connection::session().await.ok()?;
+                    let proxy = build_uncached_proxy(
+                        &conn,
+                        "org.freedesktop.Notifications",
+                        "/org/freedesktop/Notifications",
+                        "org.freedesktop.Notifications",
+                    )
+                    .await
+                    .ok()?;
+
+                    let mut hints: std::collections::HashMap<&str, zbus::zvariant::Value<'_>> =
+                        std::collections::HashMap::new();
+                    hints.insert(
+                        "desktop-entry",
+                        zbus::zvariant::Value::from("io.github.duckydeck.Studio"),
+                    );
+                    hints.insert(
+                        "x-kde-appname",
+                        zbus::zvariant::Value::from("io.github.duckydeck.Studio"),
+                    );
+                    hints.insert(
+                        "x-kde-display-appname",
+                        zbus::zvariant::Value::from("DuckyDeck Studio"),
+                    );
+                    hints.insert("x-kde-eventId", zbus::zvariant::Value::from(ev.as_str()));
+                    hints.insert("urgency", zbus::zvariant::Value::U8(urg));
+
+                    let actions: Vec<&str> = Vec::new();
+                    let _id: u32 = proxy
+                        .call(
+                            "Notify",
+                            &(
+                                "DuckyDeck Studio",
+                                0u32,
+                                "io.github.duckydeck.Studio",
+                                summary.as_str(),
+                                message.as_str(),
+                                actions,
+                                hints,
+                                -1i32,
+                            ),
+                        )
+                        .await
+                        .ok()?;
+                    Some(())
+                })
+                .is_some()
+            } else {
+                false
+            };
+
+            if !sent_via_dbus {
+                let qtitle = cxx_qt_lib::QString::from(&summary);
+                let qbody = cxx_qt_lib::QString::from(&message);
+                crate::bridge::device_controller::qobject::duckydeck_show_tray_notification(
+                    &qtitle, &qbody,
+                );
+            }
+        });
+    }
+}
+
 pub fn sync_local_desktop_and_icon(use_light_on_dark_icon: bool) {
     let data_home = crate::paths::xdg_data_home();
 
@@ -2574,38 +2849,79 @@ pub fn sync_local_desktop_and_icon(use_light_on_dark_icon: bool) {
         }
     }
 
+    // Install KNotifications6 `.notifyrc` so DuckyDeck Studio appears under
+    // KDE System Settings -> Notifications -> Application Settings.
+    let mut notify_dirs = vec![data_home.join("knotifications6")];
+    if let Some(home) = crate::paths::home_dir() {
+        let host_notify_dir = home.join(".local/share/knotifications6");
+        if !notify_dirs.contains(&host_notify_dir) {
+            notify_dirs.push(host_notify_dir);
+        }
+    }
+    for ndir in notify_dirs {
+        if fs::create_dir_all(&ndir).is_ok() {
+            let notify_file = ndir.join("io.github.duckydeck.Studio.notifyrc");
+            let needs_write = match fs::read_to_string(&notify_file) {
+                Ok(existing) => existing != DESKTOP_NOTIFICATIONS_NOTIFYRC,
+                Err(_) => true,
+            };
+            if needs_write {
+                let _ = fs::write(&notify_file, DESKTOP_NOTIFICATIONS_NOTIFYRC);
+            }
+        }
+    }
+
+    let is_flatpak = Path::new("/.flatpak-info").exists();
+    let exe_cmd = if is_flatpak {
+        "flatpak run io.github.duckydeck.Studio".to_string()
+    } else if let Ok(appimage) = std::env::var("APPIMAGE") {
+        format!("\"{appimage}\"")
+    } else if let Some(local_bin) = crate::paths::home_dir()
+        .map(|h| h.join(".local/bin/duckydeck-studio"))
+        .filter(|p| p.exists())
+    {
+        format!("\"{}\"", local_bin.to_string_lossy())
+    } else {
+        let raw_exe = std::env::current_exe()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| "duckydeck-studio".to_string());
+        format!("\"{raw_exe}\"")
+    };
+
+    let desktop_content = generate_desktop_entry_content(&exe_cmd);
+
+    // Install into `~/.local/share/kglobalaccel/io.github.duckydeck.Studio.desktop`
+    // so KDE System Settings -> Keyboard -> Shortcuts (`kglobalacceld` / `kcm_keys`)
+    // discovers all DuckyDeck Studio global shortcut actions.
+    let mut kglobal_dirs = vec![data_home.join("kglobalaccel")];
+    if let Some(home) = crate::paths::home_dir() {
+        let host_kglobal_dir = home.join(".local/share/kglobalaccel");
+        if !kglobal_dirs.contains(&host_kglobal_dir) {
+            kglobal_dirs.push(host_kglobal_dir);
+        }
+    }
+    for kdir in kglobal_dirs {
+        if fs::create_dir_all(&kdir).is_ok() {
+            let kfile = kdir.join("io.github.duckydeck.Studio.desktop");
+            let needs_write = match fs::read_to_string(&kfile) {
+                Ok(existing) => existing != desktop_content,
+                Err(_) => true,
+            };
+            if needs_write {
+                let _ = fs::write(&kfile, &desktop_content);
+            }
+        }
+    }
+
     // When running inside Flatpak, Flatpak itself exports io.github.duckydeck.Studio.desktop on the host
-    if Path::new("/.flatpak-info").exists() {
+    if is_flatpak {
         return;
     }
 
     let apps_dir = data_home.join("applications");
     if fs::create_dir_all(&apps_dir).is_ok() {
-        let exe_path = if let Ok(appimage) = std::env::var("APPIMAGE") {
-            appimage
-        } else if let Some(local_bin) = crate::paths::home_dir()
-            .map(|h| h.join(".local/bin/duckydeck-studio"))
-            .filter(|p| p.exists())
-        {
-            local_bin.to_string_lossy().to_string()
-        } else {
-            std::env::current_exe()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|_| "duckydeck-studio".to_string())
-        };
-        let desktop_content = format!(
-            "[Desktop Entry]\n\
-             Type=Application\n\
-             Name=DuckyDeck Studio\n\
-             Comment=KDE Plasma 6 Configurator & Auto-Switcher for duckyPad Pro\n\
-             Exec=\"{exe_path}\"\n\
-             Icon=io.github.duckydeck.Studio\n\
-             Terminal=false\n\
-             Categories=Utility;HardwareSettings;Qt;KDE;\n\
-             StartupWMClass=io.github.duckydeck.Studio\n"
-        );
         let desktop_file = apps_dir.join("io.github.duckydeck.Studio.desktop");
-        if let Err(e) = fs::write(&desktop_file, desktop_content) {
+        if let Err(e) = fs::write(&desktop_file, &desktop_content) {
             crate::bridge::device_controller::record_system_event(
                 "WARN",
                 "CONFIG",
@@ -3633,8 +3949,108 @@ impl KWinBridgeService {
         std::process::id()
     }
 
+    fn invoke_global_action(&mut self, action_id: String) -> bool {
+        if let Some(ipc_cmd) = global_shortcut_action_to_ipc_command(&action_id) {
+            let qcmd = cxx_qt_lib::QString::from(ipc_cmd);
+            crate::bridge::device_controller::qobject::duckydeck_dispatch_ipc_command(&qcmd);
+            true
+        } else {
+            false
+        }
+    }
+
     fn get_pid(&self) -> u32 {
         std::process::id()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+async fn register_and_listen_kde_global_shortcuts(conn: zbus::Connection) {
+    // 1. Broadcast KNotification reparseConfiguration signal so System Settings -> Notifications
+    //    reloads `~/.local/share/knotifications6/io.github.duckydeck.Studio.notifyrc` immediately.
+    let _ = conn
+        .emit_signal(
+            None::<&str>,
+            "/Config",
+            "org.kde.knotification",
+            "reparseConfiguration",
+            &("io.github.duckydeck.Studio",),
+        )
+        .await;
+
+    // 2. Register all global shortcut actions with `org.kde.kglobalaccel` (`/kglobalaccel`).
+    if let Ok(kglobal_proxy) = build_uncached_proxy(
+        &conn,
+        "org.kde.kglobalaccel",
+        "/kglobalaccel",
+        "org.kde.KGlobalAccel",
+    )
+    .await
+    {
+        let empty_keys: Vec<i32> = Vec::new();
+        for &(action_id, friendly_name, _, _) in GLOBAL_SHORTCUT_ACTIONS {
+            let action_id_list: Vec<&str> = vec![
+                "io.github.duckydeck.Studio.desktop",
+                action_id,
+                "DuckyDeck Studio",
+                friendly_name,
+            ];
+            let _: std::result::Result<(), _> = kglobal_proxy
+                .call("doRegister", &(&action_id_list,))
+                .await;
+            // SetPresent = 2 (loads existing user keybinding without overwriting it)
+            let _: std::result::Result<Vec<i32>, _> = kglobal_proxy
+                .call("setShortcut", &(&action_id_list, &empty_keys, 2u32))
+                .await;
+            let existing: Vec<i32> = kglobal_proxy
+                .call("shortcut", &(&action_id_list,))
+                .await
+                .unwrap_or_default();
+            if existing.is_empty() {
+                let _: std::result::Result<(), _> = kglobal_proxy
+                    .call("setForeignShortcut", &(&action_id_list, &empty_keys))
+                    .await;
+            }
+        }
+    }
+
+    // 3. Subscribe to `globalShortcutPressed(QString componentUnique, QString actionUnique, qlonglong timestamp)`
+    //    on `/component/io_github_duckydeck_Studio_desktop` (`org.kde.kglobalaccel.Component`).
+    let Ok(comp_proxy) = build_uncached_proxy(
+        &conn,
+        "org.kde.kglobalaccel",
+        "/component/io_github_duckydeck_Studio_desktop",
+        "org.kde.kglobalaccel.Component",
+    )
+    .await
+    else {
+        return;
+    };
+
+    let Ok(mut stream) = comp_proxy.receive_signal("globalShortcutPressed").await else {
+        return;
+    };
+
+    while let Some(msg) = std::future::poll_fn(|cx| {
+        zbus::export::futures_core::Stream::poll_next(std::pin::Pin::new(&mut stream), cx)
+    })
+    .await
+    {
+        if let Ok((_component_unique, action_unique, _timestamp)) =
+            msg.body().deserialize::<(String, String, i64)>()
+        {
+            if let Some(ipc_cmd) = global_shortcut_action_to_ipc_command(&action_unique) {
+                crate::bridge::device_controller::record_system_event(
+                    "INFO",
+                    "SHORTCUT",
+                    format!(
+                        "KDE global shortcut triggered: {action_unique} -> {ipc_cmd}"
+                    ),
+                );
+                let qcmd = cxx_qt_lib::QString::from(ipc_cmd);
+                crate::bridge::device_controller::qobject::duckydeck_dispatch_ipc_command(&qcmd);
+            }
+        }
     }
 }
 
@@ -5678,6 +6094,13 @@ pub async fn run_kwin_auto_switcher(
             .serve_at("/KWinBridge", service)?
             .build()
             .await?;
+
+        {
+            let conn_for_shortcuts = conn.clone();
+            tokio::spawn(async move {
+                register_and_listen_kde_global_shortcuts(conn_for_shortcuts).await;
+            });
+        }
 
         let mut active_kwin_hook: Option<(String, i32)> = None;
         let mut kwin_scripting_opt: Option<zbus::Proxy<'_>> = None;
@@ -7886,5 +8309,91 @@ mod modifier_engine_tests {
         let parsed: PersistedSwitcherConfig =
             serde_json::from_str(json_without_field).expect("deserialize legacy config");
         assert!(!parsed.auto_switch_unfocused_hover);
+    }
+
+    #[test]
+    fn test_kde_notifyrc_schema_and_user_override_parsing() {
+        assert!(DESKTOP_NOTIFICATIONS_NOTIFYRC.contains("[Global]"));
+        assert!(DESKTOP_NOTIFICATIONS_NOTIFYRC.contains("DesktopEntry=io.github.duckydeck.Studio"));
+        for event_id in [
+            "updateAvailable",
+            "sdSyncComplete",
+            "sdSyncError",
+            "deviceConnection",
+            "profileSwitched",
+            "autoSwitcherState",
+            "actionExecuted",
+        ] {
+            let section = format!("[Event/{event_id}]");
+            assert!(
+                DESKTOP_NOTIFICATIONS_NOTIFYRC.contains(&section),
+                "Missing notifyrc section {section}"
+            );
+        }
+
+        // Default notifyrc enables Popup for all 7 events by default
+        for event_id in [
+            "updateAvailable",
+            "sdSyncComplete",
+            "sdSyncError",
+            "deviceConnection",
+            "profileSwitched",
+            "autoSwitcherState",
+            "actionExecuted",
+        ] {
+            assert!(parse_notifyrc_event_popup_enabled(
+                DESKTOP_NOTIFICATIONS_NOTIFYRC,
+                event_id
+            ));
+        }
+
+        let user_override = "\
+[Event/updateAvailable]\n\
+Action=\n\
+\n\
+[Event/profileSwitched]\n\
+Action=Sound|Popup\n";
+        assert!(!parse_notifyrc_event_popup_enabled(
+            user_override,
+            "updateAvailable"
+        ));
+        assert!(parse_notifyrc_event_popup_enabled(
+            user_override,
+            "profileSwitched"
+        ));
+        assert!(parse_notifyrc_event_popup_enabled(
+            user_override,
+            "sdSyncComplete"
+        ));
+    }
+
+    #[test]
+    fn test_kde_desktop_entry_actions_and_global_shortcut_ipc_mapping() {
+        let content = generate_desktop_entry_content("duckydeck-studio");
+        assert!(content.contains("X-KDE-Notifications=io.github.duckydeck.Studio"));
+        assert!(content.contains("X-GNOME-UsesNotifications=true"));
+        assert!(content.contains("Actions=ToggleMainWindow;ShowMainWindow;MinimizeToTray;ToggleOledWidget;ToggleAutoSwitcher;NextProfile;PrevProfile;SyncSdCard;SleepDevice;WakeDevice;OpenAiArchitect;OpenEventLog;ArmWindowPicker;SwitchProfile1;SwitchProfile2;SwitchProfile3;SwitchProfile4;"));
+
+        assert_eq!(GLOBAL_SHORTCUT_ACTIONS.len(), 17);
+        for (action_id, friendly_name, cli_flag, expected_ipc) in GLOBAL_SHORTCUT_ACTIONS {
+            let header = format!("[Desktop Action {action_id}]");
+            assert!(
+                content.contains(&header),
+                "Generated desktop file missing {header}"
+            );
+            let exec_line = format!("Exec=duckydeck-studio {cli_flag}");
+            assert!(
+                content.contains(&exec_line),
+                "Generated desktop file missing {exec_line}"
+            );
+            assert_eq!(
+                global_shortcut_action_to_ipc_command(action_id),
+                Some(*expected_ipc)
+            );
+            assert_eq!(
+                global_shortcut_action_to_ipc_command(friendly_name),
+                Some(*expected_ipc)
+            );
+        }
     }
 }

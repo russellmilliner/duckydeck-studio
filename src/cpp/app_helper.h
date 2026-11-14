@@ -1112,13 +1112,40 @@ public:
             hide_main_window_to_tray();
             return;
         }
-        if (cmd == QStringLiteral("toggle-window")) {
+        if (cmd == QStringLiteral("toggle") || cmd == QStringLiteral("toggle-window")) {
             if (is_main_window_shown()) {
                 hide_main_window_to_tray();
             } else {
                 show_main_window();
             }
             return;
+        }
+        if (cmd == QStringLiteral("open-ai-architect")) {
+            show_main_window();
+            if (QWindow* mainWin = find_main_window()) {
+                QMetaObject::invokeMethod(mainWin, "openAiArchitectWindow", Qt::QueuedConnection);
+            }
+            return;
+        }
+        if (cmd == QStringLiteral("open-event-log")) {
+            show_main_window();
+            if (QWindow* mainWin = find_main_window()) {
+                QMetaObject::invokeMethod(mainWin, "openEventLogWindow", Qt::QueuedConnection);
+            }
+            return;
+        }
+        if (cmd == QStringLiteral("sync-sd")) {
+            show_main_window();
+            if (QWindow* mainWin = find_main_window()) {
+                QMetaObject::invokeMethod(mainWin, "openSdSyncWindow", Qt::QueuedConnection);
+            }
+            return;
+        }
+        if (cmd == QStringLiteral("arm-window-picker")) {
+            show_main_window();
+            if (QWindow* mainWin = find_main_window()) {
+                QMetaObject::invokeMethod(mainWin, "openAutoSwitchDrawerWindow", Qt::QueuedConnection);
+            }
         }
         if (cmd == QStringLiteral("show-oled-widget")) {
             show_oled_widget_window();

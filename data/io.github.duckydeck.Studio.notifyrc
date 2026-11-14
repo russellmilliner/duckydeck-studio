@@ -1,0 +1,47 @@
+[Global]
+IconName=io.github.duckydeck.Studio
+Comment=KDE Plasma 6 Configurator, DSVM v2 Compiler & Wayland Auto-Switcher for duckyPad
+Name=DuckyDeck Studio
+DesktopEntry=io.github.duckydeck.Studio
+
+[Event/updateAvailable]
+Name=Application Update Notification
+Comment=Triggered when a new version of DuckyDeck Studio is available on GitHub Releases
+Action=Popup
+Urgency=Low
+
+[Event/sdSyncComplete]
+Name=microSD Card Sync Complete
+Comment=Triggered when profile synchronization or firmware staging to the duckyPad microSD card completes
+Action=Popup
+Urgency=Normal
+
+[Event/sdSyncError]
+Name=microSD Card Sync / Hardware Error
+Comment=Triggered when a microSD sync, USB Mass Storage mount, or hardware communication error occurs
+Action=Popup
+Urgency=High
+
+[Event/deviceConnection]
+Name=duckyPad USB Connected / Disconnected
+Comment=Triggered when a duckyPad device connects or disconnects over USB HID
+Action=Popup
+Urgency=Low
+
+[Event/profileSwitched]
+Name=Active Profile Switched
+Comment=Triggered when the active duckyPad profile is switched via global shortcut or CLI command
+Action=Popup
+Urgency=Low
+
+[Event/autoSwitcherState]
+Name=Window Auto-Switcher Toggled
+Comment=Triggered when the Wayland/X11 Window Auto-Switcher is enabled or paused
+Action=Popup
+Urgency=Low
+
+[Event/actionExecuted]
+Name=Web API / App Launch Action Status
+Comment=Triggered when a duckyPad button executes a Web API or App Launch action with a status or error notification
+Action=Popup
+Urgency=Normal

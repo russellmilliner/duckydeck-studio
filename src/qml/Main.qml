@@ -246,6 +246,25 @@ Kirigami.ApplicationWindow {
         aboutDialog.openAboutWindow()
     }
 
+    function openAiArchitectWindow() {
+        aiModal.open()
+    }
+
+    function openEventLogWindow() {
+        eventLogDialog.openLogWindow()
+    }
+
+    function openSdSyncWindow() {
+        sdSyncDialog.open()
+        if (deviceController) {
+            deviceController.syncProfilesToDeviceSd()
+        }
+    }
+
+    function openAutoSwitchDrawerWindow() {
+        autoSwitchDrawer.open()
+    }
+
     property bool lastPopupClosedByEsc: false
 
     function closeTopmostPopupWindow() {

@@ -221,12 +221,19 @@ STARTUP & INSTANCE OPTIONS:
     -p, --profile <NUM|NAME>                Activate Profile <NUM> (1-64) or <NAME> on GUI startup
         --sync-sd                           Open and start microSD card synchronization on startup
 
-RUNNING-INSTANCE REMOTE CONTROL (IPC):
+RUNNING-INSTANCE REMOTE CONTROL (IPC) & KDE GLOBAL SHORTCUTS:
         --show                              Show and focus the running instance's main window
         --hide                              Hide the running instance's main window to system tray
-        --toggle-window                     Toggle the running instance's main window visibility
+        --toggle, --toggle-window           Toggle the running instance's main window visibility
         --oled-widget                       Toggle (or launch) the Always-on-Top Resizable Desktop OLED Widget
         --auto-switch <on|off|toggle>       Enable, disable, or toggle KWin Wayland Auto-Switcher
+        --toggle-autoswitch                 Toggle KWin Wayland Auto-Switcher (shortcut alias)
+        --next-profile                      Switch to the next duckyPad profile
+        --prev-profile                      Switch to the previous duckyPad profile
+        --ai-architect                      Open the AI Macro Architect modal in the running instance
+        --event-log                         Open the System Event Log window in the running instance
+        --window-picker                     Arm the KWin Wayland Window Picker crosshair
+        --action <ACTION_ID>                Trigger a KDE Global Shortcut desktop action by ID
 
 PROFILE & GROUP BACKUP / RESTORE AUTOMATION:
         --export-group <FILE.duckygroup.json>
@@ -369,6 +376,16 @@ fn run_cli_switch_profile(target: &str) -> i32 {
     if trimmed.is_empty() {
         eprintln!("Error: --switch-profile requires a profile number (1-64) or profile name.");
         return 1;
+    }
+    if let Ok(pids) = send_ipc_command_to_running_instance(&format!("switch-profile:{trimmed}")) {
+        println!(
+            "✓ Switched active profile to '{trimmed}' via running DuckyDeck Studio instance (PID {})",
+            pids.iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        return 0;
     }
     let Ok(device) = open_duckypad_hid() else {
         eprintln!("Error: No duckyPad connected over USB HID.");
@@ -1061,7 +1078,62 @@ fn run_cli_sync_rtc() -> i32 {
     0
 }
 
+fn run_cli_cycle_profile(next: bool) -> i32 {
+    let ipc_cmd = if next { "next-profile" } else { "prev-profile" };
+    if let Ok(pids) = send_ipc_command_to_running_instance(ipc_cmd) {
+        println!(
+            "✓ Sent '{ipc_cmd}' to running DuckyDeck Studio instance (PID {})",
+            pids.iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        return 0;
+    }
+    let Ok(info) = query_connected_duckypad_info() else {
+        eprintln!("Error: No duckyPad connected over USB HID.");
+        return 1;
+    };
+    let current = info.active_profile.clamp(1, 64);
+    let mut nums: Vec<u8> = load_current_profiles()
+        .map(|(profs, _)| profs.into_iter().map(|p| p.number).collect())
+        .unwrap_or_default();
+    nums.sort_unstable();
+    nums.dedup();
+    let target = if nums.is_empty() {
+        if next {
+            if current >= 64 { 1 } else { current + 1 }
+        } else if current <= 1 {
+            64
+        } else {
+            current - 1
+        }
+    } else if let Some(pos) = nums.iter().position(|&n| n == current) {
+        if next {
+            nums[(pos + 1) % nums.len()]
+        } else if pos == 0 {
+            nums[nums.len() - 1]
+        } else {
+            nums[pos - 1]
+        }
+    } else {
+        nums[0]
+    };
+    run_cli_switch_profile(&target.to_string())
+}
+
 fn run_cli_sleep_wake(sleep: bool) -> i32 {
+    let ipc_cmd = if sleep { "sleep-device" } else { "wake-device" };
+    if let Ok(pids) = send_ipc_command_to_running_instance(ipc_cmd) {
+        println!(
+            "✓ Sent '{ipc_cmd}' to running DuckyDeck Studio instance (PID {})",
+            pids.iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        return 0;
+    }
     let Ok(device) = open_duckypad_hid() else {
         eprintln!("Error: No duckyPad connected over USB HID.");
         return 1;
@@ -1219,6 +1291,9 @@ fn main() {
                 replace_existing = true;
             }
             "--sync-sd" => {
+                if !find_existing_duckydeck_instances().is_empty() {
+                    std::process::exit(run_cli_window_ipc("sync-sd"));
+                }
                 startup_sync_sd = true;
             }
             "-p" | "--profile" => {
@@ -1236,8 +1311,42 @@ fn main() {
             "--hide" => {
                 std::process::exit(run_cli_window_ipc("hide"));
             }
-            "--toggle-window" => {
+            "--toggle" | "--toggle-window" => {
                 std::process::exit(run_cli_window_ipc("toggle-window"));
+            }
+            "--toggle-autoswitch" => {
+                std::process::exit(run_cli_auto_switch("toggle"));
+            }
+            "--next-profile" => {
+                std::process::exit(run_cli_cycle_profile(true));
+            }
+            "--prev-profile" => {
+                std::process::exit(run_cli_cycle_profile(false));
+            }
+            "--ai-architect" => {
+                std::process::exit(run_cli_window_ipc("open-ai-architect"));
+            }
+            "--event-log" => {
+                std::process::exit(run_cli_window_ipc("open-event-log"));
+            }
+            "--window-picker" => {
+                std::process::exit(run_cli_window_ipc("arm-window-picker"));
+            }
+            "--action" => {
+                if i + 1 < args.len() {
+                    let act = &args[i + 1];
+                    if let Some(ipc_cmd) =
+                        crate::kwin::auto_switcher::global_shortcut_action_to_ipc_command(act)
+                    {
+                        std::process::exit(run_cli_window_ipc(ipc_cmd));
+                    } else {
+                        eprintln!("Error: Unknown action '{act}'.");
+                        std::process::exit(1);
+                    }
+                } else {
+                    eprintln!("Error: --action requires a desktop action ID.");
+                    std::process::exit(1);
+                }
             }
             "--oled-widget" => {
                 if !find_existing_duckydeck_instances().is_empty() {
@@ -1392,6 +1501,15 @@ fn main() {
                     std::process::exit(run_cli_switch_profile(val));
                 } else if let Some(val) = other.strip_prefix("--auto-switch=") {
                     std::process::exit(run_cli_auto_switch(val));
+                } else if let Some(val) = other.strip_prefix("--action=") {
+                    if let Some(ipc_cmd) =
+                        crate::kwin::auto_switcher::global_shortcut_action_to_ipc_command(val)
+                    {
+                        std::process::exit(run_cli_window_ipc(ipc_cmd));
+                    } else {
+                        eprintln!("Error: Unknown action '{val}'.");
+                        std::process::exit(1);
+                    }
                 } else if let Some(val) = other.strip_prefix("--export-group=") {
                     std::process::exit(run_cli_export_group(val));
                 } else if let Some(val) = other.strip_prefix("--import-group=") {

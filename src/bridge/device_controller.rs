@@ -2671,6 +2671,15 @@ impl qobject::DeviceController {
                             qobject
                                 .as_mut()
                                 .set_status_message(QString::from(&summary_msg));
+                            crate::kwin::auto_switcher::send_kde_notification(
+                                "sdSyncComplete",
+                                "microSD Sync Complete",
+                                &format!(
+                                    "{} profile(s) verified on {} ({} file(s) updated).",
+                                    summary.profiles_count, sd_display, summary.files_written
+                                ),
+                                0,
+                            );
                         }
                         Err(err) => {
                             let prev_log = qobject.sd_sync_log().to_string();
@@ -2688,6 +2697,12 @@ impl qobject::DeviceController {
                                 .set_sd_sync_result_summary(QString::from(&err_msg));
                             qobject.as_mut().sync_active_profile_state();
                             qobject.as_mut().set_status_message(QString::from(&err_msg));
+                            crate::kwin::auto_switcher::send_kde_notification(
+                                "sdSyncError",
+                                "microSD Sync Failed",
+                                &err_msg,
+                                2,
+                            );
                         }
                     }
                 });
@@ -2777,6 +2792,15 @@ impl qobject::DeviceController {
                                 qobject
                                     .as_mut()
                                     .set_status_message(QString::from(&summary_msg));
+                                crate::kwin::auto_switcher::send_kde_notification(
+                                    "sdSyncComplete",
+                                    "duckyPad microSD Sync Complete",
+                                    &format!(
+                                        "{} profile(s) synced to {dev_model_name} ({} file(s) updated).",
+                                        summary.profiles_count, summary.files_written
+                                    ),
+                                    0,
+                                );
                             }
                             Err(err) => {
                                 let prev = qobject.sd_sync_log().to_string();
@@ -2798,6 +2822,12 @@ impl qobject::DeviceController {
                                 qobject
                                     .as_mut()
                                     .set_status_message(QString::from(&err_msg));
+                                crate::kwin::auto_switcher::send_kde_notification(
+                                    "sdSyncError",
+                                    "duckyPad microSD Sync Failed",
+                                    &err_msg,
+                                    2,
+                                );
                             }
                         }
                         qobject.as_mut().set_sd_sync_busy(false);
@@ -5746,9 +5776,25 @@ impl qobject::DeviceController {
                                 qobject.as_mut().sync_active_profile_state();
                                 qobject.as_mut().sync_tray_state();
                                 let _ = qobject.as_mut().refresh_available_devices_state();
+                                crate::kwin::auto_switcher::send_kde_notification(
+                                    "deviceConnection",
+                                    "duckyPad Disconnected",
+                                    "duckyPad USB HID connection closed.",
+                                    0,
+                                );
                             } else if !was_connected && hid_present {
                                 qobject.as_mut().refresh_device();
                                 let _ = qobject.as_mut().refresh_available_devices_state();
+                                if *qobject.connected() {
+                                    let model = qobject.model_name().to_string();
+                                    let fw = qobject.firmware_version().to_string();
+                                    crate::kwin::auto_switcher::send_kde_notification(
+                                        "deviceConnection",
+                                        "duckyPad Connected",
+                                        &format!("Connected to {model} (FW v{fw})."),
+                                        0,
+                                    );
+                                }
                             } else if was_connected && hid_present {
                                 if let Some(hw_prof) = hw_active_prof {
                                     let now_ms = crate::kwin::auto_switcher::current_epoch_ms();
@@ -6963,6 +7009,20 @@ impl qobject::DeviceController {
             "Auto-Switcher disabled from taskbar tray"
         };
         self.as_mut().set_status_message(QString::from(msg));
+        crate::kwin::auto_switcher::send_kde_notification(
+            "autoSwitcherState",
+            if next {
+                "Window Auto-Switcher Enabled"
+            } else {
+                "Window Auto-Switcher Paused"
+            },
+            if next {
+                "Automatic duckyPad profile switching on active window focus is now active."
+            } else {
+                "Automatic duckyPad profile switching is now paused."
+            },
+            0,
+        );
     }
 
     pub fn apply_tray_icon_mode(mut self: Pin<&mut Self>, mode: QString) {
@@ -7425,12 +7485,16 @@ impl qobject::DeviceController {
                                     .rust_mut()
                                     .get_mut()
                                     .notified_app_update_version = res.latest_version.clone();
-                                let title = QString::from("DuckyDeck Studio Update Available");
-                                let body = QString::from(&format!(
+                                let body_str = format!(
                                     "Version {} is available on GitHub (installed: v{}). Open DuckyDeck Studio to install.",
                                     res.latest_version, res.current_version
-                                ));
-                                qobject::duckydeck_show_tray_notification(&title, &body);
+                                );
+                                crate::kwin::auto_switcher::send_kde_notification(
+                                    "updateAvailable",
+                                    "DuckyDeck Studio Update Available",
+                                    &body_str,
+                                    0,
+                                );
                             }
                         } else {
                             let summary = format!(
@@ -8255,6 +8319,14 @@ impl qobject::DeviceController {
         self.as_mut()
             .set_status_message(QString::from(&summary_msg));
         self.as_mut().sync_event_log_properties();
+        if !ok {
+            crate::kwin::auto_switcher::send_kde_notification(
+                "actionExecuted",
+                "duckyPad App Launch Error",
+                &summary_msg,
+                1,
+            );
+        }
 
         if cfg.led_feedback && (1..=20).contains(&slot_num) {
             std::thread::spawn(move || {
@@ -8334,6 +8406,14 @@ impl qobject::DeviceController {
                         .as_mut()
                         .set_status_message(QString::from(&summary_msg));
                     qobject.as_mut().sync_event_log_properties();
+                    if !ok {
+                        crate::kwin::auto_switcher::send_kde_notification(
+                            "actionExecuted",
+                            "duckyPad Web API Error",
+                            &summary_msg,
+                            1,
+                        );
+                    }
                 });
 
                 if led_feedback && (1..=20).contains(&slot_num) {
@@ -8593,15 +8673,85 @@ impl qobject::DeviceController {
                 self.as_mut().set_auto_switch_config(true, fb);
                 self.as_mut()
                     .set_status_message(QString::from("Auto-Switcher enabled via CLI"));
+                crate::kwin::auto_switcher::send_kde_notification(
+                    "autoSwitcherState",
+                    "Window Auto-Switcher Enabled",
+                    "Automatic duckyPad profile switching on active window focus is now active.",
+                    0,
+                );
             }
             "auto-switch:off" => {
                 let fb = *self.default_fallback_profile();
                 self.as_mut().set_auto_switch_config(false, fb);
                 self.as_mut()
                     .set_status_message(QString::from("Auto-Switcher disabled via CLI"));
+                crate::kwin::auto_switcher::send_kde_notification(
+                    "autoSwitcherState",
+                    "Window Auto-Switcher Paused",
+                    "Automatic duckyPad profile switching is now paused.",
+                    0,
+                );
             }
             "auto-switch:toggle" => {
                 self.as_mut().toggle_auto_switch_from_tray();
+            }
+            "next-profile" | "prev-profile" => {
+                let is_next = cmd == "next-profile";
+                let current_num = (*self.active_profile()).clamp(1, 64) as u8;
+                let mut nums: Vec<u8> =
+                    self.rust().profiles.iter().map(|p| p.number).collect();
+                nums.sort_unstable();
+                nums.dedup();
+                let target_num = if nums.is_empty() {
+                    current_num
+                } else if let Some(pos) = nums.iter().position(|&n| n == current_num) {
+                    if is_next {
+                        nums[(pos + 1) % nums.len()]
+                    } else if pos == 0 {
+                        nums[nums.len() - 1]
+                    } else {
+                        nums[pos - 1]
+                    }
+                } else {
+                    nums[0]
+                };
+                self.as_mut().select_profile(target_num as i32);
+                let prof_name = self.active_profile_name().to_string();
+                crate::kwin::auto_switcher::send_kde_notification(
+                    "profileSwitched",
+                    "duckyPad Profile Switched",
+                    &format!("Active Profile: #{target_num} ({prof_name})"),
+                    0,
+                );
+            }
+            "sleep-device" => {
+                if self.as_mut().set_sleep_state(true) {
+                    self.as_mut().set_status_message(QString::from(
+                        "Sent sleep command to duckyPad OLED & RGB LEDs",
+                    ));
+                    record_system_event("INFO", "HID", "duckyPad put to sleep via global shortcut / CLI");
+                    self.as_mut().sync_event_log_properties();
+                } else {
+                    self.as_mut().set_status_message(QString::from(
+                        "Failed sending sleep command to duckyPad",
+                    ));
+                }
+            }
+            "wake-device" => {
+                if self.as_mut().set_sleep_state(false) {
+                    self.as_mut().set_status_message(QString::from(
+                        "Sent wake command to duckyPad OLED & RGB LEDs",
+                    ));
+                    record_system_event("INFO", "HID", "duckyPad woken up via global shortcut / CLI");
+                    self.as_mut().sync_event_log_properties();
+                } else {
+                    self.as_mut().set_status_message(QString::from(
+                        "Failed sending wake command to duckyPad",
+                    ));
+                }
+            }
+            "arm-window-picker" => {
+                self.as_mut().arm_window_picker(false);
             }
             "reload" => {
                 self.as_mut().refresh_device();
@@ -8611,6 +8761,27 @@ impl qobject::DeviceController {
                     self.as_mut().load_profile_group(QString::from(path));
                 } else if let Some(path) = cmd.strip_prefix("import-profile:") {
                     self.as_mut().import_profile_from_path(QString::from(path));
+                } else if let Some(target) = cmd.strip_prefix("switch-profile:") {
+                    let trimmed = target.trim();
+                    let switched = if let Ok(num) = trimmed.parse::<i32>() {
+                        if (1..=64).contains(&num) {
+                            self.as_mut().select_profile(num)
+                        } else {
+                            false
+                        }
+                    } else {
+                        self.as_mut().switch_profile_by_name(QString::from(trimmed))
+                    };
+                    if switched {
+                        let active_num = *self.active_profile();
+                        let prof_name = self.active_profile_name().to_string();
+                        crate::kwin::auto_switcher::send_kde_notification(
+                            "profileSwitched",
+                            "duckyPad Profile Switched",
+                            &format!("Active Profile: #{active_num} ({prof_name})"),
+                            0,
+                        );
+                    }
                 }
             }
         }
@@ -8999,6 +9170,12 @@ impl qobject::DeviceController {
                         qobject
                             .as_mut()
                             .set_status_message(QString::from(&summary_msg));
+                        crate::kwin::auto_switcher::send_kde_notification(
+                            "sdSyncComplete",
+                            "Firmware Staged to microSD",
+                            &summary_msg,
+                            0,
+                        );
                     }
                     Err(err) => {
                         let prev = qobject.sd_sync_log().to_string();
@@ -9017,6 +9194,12 @@ impl qobject::DeviceController {
                             .as_mut()
                             .set_sd_sync_result_summary(QString::from(&err_msg));
                         qobject.as_mut().set_status_message(QString::from(&err_msg));
+                        crate::kwin::auto_switcher::send_kde_notification(
+                            "sdSyncError",
+                            "Firmware Staging Failed",
+                            &err_msg,
+                            2,
+                        );
                     }
                 }
             });
