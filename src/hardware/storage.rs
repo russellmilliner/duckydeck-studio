@@ -485,11 +485,7 @@ pub fn serial_matches_target(candidate_serial_or_uniq: &str, target_serial: &str
             return true;
         }
     }
-    if cand.len() >= 4 && target.len() >= 4 && (cand.ends_with(&target) || target.ends_with(&cand))
-    {
-        return true;
-    }
-    false
+    cand.len() >= 4 && target.len() >= 4 && (cand.ends_with(&target) || target.ends_with(&cand))
 }
 
 pub fn find_all_duckypad_hidraw_nodes() -> Vec<(std::path::PathBuf, u16, Option<String>)> {

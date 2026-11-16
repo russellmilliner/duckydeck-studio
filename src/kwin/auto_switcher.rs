@@ -2661,6 +2661,96 @@ pub fn global_shortcut_action_to_ipc_command(action_id: &str) -> Option<&'static
     None
 }
 
+/// Pure helper to cycle to the next or previous profile number given a list of existing profile numbers.
+pub fn cycle_profile_number(nums: &[u8], current: u8, next: bool) -> u8 {
+    let clamped = current.clamp(1, 64);
+    let mut sorted: Vec<u8> = nums
+        .iter()
+        .copied()
+        .filter(|&n| (1..=64).contains(&n))
+        .collect();
+    sorted.sort_unstable();
+    sorted.dedup();
+    if sorted.is_empty() {
+        if next {
+            if clamped >= 64 { 1 } else { clamped + 1 }
+        } else if clamped <= 1 {
+            64
+        } else {
+            clamped - 1
+        }
+    } else if let Some(pos) = sorted.iter().position(|&n| n == clamped) {
+        if next {
+            sorted[(pos + 1) % sorted.len()]
+        } else if pos == 0 {
+            sorted[sorted.len() - 1]
+        } else {
+            sorted[pos - 1]
+        }
+    } else {
+        sorted[0]
+    }
+}
+
+/// Validates that a D-Bus / CLI IPC command matches the expected single-line command surface.
+pub fn is_allowed_ipc_command(raw_cmd: &str) -> bool {
+    let cmd = raw_cmd.trim();
+    if cmd.is_empty() || cmd.chars().any(char::is_control) {
+        return false;
+    }
+    if matches!(
+        cmd,
+        "show"
+            | "hide"
+            | "toggle"
+            | "toggle-window"
+            | "show-oled-widget"
+            | "hide-oled-widget"
+            | "toggle-oled-widget"
+            | "show-about"
+            | "restart"
+            | "reload"
+            | "auto-switch:on"
+            | "auto-switch:off"
+            | "auto-switch:toggle"
+            | "next-profile"
+            | "prev-profile"
+            | "sync-sd"
+            | "sleep-device"
+            | "wake-device"
+            | "open-ai-architect"
+            | "open-event-log"
+            | "arm-window-picker"
+    ) {
+        return true;
+    }
+    if let Some(target) = cmd.strip_prefix("switch-profile:") {
+        let t = target.trim();
+        return !t.is_empty() && t.len() <= 64;
+    }
+    if let Some(path) = cmd
+        .strip_prefix("import-group:")
+        .or_else(|| cmd.strip_prefix("import-profile:"))
+    {
+        let p = path.trim();
+        return !p.is_empty() && p.len() <= 4096;
+    }
+    false
+}
+
+fn quote_desktop_exec_binary(raw_path: &str) -> String {
+    let mut escaped = String::with_capacity(raw_path.len() + 4);
+    escaped.push('"');
+    for ch in raw_path.chars() {
+        if matches!(ch, '"' | '`' | '$' | '\\') {
+            escaped.push('\\');
+        }
+        escaped.push(ch);
+    }
+    escaped.push('"');
+    escaped
+}
+
 pub fn generate_desktop_entry_content(exe_cmd: &str) -> String {
     let actions_list: String = GLOBAL_SHORTCUT_ACTIONS
         .iter()
@@ -2735,6 +2825,10 @@ pub fn is_kde_notification_event_popup_enabled(event_id: &str) -> bool {
     true
 }
 
+#[cfg(not(target_os = "windows"))]
+static LAST_KDE_NOTIFICATION_ID: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(0);
+
 pub fn send_kde_notification(event_id: &str, title: &str, body: &str, urgency: u8) {
     if std::env::var("DUCKYDECK_UI_TEST_SUITE").as_deref() == Ok("1") {
         return;
@@ -2757,6 +2851,7 @@ pub fn send_kde_notification(event_id: &str, title: &str, body: &str, urgency: u
         let summary = title.to_string();
         let message = body.to_string();
         let urg = urgency.min(2);
+        let replaces_id = LAST_KDE_NOTIFICATION_ID.load(std::sync::atomic::Ordering::Relaxed);
         std::thread::spawn(move || {
             let sent_via_dbus = if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -2791,12 +2886,12 @@ pub fn send_kde_notification(event_id: &str, title: &str, body: &str, urgency: u
                     hints.insert("urgency", zbus::zvariant::Value::U8(urg));
 
                     let actions: Vec<&str> = Vec::new();
-                    let _id: u32 = proxy
+                    let returned_id: u32 = proxy
                         .call(
                             "Notify",
                             &(
                                 "DuckyDeck Studio",
-                                0u32,
+                                replaces_id,
                                 "io.github.duckydeck.Studio",
                                 summary.as_str(),
                                 message.as_str(),
@@ -2807,6 +2902,8 @@ pub fn send_kde_notification(event_id: &str, title: &str, body: &str, urgency: u
                         )
                         .await
                         .ok()?;
+                    LAST_KDE_NOTIFICATION_ID
+                        .store(returned_id, std::sync::atomic::Ordering::Relaxed);
                     Some(())
                 })
                 .is_some()
@@ -2875,17 +2972,17 @@ pub fn sync_local_desktop_and_icon(use_light_on_dark_icon: bool) {
     let exe_cmd = if is_flatpak {
         "flatpak run io.github.duckydeck.Studio".to_string()
     } else if let Ok(appimage) = std::env::var("APPIMAGE") {
-        format!("\"{appimage}\"")
+        quote_desktop_exec_binary(&appimage)
     } else if let Some(local_bin) = crate::paths::home_dir()
         .map(|h| h.join(".local/bin/duckydeck-studio"))
         .filter(|p| p.exists())
     {
-        format!("\"{}\"", local_bin.to_string_lossy())
+        quote_desktop_exec_binary(&local_bin.to_string_lossy())
     } else {
         let raw_exe = std::env::current_exe()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| "duckydeck-studio".to_string());
-        format!("\"{raw_exe}\"")
+        quote_desktop_exec_binary(&raw_exe)
     };
 
     let desktop_content = generate_desktop_entry_content(&exe_cmd);
@@ -3944,8 +4041,17 @@ impl KWinBridgeService {
     }
 
     fn dispatch_ipc_command(&mut self, command: String) -> u32 {
-        let qcmd = cxx_qt_lib::QString::from(&command);
-        crate::bridge::device_controller::qobject::duckydeck_dispatch_ipc_command(&qcmd);
+        let trimmed = command.trim();
+        if is_allowed_ipc_command(trimmed) {
+            let qcmd = cxx_qt_lib::QString::from(trimmed);
+            crate::bridge::device_controller::qobject::duckydeck_dispatch_ipc_command(&qcmd);
+        } else {
+            crate::bridge::device_controller::record_system_event(
+                "WARN",
+                "IPC",
+                format!("Ignored disallowed D-Bus IPC command ({} bytes)", command.len()),
+            );
+        }
         std::process::id()
     }
 
@@ -5702,19 +5808,14 @@ static KWIN_HOOK_RELOAD_REQUESTED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(not(target_os = "windows"))]
-static KWIN_HOOK_RELOAD_NOTIFY: std::sync::OnceLock<tokio::sync::Notify> =
-    std::sync::OnceLock::new();
-
-#[cfg(not(target_os = "windows"))]
-fn kwin_hook_reload_notify() -> &'static tokio::sync::Notify {
-    KWIN_HOOK_RELOAD_NOTIFY.get_or_init(tokio::sync::Notify::new)
-}
+static KWIN_HOOK_RELOAD_NOTIFY: std::sync::LazyLock<tokio::sync::Notify> =
+    std::sync::LazyLock::new(tokio::sync::Notify::new);
 
 pub fn request_kwin6_hook_reload() {
     KWIN_HOOK_RELOAD_REQUESTED.store(true, std::sync::atomic::Ordering::SeqCst);
     #[cfg(not(target_os = "windows"))]
     {
-        kwin_hook_reload_notify().notify_one();
+        KWIN_HOOK_RELOAD_NOTIFY.notify_one();
     }
 }
 
@@ -6151,12 +6252,11 @@ pub async fn run_kwin_auto_switcher(
             Some(kwin_introspect),
         ) = (active_kwin_hook, kwin_scripting_opt, kwin_introspect_opt)
         {
-            let notify = kwin_hook_reload_notify();
             loop {
                 if !KWIN_HOOK_RELOAD_REQUESTED.load(std::sync::atomic::Ordering::SeqCst) {
                     tokio::select! {
                         _ = tokio::time::sleep(std::time::Duration::from_millis(30_000)) => {}
-                        _ = notify.notified() => {}
+                        _ = KWIN_HOOK_RELOAD_NOTIFY.notified() => {}
                     }
                 }
                 let reload_requested =
@@ -7250,15 +7350,17 @@ pub fn apply_kwin_oled_keep_above(keep_above: bool, restore_geometry: bool) {
                 {
                     return;
                 }
-                if let Ok(guard) = ACTIVE_KWIN_HOOK_SLOT.lock() {
-                    if let Some((ref active_name, _)) = *guard {
-                        if kwin_scripting
-                            .call::<_, _, bool>("isScriptLoaded", &(active_name.as_str(),))
-                            .await
-                            .unwrap_or(false)
-                        {
-                            return;
-                        }
+                let active_slot_name = ACTIVE_KWIN_HOOK_SLOT
+                    .lock()
+                    .ok()
+                    .and_then(|guard| guard.as_ref().map(|(name, _)| name.clone()));
+                if let Some(active_name) = active_slot_name {
+                    if kwin_scripting
+                        .call::<_, _, bool>("isScriptLoaded", &(active_name.as_str(),))
+                        .await
+                        .unwrap_or(false)
+                    {
+                        return;
                     }
                 }
 
@@ -8394,6 +8496,47 @@ Action=Sound|Popup\n";
                 global_shortcut_action_to_ipc_command(friendly_name),
                 Some(*expected_ipc)
             );
+            assert!(
+                is_allowed_ipc_command(expected_ipc),
+                "Expected IPC command '{expected_ipc}' to pass allowlist"
+            );
         }
+
+        // Verify IPC allowlist rejects multi-line injection and unknown commands
+        assert!(is_allowed_ipc_command("switch-profile:OBS Studio"));
+        assert!(is_allowed_ipc_command("import-profile:/tmp/my.duckyprofile.json"));
+        assert!(!is_allowed_ipc_command("show\nquit"));
+        assert!(!is_allowed_ipc_command("switch-profile:1\nrestart"));
+        assert!(!is_allowed_ipc_command("arbitrary-command"));
+        assert!(!is_allowed_ipc_command(""));
+
+        // Verify desktop Exec quoting escapes special XDG characters
+        assert_eq!(
+            quote_desktop_exec_binary("/home/user/My $App \"Test\"/duckydeck-studio"),
+            "\"/home/user/My \\$App \\\"Test\\\"/duckydeck-studio\""
+        );
+    }
+
+    #[test]
+    fn test_cycle_profile_number_contiguous_sparse_and_wraparound() {
+        // Empty list falls back to 1..=64 wrap-around
+        assert_eq!(cycle_profile_number(&[], 1, true), 2);
+        assert_eq!(cycle_profile_number(&[], 64, true), 1);
+        assert_eq!(cycle_profile_number(&[], 1, false), 64);
+
+        // Single profile stays on itself
+        assert_eq!(cycle_profile_number(&[5], 5, true), 5);
+        assert_eq!(cycle_profile_number(&[5], 5, false), 5);
+
+        // Sparse unsorted profile numbers [12, 1, 4, 4] -> sorted [1, 4, 12]
+        let sparse = [12, 1, 4, 4];
+        assert_eq!(cycle_profile_number(&sparse, 1, true), 4);
+        assert_eq!(cycle_profile_number(&sparse, 4, true), 12);
+        assert_eq!(cycle_profile_number(&sparse, 12, true), 1);
+        assert_eq!(cycle_profile_number(&sparse, 1, false), 12);
+        assert_eq!(cycle_profile_number(&sparse, 12, false), 4);
+        assert_eq!(cycle_profile_number(&sparse, 4, false), 1);
+        // Current profile not in list snaps to first available profile
+        assert_eq!(cycle_profile_number(&sparse, 7, true), 1);
     }
 }

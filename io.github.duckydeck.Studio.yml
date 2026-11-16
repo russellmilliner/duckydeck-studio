@@ -25,10 +25,13 @@ finish-args:
   - --filesystem=/media:rw
   - --filesystem=/run/udev:ro
 
-  # 5. Scoped Config & Data Access (App state, KDE global shortcuts, and legacy dekuNukem import)
+  # 5. Scoped Config & Data Access (App state, KDE global shortcuts, KDE notifications, and legacy dekuNukem import)
   - --filesystem=xdg-config/kglobalshortcutsrc:ro
+  - --filesystem=xdg-config/io.github.duckydeck.Studio.notifyrc:ro
   - --filesystem=xdg-config/duckydeck-studio:create
   - --filesystem=xdg-data/duckydeck-studio:create
+  - --filesystem=xdg-data/knotifications6:create
+  - --filesystem=xdg-data/kglobalaccel:create
   - --filesystem=xdg-data/duckypad_config:ro
   - --filesystem=xdg-data/duckypad_autoswitcher:ro
   - --filesystem=xdg-config/duckypad_autoprofile:ro
@@ -39,11 +42,15 @@ finish-args:
   # 7. Session D-Bus Permissions:
   #    - org.kde.KWin: Native Wayland active-window & cursor tracking for Auto-Switcher
   #    - org.kde.StatusNotifierWatcher: System tray icon & quick-switch menu
+  #    - org.freedesktop.Notifications: Native KDE Plasma 6 system notifications
+  #    - org.kde.kglobalaccel: KDE Plasma 6 global keyboard shortcuts
   #    - org.freedesktop.Flatpak: Host command spawning (flatpak-spawn --host) for duckyPad
   #      "Launch App" keys, udisksctl microSD auto-mount/unmount, and pkexec udev rule installer.
   #      (Note: Software centers label org.freedesktop.Flatpak as "Arbitrary Permissions".)
   - --talk-name=org.kde.KWin
   - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.kglobalaccel
   - --talk-name=org.freedesktop.Flatpak
 
 build-options:
@@ -62,6 +69,8 @@ modules:
       - cargo --offline build --release --verbose
       - install -Dm755 ./target/release/duckydeck-studio -t /app/bin/
       - install -Dm644 ./data/io.github.duckydeck.Studio.desktop -t /app/share/applications/
+      - install -Dm644 ./data/io.github.duckydeck.Studio.desktop -t /app/share/kglobalaccel/
+      - install -Dm644 ./data/io.github.duckydeck.Studio.notifyrc -t /app/share/knotifications6/
       - install -Dm644 ./data/io.github.duckydeck.Studio.metainfo.xml -t /app/share/metainfo/
       - install -Dm644 ./data/icons/io.github.duckydeck.Studio.svg -t /app/share/icons/hicolor/scalable/apps/
       - install -Dm644 ./data/udev/70-duckypad.rules -t /app/share/udev/rules.d/
@@ -71,7 +80,8 @@ modules:
       - install -Dm644 ./docs/architecture.html -t /app/share/duckydeck-studio/docs/
       - install -Dm644 ./firmware/releases/DDS_FW_1.1.2_0f85dab1.bin -t /app/share/duckydeck-studio/firmware/
       - install -Dm644 ./firmware/releases/DDS_FW_1.1.2_0f85dab1.bin -t /app/share/duckydeck-studio/firmware/releases/
-      - install -Dm644 ./firmware/releases/DDS20_FW_1.1.2_3bd4beef.dfu -t /app/share/duckydeck-studio/firmware/
+      - install -Dm644 ./firmware/releases/DDS20_FW_1.1.3_1288faee.dfu -t /app/share/duckydeck-studio/firmware/
+      - install -Dm644 ./firmware/releases/DDS20_FW_1.1.3_1288faee.dfu -t /app/share/duckydeck-studio/firmware/releases/
       - install -Dm644 ./firmware/releases/DDS20_FW_1.1.2_3bd4beef.dfu -t /app/share/duckydeck-studio/firmware/releases/
       - install -Dm644 ./firmware/releases/DDS_FW_1.1.1_eed0141e.bin -t /app/share/duckydeck-studio/firmware/releases/
       - install -Dm644 ./firmware/releases/DDS_FW_1.0.1_bf177326.bin -t /app/share/duckydeck-studio/firmware/releases/

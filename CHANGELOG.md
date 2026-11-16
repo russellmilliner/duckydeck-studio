@@ -2,6 +2,30 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.22](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.22) — 2026-11-15
+
+### Highlights
+- Add KDE Plasma 6 System Notifications (knotifications6), 17 KDE Global Shortcuts (kglobalaccel), IPC command allowlist, and Rust 1.100 optimizations
+
+### Commits
+- chore(deps): update dependencies (rand 0.10.4) (9dcaf80)
+- chore(deps): update dependencies (bumpalo 3.20.4, mio 1.2.5) (3f6a647)
+- chore(deps): update dependencies (cc 1.11.2, rustls-webpki 0.103.17) (5077881)
+- chore(deps): update dependencies (errno 0.3.15, rustls-pki-types 1.16.0, webpki-roots 1.0.12) (1cfcab5)
+
+### 📦 Bumped Dependencies (8 packages)
+
+| Package | Previous | Updated | Scope |
+| :--- | :--- | :--- | :--- |
+| `bumpalo` | `3.20.3` | **`3.20.4`** | Lockfile (`Cargo.lock`) |
+| `cc` | `1.11.1` | **`1.11.2`** | Lockfile (`Cargo.lock`) |
+| `errno` | `0.3.14` | **`0.3.15`** | Lockfile (`Cargo.lock`) |
+| `mio` | `1.2.4` | **`1.2.5`** | Lockfile (`Cargo.lock`) |
+| `rand` | `0.10.3` | **`0.10.4`** | Lockfile (`Cargo.lock`) |
+| `rustls-pki-types` | `1.15.1` | **`1.16.0`** | Lockfile (`Cargo.lock`) |
+| `rustls-webpki` | `0.103.16` | **`0.103.17`** | Lockfile (`Cargo.lock`) |
+| `webpki-roots` | `1.0.11` | **`1.0.12`** | Lockfile (`Cargo.lock`) |
+
 ## [v0.1.21-deps](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.21-deps) — 2026-11-15
 
 ### 📦 Bumped Dependencies (1 package)

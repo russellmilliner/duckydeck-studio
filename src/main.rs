@@ -1095,30 +1095,10 @@ fn run_cli_cycle_profile(next: bool) -> i32 {
         return 1;
     };
     let current = info.active_profile.clamp(1, 64);
-    let mut nums: Vec<u8> = load_current_profiles()
+    let nums: Vec<u8> = load_current_profiles()
         .map(|(profs, _)| profs.into_iter().map(|p| p.number).collect())
         .unwrap_or_default();
-    nums.sort_unstable();
-    nums.dedup();
-    let target = if nums.is_empty() {
-        if next {
-            if current >= 64 { 1 } else { current + 1 }
-        } else if current <= 1 {
-            64
-        } else {
-            current - 1
-        }
-    } else if let Some(pos) = nums.iter().position(|&n| n == current) {
-        if next {
-            nums[(pos + 1) % nums.len()]
-        } else if pos == 0 {
-            nums[nums.len() - 1]
-        } else {
-            nums[pos - 1]
-        }
-    } else {
-        nums[0]
-    };
+    let target = crate::kwin::auto_switcher::cycle_profile_number(&nums, current, next);
     run_cli_switch_profile(&target.to_string())
 }
 

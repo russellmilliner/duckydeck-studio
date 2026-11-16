@@ -8698,23 +8698,10 @@ impl qobject::DeviceController {
             "next-profile" | "prev-profile" => {
                 let is_next = cmd == "next-profile";
                 let current_num = (*self.active_profile()).clamp(1, 64) as u8;
-                let mut nums: Vec<u8> =
+                let nums: Vec<u8> =
                     self.rust().profiles.iter().map(|p| p.number).collect();
-                nums.sort_unstable();
-                nums.dedup();
-                let target_num = if nums.is_empty() {
-                    current_num
-                } else if let Some(pos) = nums.iter().position(|&n| n == current_num) {
-                    if is_next {
-                        nums[(pos + 1) % nums.len()]
-                    } else if pos == 0 {
-                        nums[nums.len() - 1]
-                    } else {
-                        nums[pos - 1]
-                    }
-                } else {
-                    nums[0]
-                };
+                let target_num =
+                    crate::kwin::auto_switcher::cycle_profile_number(&nums, current_num, is_next);
                 self.as_mut().select_profile(target_num as i32);
                 let prof_name = self.active_profile_name().to_string();
                 crate::kwin::auto_switcher::send_kde_notification(
