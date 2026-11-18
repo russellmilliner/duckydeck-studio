@@ -34,6 +34,11 @@
   <url type="bugtracker">https://github.com/russellmilliner/duckydeck-studio/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.1.23" date="2026-11-18">
+      <description>
+        <p>Update dependencies: regex 1.13.2, bytes 1.12.2, regex-automata 0.4.19, regex-syntax 0.8.12, smallvec 1.16.6, zeroize 1.9.2</p>
+      </description>
+    </release>
     <release version="0.1.22" date="2026-11-15">
       <description>
         <p>Add KDE Plasma 6 System Notifications (knotifications6), 17 KDE Global Shortcuts (kglobalaccel), IPC command allowlist, and Rust 1.100 optimizations</p>

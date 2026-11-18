@@ -2,6 +2,28 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.23](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.23) — 2026-11-18
+
+### Highlights
+- Update dependencies: regex 1.13.2, bytes 1.12.2, regex-automata 0.4.19, regex-syntax 0.8.12, smallvec 1.16.6, zeroize 1.9.2
+
+### Commits
+- chore(deps): update dependencies (clap 4.6.8, clap_lex 1.1.2, uuid 1.29.3) (d7a1081)
+
+### 📦 Bumped Dependencies (9 packages)
+
+| Package | Previous | Updated | Scope |
+| :--- | :--- | :--- | :--- |
+| `regex` | `1.13.1` | **`1.13.2`** | Direct (`Cargo.toml`) |
+| `bytes` | `1.12.1` | **`1.12.2`** | Lockfile (`Cargo.lock`) |
+| `clap` | `4.6.7` | **`4.6.8`** | Lockfile (`Cargo.lock`) |
+| `clap_lex` | `1.1.1` | **`1.1.2`** | Lockfile (`Cargo.lock`) |
+| `regex-automata` | `0.4.18` | **`0.4.19`** | Lockfile (`Cargo.lock`) |
+| `regex-syntax` | `0.8.11` | **`0.8.12`** | Lockfile (`Cargo.lock`) |
+| `smallvec` | `1.16.5` | **`1.16.6`** | Lockfile (`Cargo.lock`) |
+| `uuid` | `1.29.2` | **`1.29.3`** | Lockfile (`Cargo.lock`) |
+| `zeroize` | `1.9.1` | **`1.9.2`** | Lockfile (`Cargo.lock`) |
+
 ## [v0.1.22-deps](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.22-deps) — 2026-11-17
 
 ### 📦 Bumped Dependencies (3 packages)
