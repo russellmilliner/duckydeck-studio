@@ -1,6 +1,11 @@
+[workspace]
+members = ["crates/duckydeck-vm", "crates/duckydeck-paths"]
+exclude = ["fuzz"]
+resolver = "2"
+
 [package]
 name = "duckydeck-studio"
-version = "0.1.23"
+version = "0.1.24"
 edition = "2021"
 license = "GPL-3.0-or-later"
 description = "KDE Plasma 6 / Kirigami Configurator & AI Macro Architect for duckyPad Pro"
@@ -22,6 +27,8 @@ default = []
 demo = []
 
 [dependencies]
+duckydeck-vm = { path = "crates/duckydeck-vm" }
+duckydeck-paths = { path = "crates/duckydeck-paths" }
 # Qt 6 / QML Bridge (KDAB CXX-Qt)
 cxx = "1.0.130"
 cxx-qt = "0.7.2"

@@ -47,14 +47,12 @@ pub async fn check_latest_duckypad_firmware(
         )
     };
 
-    let client = reqwest::Client::builder()
-        .user_agent(concat!("DuckyDeck-Studio/", env!("CARGO_PKG_VERSION")))
-        .timeout(std::time::Duration::from_secs(6))
-        .build()
+    let client = crate::actions::web_api::shared_http_client()
         .map_err(|e| format!("HTTP client error: {e}"))?;
 
     let resp = client
         .get(api_url)
+        .timeout(std::time::Duration::from_secs(6))
         .send()
         .await
         .map_err(|e| format!("Failed to reach GitHub firmware repository: {e}"))?;
@@ -587,10 +585,7 @@ pub fn list_available_duckypad_pro_firmwares(current_version: &str) -> Vec<Firmw
 pub async fn fetch_official_firmwares_from_site(
     current_version: &str,
 ) -> Result<Vec<FirmwareVersionEntry>, String> {
-    let client = reqwest::Client::builder()
-        .user_agent(concat!("DuckyDeck-Studio/", env!("CARGO_PKG_VERSION")))
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
+    let client = crate::actions::web_api::shared_http_client()
         .map_err(|e| format!("HTTP client init failed: {e}"))?;
 
     let mut discovered: std::collections::BTreeMap<
@@ -802,6 +797,19 @@ pub async fn fetch_official_firmwares_from_site(
     Ok(list_available_duckypad_pro_firmwares(current_version))
 }
 
+/// Returns `true` only for official dekuNukem / DuckyDeck GitHub firmware download origins.
+pub fn is_allowed_firmware_download_url(url: &str) -> bool {
+    let clean = url.trim();
+    (clean.starts_with("https://raw.githubusercontent.com/dekuNukem/")
+        || clean.starts_with("https://github.com/dekuNukem/")
+        || clean.starts_with("https://raw.githubusercontent.com/russellmilliner/")
+        || clean.starts_with("https://github.com/russellmilliner/"))
+        && !clean.contains("..")
+        && !clean.contains('@')
+        && !clean.contains('\\')
+        && !clean.chars().any(char::is_whitespace)
+}
+
 pub async fn download_official_firmware_binary(
     filename: &str,
     download_url: &str,
@@ -853,15 +861,18 @@ pub async fn download_official_firmware_binary(
             "https://raw.githubusercontent.com/dekuNukem/duckyPad-Pro/master/firmware/{clean_name}"
         )
     };
+    if !is_allowed_firmware_download_url(&url) {
+        return Err(format!(
+            "Refusing firmware download from untrusted URL '{url}'"
+        ));
+    }
 
-    let client = reqwest::Client::builder()
-        .user_agent(concat!("DuckyDeck-Studio/", env!("CARGO_PKG_VERSION")))
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
+    let client = crate::actions::web_api::shared_http_client()
         .map_err(|e| format!("HTTP client error: {e}"))?;
 
     let resp = client
         .get(&url)
+        .timeout(std::time::Duration::from_secs(30))
         .send()
         .await
         .map_err(|e| format!("Failed downloading {clean_name} from {url}: {e}"))?;
@@ -1415,4 +1426,55 @@ where
     );
     on_progress(100, &msg, &format!("✓ {msg}"));
     Ok(msg)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_allowed_firmware_download_url_security_boundaries() {
+        assert!(is_allowed_firmware_download_url(
+            "https://github.com/russellmilliner/duckypad-pro-firmware/releases/download/v1.1.3/DDS_FW_1.1.3_deadbeef.bin"
+        ));
+        assert!(is_allowed_firmware_download_url(
+            "https://raw.githubusercontent.com/dekuNukem/duckyPad-Pro/master/firmware/DPP_FW_2.0.0.bin"
+        ));
+
+        assert!(!is_allowed_firmware_download_url(
+            "http://github.com/dekuNukem/duckyPad-Pro/raw/master/fw.bin"
+        ));
+        assert!(!is_allowed_firmware_download_url(
+            "https://evil.example.com/github.com/dekuNukem/fw.bin"
+        ));
+        assert!(!is_allowed_firmware_download_url(
+            "https://github.com/dekuNukem@evil.com/fw.bin"
+        ));
+        assert!(!is_allowed_firmware_download_url(
+            "https://github.com/dekuNukem/../evil/fw.bin"
+        ));
+        assert!(!is_allowed_firmware_download_url(
+            "https://127.0.0.1/fw.bin"
+        ));
+        assert!(!is_allowed_firmware_download_url(
+            "https://github.com/dekuNukem/fw name.bin"
+        ));
+    }
+
+    #[test]
+    fn test_parse_semver_and_studio_firmware_version_and_crc32() {
+        assert_eq!(parse_semver("v1.2.3"), Some((1, 2, 3)));
+        assert_eq!(parse_semver(" 2.10.0 "), Some((2, 10, 0)));
+        assert_eq!(parse_semver("1.2"), None);
+        assert_eq!(parse_semver("invalid"), None);
+
+        assert!(is_duckydeck_studio_firmware_version("1.1.3 (Studio)"));
+        assert!(is_duckydeck_studio_firmware_version("v1.1.3"));
+        assert!(!is_duckydeck_studio_firmware_version("2.1.0 (Official)"));
+        assert!(!is_duckydeck_studio_firmware_version("-"));
+
+        // Standard IEEE 802.3 CRC-32 check value for ASCII "123456789"
+        assert_eq!(compute_ieee_crc32(b"123456789"), 0xCBF4_3926);
+        assert_eq!(compute_ieee_crc32(b""), 0x0000_0000);
+    }
 }

@@ -255,53 +255,138 @@ pub fn path_to_file_uri(path: &Path) -> String {
     }
 }
 
-/// Open a URL or local file path in the user's default OS handler.
-pub fn open_url_or_path_in_os(target: &str) -> std::io::Result<std::process::Child> {
-    use std::process::{Command, Stdio};
+/// Fills `buf` with cryptographically secure random bytes from the OS CSPRNG.
+pub fn fill_os_random_bytes(buf: &mut [u8]) -> Result<(), String> {
+    if buf.is_empty() {
+        return Ok(());
+    }
     #[cfg(target_os = "windows")]
     {
-        Command::new("cmd.exe")
-            .args(["/C", "start", "", target])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
+        #[link(name = "bcrypt")]
+        extern "system" {
+            fn BCryptGenRandom(
+                algorithm: *mut std::ffi::c_void,
+                buffer: *mut u8,
+                buffer_len: u32,
+                flags: u32,
+            ) -> i32;
+        }
+        const BCRYPT_USE_SYSTEM_PREFERRED_RNG: u32 = 0x0000_0002;
+        let len = u32::try_from(buf.len())
+            .map_err(|_| "Random buffer length exceeds u32::MAX".to_string())?;
+        // SAFETY: `buf.as_mut_ptr()` is valid for `len` bytes and `BCRYPT_USE_SYSTEM_PREFERRED_RNG`
+        // expects a null algorithm handle.
+        let status = unsafe {
+            BCryptGenRandom(
+                std::ptr::null_mut(),
+                buf.as_mut_ptr(),
+                len,
+                BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+            )
+        };
+        if status >= 0 {
+            Ok(())
+        } else {
+            Err(format!(
+                "BCryptGenRandom failed with NTSTATUS 0x{status:08X}"
+            ))
+        }
     }
     #[cfg(not(target_os = "windows"))]
     {
+        use std::io::Read;
+        let mut f = fs::File::open("/dev/urandom")
+            .map_err(|e| format!("Failed opening /dev/urandom: {e}"))?;
+        f.read_exact(buf)
+            .map_err(|e| format!("Failed reading /dev/urandom: {e}"))
+    }
+}
+
+/// Open a URL or local file path in the user's default OS handler.
+pub fn open_url_or_path_in_os(target: &str) -> std::io::Result<()> {
+    let trimmed = target.trim();
+    if trimmed.is_empty() || trimmed.contains('\0') {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Invalid empty or NUL-containing launch target",
+        ));
+    }
+    #[cfg(target_os = "windows")]
+    {
+        #[link(name = "shell32")]
+        extern "system" {
+            fn ShellExecuteW(
+                hwnd: isize,
+                operation: *const u16,
+                file: *const u16,
+                parameters: *const u16,
+                directory: *const u16,
+                show_cmd: i32,
+            ) -> isize;
+        }
+        const SW_SHOWNORMAL: i32 = 1;
+        let op_wide: Vec<u16> = "open".encode_utf16().chain(std::iter::once(0)).collect();
+        let target_wide: Vec<u16> = trimmed.encode_utf16().chain(std::iter::once(0)).collect();
+        // SAFETY: `op_wide` and `target_wide` are valid null-terminated UTF-16 buffers kept alive across the call.
+        let res = unsafe {
+            ShellExecuteW(
+                0,
+                op_wide.as_ptr(),
+                target_wide.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                SW_SHOWNORMAL,
+            )
+        };
+        if res > 32 {
+            Ok(())
+        } else {
+            Err(std::io::Error::other(format!(
+                "ShellExecuteW failed with code {res} for '{trimmed}'"
+            )))
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        use std::process::{Command, Stdio};
         if is_flatpak() {
             // Try flatpak-spawn --host xdg-open first (works for both URLs and host file paths);
             // if the user revoked org.freedesktop.Flatpak in Flatseal, fall back to the sandbox's
             // portal-backed /usr/bin/xdg-open.
-            let is_web_url =
-                target.starts_with("http://") || target.starts_with("https://") || target.starts_with("mailto:");
+            let is_web_url = trimmed.starts_with("http://")
+                || trimmed.starts_with("https://")
+                || trimmed.starts_with("mailto:");
             if !is_web_url {
-                if let Ok(child) = Command::new("flatpak-spawn")
-                    .args(["--host", "xdg-open", target])
+                if let Ok(_child) = Command::new("flatpak-spawn")
+                    .args(["--host", "xdg-open", trimmed])
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
                     .stderr(Stdio::null())
                     .spawn()
                 {
-                    return Ok(child);
+                    return Ok(());
                 }
             }
             Command::new("xdg-open")
-                .arg(target)
+                .arg(trimmed)
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn()
+                .map(|_| ())
         } else {
             Command::new("xdg-open")
-                .arg(target)
+                .arg(trimmed)
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn()
+                .map(|_| ())
         }
     }
 }
+
+static ATOMIC_TMP_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Atomically writes `contents` to `path` with owner-only `0600` permissions on Unix.
 pub fn write_private_file_atomic(path: &Path, contents: &[u8]) -> std::io::Result<()> {
@@ -313,7 +398,8 @@ pub fn write_private_file_atomic(path: &Path, contents: &[u8]) -> std::io::Resul
         .and_then(|n| n.to_str())
         .unwrap_or("config.json");
     let pid = std::process::id();
-    let tmp_path = path.with_file_name(format!(".{file_name}.tmp.{pid}"));
+    let seq = ATOMIC_TMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp_path = path.with_file_name(format!(".{file_name}.tmp.{pid}.{seq}"));
 
     let mut opts = fs::OpenOptions::new();
     opts.write(true).create(true).truncate(true);
@@ -356,16 +442,14 @@ pub fn constant_time_str_eq(a: &str, b: &str) -> bool {
 }
 
 const SHA256_K: [u32; 64] = [
-    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
-    0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
-    0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
-    0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
-    0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
-    0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
-    0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
-    0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
-    0xc67178f2,
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ];
 
 /// Computes a standard FIPS 180-4 SHA-256 digest over `data`.
@@ -485,9 +569,58 @@ pub fn hmac_sha256_hex(key: &[u8], message: &[u8]) -> String {
     sha256_hex(&outer_input)
 }
 
+pub fn url_encode_query_component(s: &str) -> String {
+    let mut out = String::new();
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
+            out.push(b as char);
+        } else if b == b' ' {
+            out.push('+');
+        } else {
+            out.push_str(&format!("%{:02X}", b));
+        }
+    }
+    out
+}
+
+pub fn url_decode_query_component(input: &str) -> String {
+    let mut out = Vec::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(hex) = std::str::from_utf8(&bytes[i + 1..i + 3]) {
+                if let Ok(val) = u8::from_str_radix(hex, 16) {
+                    out.push(val);
+                    i += 3;
+                    continue;
+                }
+            }
+        } else if bytes[i] == b'+' {
+            out.push(b' ');
+            i += 1;
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_url_encode_and_decode_query_component_roundtrip_and_malformed_percent() {
+        let sample = "light.office_lamp 100% + a&b=c";
+        let encoded = url_encode_query_component(sample);
+        assert_eq!(encoded, "light.office_lamp+100%25+%2B+a%26b%3Dc");
+        assert_eq!(url_decode_query_component(&encoded), sample);
+        // Malformed % sequences are preserved literally without panicking
+        assert_eq!(url_decode_query_component("bad%ZZ%2"), "bad%ZZ%2");
+        assert_eq!(url_decode_query_component("a+b%20c"), "a b c");
+    }
 
     #[test]
     fn test_sha256_and_hmac_sha256_nist_vectors() {
@@ -514,6 +647,43 @@ mod tests {
         write_private_file_atomic(&file, br#"{"token":"secret"}"#).expect("write private file");
         let meta = fs::metadata(&file).expect("stat private file");
         assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_fill_os_random_bytes_produces_non_zero_unique_values() {
+        let mut a = [0u8; 32];
+        let mut b = [0u8; 32];
+        fill_os_random_bytes(&mut a).expect("fill a");
+        fill_os_random_bytes(&mut b).expect("fill b");
+        assert!(a.iter().any(|&x| x != 0));
+        assert!(b.iter().any(|&x| x != 0));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn test_write_private_file_atomic_concurrent_threads_safe() {
+        let dir =
+            std::env::temp_dir().join(format!("duckydeck_atomic_conc_test_{}", std::process::id()));
+        let _ = fs::create_dir_all(&dir);
+        let file = dir.join("concurrent.json");
+        let mut handles = Vec::new();
+        for t in 0..8usize {
+            let p = file.clone();
+            handles.push(std::thread::spawn(move || {
+                for iter in 0..10usize {
+                    let payload = format!(r#"{{"thread":{t},"iter":{iter}}}"#);
+                    write_private_file_atomic(&p, payload.as_bytes()).expect("atomic write");
+                }
+            }));
+        }
+        for h in handles {
+            h.join().expect("join writer thread");
+        }
+        let final_raw = fs::read_to_string(&file).expect("read final concurrent file");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&final_raw).expect("final atomic file must be valid JSON");
+        assert!(parsed.get("thread").is_some());
         let _ = fs::remove_dir_all(&dir);
     }
 }

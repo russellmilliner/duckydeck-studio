@@ -738,14 +738,18 @@ pub fn handle_rest_api_request_impl(
                                     .to_string();
                             }
                             if let Some(app_cfg) = val.get("appLaunch") {
-                                on_press = controller
-                                    .apply_app_launch_to_script(
-                                        QString::from(&on_press),
-                                        QString::from(&app_cfg.to_string()),
-                                        slot_num,
+                                let cfg: crate::vm::AppLaunchConfig =
+                                    serde_json::from_value(app_cfg.clone()).unwrap_or_default();
+                                let active_prof = (*controller.active_profile()).clamp(1, 64) as u8;
+                                let slot_idx = slot_num.clamp(1, MAX_INPUT_SLOTS as i32) as usize;
+                                on_press =
+                                    crate::actions::app_launch::apply_app_launch_config_to_script(
+                                        &on_press,
+                                        &cfg,
+                                        active_prof,
+                                        slot_idx,
                                         false,
-                                    )
-                                    .to_string();
+                                    );
                             }
 
                             let ok1 = controller.as_mut().save_slot_config(

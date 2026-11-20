@@ -136,10 +136,7 @@ pub fn serialize_rules(rules: &[AutoSwitchRule], profiles: &[DuckyProfile]) -> S
     serde_json::to_string(&items).unwrap_or_else(|_| "[]".to_string())
 }
 
-pub fn serialize_modifier_rules(
-    rules: &[ModifierLayerRule],
-    profiles: &[DuckyProfile],
-) -> String {
+pub fn serialize_modifier_rules(rules: &[ModifierLayerRule], profiles: &[DuckyProfile]) -> String {
     let items: Vec<_> = rules
         .iter()
         .enumerate()
@@ -1451,4 +1448,115 @@ pub fn list_profile_templates_json_impl() -> QString {
         .collect();
     let json_str = serde_json::to_string(&items).unwrap_or_else(|_| "[]".to_string());
     QString::from(&json_str)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hardware::storage::DuckyKeySlot;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn test_collect_used_colors_and_serialize_profiles_and_slots() {
+        let mut slots = BTreeMap::new();
+        slots.insert(
+            1,
+            DuckyKeySlot {
+                slot: 1,
+                label_line1: "Run".to_string(),
+                label_line2: "Build".to_string(),
+                widget_label_line1: "Run!".to_string(),
+                widget_label_line2: String::new(),
+                custom_rgb: Some([255, 16, 32]),
+                allow_abort: true,
+                disable_autorepeat: false,
+                on_press_script: "STRING cargo test\n".to_string(),
+                on_release_script: String::new(),
+            },
+        );
+        let profiles = vec![DuckyProfile {
+            number: 1,
+            name: "Dev".to_string(),
+            folder_name_override: None,
+            bg_color: [10, 20, 30],
+            keydown_color: Some([255, 255, 255]),
+            dim_unused_keys: true,
+            slots,
+            preserved_config_lines: Vec::new(),
+        }];
+
+        let colors: Vec<String> =
+            serde_json::from_str(&collect_used_colors_json(&profiles)).expect("colors json");
+        assert_eq!(colors, vec!["#0a141e", "#ff1020"]);
+
+        let rules = vec![AutoSwitchRule {
+            enabled: true,
+            resource_class: "org.kde.konsole".to_string(),
+            title_contains: Some("Build".to_string()),
+            title_is_regex: false,
+            favicon_url: None,
+            target_profile: 1,
+        }];
+        let summary: Vec<serde_json::Value> =
+            serde_json::from_str(&serialize_profiles_summary(&profiles, &rules))
+                .expect("summary json");
+        assert_eq!(summary.len(), 1);
+        assert_eq!(summary[0]["number"], 1);
+        assert_eq!(summary[0]["name"], "Dev");
+        assert_eq!(summary[0]["boundClass"], "org.kde.konsole");
+
+        let serialized_slots: Vec<serde_json::Value> =
+            serde_json::from_str(&serialize_profile_slots(&profiles[0])).expect("slots json");
+        assert_eq!(serialized_slots.len(), MAX_INPUT_SLOTS);
+        assert_eq!(serialized_slots[0]["slot"], 1);
+        assert_eq!(serialized_slots[0]["l1"], "Run");
+        assert_eq!(serialized_slots[0]["l2"], "Build");
+        assert_eq!(serialized_slots[0]["wl1"], "Run!");
+        assert_eq!(serialized_slots[0]["hasCustomRgb"], true);
+        assert_eq!(serialized_slots[0]["r"], 255);
+        assert_eq!(serialized_slots[0]["allowAbort"], true);
+        assert_eq!(serialized_slots[0]["hasScript"], true);
+    }
+
+    #[test]
+    fn test_serialize_rules_and_modifier_rules() {
+        let profiles = vec![DuckyProfile {
+            number: 2,
+            name: "Media".to_string(),
+            ..Default::default()
+        }];
+        let rules = vec![AutoSwitchRule {
+            enabled: true,
+            resource_class: "firefox".to_string(),
+            title_contains: Some("YouTube".to_string()),
+            title_is_regex: false,
+            favicon_url: None,
+            target_profile: 2,
+        }];
+        let rules_json: Vec<serde_json::Value> =
+            serde_json::from_str(&serialize_rules(&rules, &profiles)).expect("rules json");
+        assert_eq!(rules_json.len(), 1);
+        assert_eq!(rules_json[0]["targetProfile"], 2);
+        assert_eq!(rules_json[0]["targetProfileName"], "Media");
+        assert_eq!(rules_json[0]["titleContains"], "YouTube");
+
+        let mod_rules = vec![ModifierLayerRule {
+            enabled: true,
+            trigger_key: "shift".to_string(),
+            mode: "hold".to_string(),
+            hold_delay_ms: 9999,
+            oneshot_timeout_sec: 120,
+            target_profile: 2,
+            resource_class: String::new(),
+            title_contains: None,
+            title_is_regex: false,
+        }];
+        let mod_json: Vec<serde_json::Value> =
+            serde_json::from_str(&serialize_modifier_rules(&mod_rules, &profiles))
+                .expect("modifier rules json");
+        assert_eq!(mod_json.len(), 1);
+        assert_eq!(mod_json[0]["targetProfileName"], "Media");
+        assert_eq!(mod_json[0]["holdDelayMs"], 2000);
+        assert_eq!(mod_json[0]["oneshotTimeoutSec"], 60);
+    }
 }

@@ -1221,13 +1221,86 @@ pub fn get_default_os_shortcuts() -> Vec<AppShortcut> {
     list
 }
 
+const MAX_SCRAPE_RESPONSE_BYTES: u64 = 1_048_576;
+
+fn is_safe_public_http_url(raw_url: &str) -> bool {
+    let trimmed = raw_url.trim();
+    let rest = if let Some(r) = trimmed.strip_prefix("https://") {
+        r
+    } else if let Some(r) = trimmed.strip_prefix("http://") {
+        r
+    } else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("").trim();
+    if authority.is_empty() || authority.contains('@') {
+        return false;
+    }
+    let host = if authority.starts_with('[') {
+        let Some((bracketed, _)) = authority.split_once(']') else {
+            return false;
+        };
+        bracketed.trim_start_matches('[')
+    } else {
+        authority.split(':').next().unwrap_or("")
+    }
+    .trim()
+    .trim_end_matches('.')
+    .to_ascii_lowercase();
+    if host.is_empty()
+        || host == "localhost"
+        || host.ends_with(".localhost")
+        || host.ends_with(".local")
+        || host.ends_with(".lan")
+        || host.ends_with(".internal")
+    {
+        return false;
+    }
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        return match ip {
+            std::net::IpAddr::V4(v4) => {
+                !(v4.is_loopback()
+                    || v4.is_private()
+                    || v4.is_link_local()
+                    || v4.is_unspecified()
+                    || v4.is_broadcast()
+                    || v4.is_documentation()
+                    || v4.is_multicast())
+            }
+            std::net::IpAddr::V6(v6) => {
+                let seg0 = v6.segments()[0];
+                let is_ula = (seg0 & 0xfe00) == 0xfc00;
+                let is_link_local = (seg0 & 0xffc0) == 0xfe80;
+                let mapped_v4_private = v6.to_ipv4_mapped().is_some_and(|v4| {
+                    v4.is_loopback() || v4.is_private() || v4.is_link_local() || v4.is_unspecified()
+                });
+                !(v6.is_loopback()
+                    || v6.is_unspecified()
+                    || v6.is_multicast()
+                    || is_ula
+                    || is_link_local
+                    || mapped_v4_private)
+            }
+        };
+    }
+    true
+}
+
+fn read_response_text_limited(resp: reqwest::blocking::Response, max_bytes: u64) -> Option<String> {
+    use std::io::Read as _;
+    let mut limited = resp.take(max_bytes);
+    let mut buf = Vec::new();
+    limited.read_to_end(&mut buf).ok()?;
+    Some(String::from_utf8_lossy(&buf).into_owned())
+}
+
 /// Queries online search (DuckDuckGo HTML + top cheatsheet pages) for application shortcuts
 pub fn query_google_shortcuts(app: &str) -> Vec<AppShortcut> {
     let clean_app = normalize_app_name(app);
     let query = format!("{clean_app} keyboard shortcuts hotkeys cheatsheet");
     let ddg_url = format!(
         "https://html.duckduckgo.com/html/?q={}",
-        urlencoding::encode(&query)
+        crate::paths::url_encode_query_component(&query)
     );
 
     let client = match reqwest::blocking::Client::builder()
@@ -1243,7 +1316,7 @@ pub fn query_google_shortcuts(app: &str) -> Vec<AppShortcut> {
     let mut seen_combos: HashSet<String> = HashSet::new();
 
     if let Ok(resp) = client.get(&ddg_url).send() {
-        if let Ok(ddg_html) = resp.text() {
+        if let Some(ddg_html) = read_response_text_limited(resp, MAX_SCRAPE_RESPONSE_BYTES) {
             // 1. Parse any shortcuts directly visible in search snippets
             for item in parse_google_html_shortcuts(&ddg_html) {
                 let k = format!(
@@ -1260,7 +1333,9 @@ pub fn query_google_shortcuts(app: &str) -> Vec<AppShortcut> {
             let target_urls = extract_ddg_result_urls(&ddg_html, 2);
             for page_url in target_urls {
                 if let Ok(page_resp) = client.get(&page_url).send() {
-                    if let Ok(page_html) = page_resp.text() {
+                    if let Some(page_html) =
+                        read_response_text_limited(page_resp, MAX_SCRAPE_RESPONSE_BYTES)
+                    {
                         for item in parse_google_html_shortcuts(&page_html) {
                             let k = format!(
                                 "{}:{}",
@@ -1283,15 +1358,17 @@ pub fn query_google_shortcuts(app: &str) -> Vec<AppShortcut> {
     all_results
 }
 
+static DDG_UDDG_URL_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r#"uddg=(https?%3A%2F%2F[^"&>\s]+)"#)
+        .expect("static DDG UDDG regex must compile")
+});
+
 fn extract_ddg_result_urls(ddg_html: &str, max_urls: usize) -> Vec<String> {
     let mut urls = Vec::new();
-    let Ok(re) = regex::Regex::new(r#"uddg=(https?%3A%2F%2F[^"&>\s]+)"#) else {
-        return urls;
-    };
-    for cap in re.captures_iter(ddg_html) {
+    for cap in DDG_UDDG_URL_RE.captures_iter(ddg_html) {
         if let Some(encoded) = cap.get(1) {
-            let decoded = urlencoding::decode(encoded.as_str());
-            if decoded.starts_with("http")
+            let decoded = crate::paths::url_decode_query_component(encoded.as_str());
+            if is_safe_public_http_url(&decoded)
                 && !decoded.contains("youtube.com")
                 && !decoded.contains("reddit.com")
                 && !decoded.contains(".pdf")
@@ -1305,47 +1382,6 @@ fn extract_ddg_result_urls(ddg_html: &str, max_urls: usize) -> Vec<String> {
         }
     }
     urls
-}
-
-/// Helper for URL encoding/decoding query parameters without an extra crate dependency
-mod urlencoding {
-    pub fn encode(s: &str) -> String {
-        let mut out = String::new();
-        for b in s.bytes() {
-            if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
-                out.push(b as char);
-            } else if b == b' ' {
-                out.push('+');
-            } else {
-                out.push_str(&format!("%{:02X}", b));
-            }
-        }
-        out
-    }
-
-    pub fn decode(s: &str) -> String {
-        let mut bytes = Vec::with_capacity(s.len());
-        let raw = s.as_bytes();
-        let mut i = 0;
-        while i < raw.len() {
-            if raw[i] == b'%' && i + 2 < raw.len() {
-                if let Ok(hex) = std::str::from_utf8(&raw[i + 1..i + 3]) {
-                    if let Ok(val) = u8::from_str_radix(hex, 16) {
-                        bytes.push(val);
-                        i += 3;
-                        continue;
-                    }
-                }
-            } else if raw[i] == b'+' {
-                bytes.push(b' ');
-                i += 1;
-                continue;
-            }
-            bytes.push(raw[i]);
-            i += 1;
-        }
-        String::from_utf8_lossy(&bytes).to_string()
-    }
 }
 
 fn clean_html_entities(s: &str) -> String {
@@ -1447,18 +1483,37 @@ fn looks_like_action(s: &str) -> bool {
     trimmed.chars().any(|c| c.is_ascii_alphabetic()) && !looks_like_shortcut(trimmed)
 }
 
+static HTML_TAG_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r#"<[^>]+>"#).expect("static HTML tag regex must compile")
+});
+static HTML_TABLE_ROW_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r#"(?is)<tr[^>]*>\s*<td[^>]*>(.*?)</td>\s*<td[^>]*>(.*?)</td>\s*</tr>"#)
+        .expect("static HTML table row regex must compile")
+});
+static INLINE_ACTION_SHORTCUT_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(
+    || {
+        regex::Regex::new(
+            r#"(?i)([A-Za-z0-9][A-Za-z0-9 \t/&–—]{1,30})\s*[:\t|–—\-]+\s*((?:(?:Ctrl|Control|Alt|Shift|Super|Win|Meta|F[1-9]|F1[0-2])\s*\+\s*)+\S+)"#,
+        )
+        .expect("static inline action-shortcut regex must compile")
+    },
+);
+static INLINE_SHORTCUT_ACTION_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(
+    || {
+        regex::Regex::new(
+            r#"(?i)((?:(?:Ctrl|Control|Alt|Shift|Super|Win|Meta|F[1-9]|F1[0-2])\s*\+\s*)+\S+)\s*[:\t|–—\-]+\s*([A-Za-z0-9][A-Za-z0-9 \t/&–—]{1,30})"#,
+        )
+        .expect("static inline shortcut-action regex must compile")
+    },
+);
+
 /// Parses HTML content (tables, `<kbd>` elements, and text snippets) for action-to-hotkey pairs
 pub fn parse_google_html_shortcuts(html: &str) -> Vec<AppShortcut> {
     let mut results = Vec::new();
     let mut seen_combos = HashSet::new();
-    let tag_re = regex::Regex::new(r#"<[^>]+>"#).ok();
 
     let strip_tags = |raw: &str| -> String {
-        let s = if let Some(ref tr) = tag_re {
-            tr.replace_all(raw, " ").to_string()
-        } else {
-            raw.to_string()
-        };
+        let s = HTML_TAG_RE.replace_all(raw, " ").to_string();
         clean_html_entities(&s)
             .split_whitespace()
             .collect::<Vec<_>>()
@@ -1466,111 +1521,89 @@ pub fn parse_google_html_shortcuts(html: &str) -> Vec<AppShortcut> {
     };
 
     // 1. Parse HTML `<tr>` rows with two `<td>` cells (supports both [Action | Key] and [Key | Action])
-    if let Ok(tr_re) =
-        regex::Regex::new(r#"(?is)<tr[^>]*>\s*<td[^>]*>(.*?)</td>\s*<td[^>]*>(.*?)</td>\s*</tr>"#)
-    {
-        for cap in tr_re.captures_iter(html) {
-            let c1 = strip_tags(cap.get(1).map(|m| m.as_str()).unwrap_or(""));
-            let c2 = strip_tags(cap.get(2).map(|m| m.as_str()).unwrap_or(""));
+    for cap in HTML_TABLE_ROW_RE.captures_iter(html) {
+        let c1 = strip_tags(cap.get(1).map(|m| m.as_str()).unwrap_or(""));
+        let c2 = strip_tags(cap.get(2).map(|m| m.as_str()).unwrap_or(""));
 
-            let pair = if looks_like_shortcut(&c1) && looks_like_action(&c2) {
-                Some((c2, c1))
-            } else if looks_like_action(&c1) && looks_like_shortcut(&c2) {
-                Some((c1, c2))
-            } else {
-                None
-            };
+        let pair = if looks_like_shortcut(&c1) && looks_like_action(&c2) {
+            Some((c2, c1))
+        } else if looks_like_action(&c1) && looks_like_shortcut(&c2) {
+            Some((c1, c2))
+        } else {
+            None
+        };
 
-            if let Some((act, sc)) = pair {
-                let norm_sc = sc.replace(" + ", "+");
-                if !seen_combos.contains(&norm_sc) {
-                    seen_combos.insert(norm_sc.clone());
-                    let (l1, l2) = make_smart_labels(&act, &norm_sc);
-                    let ds = shortcut_to_duckyscript(&norm_sc, &act);
-                    results.push(AppShortcut {
-                        action: act,
-                        shortcut: norm_sc,
-                        duckyscript: ds,
-                        release_script: String::new(),
-                        gaming_hold: false,
-                        category: "Web Search".to_string(),
-                        source: "Web Search".to_string(),
-                        label_l1: l1,
-                        label_l2: l2,
-                    });
-                }
+        if let Some((act, sc)) = pair {
+            let norm_sc = sc.replace(" + ", "+");
+            if !seen_combos.contains(&norm_sc) {
+                seen_combos.insert(norm_sc.clone());
+                let (l1, l2) = make_smart_labels(&act, &norm_sc);
+                let ds = shortcut_to_duckyscript(&norm_sc, &act);
+                results.push(AppShortcut {
+                    action: act,
+                    shortcut: norm_sc,
+                    duckyscript: ds,
+                    release_script: String::new(),
+                    gaming_hold: false,
+                    category: "Web Search".to_string(),
+                    source: "Web Search".to_string(),
+                    label_l1: l1,
+                    label_l2: l2,
+                });
             }
         }
     }
 
     // 2. Regex to match inline text "Action - Ctrl+Shift+Key" or "Ctrl+Shift+Key : Action" (including F3+Key)
-    let re1 = regex::Regex::new(
-        r#"(?i)([A-Za-z0-9][A-Za-z0-9 \t/&–—]{1,30})\s*[:\t|–—\-]+\s*((?:(?:Ctrl|Control|Alt|Shift|Super|Win|Meta|F[1-9]|F1[0-2])\s*\+\s*)+\S+)"#,
-    )
-    .ok();
+    let text = clean_html_entities(&HTML_TAG_RE.replace_all(html, " \n "));
 
-    let re2 = regex::Regex::new(
-        r#"(?i)((?:(?:Ctrl|Control|Alt|Shift|Super|Win|Meta|F[1-9]|F1[0-2])\s*\+\s*)+\S+)\s*[:\t|–—\-]+\s*([A-Za-z0-9][A-Za-z0-9 \t/&–—]{1,30})"#,
-    )
-    .ok();
-
-    let text = if let Some(ref tr) = tag_re {
-        clean_html_entities(&tr.replace_all(html, " \n "))
-    } else {
-        clean_html_entities(html)
-    };
-
-    if let Some(re) = re1 {
-        for cap in re.captures_iter(&text) {
-            let act = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
-            let sc = cap
-                .get(2)
-                .map(|m| m.as_str().trim().trim_end_matches([',', '.', ';', ')']))
-                .unwrap_or("")
-                .replace(" + ", "+");
-            if looks_like_action(act) && !sc.is_empty() && !seen_combos.contains(&sc) {
-                seen_combos.insert(sc.clone());
-                let (l1, l2) = make_smart_labels(act, &sc);
-                let ds = shortcut_to_duckyscript(&sc, act);
-                results.push(AppShortcut {
-                    action: act.to_string(),
-                    shortcut: sc,
-                    duckyscript: ds,
-                    release_script: String::new(),
-                    gaming_hold: false,
-                    category: "Web Search".to_string(),
-                    source: "Web Search".to_string(),
-                    label_l1: l1,
-                    label_l2: l2,
-                });
-            }
+    for cap in INLINE_ACTION_SHORTCUT_RE.captures_iter(&text) {
+        let act = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
+        let sc = cap
+            .get(2)
+            .map(|m| m.as_str().trim().trim_end_matches([',', '.', ';', ')']))
+            .unwrap_or("")
+            .replace(" + ", "+");
+        if looks_like_action(act) && !sc.is_empty() && !seen_combos.contains(&sc) {
+            seen_combos.insert(sc.clone());
+            let (l1, l2) = make_smart_labels(act, &sc);
+            let ds = shortcut_to_duckyscript(&sc, act);
+            results.push(AppShortcut {
+                action: act.to_string(),
+                shortcut: sc,
+                duckyscript: ds,
+                release_script: String::new(),
+                gaming_hold: false,
+                category: "Web Search".to_string(),
+                source: "Web Search".to_string(),
+                label_l1: l1,
+                label_l2: l2,
+            });
         }
     }
 
-    if let Some(re) = re2 {
-        for cap in re.captures_iter(&text) {
-            let sc = cap
-                .get(1)
-                .map(|m| m.as_str().trim().trim_end_matches([',', '.', ';', ')']))
-                .unwrap_or("")
-                .replace(" + ", "+");
-            let act = cap.get(2).map(|m| m.as_str().trim()).unwrap_or("");
-            if looks_like_action(act) && !sc.is_empty() && !seen_combos.contains(&sc) {
-                seen_combos.insert(sc.clone());
-                let (l1, l2) = make_smart_labels(act, &sc);
-                let ds = shortcut_to_duckyscript(&sc, act);
-                results.push(AppShortcut {
-                    action: act.to_string(),
-                    shortcut: sc,
-                    duckyscript: ds,
-                    release_script: String::new(),
-                    gaming_hold: false,
-                    category: "Web Search".to_string(),
-                    source: "Web Search".to_string(),
-                    label_l1: l1,
-                    label_l2: l2,
-                });
-            }
+    for cap in INLINE_SHORTCUT_ACTION_RE.captures_iter(&text) {
+        let sc = cap
+            .get(1)
+            .map(|m| m.as_str().trim().trim_end_matches([',', '.', ';', ')']))
+            .unwrap_or("")
+            .replace(" + ", "+");
+        let act = cap.get(2).map(|m| m.as_str().trim()).unwrap_or("");
+        if looks_like_action(act) && !sc.is_empty() && !seen_combos.contains(&sc) {
+            seen_combos.insert(sc.clone());
+            let (l1, l2) = make_smart_labels(act, &sc);
+            let ds = shortcut_to_duckyscript(&sc, act);
+            results.push(AppShortcut {
+                action: act.to_string(),
+                shortcut: sc,
+                duckyscript: ds,
+                release_script: String::new(),
+                gaming_hold: false,
+                category: "Web Search".to_string(),
+                source: "Web Search".to_string(),
+                label_l1: l1,
+                label_l2: l2,
+            });
         }
     }
 
@@ -1794,5 +1827,22 @@ mod tests {
         assert!(mc.len() >= 30);
         assert!(mc.iter().any(|s| s.shortcut == "F3+G"));
         assert!(mc.iter().any(|s| s.action == "Open Inventory"));
+    }
+
+    #[test]
+    fn test_is_safe_public_http_url_blocks_ssrf_targets() {
+        assert!(is_safe_public_http_url(
+            "https://code.visualstudio.com/shortcuts"
+        ));
+        assert!(!is_safe_public_http_url("http://127.0.0.1/admin"));
+        assert!(!is_safe_public_http_url(
+            "http://169.254.169.254/latest/meta-data/"
+        ));
+        assert!(!is_safe_public_http_url("http://192.168.1.1/"));
+        assert!(!is_safe_public_http_url("http://[::1]/"));
+        assert!(!is_safe_public_http_url(
+            "http://homeassistant.local:8123/api/"
+        ));
+        assert!(!is_safe_public_http_url("file:///etc/passwd"));
     }
 }

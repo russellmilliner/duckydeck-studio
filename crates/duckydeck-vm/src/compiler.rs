@@ -2188,8 +2188,14 @@ impl ExprParser {
     fn parse_power(&mut self) -> Result<Expr, String> {
         let left = self.parse_primary()?;
         if matches!(self.peek(), Some(Tok::DoubleStar)) {
+            if self.depth >= 128 {
+                return Err("Expression nesting too deep".to_string());
+            }
+            self.depth += 1;
             self.next();
-            let right = self.parse_unary()?;
+            let res = self.parse_unary();
+            self.depth -= 1;
+            let right = res?;
             Ok(Expr::BinOp {
                 op: Op::Pow,
                 left: Box::new(left),
@@ -2332,7 +2338,28 @@ fn fold_constants(expr: Expr) -> Expr {
 
 // ---------------- Transpiler & Block Builder ----------------
 
+const MAX_STMT_NESTING_DEPTH: usize = 64;
+
 fn parse_statements(lines: &[DsLine], pos: &mut usize) -> Result<Vec<Stmt>, CompileResult> {
+    parse_statements_with_depth(lines, pos, 0)
+}
+
+fn parse_statements_with_depth(
+    lines: &[DsLine],
+    pos: &mut usize,
+    depth: usize,
+) -> Result<Vec<Stmt>, CompileResult> {
+    if depth >= MAX_STMT_NESTING_DEPTH {
+        let (lnum_usize, raw) = lines
+            .get(*pos)
+            .map(|l| (l.orig_lnum_sf1.unsigned_abs(), l.content.trim()))
+            .unwrap_or((1, ""));
+        return Err(CompileResult::err(
+            lnum_usize,
+            raw,
+            "Control-flow nesting too deep (max 64)",
+        ));
+    }
     let mut stmts = Vec::new();
     while *pos < lines.len() {
         let line_obj = &lines[*pos];
@@ -2364,14 +2391,14 @@ fn parse_statements(lines: &[DsLine], pos: &mut usize) -> Result<Vec<Stmt>, Comp
             let cond_op = replace_operators(cond_str);
             let test = parse_expression_str(&cond_op)
                 .map_err(|e| CompileResult::err(lnum_usize, raw, e))?;
-            let mut body = parse_statements(lines, pos)?;
+            let mut body = parse_statements_with_depth(lines, pos, depth + 1)?;
             if body.is_empty() {
                 body.push(Stmt::Pass {
                     orig_lnum: lnum,
                     orig_line: raw.to_string(),
                 });
             }
-            let orelse = parse_if_tail(lines, pos)?;
+            let orelse = parse_if_tail(lines, pos, depth + 1)?;
             stmts.push(Stmt::If {
                 test,
                 body,
@@ -2384,7 +2411,7 @@ fn parse_statements(lines: &[DsLine], pos: &mut usize) -> Result<Vec<Stmt>, Comp
             let cond_op = replace_operators(cond_str);
             let test = parse_expression_str(&cond_op)
                 .map_err(|e| CompileResult::err(lnum_usize, raw, e))?;
-            let mut body = parse_statements(lines, pos)?;
+            let mut body = parse_statements_with_depth(lines, pos, depth + 1)?;
             if body.is_empty() {
                 body.push(Stmt::Pass {
                     orig_lnum: lnum,
@@ -2413,7 +2440,7 @@ fn parse_statements(lines: &[DsLine], pos: &mut usize) -> Result<Vec<Stmt>, Comp
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect();
-            let mut body = parse_statements(lines, pos)?;
+            let mut body = parse_statements_with_depth(lines, pos, depth + 1)?;
             if body.is_empty() {
                 body.push(Stmt::Pass {
                     orig_lnum: lnum,
@@ -2585,7 +2612,11 @@ fn parse_statements(lines: &[DsLine], pos: &mut usize) -> Result<Vec<Stmt>, Comp
     Ok(stmts)
 }
 
-fn parse_if_tail(lines: &[DsLine], pos: &mut usize) -> Result<Vec<Stmt>, CompileResult> {
+fn parse_if_tail(
+    lines: &[DsLine],
+    pos: &mut usize,
+    depth: usize,
+) -> Result<Vec<Stmt>, CompileResult> {
     if *pos >= lines.len() {
         return Ok(Vec::new());
     }
@@ -2593,6 +2624,13 @@ fn parse_if_tail(lines: &[DsLine], pos: &mut usize) -> Result<Vec<Stmt>, Compile
     let lnum = line_obj.orig_lnum_sf1;
     let lnum_usize = lnum.unsigned_abs();
     let raw = line_obj.content.trim_start_matches([' ', '\t']);
+    if depth >= MAX_STMT_NESTING_DEPTH {
+        return Err(CompileResult::err(
+            lnum_usize,
+            raw,
+            "Control-flow nesting too deep (max 64)",
+        ));
+    }
     let first_word = raw.split_whitespace().next().unwrap_or("");
 
     if raw.starts_with("ELSE IF ") {
@@ -2607,14 +2645,14 @@ fn parse_if_tail(lines: &[DsLine], pos: &mut usize) -> Result<Vec<Stmt>, Compile
         let cond_op = replace_operators(cond_str);
         let test =
             parse_expression_str(&cond_op).map_err(|e| CompileResult::err(lnum_usize, raw, e))?;
-        let mut body = parse_statements(lines, pos)?;
+        let mut body = parse_statements_with_depth(lines, pos, depth + 1)?;
         if body.is_empty() {
             body.push(Stmt::Pass {
                 orig_lnum: lnum,
                 orig_line: raw.to_string(),
             });
         }
-        let orelse = parse_if_tail(lines, pos)?;
+        let orelse = parse_if_tail(lines, pos, depth + 1)?;
         Ok(vec![Stmt::If {
             test,
             body,
@@ -2624,7 +2662,7 @@ fn parse_if_tail(lines: &[DsLine], pos: &mut usize) -> Result<Vec<Stmt>, Compile
         }])
     } else if first_word == "ELSE" {
         *pos += 1;
-        let mut body = parse_statements(lines, pos)?;
+        let mut body = parse_statements_with_depth(lines, pos, depth + 1)?;
         if body.is_empty() {
             body.push(Stmt::Pass {
                 orig_lnum: lnum,
@@ -3887,10 +3925,20 @@ mod tests {
             }
         };
 
-        let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        let workspace_fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
             .join("tests")
             .join("fixtures")
             .join("dsvm");
+        let fixture_dir = if workspace_fixture_dir.is_dir() {
+            workspace_fixture_dir
+        } else {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests")
+                .join("fixtures")
+                .join("dsvm")
+        };
         assert!(
             fixture_dir.is_dir(),
             "Fixture directory must exist at {:?}",
@@ -4011,6 +4059,29 @@ mod tests {
         let deep_parens = format!("VAR x = {}1{}\n", "(".repeat(500), ")".repeat(500));
         let res_parens = compile_duckyscript_to_dsb(&deep_parens, false, false);
         assert!(!res_parens.is_success);
+
+        let deep_pow = format!("VAR x = {}1\n", "2 ** ".repeat(200));
+        let res_pow = compile_duckyscript_to_dsb(&deep_pow, false, false);
+        assert!(!res_pow.is_success);
+
+        let mut deep_if = String::new();
+        for _ in 0..100 {
+            deep_if.push_str("IF 1 THEN\n");
+        }
+        deep_if.push_str("STRING hi\n");
+        for _ in 0..100 {
+            deep_if.push_str("END_IF\n");
+        }
+        let res_if = compile_duckyscript_to_dsb(&deep_if, false, false);
+        assert!(!res_if.is_success);
+
+        let mut deep_else_if = String::from("IF 0 THEN\nSTRING a\n");
+        for _ in 0..100 {
+            deep_else_if.push_str("ELSE IF 0 THEN\nSTRING b\n");
+        }
+        deep_else_if.push_str("END_IF\n");
+        let res_elif = compile_duckyscript_to_dsb(&deep_else_if, false, false);
+        assert!(!res_elif.is_success);
     }
 
     #[test]

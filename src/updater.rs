@@ -164,18 +164,20 @@ fn should_prefer_flatpak_on_linux() -> bool {
 pub async fn check_for_app_updates_async(
     current_version: &str,
 ) -> Result<AppUpdateCheckResult, String> {
-    let client = reqwest::Client::builder()
-        .user_agent(format!(
-            "DuckyDeck-Studio/{}",
-            current_version.trim_start_matches(['v', 'V'])
-        ))
-        .timeout(std::time::Duration::from_secs(8))
-        .build()
+    let client = crate::actions::web_api::shared_http_client()
         .map_err(|e| format!("HTTP client error: {e}"))?;
 
     let resp = client
         .get(GITHUB_RELEASES_LATEST_API)
+        .header(
+            reqwest::header::USER_AGENT,
+            format!(
+                "DuckyDeck-Studio/{}",
+                current_version.trim_start_matches(['v', 'V'])
+            ),
+        )
         .header("Accept", "application/vnd.github+json")
+        .timeout(std::time::Duration::from_secs(8))
         .send()
         .await
         .map_err(|e| format!("Failed to reach GitHub Releases API: {e}"))?;
@@ -200,9 +202,7 @@ pub async fn check_for_app_updates_async(
 pub fn check_for_app_updates_blocking(
     current_version: &str,
 ) -> Result<AppUpdateCheckResult, String> {
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| format!("Failed creating async runtime: {e}"))?;
-    rt.block_on(check_for_app_updates_async(current_version))
+    crate::actions::web_api::block_on_shared_async(check_for_app_updates_async(current_version))?
 }
 
 fn is_system_flatpak_install() -> bool {
@@ -239,8 +239,29 @@ fn run_flatpak_bundle_install(pkg_str: &str, scope_flag: &str) -> bool {
     matches!(status, Ok(st) if st.success())
 }
 
+/// Returns `true` only for official GitHub Release download origins for DuckyDeck Studio.
+pub fn is_allowed_update_download_url(url: &str) -> bool {
+    let clean = url.trim();
+    (clean.starts_with("https://github.com/russellmilliner/duckydeck-studio/releases/download/")
+        || clean.starts_with("https://objects.githubusercontent.com/"))
+        && !clean.contains("..")
+        && !clean.contains('@')
+        && !clean.contains('\\')
+        && !clean.chars().any(char::is_whitespace)
+}
+
 pub fn update_staging_dir(latest_version: &str) -> PathBuf {
-    let ver_clean = latest_version.trim_start_matches(['v', 'V']);
+    let raw_ver = latest_version.trim().trim_start_matches(['v', 'V']);
+    let sanitized: String = raw_ver
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+        .take(48)
+        .collect();
+    let ver_clean = if sanitized.is_empty() || sanitized.contains("..") || sanitized == "." {
+        "latest".to_string()
+    } else {
+        sanitized
+    };
     #[cfg(not(target_os = "windows"))]
     {
         // Inside a Flatpak sandbox, `/tmp` (`std::env::temp_dir()`) is a private tmpfs invisible
@@ -275,6 +296,7 @@ pub fn verify_sha256_manifest_text(
     let clean_name = asset_filename.trim();
     let mut matched_expected: Option<String> = None;
     let mut single_line_candidate: Option<String> = None;
+    let mut valid_hash_lines = 0usize;
 
     for raw_line in sha256_text.lines() {
         let line = raw_line.trim();
@@ -289,6 +311,7 @@ pub fn verify_sha256_manifest_text(
         if !is_hex64 {
             continue;
         }
+        valid_hash_lines += 1;
         let hex_lower = first.to_ascii_lowercase();
         if let Some(second) = parts.next() {
             let entry_file = second
@@ -309,8 +332,10 @@ pub fn verify_sha256_manifest_text(
     }
 
     let expected_hex = matched_expected
-        .or(single_line_candidate)
-        .ok_or_else(|| "Could not parse a valid 64-character SHA-256 digest from .sha256 file".to_string())?;
+        .or(single_line_candidate.filter(|_| valid_hash_lines == 1))
+        .ok_or_else(|| {
+            format!("Could not parse a matching 64-character SHA-256 digest for '{clean_name}' from .sha256 file")
+        })?;
 
     if !crate::paths::constant_time_str_eq(&actual_hex, &expected_hex) {
         return Err(format!(
@@ -327,9 +352,16 @@ pub async fn download_and_install_app_update_async(
     if download_url.trim().is_empty() {
         return Err("No release asset download URL available for this platform".to_string());
     }
+    if !is_allowed_update_download_url(download_url) {
+        return Err(format!(
+            "Refusing update download from untrusted URL '{download_url}'"
+        ));
+    }
 
-    let filename = download_url
-        .rsplit('/')
+    let clean_url = download_url.trim();
+    let url_no_query = clean_url.split(['?', '#']).next().unwrap_or(clean_url);
+    let filename = url_no_query
+        .rsplit(['/', '\\'])
         .next()
         .filter(|s| !s.is_empty())
         .unwrap_or(if cfg!(target_os = "windows") {
@@ -337,20 +369,23 @@ pub async fn download_and_install_app_update_async(
         } else {
             "duckydeck-studio-update.tar.gz"
         });
+    if filename == "." || filename == ".." || filename.contains("..") || filename.contains('\0') {
+        return Err(format!(
+            "Rejected unsafe update package filename '{filename}'"
+        ));
+    }
 
     let tmp_dir = update_staging_dir(latest_version);
     fs::create_dir_all(&tmp_dir)
         .map_err(|e| format!("Failed creating temporary update directory: {e}"))?;
     let pkg_path = tmp_dir.join(filename);
 
-    let client = reqwest::Client::builder()
-        .user_agent(concat!("DuckyDeck-Studio/", env!("CARGO_PKG_VERSION")))
-        .timeout(std::time::Duration::from_secs(180))
-        .build()
+    let client = crate::actions::web_api::shared_http_client()
         .map_err(|e| format!("HTTP client error: {e}"))?;
 
     let resp = client
         .get(download_url)
+        .timeout(std::time::Duration::from_secs(180))
         .send()
         .await
         .map_err(|e| format!("Failed downloading update asset: {e}"))?;
@@ -368,6 +403,7 @@ pub async fn download_and_install_app_update_async(
     let sha256_url = format!("{}.sha256", download_url.trim());
     let sha_resp = client
         .get(&sha256_url)
+        .timeout(std::time::Duration::from_secs(30))
         .send()
         .await
         .map_err(|e| format!("Failed downloading SHA-256 checksum file ({sha256_url}): {e}"))?;
@@ -396,16 +432,8 @@ pub async fn download_and_install_app_update_async(
     {
         let pkg_str = pkg_path.to_string_lossy().to_string();
         if filename.to_ascii_lowercase().ends_with(".exe") {
-            Command::new("cmd")
-                .args([
-                    "/C",
-                    "start",
-                    "",
-                    &pkg_str,
-                    "/SILENT",
-                    "/CLOSEAPPLICATIONS",
-                    "/RESTARTAPPLICATIONS",
-                ])
+            Command::new(&pkg_path)
+                .args(["/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"])
                 .spawn()
                 .map_err(|e| format!("Failed launching Windows Setup installer: {e}"))?;
             return Ok(format!(
@@ -518,12 +546,10 @@ pub fn download_and_install_app_update_blocking(
     download_url: &str,
     latest_version: &str,
 ) -> Result<String, String> {
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| format!("Failed creating async runtime: {e}"))?;
-    rt.block_on(download_and_install_app_update_async(
+    crate::actions::web_api::block_on_shared_async(download_and_install_app_update_async(
         download_url,
         latest_version,
-    ))
+    ))?
 }
 
 #[cfg(test)]
@@ -609,5 +635,27 @@ mod tests {
             &manifest
         )
         .is_err());
+
+        // Multi-line manifest missing the requested filename must fail rather than fall back to another line
+        assert!(verify_sha256_manifest_text(payload, "missing-asset.tar.gz", &manifest).is_err());
+    }
+
+    #[test]
+    fn test_is_allowed_update_download_url_restricts_origins() {
+        assert!(is_allowed_update_download_url(
+            "https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.23/duckydeck-studio-v0.1.23-x86_64.flatpak"
+        ));
+        assert!(is_allowed_update_download_url(
+            "https://objects.githubusercontent.com/github-production-release-asset-2e65be/example.tar.gz"
+        ));
+        assert!(!is_allowed_update_download_url(
+            "http://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.23/app.tar.gz"
+        ));
+        assert!(!is_allowed_update_download_url(
+            "https://evil.example.com/duckydeck-studio.exe"
+        ));
+        assert!(!is_allowed_update_download_url(
+            "https://github.com/russellmilliner/duckydeck-studio/releases/download/../../other/evil.exe"
+        ));
     }
 }

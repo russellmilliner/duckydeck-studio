@@ -1,18 +1,18 @@
 # DuckyDeck Studio HTTP REST API Reference
 
-[![Version v0.1.23](https://img.shields.io/badge/Version-v0.1.23-38bdf8?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.23)
-[![Windows 10/11 Setup v0.1.23](https://img.shields.io/badge/Windows_10%2F11_Setup-v0.1.23_(.exe)-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.23/DuckyDeck-Studio-Setup-v0.1.23-x86_64.exe)
-[![Flatpak v0.1.23](https://img.shields.io/badge/Linux_Flatpak-v0.1.23-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.23-x86_64.flatpak)
+[![Version v0.1.24](https://img.shields.io/badge/Version-v0.1.24-38bdf8?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.24)
+[![Windows 10/11 Setup v0.1.24](https://img.shields.io/badge/Windows_10%2F11_Setup-v0.1.24_(.exe)-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.24/DuckyDeck-Studio-Setup-v0.1.24-x86_64.exe)
+[![Flatpak v0.1.24](https://img.shields.io/badge/Linux_Flatpak-v0.1.24-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.24-x86_64.flatpak)
 [![Website duckydeckstudio.com](https://img.shields.io/badge/Website-duckydeckstudio.com-0ea5e9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://duckydeckstudio.com)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-russellmilliner%2Fduckydeck--studio-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio)
 
-DuckyDeck Studio (`v0.1.23` for **Linux** & **Windows 10/11**) includes a built-in, low-latency HTTP/1.1 REST API server (`src/api_server.rs`) that exposes full programmatic control over your **duckyPad Pro** (`0x0483:0xd11d`, Custom Firmware `v1.1.2`) and **duckyPad (2020)** (`0x0483:0xd11c`), profiles, mechanical key & rotary encoder slots, duckyScript 3 DSVM compiler, 32 Persistent Global Variables (`_GV0.._GV31`), live RGB LED overrides, and microSD synchronization.
+DuckyDeck Studio (`v0.1.24` for **Linux** & **Windows 10/11**) includes a built-in, low-latency HTTP/1.1 REST API server (`src/api_server.rs`) that exposes full programmatic control over your **duckyPad Pro** (`0x0483:0xd11d`, Custom Firmware `v1.1.2`) and **duckyPad (2020)** (`0x0483:0xd11c`), profiles, mechanical key & rotary encoder slots, duckyScript 3 DSVM compiler, 32 Persistent Global Variables (`_GV0.._GV31`), live RGB LED overrides, and microSD synchronization.
 
-- **Application Version**: `v0.1.23` (Custom Firmware `v1.1.2`)
+- **Application Version**: `v0.1.24` (Custom Firmware `v1.1.2`)
 - **Supported Platforms**: Linux (`KDE Plasma 6 / Wayland & X11 / Flatpak`) & Windows 10/11 (`x86_64`)
 - **Official Website & User Guide**: [https://duckydeckstudio.com](https://duckydeckstudio.com)
 - **System Architecture Reference**: [`docs/architecture.html`](architecture.html) ([https://duckydeckstudio.com/architecture.html](https://duckydeckstudio.com/architecture.html)) · [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)
-- **GitHub Repository & Releases**: [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio) · [Windows Setup (`.exe`)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.23/DuckyDeck-Studio-Setup-v0.1.23-x86_64.exe) · [Windows Portable (`.zip`)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.23/duckydeck-studio-v0.1.23-windows-x86_64-portable.zip) · [Linux Flatpak Bundle (`v0.1.23`)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.23-x86_64.flatpak)
+- **GitHub Repository & Releases**: [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio) · [Windows Setup (`.exe`)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.24/DuckyDeck-Studio-Setup-v0.1.24-x86_64.exe) · [Windows Portable (`.zip`)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.24/duckydeck-studio-v0.1.24-windows-x86_64-portable.zip) · [Linux Flatpak Bundle (`v0.1.24`)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.24-x86_64.flatpak)
 - **OpenAPI 3.0.3 YAML Specification**: [`docs/openapi.yaml`](openapi.yaml) (`GET /api/v1/openapi.yaml`)
 - **Swagger / OpenAPI 3.0 JSON Specification**: [`docs/swagger.json`](swagger.json) (`GET /api/v1/swagger.json` or `GET /api/v1/openapi.json`)
 
@@ -47,8 +47,9 @@ or:
 X-API-Token: <YOUR_API_TOKEN>
 ```
 
-- **Constant-Time Verification**: Token verification uses a constant-time byte comparison (`constant_time_eq`) to prevent timing side-channel attacks.
-- **CORS Support**: All responses include permissive CORS headers (`Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS`, `Access-Control-Allow-Headers: Authorization, Content-Type, X-API-Token`) and handle `OPTIONS` preflight requests with `204 No Content`.
+- **Constant-Time Verification**: Token verification uses a constant-time byte comparison (`paths::constant_time_str_eq()`) to prevent timing side-channel attacks.
+- **Host Header & Origin Validation (DNS Rebinding & CSRF Defense)**: Rejects non-loopback/untrusted `Host` headers and cross-origin browser requests (`Origin` / `Referer` from external sites) with `403 Forbidden`, and never emits wildcard `Access-Control-Allow-Origin: *` headers.
+- **Unconditional High-Privilege Auth Enforcement**: Even if the optional global auth toggle is disabled in local settings, high-privilege endpoints (`/api/v1/profiles/<num>/slots/*` mutations, `/api/v1/pgv` writes, `/api/v1/sd/*`, `/api/v1/esp32-ha/*`, and profile mutations containing App Launch payloads parsed via `serde_json`) always enforce Bearer / `X-API-Token` authentication.
 
 ---
 
@@ -56,7 +57,7 @@ X-API-Token: <YOUR_API_TOKEN>
 
 | Method | Endpoint | Auth | Description |
 | :--- | :--- | :---: | :--- |
-| `GET` | `/api/v1/health` | No | Liveness probe, version (`0.1.23`), and whether auth is required |
+| `GET` | `/api/v1/health` | No | Liveness probe, version (`0.1.24`), and whether auth is required |
 | `GET` | `/api/v1/openapi.json` | No | OpenAPI 3.0 / Swagger JSON specification |
 | `GET` | `/api/v1/swagger.json` | No | Alias for `/api/v1/openapi.json` |
 | `GET` | `/api/v1/openapi.yaml` | No | OpenAPI 3.0 YAML specification |
@@ -116,7 +117,7 @@ curl -s "$DUCKY_URL/api/v1/health"
 {
   "ok": true,
   "service": "duckydeck-studio",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "authRequired": true
 }
 ```
@@ -131,7 +132,7 @@ curl -s -H "Authorization: Bearer $DUCKY_TOKEN" "$DUCKY_URL/api/v1/status"
 ```json
 {
   "ok": true,
-  "version": "0.1.23",
+  "version": "0.1.24",
   "connected": true,
   "sdCardMode": false,
   "sdMounted": false,

@@ -2,6 +2,22 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.24](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.24) — 2026-11-19
+
+### Highlights
+- Security hardening: OS CSPRNG, Win32 ShellExecuteW/MessageBoxW FFI, HMAC-SHA256 v2 App Launch trust, strict REST API auth, ESP32-HA XSS/token hardening, firmware/updater origin & manifest validation, and parser/SSRF bounds.
+- Performance optimizations: shared Tokio runtime & pooled HTTP client, cached D-Bus session & async favicons, non-blocking HA search & firmware installs, named input/hotplug threads, regex caching, and lazy-loaded QML dialogs.
+- Structural refactoring & testing: extracted duckydeck-paths and duckydeck-vm workspace crates, modularized auto_switcher.rs (10 modules), device_controller.rs (8 bridge modules), and Main.qml (5 components), and added 10 network-free unit tests (78 workspace tests total).
+
+### Commits
+- chore(deps): update dependencies (rand_pcg 0.10.3) (d1b9d33)
+
+### 📦 Bumped Dependencies (1 package)
+
+| Package | Previous | Updated | Scope |
+| :--- | :--- | :--- | :--- |
+| `rand_pcg` | `0.10.2` | **`0.10.3`** | Lockfile (`Cargo.lock`) |
+
 ## [v0.1.23-deps](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.23-deps) — 2026-11-19
 
 ### 📦 Bumped Dependencies (1 package)

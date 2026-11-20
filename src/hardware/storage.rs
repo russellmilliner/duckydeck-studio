@@ -169,6 +169,8 @@ pub fn is_duckypad_in_msc_usb_mode(disk_label: &str, target_serial: Option<&str>
     if crate::hardware::msc::find_duckypad_msc_block_device(disk_label, true).is_some() {
         return true;
     }
+    #[cfg(not(target_os = "linux"))]
+    let _ = target_serial;
     #[cfg(target_os = "linux")]
     {
         let req_serial = target_serial
@@ -620,6 +622,116 @@ fn query_info_from_open_hid_device(
         disk_label: fallback_disk_label,
         active_profile: 1,
         hid_path: hid_path.to_string(),
+    }
+}
+
+/// Single-pass HID presence and connected device count check for background hotplug polling.
+pub fn scan_duckypad_hid_presence() -> (usize, bool) {
+    let selected = get_selected_duckypad_serial()
+        .map(|s| normalize_duckypad_serial(&s))
+        .filter(|s| !s.is_empty() && s != "-");
+
+    #[cfg(target_os = "linux")]
+    {
+        let nodes = find_all_duckypad_hidraw_nodes();
+        let mut unique_serials = std::collections::HashSet::new();
+        let mut unnamed_count = 0usize;
+        let mut matched_selected = false;
+        let mut all_have_uniq = true;
+
+        for (_path, _pid, uniq) in &nodes {
+            match uniq.as_deref() {
+                Some(raw_u) => {
+                    if let Some(ref req) = selected {
+                        if serial_matches_target(raw_u, req) {
+                            matched_selected = true;
+                        }
+                    }
+                    let clean = normalize_duckypad_serial(raw_u);
+                    if !clean.is_empty() && clean != "-" {
+                        unique_serials.insert(clean);
+                    } else {
+                        unnamed_count += 1;
+                    }
+                }
+                None => {
+                    all_have_uniq = false;
+                    unnamed_count += 1;
+                }
+            }
+        }
+
+        let connected_count = unique_serials.len() + unnamed_count;
+        let selected_present = if nodes.is_empty() {
+            false
+        } else if selected.is_some() {
+            matched_selected || !all_have_uniq
+        } else {
+            true
+        };
+        if !selected_present {
+            invalidate_cached_hid_device();
+        }
+        (connected_count, selected_present)
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let Ok(api) = HidApi::new() else {
+            invalidate_cached_hid_device();
+            return (0, false);
+        };
+        let mut unique_serials = std::collections::HashSet::new();
+        let mut unnamed_count = 0usize;
+        let mut matched_selected = false;
+        let mut any_usage_present = false;
+
+        for dev_info in api.device_list() {
+            if dev_info.vendor_id() != DUCKYPAD_VID {
+                continue;
+            }
+            let pid = dev_info.product_id();
+            if pid != PID_DUCKYPAD_PRO && pid != PID_DUCKYPAD_2020 {
+                continue;
+            }
+            #[cfg(target_os = "windows")]
+            {
+                let usage = dev_info.usage();
+                if usage != 0 && usage != 58 {
+                    continue;
+                }
+            }
+            let raw_serial = dev_info.serial_number();
+            let clean = raw_serial
+                .map(normalize_duckypad_serial)
+                .unwrap_or_default();
+            if !clean.is_empty() && clean != "-" {
+                unique_serials.insert(clean);
+            } else {
+                unnamed_count += 1;
+            }
+            if dev_info.usage() == 0 || dev_info.usage() == 58 {
+                any_usage_present = true;
+                if let Some(ref req) = selected {
+                    if raw_serial
+                        .map(|sn| serial_matches_target(sn, req))
+                        .unwrap_or(false)
+                    {
+                        matched_selected = true;
+                    }
+                }
+            }
+        }
+        let connected_count = unique_serials.len() + unnamed_count;
+        let selected_present = if selected.is_some() {
+            matched_selected
+        } else {
+            any_usage_present
+        };
+        if !selected_present {
+            invalidate_cached_hid_device();
+        }
+        (connected_count, selected_present)
     }
 }
 
@@ -1792,11 +1904,7 @@ mod tests {
         )
         .unwrap();
         fs::write(evo_sd.join("profile_info.txt"), "1 Main\n").unwrap();
-        fs::write(
-            prof_dir.join("config.txt"),
-            "BG_COLOR 10 20 30\nz1 Copy\n",
-        )
-        .unwrap();
+        fs::write(prof_dir.join("config.txt"), "BG_COLOR 10 20 30\nz1 Copy\n").unwrap();
         fs::write(prof_dir.join("key1.txt"), "STRING hello\n").unwrap();
 
         let dpp_cfg = read_dpp_config(&evo_sd).expect("read_dpp_config should succeed");
@@ -1806,7 +1914,8 @@ mod tests {
             "2020 duckyPad dpp_config.txt without serial_number/bt_mode must identify as DP_MODEL_OG_DUCKYPAD (20)"
         );
 
-        let inspected = inspect_duckypad_sd_root(&evo_sd).expect("inspect_duckypad_sd_root should succeed");
+        let inspected =
+            inspect_duckypad_sd_root(&evo_sd).expect("inspect_duckypad_sd_root should succeed");
         assert_eq!(
             inspected.hw_model, DP_MODEL_OG_DUCKYPAD,
             "inspect_duckypad_sd_root must identify 2020 EVO SD card as DP_MODEL_OG_DUCKYPAD (20)"
@@ -1875,10 +1984,15 @@ mod tests {
         let v1_prof_dir = v1_sd.join("profile1_Default");
         fs::create_dir_all(&v1_prof_dir).unwrap();
         fs::write(v1_sd.join("dp_stats.txt"), "fw 1.4.0\n").unwrap();
-        fs::write(v1_prof_dir.join("config.txt"), "BG_COLOR 0 128 255\nz1 Key1\n").unwrap();
+        fs::write(
+            v1_prof_dir.join("config.txt"),
+            "BG_COLOR 0 128 255\nz1 Key1\n",
+        )
+        .unwrap();
         fs::write(v1_prof_dir.join("key1.txt"), "STRING v1\n").unwrap();
 
-        let loaded_v1 = load_all_sd_profiles(&v1_sd).expect("load_all_sd_profiles on v1 SD should succeed");
+        let loaded_v1 =
+            load_all_sd_profiles(&v1_sd).expect("load_all_sd_profiles on v1 SD should succeed");
         assert_eq!(loaded_v1.len(), 1);
         write_profiles_to_sd_root_for_model(&v1_sd, &loaded_v1, DP_MODEL_OG_DUCKYPAD, None)
             .expect("writing to legacy v1 SD should succeed");

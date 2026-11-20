@@ -1307,6 +1307,8 @@ pub fn create_showcase_instance() -> DeviceControllerRust {
             app_update_check_busy: false,
             app_update_install_busy: false,
             check_updates_on_startup: true,
+            ha_search_busy: false,
+            ha_search_result_json: QString::from(""),
             notified_app_update_version: String::new(),
             copied_key_slot: None,
             firmware_download_url: String::new(),

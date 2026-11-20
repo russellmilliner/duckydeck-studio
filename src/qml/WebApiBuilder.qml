@@ -768,6 +768,16 @@ Window {
     property string haStatusText: ""
     property bool haShowToken: false
 
+    Connections {
+        target: deviceController
+        enabled: webApiKeyConfigWindow.visible
+        function onHaSearchResultJsonChanged() {
+            if (!deviceController.haSearchBusy && deviceController.haSearchResultJson.length > 0) {
+                webApiKeyConfigWindow.applyHomeAssistantSearchResult(deviceController.haSearchResultJson)
+            }
+        }
+    }
+
     function loadHomeAssistantSavedConfig() {
         try {
             const cfg = JSON.parse(deviceController.getHomeAssistantConfigJson())
@@ -782,20 +792,7 @@ Window {
         }
     }
 
-    function searchHomeAssistantEntities() {
-        const baseUrl = haBaseUrlField.text.trim()
-        const token = haTokenField.text.trim()
-        if (baseUrl.length === 0 || token.length === 0) {
-            webApiKeyConfigWindow.haStatusText = qsTr("⚠ Enter your Home Assistant URL and Long-Lived Access Token first.")
-            return
-        }
-        const domainVal = haDomainCombo.currentIndex <= 0 ? "" : haDomainCombo.currentText
-        const raw = deviceController.searchHomeAssistantEntitiesJson(
-            baseUrl,
-            token,
-            haSearchQueryField.text.trim(),
-            domainVal
-        )
+    function applyHomeAssistantSearchResult(raw) {
         try {
             const parsed = JSON.parse(raw)
             const entitiesList = Array.isArray(parsed)
@@ -823,6 +820,26 @@ Window {
             webApiKeyConfigWindow.haEntitiesModel = []
             webApiKeyConfigWindow.haStatusText = qsTr("Failed to parse Home Assistant response: %1").arg(String(e))
         }
+    }
+
+    function searchHomeAssistantEntities() {
+        if (deviceController.haSearchBusy) {
+            return
+        }
+        const baseUrl = haBaseUrlField.text.trim()
+        const token = haTokenField.text.trim()
+        if (baseUrl.length === 0 || token.length === 0) {
+            webApiKeyConfigWindow.haStatusText = qsTr("⚠ Enter your Home Assistant URL and Long-Lived Access Token first.")
+            return
+        }
+        const domainVal = haDomainCombo.currentIndex <= 0 ? "" : haDomainCombo.currentText
+        webApiKeyConfigWindow.haStatusText = qsTr("⏳ Searching Home Assistant entities...")
+        deviceController.startSearchHomeAssistantEntities(
+            baseUrl,
+            token,
+            haSearchQueryField.text.trim(),
+            domainVal
+        )
     }
 
     function applyHomeAssistantEntityToKey(entityObj, serviceOverride) {
@@ -1132,13 +1149,14 @@ Window {
                                 width: Math.max(200, haCardCol.width - 340)
                                 selectByMouse: true
                                 placeholderText: qsTr("Search devices/entities (e.g. desk light, studio, scene)...")
-                                onAccepted: webApiKeyConfigWindow.searchHomeAssistantEntities()
+                                onAccepted: if (!deviceController.haSearchBusy) webApiKeyConfigWindow.searchHomeAssistantEntities()
                             }
 
                             QQC2.Button {
                                 font.pointSize: 10 * root.fontScale
                                 icon.name: "edit-find"
-                                text: qsTr("🔍 Search Entities")
+                                enabled: !deviceController.haSearchBusy
+                                text: deviceController.haSearchBusy ? qsTr("Searching...") : qsTr("🔍 Search Entities")
                                 highlighted: true
                                 onClicked: webApiKeyConfigWindow.searchHomeAssistantEntities()
                             }

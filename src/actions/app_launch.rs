@@ -113,6 +113,7 @@ pub fn strip_app_launch_from_script(script: &str) -> String {
 const HOST_TRUST_KEY_FILE: &str = "host_trust.key";
 const TRUSTED_APP_LAUNCHES_FILE: &str = "trusted_app_launches.json";
 
+static HOST_TRUST_KEY: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
 static TRUSTED_APP_LAUNCH_HMACS: std::sync::OnceLock<
     std::sync::Mutex<std::collections::HashSet<String>>,
 > = std::sync::OnceLock::new();
@@ -125,38 +126,64 @@ fn trusted_app_launches_path() -> PathBuf {
     crate::paths::data_dir().join(TRUSTED_APP_LAUNCHES_FILE)
 }
 
-fn load_or_create_host_trust_key() -> Vec<u8> {
-    let path = host_trust_key_path();
-    if let Ok(existing) = fs::read(&path) {
-        let trimmed = String::from_utf8_lossy(&existing).trim().to_string();
-        if trimmed.len() >= 32 {
-            return trimmed.into_bytes();
-        }
-    }
-    let seed = format!(
-        "{}:{}:{}",
-        crate::kwin::auto_switcher::generate_rest_api_token(),
-        crate::kwin::auto_switcher::generate_rest_api_token(),
-        std::process::id()
-    );
-    let key_hex = crate::paths::sha256_hex(seed.as_bytes());
-    let _ = crate::paths::write_private_file_atomic(&path, key_hex.as_bytes());
-    key_hex.into_bytes()
+fn load_or_create_host_trust_key() -> &'static [u8] {
+    HOST_TRUST_KEY
+        .get_or_init(|| {
+            let path = host_trust_key_path();
+            if let Ok(existing) = fs::read(&path) {
+                let trimmed = String::from_utf8_lossy(&existing).trim().to_string();
+                if trimmed.len() >= 32 {
+                    return trimmed.into_bytes();
+                }
+            }
+            let mut rnd = [0u8; 32];
+            crate::paths::fill_os_random_bytes(&mut rnd)
+                .expect("OS CSPRNG unavailable for host_trust.key generation");
+            let mut key_hex = String::with_capacity(64);
+            for b in rnd {
+                use std::fmt::Write as _;
+                let _ = write!(&mut key_hex, "{b:02x}");
+            }
+            if !cfg!(test) && !is_headless_or_ui_test_mode() {
+                let _ = crate::paths::write_private_file_atomic(&path, key_hex.as_bytes());
+            }
+            key_hex.into_bytes()
+        })
+        .as_slice()
 }
 
 /// Computes the canonical HMAC-SHA256 digest for an `AppLaunchConfig`'s executable payload
 /// (`desktop_id`, `command`, `args`, `working_dir`, `run_in_terminal`) using the host's private key.
 pub fn compute_app_launch_hmac(cfg: &AppLaunchConfig) -> String {
     let key = load_or_create_host_trust_key();
-    let canonical = format!(
-        "v1|desktop={}|cmd={}|args={}|cwd={}|term={}",
+    let canonical = serde_json::to_string(&(
+        "v2",
         cfg.desktop_id.trim(),
         cfg.command.trim(),
         cfg.args.trim(),
         cfg.working_dir.trim(),
-        cfg.run_in_terminal
+        cfg.run_in_terminal,
+    ))
+    .unwrap_or_default();
+    crate::paths::hmac_sha256_hex(key, canonical.as_bytes())
+}
+
+fn compute_legacy_v1_app_launch_hmac(cfg: &AppLaunchConfig) -> Option<String> {
+    let fields = [
+        cfg.desktop_id.trim(),
+        cfg.command.trim(),
+        cfg.args.trim(),
+        cfg.working_dir.trim(),
+    ];
+    if fields.iter().any(|s| s.contains('|')) {
+        return None;
+    }
+    let key = load_or_create_host_trust_key();
+    let canonical = format!(
+        "v1|desktop={}|cmd={}|args={}|cwd={}|term={}",
+        fields[0], fields[1], fields[2], fields[3], cfg.run_in_terminal
     );
-    crate::paths::hmac_sha256_hex(&key, canonical.as_bytes())
+    Some(crate::paths::hmac_sha256_hex(key, canonical.as_bytes()))
 }
 
 fn collect_app_launch_hmacs_from_profiles_dir(
@@ -240,10 +267,18 @@ pub fn is_app_launch_trusted(cfg: &AppLaunchConfig) -> bool {
     if cfg.command.trim().is_empty() && cfg.desktop_id.trim().is_empty() {
         return true;
     }
-    let hmac = compute_app_launch_hmac(cfg);
+    let hmac_v2 = compute_app_launch_hmac(cfg);
     trusted_hmac_store()
         .lock()
-        .map(|guard| guard.contains(&hmac))
+        .map(|guard| {
+            if guard.contains(&hmac_v2) {
+                return true;
+            }
+            if let Some(hmac_v1) = compute_legacy_v1_app_launch_hmac(cfg) {
+                return guard.contains(&hmac_v1);
+            }
+            false
+        })
         .unwrap_or(false)
 }
 
@@ -264,7 +299,7 @@ fn prompt_user_to_approve_untrusted_app_launch(
     cfg: &AppLaunchConfig,
     full_cmd_display: &str,
 ) -> bool {
-    if is_headless_or_ui_test_mode() {
+    if is_headless_or_ui_test_mode() || cfg!(test) {
         return false;
     }
     let msg = format!(
@@ -303,22 +338,26 @@ fn prompt_user_to_approve_untrusted_app_launch(
     }
     #[cfg(target_os = "windows")]
     {
-        let escaped = msg.replace('\'', "''").replace('\r', "").replace('\n', "`n");
-        if let Ok(output) = std::process::Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-NonInteractive",
-                "-Command",
-                &format!(
-                    "Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('{escaped}', 'DuckyDeck Studio - Untrusted Command', 'YesNo', 'Warning')"
-                ),
-            ])
-            .output()
-        {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            return stdout.trim().eq_ignore_ascii_case("Yes");
-        }
-        false
+        const MB_YESNO: u32 = 0x0000_0004;
+        const MB_ICONWARNING: u32 = 0x0000_0030;
+        const MB_TOPMOST: u32 = 0x0004_0000;
+        const IDYES: i32 = 6;
+        let clean_msg = msg.replace('\0', "");
+        let text_wide: Vec<u16> = clean_msg.encode_utf16().chain(std::iter::once(0)).collect();
+        let title_wide: Vec<u16> = "DuckyDeck Studio — Untrusted Command Approval"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        // SAFETY: `text_wide` and `title_wide` are null-terminated UTF-16 buffers valid for the call duration.
+        let choice = unsafe {
+            win32_input::MessageBoxW(
+                0,
+                text_wide.as_ptr(),
+                title_wide.as_ptr(),
+                MB_YESNO | MB_ICONWARNING | MB_TOPMOST,
+            )
+        };
+        choice == IDYES
     }
 }
 
@@ -367,7 +406,6 @@ pub fn apply_app_launch_config_to_script(
         }
     };
     normalized.fkey = valid_fkey.clone();
-    approve_app_launch_config(&normalized);
 
     let meta_json = serde_json::to_string(&normalized).unwrap_or_else(|_| "{}".to_string());
     let trigger_code = encode_pgv31_trigger(profile_num, slot_num, is_release);
@@ -473,6 +511,7 @@ mod win32_input {
             wMsgFilterMin: u32,
             wMsgFilterMax: u32,
         ) -> i32;
+        pub fn MessageBoxW(hwnd: isize, text: *const u16, caption: *const u16, flags: u32) -> i32;
     }
 
     pub const KEYEVENTF_EXTENDEDKEY: u32 = 0x0001;
@@ -588,16 +627,8 @@ mod win32_input {
                 (0x5B, true),
                 (0x5C, true),
             ],
-            "RCTRL_RSHIFT" => &[
-                (0xA3, true),
-                (0x11, false),
-                (0xA1, true),
-                (0x10, false),
-            ],
-            "MENU_RSHIFT" => &[
-                (0xA1, true),
-                (0x10, false),
-            ],
+            "RCTRL_RSHIFT" => &[(0xA3, true), (0x11, false), (0xA1, true), (0x10, false)],
+            "MENU_RSHIFT" => &[(0xA1, true), (0x10, false)],
             _ => &[],
         };
         for &(vk, _extended) in vks {
@@ -963,8 +994,8 @@ impl DuckypadEvdevListener {
                                 // Report ID 2: Media/Consumer [2, bits]
                                 // Report ID 3: Mouse [3, btns, dx, dy, wheel, hwheel]
                                 if report_id == 1 && n >= 3 {
-                                    let any_down = hbuf[1] != 0
-                                        || hbuf[3..n.min(9)].iter().any(|&b| b != 0);
+                                    let any_down =
+                                        hbuf[1] != 0 || hbuf[3..n.min(9)].iter().any(|&b| b != 0);
                                     let now_ms = crate::kwin::auto_switcher::current_epoch_ms();
                                     crate::hardware::storage::LAST_EVDEV_KEY_ACTIVITY_MS
                                         .store(now_ms, std::sync::atomic::Ordering::SeqCst);
@@ -1089,6 +1120,38 @@ pub fn execute_app_launch(cfg: &AppLaunchConfig) -> AppLaunchExecutionResult {
         || full_cmd_display.contains('<')
         || full_cmd_display.contains('$');
 
+    if !needs_shell
+        && cfg!(target_os = "windows")
+        && (raw_cmd.eq_ignore_ascii_case("xdg-open")
+            || (raw_cmd.to_ascii_lowercase().ends_with(".lnk") && raw_args.is_empty()))
+    {
+        let target_arg = if raw_cmd.eq_ignore_ascii_case("xdg-open") {
+            raw_args.to_string()
+        } else {
+            raw_cmd.to_string()
+        };
+        let target_expanded = expand_tilde_str(target_arg.trim());
+        let display_name = if !cfg.app_name.trim().is_empty() {
+            cfg.app_name.trim().to_string()
+        } else {
+            target_expanded.clone()
+        };
+        return match crate::paths::open_url_or_path_in_os(&target_expanded) {
+            Ok(()) => AppLaunchExecutionResult {
+                ok: true,
+                pid: 0,
+                summary: format!("Launched '{display_name}' via ShellExecuteW"),
+                command_line: full_cmd_display,
+            },
+            Err(e) => AppLaunchExecutionResult {
+                ok: false,
+                pid: 0,
+                summary: format!("Failed to start '{display_name}': {e}"),
+                command_line: full_cmd_display,
+            },
+        };
+    }
+
     let mut tokens: Vec<String> = if needs_shell {
         #[cfg(target_os = "windows")]
         {
@@ -1102,22 +1165,6 @@ pub fn execute_app_launch(cfg: &AppLaunchConfig) -> AppLaunchExecutionResult {
         {
             vec!["sh".to_string(), "-c".to_string(), full_cmd_display.clone()]
         }
-    } else if cfg!(target_os = "windows")
-        && (raw_cmd.eq_ignore_ascii_case("xdg-open")
-            || (raw_cmd.to_ascii_lowercase().ends_with(".lnk") && raw_args.is_empty()))
-    {
-        let target_arg = if raw_cmd.eq_ignore_ascii_case("xdg-open") {
-            raw_args.to_string()
-        } else {
-            raw_cmd.to_string()
-        };
-        vec![
-            "cmd.exe".to_string(),
-            "/C".to_string(),
-            "start".to_string(),
-            String::new(),
-            target_arg,
-        ]
     } else if cfg!(target_os = "windows") && raw_cmd.eq_ignore_ascii_case("dolphin") {
         let mut v = vec!["explorer.exe".to_string()];
         if !raw_args.is_empty() {
@@ -1627,7 +1674,10 @@ pub fn detect_hidraw_keyboard_format(desc: &[u8]) -> Option<HidrawKeyboardFormat
     let section = &tail[..tail.len().min(64)];
 
     // Check if a Report ID tag (0x85 <id>) appears before the first Input item (0x81)
-    let first_input_pos = section.iter().position(|&b| b == 0x81).unwrap_or(section.len());
+    let first_input_pos = section
+        .iter()
+        .position(|&b| b == 0x81)
+        .unwrap_or(section.len());
     let pre_input = &section[..first_input_pos];
     let report_id = pre_input
         .windows(2)
@@ -1651,20 +1701,20 @@ pub fn detect_hidraw_keyboard_format(desc: &[u8]) -> Option<HidrawKeyboardFormat
 
 pub fn hid_usage_to_evdev(usage: u8) -> Option<u16> {
     match usage {
-        0x00..=0x03 => None, // No event / ErrorRollOver / POSTFail / ErrorUndefined
-        0x39 => Some(58),    // Caps Lock -> KEY_CAPSLOCK
-        0x47 => Some(70),    // Scroll Lock -> KEY_SCROLLLOCK
-        0x48 => Some(119),   // Pause -> KEY_PAUSE
+        0x00..=0x03 => None,      // No event / ErrorRollOver / POSTFail / ErrorUndefined
+        0x39 => Some(58),         // Caps Lock -> KEY_CAPSLOCK
+        0x47 => Some(70),         // Scroll Lock -> KEY_SCROLLLOCK
+        0x48 => Some(119),        // Pause -> KEY_PAUSE
         0x65 | 0x76 => Some(127), // Keyboard Application / Menu -> KEY_COMPOSE
         0x68..=0x73 => Some(183 + (usage - 0x68) as u16), // F13..F24 -> 183..194
-        0xE0 => Some(29),    // Left Control -> KEY_LEFTCTRL
-        0xE1 => Some(42),    // Left Shift -> KEY_LEFTSHIFT
-        0xE2 => Some(56),    // Left Alt -> KEY_LEFTALT
-        0xE3 => Some(125),   // Left GUI -> KEY_LEFTMETA
-        0xE4 => Some(97),    // Right Control -> KEY_RIGHTCTRL
-        0xE5 => Some(54),    // Right Shift -> KEY_RIGHTSHIFT
-        0xE6 => Some(100),   // Right Alt -> KEY_RIGHTALT
-        0xE7 => Some(126),   // Right GUI -> KEY_RIGHTMETA
+        0xE0 => Some(29),         // Left Control -> KEY_LEFTCTRL
+        0xE1 => Some(42),         // Left Shift -> KEY_LEFTSHIFT
+        0xE2 => Some(56),         // Left Alt -> KEY_LEFTALT
+        0xE3 => Some(125),        // Left GUI -> KEY_LEFTMETA
+        0xE4 => Some(97),         // Right Control -> KEY_RIGHTCTRL
+        0xE5 => Some(54),         // Right Shift -> KEY_RIGHTSHIFT
+        0xE6 => Some(100),        // Right Alt -> KEY_RIGHTALT
+        0xE7 => Some(126),        // Right GUI -> KEY_RIGHTMETA
         other => Some(1000 + other as u16), // Distinct non-trigger typing key for chord guard
     }
 }
@@ -1925,7 +1975,10 @@ fn try_inject_x11_xtest_release(codes: &[u16]) {
     }
 
     extern "C" {
-        fn dlopen(filename: *const std::ffi::c_char, flags: std::ffi::c_int) -> *mut std::ffi::c_void;
+        fn dlopen(
+            filename: *const std::ffi::c_char,
+            flags: std::ffi::c_int,
+        ) -> *mut std::ffi::c_void;
         fn dlsym(
             handle: *mut std::ffi::c_void,
             symbol: *const std::ffi::c_char,
@@ -2096,7 +2149,12 @@ fn try_set_hyprland_events_enabled(event_sys_names: &[String], enabled: bool) ->
     }
     let socket_path = std::env::var("XDG_RUNTIME_DIR")
         .ok()
-        .map(|rt| PathBuf::from(rt).join("hypr").join(&sig).join(".socket.sock"))
+        .map(|rt| {
+            PathBuf::from(rt)
+                .join("hypr")
+                .join(&sig)
+                .join(".socket.sock")
+        })
         .filter(|p| p.exists())
         .or_else(|| {
             let fallback = PathBuf::from("/tmp/hypr").join(&sig).join(".socket.sock");
@@ -2151,7 +2209,11 @@ fn resolve_hidraw_keyboard_events_and_group(sys_dev_dir: &Path) -> (Vec<String>,
     let group_key = uevent
         .lines()
         .find_map(|line| line.strip_prefix("HID_ID="))
-        .or_else(|| uevent.lines().find_map(|line| line.strip_prefix("HID_NAME=")))
+        .or_else(|| {
+            uevent
+                .lines()
+                .find_map(|line| line.strip_prefix("HID_NAME="))
+        })
         .unwrap_or("")
         .trim()
         .to_ascii_uppercase();
@@ -2170,8 +2232,8 @@ fn resolve_hidraw_keyboard_events_and_group(sys_dev_dir: &Path) -> (Vec<String>,
             {
                 continue;
             }
-            let key_caps = fs::read_to_string(inp_path.join("capabilities/key"))
-                .unwrap_or_default();
+            let key_caps =
+                fs::read_to_string(inp_path.join("capabilities/key")).unwrap_or_default();
             if !is_standard_keyboard_key_caps(&key_caps) {
                 continue;
             }
@@ -2251,17 +2313,14 @@ impl HostKeyboardModifierListener {
 
     #[cfg(unix)]
     fn collect_holding_keyboard_event_names(&self, trigger_key: &str) -> Vec<String> {
-        let norm_trig =
-            crate::kwin::auto_switcher::normalize_modifier_trigger_key(trigger_key);
+        let norm_trig = crate::kwin::auto_switcher::normalize_modifier_trigger_key(trigger_key);
         let mod_codes = trigger_key_evdev_codes(&norm_trig);
         let mut active_groups = std::collections::HashSet::new();
         let mut out = Vec::new();
 
         for node in &self.hidraw_nodes {
-            if crate::kwin::auto_switcher::is_modifier_trigger_pressed(
-                &norm_trig,
-                &node.held_keys,
-            ) || mod_codes.iter().any(|c| node.held_keys.contains(c))
+            if crate::kwin::auto_switcher::is_modifier_trigger_pressed(&norm_trig, &node.held_keys)
+                || mod_codes.iter().any(|c| node.held_keys.contains(c))
             {
                 if !node.device_group_key.is_empty() {
                     active_groups.insert(node.device_group_key.clone());
@@ -2407,9 +2466,8 @@ impl HostKeyboardModifierListener {
                     // Only open devices that report EV_KEY capability
                     let key_caps = fs::read_to_string(sys_dev_dir.join("capabilities/key"))
                         .unwrap_or_default();
-                    let has_nonzero_key_caps = key_caps
-                        .chars()
-                        .any(|c| c.is_ascii_hexdigit() && c != '0');
+                    let has_nonzero_key_caps =
+                        key_caps.chars().any(|c| c.is_ascii_hexdigit() && c != '0');
                     if !has_nonzero_key_caps {
                         continue;
                     }
@@ -2545,8 +2603,7 @@ impl HostKeyboardModifierListener {
                         Ok(()) => {
                             let ev_type = u16::from_ne_bytes([raw[16], raw[17]]);
                             let ev_code = u16::from_ne_bytes([raw[18], raw[19]]);
-                            let ev_value =
-                                i32::from_ne_bytes([raw[20], raw[21], raw[22], raw[23]]);
+                            let ev_value = i32::from_ne_bytes([raw[20], raw[21], raw[22], raw[23]]);
                             // EV_KEY == 1; ignore mouse buttons (0x110..0x120 = 272..288)
                             if ev_type == 1 && (ev_code <= 248 || ev_code == 464) {
                                 if ev_value == 1 {
@@ -2689,15 +2746,11 @@ impl HostKeyboardModifierListener {
             }
             // Check standard typing keys (0x08..=0x7B, excluding modifiers) for chord guard
             for vk in 0x08..=0x7Bi32 {
-                if matches!(
-                    vk,
-                    0x10 | 0x11 | 0x12 | 0x13 | 0x14 | 0x5B | 0x5C | 0x5D
-                ) {
+                if matches!(vk, 0x10 | 0x11 | 0x12 | 0x13 | 0x14 | 0x5B | 0x5C | 0x5D) {
                     continue;
                 }
                 // SAFETY: GetAsyncKeyState is a thread-safe Win32 query.
-                let is_down =
-                    unsafe { (win32_input::GetAsyncKeyState(vk) as u16 & 0x8000) != 0 };
+                let is_down = unsafe { (win32_input::GetAsyncKeyState(vk) as u16 & 0x8000) != 0 };
                 let was_down = self.prev_vk_down[vk as usize];
                 self.prev_vk_down[vk as usize] = is_down;
                 if is_down {
@@ -2880,13 +2933,50 @@ mod hidraw_modifier_tests {
         assert!(!blocked_res.ok);
         assert!(blocked_res.summary.contains("Blocked untrusted App Launch"));
 
-        // Applying via apply_app_launch_config_to_script (local user save) approves its HMAC
-        let _script = apply_app_launch_config_to_script("", &untrusted_cfg, 1, 1, false);
+        // Serializing via apply_app_launch_config_to_script or sync_profile_web_api_triggers must NOT
+        // silently auto-approve an untrusted command (e.g. from SD cards or REST requests).
+        let script = apply_app_launch_config_to_script("", &untrusted_cfg, 1, 1, false);
+        assert!(!is_app_launch_trusted(&untrusted_cfg));
+
+        let mut prof = crate::hardware::profile::DuckyProfile {
+            number: 1,
+            name: "UntrustedTest".to_string(),
+            ..Default::default()
+        };
+        prof.slots.insert(
+            1,
+            crate::hardware::storage::DuckyKeySlot {
+                slot: 1,
+                on_press_script: script,
+                ..Default::default()
+            },
+        );
+        let _ = crate::actions::web_api::sync_profile_web_api_triggers(&mut [prof]);
+        assert!(!is_app_launch_trusted(&untrusted_cfg));
+
+        // Explicit local approval trusts the exact configuration
+        approve_app_launch_config(&untrusted_cfg);
         assert!(is_app_launch_trusted(&untrusted_cfg));
 
         // Modifying the command invalidates trust immediately
         let mut tampered_cfg = untrusted_cfg.clone();
         tampered_cfg.command = format!("echo tampered_payload_{unique_nonce}");
         assert!(!is_app_launch_trusted(&tampered_cfg));
+
+        // Pipe characters across adjacent fields must never produce HMAC collisions
+        let collision_a = AppLaunchConfig {
+            command: "foo|args=bar".to_string(),
+            args: String::new(),
+            ..Default::default()
+        };
+        let collision_b = AppLaunchConfig {
+            command: "foo".to_string(),
+            args: "bar".to_string(),
+            ..Default::default()
+        };
+        assert_ne!(
+            compute_app_launch_hmac(&collision_a),
+            compute_app_launch_hmac(&collision_b)
+        );
     }
 }

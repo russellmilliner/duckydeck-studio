@@ -484,7 +484,10 @@ pub fn find_unmounted_removable_sd_partitions(disk_label: &str) -> Vec<PathBuf> 
             if dev.starts_with("/dev/") {
                 let p = PathBuf::from(dev);
                 let canon = fs::canonicalize(&p).unwrap_or(p);
-                if matches!(mnt, "/" | "/boot" | "/boot/efi" | "/efi" | "/home" | "/var" | "/usr") {
+                if matches!(
+                    mnt,
+                    "/" | "/boot" | "/boot/efi" | "/efi" | "/home" | "/var" | "/usr"
+                ) {
                     if let Some(name) = canon.file_name().and_then(|s| s.to_str()) {
                         let base = if let Some((prefix, _)) = name.split_once('p') {
                             if name.starts_with("mmcblk") || name.starts_with("nvme") {
@@ -510,7 +513,10 @@ pub fn find_unmounted_removable_sd_partitions(disk_label: &str) -> Vec<PathBuf> 
                 let label = entry.file_name().to_string_lossy().to_string();
                 let is_dp24 = label.starts_with("DP24_");
                 let is_dp20 = label.starts_with("DP20_");
-                if (is_dp24 || is_dp20) && !clean_label.is_empty() && !label.eq_ignore_ascii_case(clean_label) {
+                if (is_dp24 || is_dp20)
+                    && !clean_label.is_empty()
+                    && !label.eq_ignore_ascii_case(clean_label)
+                {
                     if let Ok(canon) = fs::canonicalize(entry.path()) {
                         foreign_duckypad_devs.insert(canon);
                     }
@@ -1353,7 +1359,13 @@ where
         for old_dir in existing_remote_dirs {
             if !desired_remote_folders.contains(&old_dir) {
                 let slash_dir = format!("/{old_dir}");
-                let _ = hid_txrx(&dev, &mut seq, HID_CMD_DELETE_DIR, slash_dir.as_bytes(), 1200);
+                let _ = hid_txrx(
+                    &dev,
+                    &mut seq,
+                    HID_CMD_DELETE_DIR,
+                    slash_dir.as_bytes(),
+                    1200,
+                );
                 let _ = hid_txrx(&dev, &mut seq, HID_CMD_DELETE_DIR, old_dir.as_bytes(), 1200);
             }
         }
@@ -1375,15 +1387,26 @@ where
                     b"profile_info.txt",
                     800,
                 );
-                hid_write_file_bytes(&dev, &mut seq, "/profile_info.txt", &info_bytes)
-                    .or_else(|_| {
-                        hid_write_file_bytes(&dev, &mut seq, "profile_info.txt", &info_bytes)
-                    })?;
+                hid_write_file_bytes(&dev, &mut seq, "/profile_info.txt", &info_bytes).or_else(
+                    |_| hid_write_file_bytes(&dev, &mut seq, "profile_info.txt", &info_bytes),
+                )?;
             }
         } else {
             // Ensure legacy v1.x SD cards don't have a stale profile_info.txt
-            let _ = hid_txrx(&dev, &mut seq, HID_CMD_DELETE_FILE, b"/profile_info.txt", 800);
-            let _ = hid_txrx(&dev, &mut seq, HID_CMD_DELETE_FILE, b"profile_info.txt", 800);
+            let _ = hid_txrx(
+                &dev,
+                &mut seq,
+                HID_CMD_DELETE_FILE,
+                b"/profile_info.txt",
+                800,
+            );
+            let _ = hid_txrx(
+                &dev,
+                &mut seq,
+                HID_CMD_DELETE_FILE,
+                b"profile_info.txt",
+                800,
+            );
         }
 
         for (idx, prof) in profiles.iter().enumerate() {
@@ -1527,9 +1550,8 @@ pub(crate) fn reset_and_wait_for_normal_hid_mode(
     // to actually disconnect/tear down on the USB bus (typically takes ~1.5-2.5s after 0x14).
     for _ in 0..35 {
         let still_msc = is_duckypad_in_msc_usb_mode(disk_label, serial_opt);
-        let pre_nodes_unchanged = !pre_reset_nodes.is_empty()
-            && pre_reset_nodes.iter().all(|p| p.exists())
-            && still_msc;
+        let pre_nodes_unchanged =
+            !pre_reset_nodes.is_empty() && pre_reset_nodes.iter().all(|p| p.exists()) && still_msc;
         if !still_msc && !pre_nodes_unchanged {
             break;
         }

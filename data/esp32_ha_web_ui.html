@@ -185,7 +185,7 @@
   <div id="netPanel" class="prof-bar" style="display:none;border-color:var(--accent);">
     <div class="field">
       <label><b>Wi-Fi SSID:</b></label>
-      <input type="text" id="netSsid" maxlength="32" style="width:160px" placeholder="wifi_fo_fum">
+      <input type="text" id="netSsid" maxlength="32" style="width:160px" placeholder="MyWiFiNetwork">
     </div>
     <div class="field">
       <label><b>Wi-Fi Password:</b></label>
@@ -193,7 +193,7 @@
     </div>
     <div class="field">
       <label><b>MQTT Broker URI:</b></label>
-      <input type="text" id="netMqtt" maxlength="95" style="width:230px" placeholder="mqtt://mqtt.milliner.me:1883">
+      <input type="text" id="netMqtt" maxlength="95" style="width:230px" placeholder="mqtt://homeassistant.local:1883">
     </div>
     <button class="primary" onclick="saveNetConfig()">💾 Save Wi-Fi / MQTT & Reboot ESP32</button>
   </div>
@@ -266,6 +266,48 @@
 </div>
 
 <script>
+function escHtml(val) {
+  return String(val ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+(function initAuthTokenFromHash() {
+  try {
+    const h = window.location.hash || "";
+    const m = h.match(/(?:^#|&)token=([^&]+)/);
+    if (m && m[1]) {
+      sessionStorage.setItem("dd_esp32_token", decodeURIComponent(m[1]));
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  } catch (e) {}
+})();
+
+let authPromptDismissed = false;
+async function apiFetch(url, options = {}, isRetry = false) {
+  const headers = new Headers(options.headers || {});
+  const tok = sessionStorage.getItem("dd_esp32_token");
+  if (tok) {
+    headers.set("X-API-Token", tok);
+  }
+  const res = await fetch(url, { ...options, headers });
+  if (res.status === 401 && !isRetry && !authPromptDismissed) {
+    const entered = window.prompt(
+      "Enter the ESP32-HA Bridge API Token (found in DuckyDeck Studio Settings):"
+    );
+    if (entered && entered.trim()) {
+      sessionStorage.setItem("dd_esp32_token", entered.trim());
+      authPromptDismissed = false;
+      return apiFetch(url, options, true);
+    }
+    authPromptDismissed = true;
+  }
+  return res;
+}
+
 let state = { profiles: [] };
 let curTab = 0;
 let detectedHwRev = 20; // 20 = duckyPad (2020), 24 = duckyPad Pro
@@ -323,7 +365,8 @@ function ensureProfile26Slots(p, pNum) {
 }
 
 async function loadProfiles() {
-  const res = await fetch("/api/profiles");
+  const res = await apiFetch("/api/profiles");
+  if (!res.ok) return;
   state = await res.json();
   if (state.hw_rev) {
     detectedHwRev = state.hw_rev;
@@ -465,24 +508,19 @@ function renderStateColorBox(idx) {
 
   const cached = k.entity ? haEntityStatesCache[k.entity] : null;
   const statesList = (cached && cached.states) ? cached.states : [];
-  const curStateStr = (cached && cached.current_state) ? ` (now: ${cached.current_state})` : "";
+  const curStateStr = (cached && cached.current_state) ? ` (now: ${escHtml(cached.current_state)})` : "";
 
   let dlHtml = `<datalist id="ha_dl_${idx}">`;
-  statesList.forEach(s => { dlHtml += `<option value="${s}">`; });
+  statesList.forEach(s => { dlHtml += `<option value="${escHtml(s)}">`; });
   dlHtml += `</datalist>`;
 
-  let chipsHtml = "";
-  if (statesList.length > 0) {
-    chipsHtml = `<div class="sc-chips">` +
-      statesList.map(s => `<span class="sc-chip" title="Click to add color rule for '${s}'" onclick="addStateColorRule(${idx}, '${s}')">+ ${s}</span>`).join("") +
-      `</div>`;
-  }
+  const chipsPlaceholder = statesList.length > 0 ? `<div class="sc-chips" id="sc_chips_${idx}"></div>` : "";
 
   let rowsHtml = k.sc.map((rule, rIdx) => {
     const rHex = rgbToHex(rule.col[0], rule.col[1], rule.col[2]);
     return `
       <div class="sc-row">
-        <input type="text" list="ha_dl_${idx}" maxlength="15" placeholder="State (e.g. on, >75)" value="${rule.v || ""}" oninput="onStateColorEdit(${idx}, ${rIdx}, 'v', this.value)">
+        <input type="text" list="ha_dl_${idx}" maxlength="15" placeholder="State (e.g. on, >75)" value="${escHtml(rule.v || "")}" oninput="onStateColorEdit(${idx}, ${rIdx}, 'v', this.value)">
         <input type="color" value="${rHex}" oninput="onStateColorEdit(${idx}, ${rIdx}, 'col', this.value)">
         <button class="mini-btn" title="Preview this color on duckyPad Key ${kNum}" onclick="previewRgb(${kNum}, ${rule.col[0]}, ${rule.col[1]}, ${rule.col[2]})">💡</button>
         <button class="mini-btn danger" title="Remove rule" onclick="removeStateColorRule(${idx}, ${rIdx})">✕</button>
@@ -499,9 +537,21 @@ function renderStateColorBox(idx) {
         ${k.sc.length < 6 ? `<button class="mini-btn primary" title="Add custom state color field" onclick="addStateColorRule(${idx}, '')">➕ Add</button>` : ""}
       </div>
     </div>
-    ${chipsHtml}
+    ${chipsPlaceholder}
     ${rowsHtml}
   `;
+
+  const chipsEl = document.getElementById(`sc_chips_${idx}`);
+  if (chipsEl) {
+    statesList.forEach(s => {
+      const chip = document.createElement("span");
+      chip.className = "sc-chip";
+      chip.title = `Click to add color rule for '${s}'`;
+      chip.textContent = `+ ${s}`;
+      chip.addEventListener("click", () => addStateColorRule(idx, s));
+      chipsEl.appendChild(chip);
+    });
+  }
 }
 
 async function fetchHaStatesForKey(idx) {
@@ -512,7 +562,7 @@ async function fetchHaStatesForKey(idx) {
     return;
   }
   try {
-    const res = await fetch(`/api/ha_entity?id=${encodeURIComponent(ent)}`);
+    const res = await apiFetch(`/api/ha_entity?id=${encodeURIComponent(ent)}`);
     const data = await res.json();
     if (data && data.states) {
       haEntityStatesCache[ent] = data;
@@ -584,8 +634,8 @@ function renderEncoders(p) {
             <code style="font-size:11px;color:#38bdf8;">p${curTab + 1}_${ed.ev}</code>
           </div>
           <div style="display:flex;gap:6px;flex:1;max-width:220px;">
-            <input type="text" maxlength="7" style="width:50%;text-align:center;" placeholder="Line 1" value="${k.l1 || ""}" oninput="onKeyEdit(${ed.idx}, 'l1', this.value)">
-            <input type="text" maxlength="7" style="width:50%;text-align:center;" placeholder="Line 2" value="${k.l2 || ""}" oninput="onKeyEdit(${ed.idx}, 'l2', this.value)">
+            <input type="text" maxlength="7" style="width:50%;text-align:center;" placeholder="Line 1" value="${escHtml(k.l1 || "")}" oninput="onKeyEdit(${ed.idx}, 'l1', this.value)">
+            <input type="text" maxlength="7" style="width:50%;text-align:center;" placeholder="Line 2" value="${escHtml(k.l2 || "")}" oninput="onKeyEdit(${ed.idx}, 'l2', this.value)">
           </div>
           <button class="mini-btn" title="Send ${ed.act} event to Home Assistant" onclick="testHaKey(${curTab + 1}, ${ed.kNum})">⚡ Test HA</button>
         </div>
@@ -629,15 +679,15 @@ function renderCurrentTab() {
         <button class="mini-btn" title="Send press+release to Home Assistant" onclick="testHaKey(${curTab + 1}, ${kNum})">⚡ Test HA</button>
       </div>
       <div class="oled-preview" id="oled_${idx}">
-        <div id="oled_l1_${idx}">${oledTop}</div>
-        <div id="oled_l2_${idx}" style="color:${k.entity ? '#38bdf8' : '#cbd5e1'};font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${oledBot}</div>
+        <div id="oled_l1_${idx}">${escHtml(oledTop)}</div>
+        <div id="oled_l2_${idx}" style="color:${k.entity ? '#38bdf8' : '#cbd5e1'};font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(oledBot)}</div>
       </div>
       <div class="key-inputs">
-        <input type="text" maxlength="7" title="Static label (max 7 chars on 2020 / 5 chars on Pro) or template with {s} (e.g. Ofc:{s} or {s}F)" placeholder="Label / {s}" value="${k.l1 || ""}" oninput="onKeyEdit(${idx}, 'l1', this.value)">
-        <input type="text" maxlength="7" title="Line 2" placeholder="Line 2" value="${k.l2 || ""}" oninput="onKeyEdit(${idx}, 'l2', this.value)">
+        <input type="text" maxlength="7" title="Static label (max 7 chars on 2020 / 5 chars on Pro) or template with {s} (e.g. Ofc:{s} or {s}F)" placeholder="Label / {s}" value="${escHtml(k.l1 || "")}" oninput="onKeyEdit(${idx}, 'l1', this.value)">
+        <input type="text" maxlength="7" title="Line 2" placeholder="Line 2" value="${escHtml(k.l2 || "")}" oninput="onKeyEdit(${idx}, 'l2', this.value)">
       </div>
       <div style="display:flex;gap:4px;">
-        <input type="text" maxlength="47" style="flex:1;min-width:0;font-size:12px;" title="Optional Home Assistant Entity ID whose state will populate this key's OLED label & LED color" placeholder="HA Entity ID (e.g. light.office)" value="${k.entity || ""}" oninput="onKeyEdit(${idx}, 'entity', this.value)" onchange="if(this.value.includes('.')) fetchHaStatesForKey(${idx})">
+        <input type="text" maxlength="47" style="flex:1;min-width:0;font-size:12px;" title="Optional Home Assistant Entity ID whose state will populate this key's OLED label & LED color" placeholder="HA Entity ID (e.g. light.office)" value="${escHtml(k.entity || "")}" oninput="onKeyEdit(${idx}, 'entity', this.value)" onchange="if(this.value.includes('.')) fetchHaStatesForKey(${idx})">
       </div>
       <div class="sc-box" id="sc_box_${idx}"></div>
       <div class="key-bottom">
@@ -703,7 +753,7 @@ function updateCardBorders() {
 }
 
 async function previewRgb(kNum, r, g, b) {
-  await fetch("/api/control", {
+  await apiFetch("/api/control", {
     method: "POST",
     body: `set_rgb|${kNum}|${r}|${g}|${b}`
   });
@@ -718,14 +768,14 @@ async function previewLed(kNum, idx) {
 }
 
 async function testHaKey(profNum, kNum) {
-  await fetch("/api/control", {
+  await apiFetch("/api/control", {
     method: "POST",
     body: `test_key|${profNum}|${kNum}`
   });
 }
 
 async function sendCtrl(cmd, arg) {
-  await fetch("/api/control", {
+  await apiFetch("/api/control", {
     method: "POST",
     body: `${cmd}|${arg}`
   });
@@ -757,7 +807,7 @@ async function saveProfiles(mode) {
 
   document.getElementById("btnSaveFast").disabled = true;
   document.getElementById("btnSaveFull").disabled = true;
-  await fetch("/api/profiles", {
+  await apiFetch("/api/profiles", {
     method: "POST",
     body: lines.join("\n")
   });
@@ -767,7 +817,8 @@ async function saveProfiles(mode) {
 let wasSyncing = false;
 async function pollStatus() {
   try {
-    const res = await fetch("/api/status");
+    const res = await apiFetch("/api/status");
+    if (!res.ok) return;
     const st = await res.json();
     const usbEl = document.getElementById("usbBadge");
     if (st.hw_rev && st.hw_rev !== detectedHwRev) {
@@ -813,11 +864,13 @@ async function toggleNetPanel() {
   const el = document.getElementById("netPanel");
   if (el.style.display === "none") {
     try {
-      const res = await fetch("/api/network");
-      const net = await res.json();
-      document.getElementById("netSsid").value = net.ssid || "";
-      document.getElementById("netMqtt").value = net.mqtt_uri || "";
-      document.getElementById("netPass").value = "";
+      const res = await apiFetch("/api/network");
+      if (res.ok) {
+        const net = await res.json();
+        document.getElementById("netSsid").value = net.ssid || "";
+        document.getElementById("netMqtt").value = net.mqtt_uri || "";
+        document.getElementById("netPass").value = "";
+      }
     } catch (e) {}
     el.style.display = "flex";
   } else {
@@ -834,11 +887,15 @@ async function saveNetConfig() {
     return;
   }
   if (!confirm(`Save Wi-Fi SSID '${ssid}' and reboot ESP32-S3?`)) return;
-  await fetch("/api/network", {
+  const res = await apiFetch("/api/network", {
     method: "POST",
     body: `SSID|${ssid}\nPASS|${pass}\nMQTT|${mqtt}\n`
   });
-  alert("Saved! ESP32-S3 is rebooting to apply new Wi-Fi/MQTT settings.");
+  if (res.ok) {
+    alert("Saved! ESP32-S3 is rebooting to apply new Wi-Fi/MQTT settings.");
+  } else {
+    alert("Failed saving network configuration (check API token).");
+  }
 }
 
 loadProfiles();

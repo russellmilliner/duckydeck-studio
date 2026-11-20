@@ -720,6 +720,28 @@ pub fn shared_async_runtime() -> Option<&'static tokio::runtime::Runtime> {
         .as_ref()
 }
 
+pub fn spawn_shared_async<F>(fut: F) -> bool
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    if let Some(rt) = shared_async_runtime() {
+        rt.spawn(fut);
+        true
+    } else {
+        false
+    }
+}
+
+pub fn block_on_shared_async<F>(fut: F) -> Result<F::Output, String>
+where
+    F: std::future::Future,
+{
+    let Some(rt) = shared_async_runtime() else {
+        return Err("Failed initializing shared async runtime".to_string());
+    };
+    Ok(rt.block_on(fut))
+}
+
 pub async fn execute_web_api_request(input_cfg: &WebApiConfig) -> WebApiExecutionResult {
     let mut resolved_cfg = input_cfg.clone();
     resolve_web_api_config_destination(&mut resolved_cfg);
@@ -1215,4 +1237,121 @@ pub async fn execute_profile_webhook_request(
         fkey: "F13".to_string(),
     };
     execute_web_api_request(&web_cfg).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pgv31_trigger_encode_decode_roundtrip_and_bounds() {
+        let code_press = encode_pgv31_trigger(3, 5, false);
+        assert_eq!(decode_pgv31_trigger(code_press as i32), Some((3, 5, false)));
+
+        let code_rel = encode_pgv31_trigger(12, 26, true);
+        assert_eq!(decode_pgv31_trigger(code_rel as i32), Some((12, 26, true)));
+
+        assert_eq!(decode_pgv31_trigger(0x1234_0101), None);
+        assert_eq!(decode_pgv31_trigger(WEB_API_PGV_MAGIC as i32), None); // slot 0 invalid
+        assert_eq!(
+            decode_pgv31_trigger((WEB_API_PGV_MAGIC | (MAX_INPUT_SLOTS as u32 + 1)) as i32),
+            None
+        );
+    }
+
+    #[test]
+    fn test_apply_extract_and_strip_web_api_config_roundtrip() {
+        let cfg = WebApiConfig {
+            enabled: true,
+            destination: String::new(),
+            method: " put ".to_string(),
+            url: "http://127.0.0.1:8123/api/services/light/toggle".to_string(),
+            headers: "Authorization: Bearer test".to_string(),
+            body: r#"{"entity_id":"light.desk"}"#.to_string(),
+            oled_text: "Desk".to_string(),
+            led_feedback: true,
+            trigger_mode: "pgv".to_string(),
+            fkey: "invalid".to_string(),
+        };
+
+        let script = apply_web_api_config_to_script("DELAY 50\nSTRING kept\n", &cfg, 2, 3, false);
+        assert!(has_web_api_config(&script));
+        assert!(script.contains("OLED_CPRINT Desk"));
+        assert!(script.contains("$_GV31 = 0x444B0203"));
+        assert!(script.contains("STRING kept"));
+
+        let extracted = extract_web_api_config(&script, 3);
+        assert!(extracted.enabled);
+        assert_eq!(extracted.method, "PUT");
+        assert_eq!(extracted.fkey, default_fkey_for_slot(3));
+        assert_eq!(extracted.url, cfg.url);
+
+        let stripped = strip_web_api_from_script(&script);
+        assert!(!has_web_api_config(&stripped));
+        assert!(!stripped.contains("$_GV31"));
+        assert!(stripped.contains("DELAY 50"));
+        assert!(stripped.contains("STRING kept"));
+
+        let disabled_cfg = WebApiConfig {
+            enabled: false,
+            ..cfg
+        };
+        let cleared = apply_web_api_config_to_script(&script, &disabled_cfg, 2, 3, false);
+        assert!(!has_web_api_config(&cleared));
+        assert!(cleared.contains("STRING kept"));
+    }
+
+    #[test]
+    fn test_home_assistant_routing_suggestions_and_webhook_template_escaping() {
+        let (routed_url, note) = resolve_home_assistant_service_url(
+            "http://ha.local:8123/api/services/light/toggle",
+            r#"{"entity_id":"switch.office_amp"}"#,
+        );
+        assert_eq!(
+            routed_url,
+            "http://ha.local:8123/api/services/homeassistant/toggle"
+        );
+        assert!(note.is_some());
+
+        let (unchanged_url, no_note) = resolve_home_assistant_service_url(
+            "http://ha.local:8123/api/services/light/turn_on",
+            r#"{"entity_id":"light.desk"}"#,
+        );
+        assert_eq!(
+            unchanged_url,
+            "http://ha.local:8123/api/services/light/turn_on"
+        );
+        assert!(no_note.is_none());
+
+        assert_eq!(
+            suggested_ha_service_for_domain("media_player"),
+            "media_play_pause"
+        );
+        assert_eq!(suggested_ha_service_for_domain("automation"), "trigger");
+        assert_eq!(suggested_ha_service_for_domain("lock"), "unlock");
+
+        let expanded = expand_profile_webhook_template(
+            r#"{"num":{{profile_number}},"name":"{{profile_name}}","prev":"{{previous_profile_name}}","src":"{{source}}"}"#,
+            4,
+            r#"Code "Rust""#,
+            1,
+            r#"Path\1"#,
+            "kwin",
+            "SERIAL1",
+        );
+        let parsed: serde_json::Value =
+            serde_json::from_str(&expanded).expect("expanded webhook payload is valid JSON");
+        assert_eq!(parsed["num"], 4);
+        assert_eq!(parsed["name"], r#"Code "Rust""#);
+        assert_eq!(parsed["prev"], r#"Path\1"#);
+        assert_eq!(parsed["src"], "kwin");
+
+        let default_json =
+            expand_profile_webhook_template("   ", 2, "Media", 1, "Work", "manual", "SN9");
+        let parsed_default: serde_json::Value =
+            serde_json::from_str(&default_json).expect("default webhook payload is valid JSON");
+        assert_eq!(parsed_default["event"], "profile_changed");
+        assert_eq!(parsed_default["profile_number"], 2);
+        assert_eq!(parsed_default["device_serial"], "SN9");
+    }
 }

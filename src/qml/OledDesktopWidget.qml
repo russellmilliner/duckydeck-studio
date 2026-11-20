@@ -228,6 +228,7 @@ Window {
     onVisibleChanged: {
         if (visible) {
             syncFromController()
+            refreshExternalWindowInfo()
             if (controller) {
                 if (targetDeviceId.length === 0) {
                     controller.restoreOledWidgetPlacement(alwaysOnTop)
@@ -385,7 +386,7 @@ Window {
     property bool syncQueued: false
 
     function scheduleSyncFromController() {
-        if (syncQueued) return
+        if (!oledWidgetWindow.visible || syncQueued) return
         syncQueued = true
         Qt.callLater(function() {
             syncQueued = false
@@ -519,6 +520,7 @@ Window {
 
     Connections {
         target: oledWidgetWindow.controller
+        enabled: oledWidgetWindow.visible
         function onActiveProfileSlotsJsonChanged() {
             oledWidgetWindow.scheduleSyncFromController()
         }

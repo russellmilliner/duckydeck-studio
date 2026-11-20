@@ -1,6 +1,81 @@
 use cxx_qt_build::{CxxQtBuilder, QmlModule};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
+fn push_unique(dirs: &mut Vec<PathBuf>, p: PathBuf) {
+    if !dirs.contains(&p) {
+        dirs.push(p);
+    }
+}
+
+fn discover_kf6_include_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+
+    if let Some(raw) = std::env::var_os("KF6_INCLUDE_DIR") {
+        for p in std::env::split_paths(&raw) {
+            if p.is_dir() {
+                for mod_name in ["KColorScheme", "KConfig", "KConfigCore", "KIconThemes"] {
+                    let sub = p.join(mod_name);
+                    if sub.is_dir() {
+                        push_unique(&mut dirs, sub);
+                    }
+                }
+                push_unique(&mut dirs, p);
+            }
+        }
+        if !dirs.is_empty() {
+            return dirs;
+        }
+    }
+
+    if let Ok(output) = Command::new("pkg-config")
+        .args([
+            "--cflags-only-I",
+            "KF6ColorScheme",
+            "KF6ConfigCore",
+            "KF6IconThemes",
+        ])
+        .output()
+    {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for token in stdout.split_whitespace() {
+                if let Some(inc) = token.strip_prefix("-I") {
+                    let p = Path::new(inc);
+                    if p.is_dir() {
+                        push_unique(&mut dirs, p.to_path_buf());
+                    }
+                }
+            }
+            if !dirs.is_empty() {
+                return dirs;
+            }
+        }
+    }
+
+    for root in [
+        "/usr/include/KF6",
+        "/usr/local/include/KF6",
+        "/app/include/KF6",
+    ] {
+        for mod_name in ["KColorScheme", "KConfig", "KConfigCore", "KIconThemes"] {
+            let sub = Path::new(root).join(mod_name);
+            if sub.is_dir() {
+                push_unique(&mut dirs, sub);
+            }
+        }
+        if !dirs.is_empty() {
+            return dirs;
+        }
+    }
+
+    vec![
+        PathBuf::from("/usr/include/KF6/KColorScheme"),
+        PathBuf::from("/usr/include/KF6/KConfig"),
+        PathBuf::from("/usr/include/KF6/KConfigCore"),
+        PathBuf::from("/usr/include/KF6/KIconThemes"),
+    ]
+}
 
 fn main() {
     if std::env::var_os("CARGO_CFG_FUZZING").is_some() {
@@ -91,10 +166,9 @@ fn main() {
                     cc.file(moc_cpp);
                 }
             } else {
-                cc.include("/usr/include/KF6/KColorScheme");
-                cc.include("/usr/include/KF6/KConfig");
-                cc.include("/usr/include/KF6/KConfigCore");
-                cc.include("/usr/include/KF6/KIconThemes");
+                for dir in discover_kf6_include_dirs() {
+                    cc.include(dir);
+                }
             }
         })
         .qml_module(QmlModule {
@@ -104,6 +178,11 @@ fn main() {
             rust_files: &["src/bridge/device_controller.rs"],
             qml_files: &[
                 "src/qml/Main.qml",
+                "src/qml/HighContrastCheckBox.qml",
+                "src/qml/HighContrastScrollBar.qml",
+                "src/qml/ProfileSidebar.qml",
+                "src/qml/SlotInspectorPane.qml",
+                "src/qml/BottomStatusBar.qml",
                 "src/qml/UdevBanner.qml",
                 "src/qml/HardwareCanvas.qml",
                 "src/qml/PgvInspectorDrawer.qml",
@@ -114,6 +193,7 @@ fn main() {
                 "src/qml/WebApiBuilder.qml",
                 "src/qml/AppLaunchBuilder.qml",
                 "src/qml/EventLogDialog.qml",
+                "src/qml/UiTestHarness.qml",
                 "src/qml/SettingsPage.qml",
                 "src/qml/SdSyncDialog.qml",
                 "src/qml/RestApiSettings.qml",
@@ -123,6 +203,7 @@ fn main() {
             qrc_files: &qrc_files,
         })
         .build();
+    println!("cargo:rerun-if-env-changed=KF6_INCLUDE_DIR");
     println!("cargo:rerun-if-changed=src/qml/icons/duckydeck-studio.svg");
     println!("cargo:rerun-if-changed=src/cpp/app_helper.h");
     println!("cargo:rerun-if-changed=src/cpp/kirigami_compat.h");
@@ -133,10 +214,15 @@ fn main() {
     println!("cargo:rerun-if-changed=src/qml/kirigami/Icon.qml");
     println!("cargo:rerun-if-changed=src/qml/kirigami/InlineMessage.qml");
     println!("cargo:rerun-if-changed=src/qml/kirigami/SearchField.qml");
-    println!("cargo:rerun-if-changed=src/paths.rs");
+    println!("cargo:rerun-if-changed=crates/duckydeck-paths/src/lib.rs");
     println!("cargo:rerun-if-changed=src/bridge/device_controller.rs");
     println!("cargo:rerun-if-changed=docs/user-guide.html");
     println!("cargo:rerun-if-changed=src/qml/Main.qml");
+    println!("cargo:rerun-if-changed=src/qml/HighContrastCheckBox.qml");
+    println!("cargo:rerun-if-changed=src/qml/HighContrastScrollBar.qml");
+    println!("cargo:rerun-if-changed=src/qml/ProfileSidebar.qml");
+    println!("cargo:rerun-if-changed=src/qml/SlotInspectorPane.qml");
+    println!("cargo:rerun-if-changed=src/qml/BottomStatusBar.qml");
     println!("cargo:rerun-if-changed=src/qml/UdevBanner.qml");
     println!("cargo:rerun-if-changed=src/qml/HardwareCanvas.qml");
     println!("cargo:rerun-if-changed=src/qml/PgvInspectorDrawer.qml");
@@ -147,6 +233,7 @@ fn main() {
     println!("cargo:rerun-if-changed=src/qml/WebApiBuilder.qml");
     println!("cargo:rerun-if-changed=src/qml/AppLaunchBuilder.qml");
     println!("cargo:rerun-if-changed=src/qml/EventLogDialog.qml");
+    println!("cargo:rerun-if-changed=src/qml/UiTestHarness.qml");
     println!("cargo:rerun-if-changed=src/qml/SettingsPage.qml");
     println!("cargo:rerun-if-changed=src/qml/SdSyncDialog.qml",);
     println!("cargo:rerun-if-changed=src/qml/RestApiSettings.qml");

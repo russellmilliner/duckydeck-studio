@@ -6,7 +6,7 @@ use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU16, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 
 use crate::hardware::profile::{
@@ -144,31 +144,64 @@ fn config_file_path() -> PathBuf {
     crate::paths::config_dir().join("esp32_ha_bridge.json")
 }
 
+static CACHED_ESP32_HA_CONFIG: OnceLock<RwLock<Option<(PathBuf, PersistedEsp32HaConfig)>>> =
+    OnceLock::new();
+
+fn cached_esp32_ha_config_store() -> &'static RwLock<Option<(PathBuf, PersistedEsp32HaConfig)>> {
+    CACHED_ESP32_HA_CONFIG.get_or_init(|| RwLock::new(None))
+}
+
+fn normalize_esp32_ha_config(mut cfg: PersistedEsp32HaConfig) -> PersistedEsp32HaConfig {
+    if cfg.bind_ip.trim().is_empty() {
+        cfg.bind_ip = default_bind_ip();
+    }
+    if cfg.auth_token.trim().is_empty() {
+        cfg.auth_token = default_auth_token();
+    }
+    cfg
+}
+
 pub fn load_esp32_ha_config() -> PersistedEsp32HaConfig {
     let path = config_file_path();
-    if let Ok(raw) = fs::read_to_string(&path) {
-        if let Ok(mut cfg) = serde_json::from_str::<PersistedEsp32HaConfig>(&raw) {
-            if cfg.bind_ip.trim().is_empty() {
-                cfg.bind_ip = default_bind_ip();
+    if let Ok(guard) = cached_esp32_ha_config_store().read() {
+        if let Some((ref cached_path, ref cached_cfg)) = *guard {
+            if cached_path == &path {
+                return cached_cfg.clone();
             }
-            if cfg.auth_token.trim().is_empty() {
-                cfg.auth_token = default_auth_token();
-            }
-            return cfg;
         }
     }
-    PersistedEsp32HaConfig::default()
+    let cfg = if let Ok(raw) = fs::read_to_string(&path) {
+        if let Ok(parsed) = serde_json::from_str::<PersistedEsp32HaConfig>(&raw) {
+            normalize_esp32_ha_config(parsed)
+        } else {
+            PersistedEsp32HaConfig::default()
+        }
+    } else {
+        PersistedEsp32HaConfig::default()
+    };
+    if let Ok(mut guard) = cached_esp32_ha_config_store().write() {
+        *guard = Some((path, cfg.clone()));
+    }
+    cfg
 }
 
 pub fn save_esp32_ha_config(cfg: &PersistedEsp32HaConfig) {
     let path = config_file_path();
-    if let Ok(json) = serde_json::to_string_pretty(cfg) {
-        let _ = crate::paths::write_private_file_atomic(&path, json.as_bytes());
+    let normalized = normalize_esp32_ha_config(cfg.clone());
+    if let Ok(json) = serde_json::to_string_pretty(&normalized) {
+        if crate::paths::write_private_file_atomic(&path, json.as_bytes()).is_ok() {
+            if let Ok(mut guard) = cached_esp32_ha_config_store().write() {
+                *guard = Some((path, normalized));
+            }
+        } else if let Ok(mut guard) = cached_esp32_ha_config_store().write() {
+            *guard = None;
+        }
     }
 }
 
 struct ServerRuntime {
     stop_flag: Arc<AtomicBool>,
+    bind_ip: String,
     port: u16,
 }
 
@@ -189,7 +222,19 @@ static SYNC_MSG: OnceLock<Mutex<String>> = OnceLock::new();
 static LAST_EVENT_STR: OnceLock<Mutex<String>> = OnceLock::new();
 static SLEEPING_STATE: AtomicBool = AtomicBool::new(false);
 static LIVE_KEY_STATES: OnceLock<Mutex<HashMap<String, LiveKeyRuntimeState>>> = OnceLock::new();
-static ENTITY_POLL_WAKEUP: AtomicBool = AtomicBool::new(false);
+static ENTITY_POLL_WAKE: OnceLock<(Mutex<bool>, Condvar)> = OnceLock::new();
+
+fn entity_poll_wake_pair() -> &'static (Mutex<bool>, Condvar) {
+    ENTITY_POLL_WAKE.get_or_init(|| (Mutex::new(false), Condvar::new()))
+}
+
+fn wake_entity_poll_loop() {
+    let (lock, cvar) = entity_poll_wake_pair();
+    if let Ok(mut woken) = lock.lock() {
+        *woken = true;
+        cvar.notify_all();
+    }
+}
 
 fn now_unix_ms() -> u64 {
     std::time::SystemTime::now()
@@ -290,35 +335,10 @@ pub fn stop_esp32_ha_web_server() {
 }
 
 const MAX_ESP32_CONCURRENT_CONNECTIONS: usize = 8;
-static ESP32_ACTIVE_CONNECTIONS: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
+static ESP32_ACTIVE_CONNECTIONS: OnceLock<Arc<std::sync::atomic::AtomicUsize>> = OnceLock::new();
 
-struct Esp32ConnectionGuard;
-
-impl Esp32ConnectionGuard {
-    fn try_acquire() -> Option<Self> {
-        let mut current = ESP32_ACTIVE_CONNECTIONS.load(Ordering::Relaxed);
-        loop {
-            if current >= MAX_ESP32_CONCURRENT_CONNECTIONS {
-                return None;
-            }
-            match ESP32_ACTIVE_CONNECTIONS.compare_exchange_weak(
-                current,
-                current + 1,
-                Ordering::AcqRel,
-                Ordering::Relaxed,
-            ) {
-                Ok(_) => return Some(Self),
-                Err(actual) => current = actual,
-            }
-        }
-    }
-}
-
-impl Drop for Esp32ConnectionGuard {
-    fn drop(&mut self) {
-        ESP32_ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::AcqRel);
-    }
+fn esp32_active_connections() -> &'static Arc<std::sync::atomic::AtomicUsize> {
+    ESP32_ACTIVE_CONNECTIONS.get_or_init(|| Arc::new(std::sync::atomic::AtomicUsize::new(0)))
 }
 
 pub fn start_esp32_ha_server(port: u16, target_serial: Option<String>) -> Result<String, String> {
@@ -351,7 +371,6 @@ pub fn start_esp32_ha_server(port: u16, target_serial: Option<String>) -> Result
     let addr = format!("{bind_ip}:{bind_port}");
     let listener = TcpListener::bind(&addr)
         .map_err(|e| format!("Failed binding ESP32-HA Web Server on {addr}: {e}"))?;
-    let _ = listener.set_nonblocking(true);
 
     let stop_flag = Arc::new(AtomicBool::new(false));
     let thread_stop = stop_flag.clone();
@@ -364,6 +383,7 @@ pub fn start_esp32_ha_server(port: u16, target_serial: Option<String>) -> Result
     if let Ok(mut guard) = store.lock() {
         *guard = Some(ServerRuntime {
             stop_flag,
+            bind_ip: bind_ip.clone(),
             port: bind_port,
         });
     }
@@ -372,7 +392,14 @@ pub fn start_esp32_ha_server(port: u16, target_serial: Option<String>) -> Result
         while !thread_stop.load(Ordering::Relaxed) {
             match listener.accept() {
                 Ok((mut stream, _peer)) => {
-                    let Some(conn_guard) = Esp32ConnectionGuard::try_acquire() else {
+                    if thread_stop.load(Ordering::Relaxed) {
+                        let _ = stream.shutdown(Shutdown::Both);
+                        break;
+                    }
+                    let Some(conn_guard) = crate::api_server::ActiveConnectionGuard::try_new(
+                        Arc::clone(esp32_active_connections()),
+                        MAX_ESP32_CONCURRENT_CONNECTIONS,
+                    ) else {
                         let _ = write_http_response(
                             &mut stream,
                             503,
@@ -390,8 +417,8 @@ pub fn start_esp32_ha_server(port: u16, target_serial: Option<String>) -> Result
                         }
                     });
                 }
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    std::thread::sleep(Duration::from_millis(25));
+                Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => {
+                    continue;
                 }
                 Err(_) => {
                     std::thread::sleep(Duration::from_millis(50));
@@ -412,10 +439,22 @@ pub fn stop_esp32_ha_server() {
     if let Ok(mut guard) = store.lock() {
         if let Some(rt) = guard.take() {
             rt.stop_flag.store(true, Ordering::SeqCst);
-            let _ = TcpStream::connect(("127.0.0.1", rt.port));
+            wake_entity_poll_loop();
+            let wakeup_host = match rt.bind_ip.trim() {
+                "" | "0.0.0.0" => "127.0.0.1",
+                "::" => "::1",
+                other => other,
+            };
+            if let Ok(ip) = wakeup_host.parse::<std::net::IpAddr>() {
+                let _ = TcpStream::connect_timeout(
+                    &std::net::SocketAddr::new(ip, rt.port),
+                    Duration::from_millis(250),
+                );
+            } else {
+                let _ = TcpStream::connect((wakeup_host, rt.port));
+            }
         }
     }
-    SERVER_RUNNING.load(Ordering::SeqCst);
     SERVER_RUNNING.store(false, Ordering::SeqCst);
 }
 
@@ -507,7 +546,8 @@ fn handle_http_connection(mut stream: TcpStream) {
         cfg_now.bind_ip.trim(),
         "" | "127.0.0.1" | "localhost" | "::1" | "[::1]"
     );
-    let requires_token = cfg_now.require_auth || !is_loopback_bind;
+    let is_static_ui_shell = method == "GET" && (path == "/" || path == "/index.html");
+    let requires_token = !is_static_ui_shell && (cfg_now.require_auth || !is_loopback_bind);
     if requires_token {
         let expected = cfg_now.auth_token.trim();
         let mut provided = api_token_hdr.unwrap_or_default();
@@ -520,16 +560,6 @@ fn handle_http_connection(mut stream: TcpStream) {
                     provided = rest.trim().to_string();
                 } else {
                     provided = a.trim().to_string();
-                }
-            }
-        }
-        if provided.is_empty() {
-            for pair in query.split('&') {
-                if let Some((k, v)) = pair.split_once('=') {
-                    if k == "token" {
-                        provided = url_decode(v);
-                        break;
-                    }
                 }
             }
         }
@@ -1112,7 +1142,7 @@ fn handle_profiles_post(body: &str) -> String {
     }
 
     save_esp32_ha_config(&cfg);
-    ENTITY_POLL_WAKEUP.store(true, Ordering::Relaxed);
+    wake_entity_poll_loop();
 
     let disk_label = format_disk_label_for_device(target.hw_rev, &target.serial);
     let meta = DuckySdDeviceMeta {
@@ -1169,10 +1199,30 @@ fn handle_profiles_post(body: &str) -> String {
     r#"{"ok":true}"#.to_string()
 }
 
-fn fetch_ha_state_json(entity_id: &str) -> Option<serde_json::Value> {
-    if !is_valid_ha_entity_id(entity_id) {
+async fn fetch_ha_state_json_async(
+    client: &reqwest::Client,
+    base_url: &str,
+    token: &str,
+    entity_id: &str,
+) -> Option<serde_json::Value> {
+    if !is_valid_ha_entity_id(entity_id) || token.is_empty() {
         return None;
     }
+    let url = format!("{base_url}/api/states/{}", entity_id.trim());
+    let resp = client
+        .get(&url)
+        .bearer_auth(token)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    resp.json::<serde_json::Value>().await.ok()
+}
+
+fn ha_base_url_and_token() -> Option<(String, String)> {
     let ha_cfg = crate::actions::web_api::load_home_assistant_config();
     let base_url = if ha_cfg.base_url.trim().is_empty() {
         "http://homeassistant.local:8123".to_string()
@@ -1181,23 +1231,67 @@ fn fetch_ha_state_json(entity_id: &str) -> Option<serde_json::Value> {
     };
     let token = ha_cfg.access_token.trim().to_string();
     if token.is_empty() {
+        None
+    } else {
+        Some((base_url, token))
+    }
+}
+
+fn fetch_ha_state_json(entity_id: &str) -> Option<serde_json::Value> {
+    if !is_valid_ha_entity_id(entity_id) {
         return None;
     }
-    let url = format!("{base_url}/api/states/{}", entity_id.trim());
+    let (base_url, token) = ha_base_url_and_token()?;
     let client = crate::actions::web_api::shared_ha_poll_client()?;
     let rt = crate::actions::web_api::shared_async_runtime()?;
+    rt.block_on(fetch_ha_state_json_async(
+        client, &base_url, &token, entity_id,
+    ))
+}
+
+fn fetch_ha_states_batch(entity_ids: Vec<String>) -> HashMap<String, serde_json::Value> {
+    let mut results = HashMap::new();
+    if entity_ids.is_empty() {
+        return results;
+    }
+    let Some((base_url, token)) = ha_base_url_and_token() else {
+        return results;
+    };
+    let Some(client) = crate::actions::web_api::shared_ha_poll_client() else {
+        return results;
+    };
+    let Some(rt) = crate::actions::web_api::shared_async_runtime() else {
+        return results;
+    };
     rt.block_on(async move {
-        let resp = client
-            .get(&url)
-            .bearer_auth(&token)
-            .header("Content-Type", "application/json")
-            .send()
-            .await
-            .ok()?;
-        if !resp.status().is_success() {
-            return None;
+        const MAX_CONCURRENT: usize = 6;
+        let mut iter = entity_ids.into_iter();
+        let mut set = tokio::task::JoinSet::new();
+        for _ in 0..MAX_CONCURRENT {
+            let Some(ent_id) = iter.next() else {
+                break;
+            };
+            let base = base_url.clone();
+            let tok = token.clone();
+            set.spawn(async move {
+                let val = fetch_ha_state_json_async(client, &base, &tok, &ent_id).await;
+                (ent_id, val)
+            });
         }
-        resp.json::<serde_json::Value>().await.ok()
+        while let Some(joined) = set.join_next().await {
+            if let Ok((ent_id, Some(val))) = joined {
+                results.insert(ent_id, val);
+            }
+            if let Some(next_ent) = iter.next() {
+                let base = base_url.clone();
+                let tok = token.clone();
+                set.spawn(async move {
+                    let val = fetch_ha_state_json_async(client, &base, &tok, &next_ent).await;
+                    (next_ent, val)
+                });
+            }
+        }
+        results
     })
 }
 
@@ -1212,75 +1306,110 @@ fn ha_entity_poll_loop(stop_flag: Arc<AtomicBool>) {
                 Some(target.serial.as_str())
             };
             let active_p_idx = (target.active_profile.max(1) as usize).saturating_sub(1);
-            for (p_idx, prof) in target.profiles.iter().enumerate() {
+
+            let mut seen_entities = std::collections::HashSet::new();
+            let mut unique_entities = Vec::new();
+            for p_idx in 0..target.profiles.len() {
                 for k_idx in 0..DUCKYPAD_KEY_COUNT {
+                    let slot_num = k_idx + 1;
+                    let meta_key = format!("{}:{slot_num}", p_idx + 1);
+                    if let Some(meta) = cfg.key_meta.get(&meta_key) {
+                        let ent_id = meta.entity_id.trim();
+                        if is_valid_ha_entity_id(ent_id) && seen_entities.insert(ent_id.to_string())
+                        {
+                            unique_entities.push(ent_id.to_string());
+                        }
+                    }
+                }
+            }
+
+            if !unique_entities.is_empty() && !stop_flag.load(Ordering::Relaxed) {
+                let fetched_states = fetch_ha_states_batch(unique_entities);
+                let mut pending_hid_updates: Vec<(u8, [u8; 3])> = Vec::new();
+                let now_ms = now_unix_ms();
+
+                if let Ok(mut guard) = live_key_states_store().lock() {
+                    for (p_idx, prof) in target.profiles.iter().enumerate() {
+                        for k_idx in 0..DUCKYPAD_KEY_COUNT {
+                            let slot_num = k_idx + 1;
+                            let meta_key = format!("{}:{slot_num}", p_idx + 1);
+                            let Some(meta) = cfg.key_meta.get(&meta_key) else {
+                                continue;
+                            };
+                            let ent_id = meta.entity_id.trim();
+                            if ent_id.is_empty() {
+                                continue;
+                            }
+                            let Some(val) = fetched_states.get(ent_id) else {
+                                continue;
+                            };
+                            let raw_state = val
+                                .get("state")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let slot_opt = prof.slots.get(&slot_num);
+                            let l1 = slot_opt.map(|s| s.label_line1.as_str()).unwrap_or("");
+                            let l2 = slot_opt.map(|s| s.label_line2.as_str()).unwrap_or("");
+                            let formatted = format_entity_state_label(l1, &raw_state);
+                            let def_lbl = resolve_key_defined_label(p_idx, k_idx, l1, l2);
+                            let matched_col =
+                                evaluate_key_state_color(&meta.state_colors, &raw_state);
+
+                            let mut color_changed = false;
+                            let entry = guard.entry(meta_key).or_default();
+                            if entry.raw_state != raw_state {
+                                entry.raw_state = raw_state;
+                                entry.live_label = formatted.clone();
+                                if formatted != def_lbl {
+                                    entry.revert_at_unix_ms = now_ms + STATE_LABEL_REVERT_MS;
+                                } else {
+                                    entry.revert_at_unix_ms = 0;
+                                }
+                            }
+                            if entry.live_color != matched_col {
+                                entry.live_color = matched_col;
+                                color_changed = true;
+                            }
+
+                            if color_changed
+                                && p_idx == active_p_idx
+                                && k_idx < 20
+                                && target.connected
+                            {
+                                let eff_rgb = matched_col
+                                    .or_else(|| slot_opt.and_then(|s| s.custom_rgb))
+                                    .unwrap_or(prof.bg_color);
+                                pending_hid_updates.push((k_idx as u8, eff_rgb));
+                            }
+                        }
+                    }
+                }
+
+                for (k_u8, eff_rgb) in pending_hid_updates {
                     if stop_flag.load(Ordering::Relaxed) {
                         return;
                     }
-                    let slot_num = k_idx + 1;
-                    let meta_key = format!("{}:{slot_num}", p_idx + 1);
-                    let Some(meta) = cfg.key_meta.get(&meta_key) else {
-                        continue;
-                    };
-                    let ent_id = meta.entity_id.trim();
-                    if ent_id.is_empty() {
-                        continue;
-                    }
-                    let Some(val) = fetch_ha_state_json(ent_id) else {
-                        continue;
-                    };
-                    let raw_state = val
-                        .get("state")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let slot_opt = prof.slots.get(&slot_num);
-                    let l1 = slot_opt.map(|s| s.label_line1.as_str()).unwrap_or("");
-                    let l2 = slot_opt.map(|s| s.label_line2.as_str()).unwrap_or("");
-                    let formatted = format_entity_state_label(l1, &raw_state);
-                    let def_lbl = resolve_key_defined_label(p_idx, k_idx, l1, l2);
-                    let matched_col = evaluate_key_state_color(&meta.state_colors, &raw_state);
-
-                    let mut color_changed = false;
-                    if let Ok(mut guard) = live_key_states_store().lock() {
-                        let entry = guard.entry(meta_key.clone()).or_default();
-                        if entry.raw_state != raw_state {
-                            entry.raw_state = raw_state.clone();
-                            entry.live_label = formatted.clone();
-                            if formatted != def_lbl {
-                                entry.revert_at_unix_ms = now_unix_ms() + STATE_LABEL_REVERT_MS;
-                            } else {
-                                entry.revert_at_unix_ms = 0;
-                            }
-                        }
-                        if entry.live_color != matched_col {
-                            entry.live_color = matched_col;
-                            color_changed = true;
-                        }
-                    }
-
-                    if color_changed && p_idx == active_p_idx && k_idx < 20 && target.connected {
-                        let eff_rgb = matched_col
-                            .or_else(|| slot_opt.and_then(|s| s.custom_rgb))
-                            .unwrap_or(prof.bg_color);
-                        send_raw_hid_cmd_to_serial(
-                            serial_opt,
-                            HID_CMD_SET_LED_SINGLE,
-                            &[k_idx as u8, eff_rgb[0], eff_rgb[1], eff_rgb[2]],
-                        );
-                    }
+                    send_raw_hid_cmd_to_serial(
+                        serial_opt,
+                        HID_CMD_SET_LED_SINGLE,
+                        &[k_u8, eff_rgb[0], eff_rgb[1], eff_rgb[2]],
+                    );
                 }
             }
         }
 
-        ENTITY_POLL_WAKEUP.store(false, Ordering::Relaxed);
-        for _ in 0..50 {
-            if stop_flag.load(Ordering::Relaxed)
-                || ENTITY_POLL_WAKEUP.swap(false, Ordering::Relaxed)
-            {
-                break;
+        let (lock, cvar) = entity_poll_wake_pair();
+        if let Ok(mut woken) = lock.lock() {
+            if !*woken && !stop_flag.load(Ordering::Relaxed) {
+                let (guard, _) = cvar
+                    .wait_timeout_while(woken, Duration::from_secs(5), |w| {
+                        !*w && !stop_flag.load(Ordering::Relaxed)
+                    })
+                    .unwrap_or_else(|e| e.into_inner());
+                woken = guard;
             }
-            std::thread::sleep(Duration::from_millis(100));
+            *woken = false;
         }
     }
 }
@@ -1290,7 +1419,7 @@ fn handle_ha_entity_get(query: &str) -> String {
     for pair in query.split('&') {
         if let Some((k, v)) = pair.split_once('=') {
             if k == "id" {
-                entity_id = url_decode(v);
+                entity_id = crate::paths::url_decode_query_component(v);
             }
         }
     }
@@ -1493,7 +1622,7 @@ fn handle_control_post(body: &str) -> String {
                     st.raw_state.clear();
                 }
             }
-            ENTITY_POLL_WAKEUP.store(true, Ordering::Relaxed);
+            wake_entity_poll_loop();
         }
     }
 
@@ -1514,30 +1643,6 @@ fn send_raw_hid_cmd_to_serial(target_serial: Option<&str>, cmd: u8, payload: &[u
         let _ = crate::hardware::storage::read_hid_report4(device, &mut rx, 200);
         Ok(())
     });
-}
-
-fn url_decode(input: &str) -> String {
-    let mut out = Vec::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(hex) = std::str::from_utf8(&bytes[i + 1..i + 3]) {
-                if let Ok(val) = u8::from_str_radix(hex, 16) {
-                    out.push(val);
-                    i += 3;
-                    continue;
-                }
-            }
-        } else if bytes[i] == b'+' {
-            out.push(b' ');
-            i += 1;
-            continue;
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).to_string()
 }
 
 #[cfg(test)]
@@ -1590,5 +1695,13 @@ mod tests {
         assert!(!match_state_color_rule(">=75", "71.0"));
         assert!(match_state_color_rule("on", "ON"));
         assert!(match_state_color_rule("*", "anything"));
+    }
+
+    #[test]
+    fn test_esp32_ha_web_ui_html_sanitized_and_escaped() {
+        assert!(!ESP32_HA_WEB_UI_HTML.contains("wifi_fo_fum"));
+        assert!(!ESP32_HA_WEB_UI_HTML.contains("milliner.me"));
+        assert!(ESP32_HA_WEB_UI_HTML.contains("function escHtml("));
+        assert!(ESP32_HA_WEB_UI_HTML.contains("async function apiFetch("));
     }
 }

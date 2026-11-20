@@ -1,22 +1,22 @@
 # <img src="../data/icons/io.github.duckydeck.Studio.svg" width="36" height="36" align="top" alt="DuckyDeck Studio Icon" /> DuckyDeck Studio — Architecture & Design Developer Documentation
 
-[![Version v0.1.23](https://img.shields.io/badge/Version-v0.1.23-38bdf8?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.23)
-[![Windows 10/11 Setup v0.1.23](https://img.shields.io/badge/Windows_10%2F11_Setup-v0.1.23_(.exe)-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.23/DuckyDeck-Studio-Setup-v0.1.23-x86_64.exe)
-[![Windows Portable v0.1.23](https://img.shields.io/badge/Windows_Portable-v0.1.23_(.zip)-0284c7?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.23/duckydeck-studio-v0.1.23-windows-x86_64-portable.zip)
-[![Flatpak v0.1.23](https://img.shields.io/badge/Linux_Flatpak-v0.1.23-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.23-x86_64.flatpak)
-[![Firmware v1.1.2](https://img.shields.io/badge/Custom_Firmware-v1.1.2-10b981?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.23)
+[![Version v0.1.24](https://img.shields.io/badge/Version-v0.1.24-38bdf8?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.24)
+[![Windows 10/11 Setup v0.1.24](https://img.shields.io/badge/Windows_10%2F11_Setup-v0.1.24_(.exe)-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.24/DuckyDeck-Studio-Setup-v0.1.24-x86_64.exe)
+[![Windows Portable v0.1.24](https://img.shields.io/badge/Windows_Portable-v0.1.24_(.zip)-0284c7?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.24/duckydeck-studio-v0.1.24-windows-x86_64-portable.zip)
+[![Flatpak v0.1.24](https://img.shields.io/badge/Linux_Flatpak-v0.1.24-4a90d9?style=for-the-badge&logo=flatpak&logoColor=white)](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.24-x86_64.flatpak)
+[![Firmware v1.1.2](https://img.shields.io/badge/Custom_Firmware-v1.1.2-10b981?style=for-the-badge)](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.24)
 [![Website duckydeckstudio.com](https://img.shields.io/badge/Website-duckydeckstudio.com-0ea5e9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://duckydeckstudio.com)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-russellmilliner%2Fduckydeck--studio-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/russellmilliner/duckydeck-studio)
 
-**Application Version:** `v0.1.23` (Custom Firmware `v1.1.2`, KDE Plasma 6 Applet `v1.0.2`)  
+**Application Version:** `v0.1.24` (Custom Firmware `v1.1.2`, KDE Plasma 6 Applet `v1.0.2`)  
 **Supported Platforms:** **Linux (`x86_64` — KDE Plasma 6 / Wayland & X11 / Flatpak)** and **Windows 10 & 11 (`x86_64` — Inno Setup `.exe` & Portable `.zip`)**  
 **Author:** Russell Milliner  
 **Official Website & User Guide:** [https://duckydeckstudio.com](https://duckydeckstudio.com)  
 **HTML Architecture Reference:** [`docs/architecture.html`](architecture.html) ([https://duckydeckstudio.com/architecture.html](https://duckydeckstudio.com/architecture.html))  
 **GitHub Repository & Releases:** [https://github.com/russellmilliner/duckydeck-studio](https://github.com/russellmilliner/duckydeck-studio)  
-**Windows Setup Installer (`.exe`):** [`DuckyDeck-Studio-Setup-v0.1.23-x86_64.exe`](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.23/DuckyDeck-Studio-Setup-v0.1.23-x86_64.exe)  
-**Windows Portable Archive (`.zip`):** [`duckydeck-studio-v0.1.23-windows-x86_64-portable.zip`](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.23/duckydeck-studio-v0.1.23-windows-x86_64-portable.zip)  
-**Linux Flatpak Release Bundle:** [`duckydeck-studio-v0.1.23-x86_64.flatpak`](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.23-x86_64.flatpak)  
+**Windows Setup Installer (`.exe`):** [`DuckyDeck-Studio-Setup-v0.1.24-x86_64.exe`](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.24/DuckyDeck-Studio-Setup-v0.1.24-x86_64.exe)  
+**Windows Portable Archive (`.zip`):** [`duckydeck-studio-v0.1.24-windows-x86_64-portable.zip`](https://github.com/russellmilliner/duckydeck-studio/releases/download/v0.1.24/duckydeck-studio-v0.1.24-windows-x86_64-portable.zip)  
+**Linux Flatpak Release Bundle:** [`duckydeck-studio-v0.1.24-x86_64.flatpak`](https://duckydeckstudio.com/releases/duckydeck-studio-v0.1.24-x86_64.flatpak)  
 **REST API Reference:** [`docs/REST_API.md`](REST_API.md) ([https://duckydeckstudio.com/REST_API.md](https://duckydeckstudio.com/REST_API.md))  
 **OLED Icon Library Reference (Color & 1-Bit Monochrome):** [`docs/OLED_ICONS.md`](OLED_ICONS.md) · [`docs/assets/oled-icons-chart.svg`](assets/oled-icons-chart.svg)  
 **Support:** [☕ Buy Me a Coffee on Ko-fi (https://ko-fi.com/russellmilliner)](https://ko-fi.com/russellmilliner)  
@@ -26,7 +26,7 @@
 
 ## 1. System Overview & Design Philosophy
 
-**DuckyDeck Studio** (`v0.1.23`) is a native **Linux (KDE Plasma 6 / Wayland & X11)** and **Windows 10/11 (`x86_64`)** desktop configurator, **DSVM v2 bytecode compiler**, **Window-Aware Auto-Switcher**, and **host automation daemon** for the **duckyPad Pro (`0x0483:0xd11d`)** and **duckyPad 2020 (`0x0483:0xd11c`)**.
+**DuckyDeck Studio** (`v0.1.24`) is a native **Linux (KDE Plasma 6 / Wayland & X11)** and **Windows 10/11 (`x86_64`)** desktop configurator, **DSVM v2 bytecode compiler**, **Window-Aware Auto-Switcher**, and **host automation daemon** for the **duckyPad Pro (`0x0483:0xd11d`)** and **duckyPad 2020 (`0x0483:0xd11c`)**.
 
 ### Core Design Goals
 1. **Zero-Runtime-Wrapper Native Stack:** Built directly in **Rust** bridged to **Qt 6** via **CXX-Qt 0.7**, avoiding Electron/Python packaging overhead. On Linux, it integrates natively with **KDE Frameworks 6 (Kirigami + KSyntaxHighlighting + KColorScheme)**; on Windows 10/11, it uses a self-contained **Kirigami QML Compatibility Layer (`src/qml/kirigami/` + `src/cpp/kirigami_compat.h`)** and custom C++ `QSyntaxHighlighter` with Qt Fusion Dark/Light palette synchronization.
@@ -41,10 +41,11 @@
 ```mermaid
 flowchart TB
     subgraph UI["Qt 6 / KDE Kirigami QML Frontend"]
-        MainQML["src/qml/Main.qml\n(ApplicationWindow Shell, Sidebar & Script Editor)"]
+        MainQML["src/qml/Main.qml\n(ApplicationWindow Shell, ProfileSidebar, SlotInspectorPane, BottomStatusBar,\nHighContrastCheckBox & HighContrastScrollBar)"]
         CanvasQML["src/qml/HardwareCanvas.qml\n(4x5 RGB Matrix, Option C Header-Footer Keycaps,\nDual Encoders, 128x128 OLED Simulator, 32ch Exp)"]
         BuildersQML["src/qml/WebApiBuilder.qml &\nsrc/qml/AppLaunchBuilder.qml"]
         DialogsQML["src/qml/ColorPickerWindow.qml,\nsrc/qml/SettingsPage.qml,\nsrc/qml/SdSyncDialog.qml,\nsrc/qml/EventLogDialog.qml"]
+        LazyQML["Lazy-Loaded QML Modules:\nUiTestHarness.qml, ProfileWizardDialog.qml, TutorialsDialog.qml"]
         AutoSwitchQML["src/qml/AutoSwitchDrawer.qml\n(KWin Rules & Window Picker UI)"]
         PgvQML["src/qml/PgvInspectorDrawer.qml\n(_GV0.._GV31 Live Inspector)"]
         AiQML["src/qml/AiArchitectModal.qml\n(Macro Template Generator)"]
@@ -53,17 +54,18 @@ flowchart TB
     end
 
     subgraph Bridge["CXX-Qt 0.7 QObject Bridge & Native Helpers"]
-        DC["DeviceController\n(src/bridge/device_controller.rs)\nQProperties + QInvokables + Qt Thread Queue"]
+        DC["DeviceController\n(src/bridge/device_controller.rs + 8 *_ops / hotplug_loop Sibling Modules)\nQProperties + QInvokables + Qt Thread Queue"]
         Tray["QSystemTrayIcon & KF6 Helper\n(src/cpp/app_helper.h)\nDynamic Tray Badge + About Action + Palette Bridge"]
     end
 
-    subgraph Core["Rust Core Subsystems"]
+    subgraph Core["Workspace Crates & Rust Core Subsystems"]
+        Paths["duckydeck-paths Crate\n(crates/duckydeck-paths/src/lib.rs)\nXDG/Windows Paths, OS CSPRNG, ShellExecuteW, Atomic 0600, URL Helpers"]
         HW["Hardware & Storage Engine\n(src/hardware/storage.rs,\nsrc/hardware/profile.rs,\nsrc/hardware/msc.rs,\nsrc/hardware/firmware.rs)"]
-        Actions["Host Action Subsystems\n(src/actions/web_api.rs,\nsrc/actions/app_launch.rs,\nsrc/actions/desktop_apps.rs)"]
-        DSVM["DSVM v2 Bytecode Compiler\n(src/vm/compiler.rs)\nduckyScript 3 -> .dsb Binary"]
+        Actions["Host Action Subsystems\n(src/actions/web_api.rs,\nsrc/actions/app_launch.rs,\nsrc/actions/desktop_apps.rs,\nsrc/actions/esp32_ha_server.rs)"]
+        DSVM["duckydeck-vm Crate\n(crates/duckydeck-vm/src/compiler.rs)\nduckyScript 3 -> .dsb Bytecode (Bounded Recursion)"]
         Perms["Permissions & Polkit\n(src/hardware/permissions.rs)\n/sys/class/hidraw + pkexec"]
-        KWin["KWin Wayland Auto-Switcher\n(src/kwin/auto_switcher.rs)\nzbus D-Bus Service + Rule Remapper"]
-        AI["KDE Shortcut Scraper\n(src/ai/shortcut_scraper.rs)\n~/.config/kglobalshortcutsrc"]
+        KWin["Auto-Switcher Package\n(src/kwin/auto_switcher.rs + 10 Submodules)\nzbus D-Bus Service, Pooled Favicons, Modifier Engine"]
+        AI["KDE Shortcut & Web Scrapers\n(src/ai/shortcut_scraper.rs, src/ai/web_shortcuts.rs)\n~/.config/kglobalshortcutsrc + SSRF-Filtered Web Helpers"]
         API["Embedded REST API Server\n(src/api_server.rs)\n/api/v1/* + Async Job Worker"]
     end
 
@@ -101,30 +103,34 @@ flowchart TB
 
 | Path | Responsibility |
 | :--- | :--- |
-| [`Cargo.toml`](../Cargo.toml) | Crate manifest (`version = "0.1.23"`, `cxx-qt 0.7`, `hidapi`, `zbus`, `windows-sys`, `tokio`, `reqwest`, `keyring`, `serde`, `serde_json`, `sha2`). |
+| [`Cargo.toml`](../Cargo.toml) | Crate manifest (`version = "0.1.24"`, `cxx-qt 0.7`, `hidapi`, `zbus`, `windows-sys`, `tokio`, `reqwest`, `keyring`, `serde`, `serde_json`, `sha2`). |
 | [`build.rs`](../build.rs) | `CxxQtBuilder` configuration registering QML module `io.github.duckydeck`, embedding `src/qml/kirigami/*.qml` for Windows builds, and compiling [`src/bridge/device_controller.rs`](../src/bridge/device_controller.rs). |
 | [`src/main.rs`](../src/main.rs) | Application entrypoint: CLI & D-Bus / `QLocalSocket` single-instance IPC client, `QApplication` initialization, `KSyntaxHighlighting` / Windows Kirigami registration, and QML engine startup. |
-| [`src/paths.rs`](../src/paths.rs) | Cross-platform directory helpers: Linux XDG (`XDG_CONFIG_HOME`, `XDG_DATA_HOME`), Flatpak host paths (`~/.var/app/...`), and Windows (`%APPDATA%\duckydeck-studio`, `%LOCALAPPDATA%\duckydeck-studio`). |
-| [`src/api_server.rs`](../src/api_server.rs) | Embedded HTTP/1.1 REST API Server (`/api/v1/*`) with Bearer auth, connection cap, payload size guard, and async job worker. |
-| [`src/bridge/device_controller.rs`](../src/bridge/device_controller.rs) | Central `#[cxx_qt::bridge]` `DeviceController` QObject, profile fallback & Auto-Switcher synchronization invariants, background thread orchestration, and QInvokable wrappers. |
+| [`crates/duckydeck-paths/src/lib.rs`](../crates/duckydeck-paths/src/lib.rs) | Extracted workspace crate (`duckydeck-paths`) providing XDG/Flatpak/Windows directory helpers, OS CSPRNG (`fill_os_random_bytes`), Win32 `ShellExecuteW` launcher (`open_url_or_path_in_os`), atomic `0600` temp file writes (`ATOMIC_TMP_COUNTER`), SHA-256/HMAC-SHA256 primitives, `constant_time_str_eq()`, and `url_encode_query_component()` / `url_decode_query_component()`. |
+| [`crates/duckydeck-vm/src/lib.rs`](../crates/duckydeck-vm/src/lib.rs) & [`crates/duckydeck-vm/src/compiler.rs`](../crates/duckydeck-vm/src/compiler.rs) | Extracted pure-Rust workspace crate (`duckydeck-vm`) implementing the two-pass duckyScript 3 → DSVM v2 (`.dsb`) bytecode compiler, Web API / App Launch script directive metadata, expression recursion limits, and `MAX_STMT_NESTING_DEPTH = 64` parser depth bounds. |
+| [`src/api_server.rs`](../src/api_server.rs) | Embedded HTTP/1.1 REST API Server (`/api/v1/*`) with `ActiveConnectionGuard` (8-slot cap), `2 MB` body cap, Host/Origin DNS-rebinding & CSRF validation, unconditional high-privilege route auth (including recursive JSON App Launch payload inspection), constant-time Bearer auth, and async job worker. |
+| [`src/bridge/device_controller.rs`](../src/bridge/device_controller.rs) | Central `#[cxx_qt::bridge]` `DeviceController` QObject definition, Qt state (`DeviceControllerRust`), shared `spawn_shared_async` / Qt thread dispatch, and core lifecycle helpers. |
+| `src/bridge/*_ops.rs` & `hotplug_loop.rs` | 8 sibling `impl qobject::DeviceController` modules: [`action_ops.rs`](../src/bridge/action_ops.rs), [`autoswitch_ops.rs`](../src/bridge/autoswitch_ops.rs), [`device_ops.rs`](../src/bridge/device_ops.rs), [`firmware_ha_ops.rs`](../src/bridge/firmware_ha_ops.rs), [`hotplug_loop.rs`](../src/bridge/hotplug_loop.rs) (dedicated `duckydeck-input-poll` & `duckydeck-hotplug-poll` threads), [`profile_ops.rs`](../src/bridge/profile_ops.rs), [`sd_ops.rs`](../src/bridge/sd_ops.rs), and [`wizard_ai_ops.rs`](../src/bridge/wizard_ai_ops.rs). |
 | [`src/bridge/event_log.rs`](../src/bridge/event_log.rs) | Thread-safe ring buffer (`SYSTEM_EVENT_LOG`), log file appender, and JSON serializer for system diagnostics. |
-| [`src/bridge/rest_routes.rs`](../src/bridge/rest_routes.rs) | REST API route table and request handlers executed via the `DeviceController` bridge. |
-| [`src/bridge/serialize.rs`](../src/bridge/serialize.rs) | JSON serializers for profiles, slots, unsynced diffs, and templates exposed to QML and the REST API. |
+| [`src/bridge/rest_routes.rs`](../src/bridge/rest_routes.rs) | REST API route table and request handlers executed via the `DeviceController` bridge (without auto-approving untrusted app launch configs). |
+| [`src/bridge/serialize.rs`](../src/bridge/serialize.rs) | JSON serializers for profiles, slots, unsynced diffs, rules, and templates exposed to QML and the REST API. |
 | [`src/bridge/showcase.rs`](../src/bridge/showcase.rs) | Built-in profile templates, SVG icon helpers (`known_site_svg`), and optional `--features demo` showcase generator. |
-| [`src/hardware/storage.rs`](../src/hardware/storage.rs) | USB HID transport (`hidapi` on Linux & Windows), device discovery, RTC sync, PGV burst read/write (`0x18`/`0x19`), and submodule re-exports. |
-| [`src/hardware/profile.rs`](../src/hardware/profile.rs) | `DuckyProfile` and `DuckySlotConfig` parser/writer (`config.txt`, `profile_info.txt`), diffing, and local cache management. |
+| [`src/hardware/storage.rs`](../src/hardware/storage.rs) | USB HID transport (`hidapi` on Linux & Windows), single-pass `scan_duckypad_hid_presence()`, device discovery, RTC sync, PGV burst read/write (`0x18`/`0x19`), and submodule re-exports. |
+| [`src/hardware/profile.rs`](../src/hardware/profile.rs) | `DuckyProfile` and `DuckyKeySlot` parser/writer (`config.txt`, `profile_info.txt`), diffing, and local cache management. |
 | [`src/hardware/msc.rs`](../src/hardware/msc.rs) | USB Mass Storage (`0x1B`) mounting/unmounting (`udisksctl` on Linux; `D:\..Z:\` drive discovery, `FlushFileBuffers`, and PowerShell eject on Windows) and microSD capacity inspection. |
-| [`src/hardware/firmware.rs`](../src/hardware/firmware.rs) | Firmware release catalog, GitHub release downloader, and IEEE CRC32 integrity verification. |
+| [`src/hardware/firmware.rs`](../src/hardware/firmware.rs) | Firmware release catalog, strict GitHub origin validation (`is_allowed_firmware_download_url`), pooled `shared_http_client()` downloader, and IEEE CRC32 integrity verification. |
 | [`src/hardware/permissions.rs`](../src/hardware/permissions.rs) | Inspects `/sys/class/hidraw` device nodes for `PermissionDenied` on Linux and invokes `pkexec` to install `70-duckypad.rules` (no-op on Windows where USB HID is zero-driver). |
-| [`src/actions/web_api.rs`](../src/actions/web_api.rs) | Web API / Webhook & Home Assistant client, OS keyring secret storage (Secret Service on Linux, Credential Manager on Windows), and `_GV31` trigger encoding (`encode_pgv31_trigger`). |
-| [`src/actions/app_launch.rs`](../src/actions/app_launch.rs) | Desktop Application Launcher metadata parser/generator (`// @DUCKYDECK_APPLAUNCH`), process spawner (`CREATE_NO_WINDOW` on Windows), hardware macro recorder (`evdev` on Linux, `GetAsyncKeyState` on Windows), and `_GV31` / `F13–F24` registries. |
+| [`src/actions/web_api.rs`](../src/actions/web_api.rs) | Web API / Webhook & Home Assistant client backed by shared `shared_async_runtime()` (`spawn_shared_async` / `block_on_shared_async`) and pooled `shared_http_client()`, OS keyring secret storage, and `_GV31` trigger encoding (`encode_pgv31_trigger`). |
+| [`src/actions/app_launch.rs`](../src/actions/app_launch.rs) | Desktop Application Launcher metadata parser/generator (`// @DUCKYDECK_APPLAUNCH`), HMAC-SHA256 v2 host trust signing + Win32 `MessageBoxW` / interactive approval, `CREATE_NO_WINDOW` / `ShellExecuteW` spawner, hardware macro recorder (`evdev` on Linux, `GetAsyncKeyState` on Windows), and `_GV31` / `F13–F24` registries. |
 | [`src/actions/desktop_apps.rs`](../src/actions/desktop_apps.rs) | Cross-platform application scanner: XDG `.desktop` entries on Linux and Start Menu `.lnk` shortcuts (`%ProgramData%` & `%APPDATA%` via PowerShell `WScript.Shell` COM) on Windows. |
-| [`src/vm/compiler.rs`](../src/vm/compiler.rs) | Pure-Rust duckyScript 3 → DSVM v2 (`.dsb`) two-pass bytecode compiler and syntax verifier. |
-| [`src/kwin/auto_switcher.rs`](../src/kwin/auto_switcher.rs) | Cross-platform active-window Auto-Switcher: KWin Wayland D-Bus listener on Linux and Win32 `GetForegroundWindow` + `WindowFromPoint` window picker on Windows, plus rule remapper and persisted rules (`kwin_rules.json`). |
-| [`src/ai/shortcut_scraper.rs`](../src/ai/shortcut_scraper.rs) | Parses `~/.config/kglobalshortcutsrc` and converts KDE shortcuts into duckyScript 3 syntax (`kde_shortcut_to_duckyscript`). |
+| [`src/actions/esp32_ha_server.rs`](../src/actions/esp32_ha_server.rs) | Built-in `duckypad-esp32-ha` Web Configurator server (`127.0.0.1:8099`): HTML-escaped UI (`data/esp32_ha_web_ui.html`), `#token=`/`X-API-Token` header auth, `ENTITY_POLL_WAKE` `Condvar` + `JoinSet` bounded entity polling, and `ActiveConnectionGuard`. |
+| [`src/kwin/auto_switcher.rs`](../src/kwin/auto_switcher.rs) & `src/kwin/auto_switcher/` | Auto-Switcher facade re-exporting 10 focused submodules: `modifier_engine.rs`, `config.rs`, `rules.rs` (cached regex matcher + `decompress_mozlz4` bounds), `icons.rs` (`RULE_ICON_CACHE` & background async favicons), `kde_integration.rs` (pooled `SHARED_DBUS_SESSION`, `knotifications6`, `kglobalaccel`), `secondary_devices.rs`, `win32_backend.rs`, `linux_backends.rs`, `kwin_dbus.rs`, and `tests.rs`. |
+| [`src/ai/shortcut_scraper.rs`](../src/ai/shortcut_scraper.rs) & [`src/ai/web_shortcuts.rs`](../src/ai/web_shortcuts.rs) | Parses `~/.config/kglobalshortcutsrc` into duckyScript 3 (`kde_shortcut_to_duckyscript`), plus SSRF-filtered web shortcut lookup with `LazyLock` regexes and `1 MiB` response body cap. |
+| [`src/qml/Main.qml`](../src/qml/Main.qml) & Modular Panes | Modular Qt Quick / Kirigami shell composed of [`ProfileSidebar.qml`](../src/qml/ProfileSidebar.qml), [`SlotInspectorPane.qml`](../src/qml/SlotInspectorPane.qml), [`BottomStatusBar.qml`](../src/qml/BottomStatusBar.qml), [`HighContrastCheckBox.qml`](../src/qml/HighContrastCheckBox.qml), and [`HighContrastScrollBar.qml`](../src/qml/HighContrastScrollBar.qml). |
+| Lazy-Loaded QML Dialogs & Harnesses | [`UiTestHarness.qml`](../src/qml/UiTestHarness.qml) (loaded on demand in UI test suite mode), [`ProfileWizardDialog.qml`](../src/qml/ProfileWizardDialog.qml), and [`TutorialsDialog.qml`](../src/qml/TutorialsDialog.qml) behind QML `Loader`s for fast startup. |
 | [`src/cpp/app_helper.h`](../src/cpp/app_helper.h) | C++ helper bridging `QSystemTrayIcon`, Linux/Windows Autostart (XDG `.desktop` vs Registry `HKCU\...\Run`), Windows `RegisterHotKey` (`F13–F24`), `QLocalServer` IPC, Win32 `HWND_TOPMOST`, and Dark/Light palette sync into QML. |
 | [`src/cpp/kirigami_compat.h`](../src/cpp/kirigami_compat.h) & [`src/qml/kirigami/`](../src/qml/kirigami) | Lightweight C++/QML Kirigami 6 compatibility layer (`Theme`, `Units`, `Icon`, `ApplicationWindow`, `SearchField`, `FormLayout`, etc.) enabling identical QML UI execution on Windows without KF6 DLL dependencies. |
-| [`src/qml/Main.qml`](../src/qml/Main.qml) | Primary `Kirigami.ApplicationWindow` shell, profile sidebar (with inline `✕` filter clear button, hover tooltips, and `HighContrastCheckBox`/`HighContrastScrollBar`), and duckyScript 3 code editor. |
+| [`src/qml/Main.qml`](../src/qml/Main.qml) | Primary `Kirigami.ApplicationWindow` shell, hosting `ProfileSidebar.qml`, `SlotInspectorPane.qml`, `BottomStatusBar.qml`, `HighContrastCheckBox.qml`, and `HighContrastScrollBar.qml`. |
 | [`src/qml/HardwareCanvas.qml`](../src/qml/HardwareCanvas.qml) | Interactive 4×5 RGB key matrix using the **Option C Header-Footer Split** keycap layout, dual rotary encoders, 128×128 OLED simulator (`Canvas`), and 32-channel expansion module view. |
 | [`src/qml/ColorPickerWindow.qml`](../src/qml/ColorPickerWindow.qml) | Custom HSV/RGB color picker window, saved/used color palettes, and RGB lighting animation builder. |
 | [`src/qml/WebApiBuilder.qml`](../src/qml/WebApiBuilder.qml) | Visual Web API / Webhook key builder and saved destinations manager. |
@@ -213,9 +219,9 @@ Each profile resides in a folder named `profile<N>_<Name>` on the FAT32 microSD 
 
 ---
 
-## 6. DSVM v2 Bytecode Compiler (`src/vm/compiler.rs`)
+## 6. DSVM v2 Bytecode Compiler (`crates/duckydeck-vm/src/compiler.rs`)
 
-The duckyPad Pro executes compiled **DSVM v2 (`.dsb`)** stack-machine bytecode files rather than interpreting raw text on-device. [`src/vm/compiler.rs`](../src/vm/compiler.rs) implements a complete two-pass compiler:
+The duckyPad Pro executes compiled **DSVM v2 (`.dsb`)** stack-machine bytecode files rather than interpreting raw text on-device. [`crates/duckydeck-vm/src/compiler.rs`](../crates/duckydeck-vm/src/compiler.rs) implements a complete two-pass compiler:
 
 ```mermaid
 flowchart LR
@@ -308,7 +314,7 @@ Each mechanical keycap cell in the 4×5 hardware matrix uses a non-overlapping 3
 ### 8.3 Color Picker, High-Contrast Controls & Automated Scene-Graph UI Test Suite
 - **Color Picker (`src/qml/ColorPickerWindow.qml`)**: Provides synchronized **Saved Colors** (`saved_colors_json` persisted in `kwin_rules.json`) and dynamically computed **Used Colors** (`collect_used_colors_json` across all loaded profiles and slots).
 - **High-Contrast Controls (`HighContrastCheckBox` & `HighContrastScrollBar`)**: Custom QML control components with explicit dark/light mode border luminance (`#94a3b8` unchecked border in Dark Mode, `#475569` in Light Mode) and hover feedback across all windows.
-- **Automated Scene-Graph UI Test Suite (`--ui-test-suite` in `src/qml/EventLogDialog.qml`)**: Walks all 208 window/drawer/dialog states across both **Dark Mode** and **Light Mode** at **`100%` (`1.0x`)** and **`115%` (`1.15x`)** UI zoom levels on both Linux and Windows 11, verifying zero text truncation, zero overlapping siblings (`KEYCAP_HEADER_OVERLAP` / `KEYCAP_FOOTER_OVERLAP`), and WCAG contrast ratios.
+- **Automated Scene-Graph UI Test Suite (`--ui-test-suite` via lazy-loaded [`src/qml/UiTestHarness.qml`](../src/qml/UiTestHarness.qml) & [`src/qml/EventLogDialog.qml`](../src/qml/EventLogDialog.qml))**: Walks all window/drawer/dialog states across both **Dark Mode** and **Light Mode** at multiple UI zoom levels on both Linux and Windows 11, verifying zero text truncation, zero overlapping siblings (`KEYCAP_HEADER_OVERLAP` / `KEYCAP_FOOTER_OVERLAP`), and WCAG contrast ratios.
 
 ---
 
@@ -346,7 +352,7 @@ DuckyDeck Studio distinguishes between **Standalone Hardware-Portable Capabiliti
 
 ## 9.6 Firmware Versioning (`v1.1.2`), DDS Prefix & Official Firmware Catalog Downloader (`src/hardware/firmware.rs`)
 
-- **DuckyDeck Studio Firmware (`v1.1.2`)**: Built from `firmware/duckyPad-Pro/firmware/` (`DDS_FW_1.1.2_0f85dab1.bin`, downloadable from the [GitHub Releases page](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.23)). Uses the distinct **`DDS_FW_`** prefix to cleanly separate DuckyDeck Studio firmware from official **`DPP_FW_`** builds. Identified over USB HID `GET_INFO` (`0x00`) via the `'D', 'D', 'S'` signature at bytes `20..22`. Adds 12 Home Automation OLED icons, SSD1306 SPI DMA dirty page tracking, smooth RGB LED fade opcode (`SWC_FADE_TO` / opcode `89`), sub-ms USB HID SOF dispatch spin-retry, NVS wear-leveling profile cache, `0°/90°/180°/270°` hardware OLED orientation, and 1-bit monochrome key icons.
+- **DuckyDeck Studio Firmware (`v1.1.2`)**: Built from `firmware/duckyPad-Pro/firmware/` (`DDS_FW_1.1.2_0f85dab1.bin`, downloadable from the [GitHub Releases page](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.24)). Uses the distinct **`DDS_FW_`** prefix to cleanly separate DuckyDeck Studio firmware from official **`DPP_FW_`** builds. Identified over USB HID `GET_INFO` (`0x00`) via the `'D', 'D', 'S'` signature at bytes `20..22`. Adds 12 Home Automation OLED icons, SSD1306 SPI DMA dirty page tracking, smooth RGB LED fade opcode (`SWC_FADE_TO` / opcode `89`), sub-ms USB HID SOF dispatch spin-retry, NVS wear-leveling profile cache, `0°/90°/180°/270°` hardware OLED orientation, and 1-bit monochrome key icons.
 - **Official dekuNukem Firmware Catalog Downloader**: `fetch_official_firmwares_from_site()` in [`src/hardware/firmware.rs`](../src/hardware/firmware.rs) queries the official `dekuNukem/duckyPad-Pro` GitHub repository to list available `DPP_FW_<ver>_<crc32>.bin` releases inside the Firmware Manager window and verifies IEEE CRC32 checksums before staging.
 
 ---
@@ -357,10 +363,10 @@ DuckyDeck Studio embeds a bounded, stoppable/restartable HTTP/1.1 REST API serve
 
 - **Default Configuration**: Disabled by default (`rest_api_enabled = false`), bound to loopback `127.0.0.1:28491`, with Bearer Token authentication enabled (`rest_api_require_auth = true`) and a 160-bit CSPRNG token (`ddk_<40 hex chars>`) persisted in the OS keyring.
 - **Resource & Concurrency Bounds**:
-  - **Connection Cap (`MAX_CONCURRENT_CONNECTIONS = 8`)**: Guarded by an `AtomicUsize` `ConnectionSlotGuard`; excess connections immediately receive `503 Service Unavailable` and close.
-  - **Request Size Limits**: Header block capped at `64 KB`; request body capped at `2 MB` (`MAX_BODY_BYTES`), returning `413 Payload Too Large` when `Content-Length` or body bytes exceed `2 MB`.
+  - **Connection Cap (`MAX_CONCURRENT_CONNECTIONS = 8`)**: Guarded by the shared [`ActiveConnectionGuard`](../src/api_server.rs) (`AtomicUsize`); excess connections immediately receive `503 Service Unavailable` and close.
+  - **Request Size & CSRF / DNS-Rebinding Guards**: Header block capped at `64 KB`; request body capped at `2 MB` (`MAX_BODY_BYTES`), returning `413 Payload Too Large` when exceeded; rejects external `Origin`/`Referer` and untrusted `Host` headers (`403 Forbidden`).
   - **Qt Thread Timeout & Async Worker Jobs (`202 Accepted`)**: Synchronous routes wait at most `10 s` (`CONTROLLER_WAIT_TIMEOUT`) on the Qt main thread. Long-running operations (`POST /api/v1/sd/sync`, `POST /api/v1/sd/mount`, `POST /api/v1/sd/unmount`, `POST /api/v1/device/reboot`) immediately return `202 Accepted` with a job ID (`job_1`, `job_2`, ...) and execute on a background worker thread pollable via `GET /api/v1/jobs/{id}`.
-- **Constant-Time Token Verification**: All endpoints (except `/api/v1/health`, `/api/v1/openapi.json`, `/api/v1/swagger.json`, `/api/v1/openapi.yaml`, and `OPTIONS` preflight) verify `Authorization: Bearer <token>` or `X-API-Token: <token>` in constant time (`constant_time_eq`) when `require_auth` is enabled.
+- **Constant-Time & High-Privilege Token Verification**: Uses `paths::constant_time_str_eq()` on `Authorization: Bearer <token>` or `X-API-Token: <token>`, and unconditionally requires auth on slot/PGV/SD/ESP32-HA mutations and any profile body containing an App Launch payload (inspected recursively after `serde_json` decoding).
 
 ---
 
@@ -376,8 +382,8 @@ DuckyDeck Studio embeds a bounded, stoppable/restartable HTTP/1.1 REST API serve
 - **Toolchain & Target:** Cross-compiles from Linux to **`x86_64-pc-windows-gnullvm`** using `llvm-mingw` (`clang++` / `lld`) linked against **Qt 6.8.3 MinGW64**.
 - **Self-Contained Kirigami QML Layer (`src/cpp/kirigami_compat.h` & `src/qml/kirigami/`):** Registers `org.kde.kirigami` (`Theme`, `Units`, `Icon`, `ApplicationWindow`, `Page`, `ScrollablePage`, `OverlayDrawer`, `SearchField`, `FormLayout`, `InlineMessage`, `Heading`, `Separator`, `Action`) directly in Qt QRC resources with live Qt Fusion Dark/Light `QPalette` synchronization—eliminating external KDE Frameworks 6 DLL dependencies on Windows.
 - **Installer & Portable Packaging (`packaging/windows/DuckyDeckStudio.iss`):** `scripts/build-windows.sh` stages `duckydeck-studio.exe`, all required Qt6 Core/Gui/Qml/Quick/QuickControls2/Network/Svg/OpenGL DLLs, `llvm-mingw` C++/unwind runtime DLLs, QML modules, SVG icon engines, bundled firmware, and documentation into `target/windows-stage/`, then produces:
-  - `target/release/duckydeck-studio-v0.1.23-windows-x86_64-portable.zip`
-  - `target/release/DuckyDeck-Studio-Setup-v0.1.23-x86_64.exe` (via Inno Setup 6)
+  - `target/release/duckydeck-studio-v0.1.24-windows-x86_64-portable.zip`
+  - `target/release/DuckyDeck-Studio-Setup-v0.1.24-x86_64.exe` (via Inno Setup 6)
 
 ### Running Unit, Compiler, Native UI, Flatpak UI & Windows Builds
 ```bash
@@ -389,7 +395,7 @@ cargo test ui_test_suite::test_full_qml_ui_overflow_and_contrast_suite -- --igno
 
 # 3. Build & install the Linux Flatpak bundle:
 bash scripts/build-flatpak.sh
-flatpak install --user -y --reinstall target/release/duckydeck-studio-v0.1.23-x86_64.flatpak
+flatpak install --user -y --reinstall target/release/duckydeck-studio-v0.1.24-x86_64.flatpak
 
 # 4. Run the Flatpak QML UI Overflow, Contrast & Behavioral Test Suite:
 bash scripts/test-flatpak-ui.sh

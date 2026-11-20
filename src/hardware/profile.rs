@@ -1238,8 +1238,7 @@ impl DuckyProfile {
                 let mut script = fs::read_to_string(&press_path)?;
                 let mut healed_multiclick = false;
                 if script.contains(crate::ai::web_shortcuts::SINGLE_CLICK_BEGIN) {
-                    let (s1, s2, s3) =
-                        crate::ai::web_shortcuts::split_multi_click_script(&script);
+                    let (s1, s2, s3) = crate::ai::web_shortcuts::split_multi_click_script(&script);
                     if s2.trim().is_empty() && s3.trim().is_empty() && !s1.trim().is_empty() {
                         script = s1;
                         healed_multiclick = true;
@@ -4528,5 +4527,158 @@ pub fn instantiate_profile_from_template(
         };
         p.folder_name_override = Some(format!("profile_{}", p.sanitized_name()));
         p
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn test_parse_profile_folder_name_and_config_directives() {
+        assert_eq!(
+            parse_profile_folder_name("profile_Work"),
+            Some((None, "Work".to_string()))
+        );
+        assert_eq!(
+            parse_profile_folder_name("profile3_Editing"),
+            Some((Some(3), "Editing".to_string()))
+        );
+        assert_eq!(parse_profile_folder_name("profile0_Bad"), None);
+        assert_eq!(parse_profile_folder_name("profile65_Bad"), None);
+        assert_eq!(parse_profile_folder_name("notes"), None);
+
+        assert_eq!(parse_indexed_directive("z4 Copy", "z"), Some((4, "Copy")));
+        assert_eq!(parse_indexed_directive("z99 Nope", "z"), None);
+        assert_eq!(parse_rgb_triplet("12 34 255"), Some([12, 34, 255]));
+        assert_eq!(parse_rgb_triplet("300 0 0"), None);
+
+        assert_eq!(oled_label_to_hardware_ascii("  Play  "), "Play");
+        assert_eq!(oled_label_to_hardware_ascii("HelloWorld"), "Hello");
+        let mapped_icon = oled_label_to_hardware_ascii("🔥");
+        assert!(!mapped_icon.is_empty());
+        assert!(mapped_icon.bytes().all(|b| (0x20..=0x7E).contains(&b)));
+    }
+
+    #[test]
+    fn test_write_and_load_sd_profiles_roundtrip() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let tmp_root = std::env::temp_dir().join(format!(
+            "duckydeck_profile_roundtrip_{}_{unique}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp_root);
+        fs::create_dir_all(&tmp_root).expect("create temp SD root");
+
+        let mut slots = BTreeMap::new();
+        slots.insert(
+            1,
+            DuckyKeySlot {
+                slot: 1,
+                label_line1: "Copy".to_string(),
+                label_line2: "Text".to_string(),
+                widget_label_line1: String::new(),
+                widget_label_line2: String::new(),
+                custom_rgb: Some([10, 200, 30]),
+                allow_abort: true,
+                disable_autorepeat: true,
+                on_press_script: "STRING Hi\n".to_string(),
+                on_release_script: "STRING Bye\n".to_string(),
+            },
+        );
+        let prof = DuckyProfile {
+            number: 1,
+            name: "Coding".to_string(),
+            folder_name_override: None,
+            bg_color: [12, 24, 36],
+            keydown_color: Some([250, 200, 150]),
+            dim_unused_keys: true,
+            slots,
+            preserved_config_lines: Vec::new(),
+        };
+
+        let summary =
+            write_profiles_to_sd_root_for_model(&tmp_root, &[prof], DP_MODEL_DUCKYPAD_PRO, None)
+                .expect("write profile to temp SD root");
+        assert_eq!(summary.profiles_count, 1);
+        assert!(summary.files_written > 0);
+
+        let loaded = load_all_sd_profiles(&tmp_root).expect("load back temp SD profiles");
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].name, "Coding");
+        assert_eq!(loaded[0].bg_color, [12, 24, 36]);
+        assert_eq!(loaded[0].keydown_color, Some([250, 200, 150]));
+        let loaded_slot = loaded[0].slots.get(&1).expect("slot 1 loaded");
+        assert_eq!(loaded_slot.label_line1, "Copy");
+        assert_eq!(loaded_slot.label_line2, "Text");
+        assert_eq!(loaded_slot.custom_rgb, Some([10, 200, 30]));
+        assert!(loaded_slot.allow_abort);
+        assert!(loaded_slot.disable_autorepeat);
+        assert_eq!(loaded_slot.on_press_script.trim(), "STRING Hi");
+        assert_eq!(loaded_slot.on_release_script.trim(), "STRING Bye");
+
+        let _ = fs::remove_dir_all(&tmp_root);
+    }
+
+    #[test]
+    fn test_convert_profile_slots_dp20_dp24_mapping() {
+        let mut profile = DuckyProfile::default();
+        // DP20 slot 4 is row 1, col 0 -> DP24 slot 5; DP20 slot 15 is row 4, col 2 -> DP24 slot 19
+        profile.slots.insert(
+            4,
+            DuckyKeySlot {
+                slot: 4,
+                label_line1: "Row2".to_string(),
+                ..Default::default()
+            },
+        );
+        profile.slots.insert(
+            15,
+            DuckyKeySlot {
+                slot: 15,
+                label_line1: "Last".to_string(),
+                ..Default::default()
+            },
+        );
+
+        convert_profile_slots_dp20_to_dp24(&mut profile);
+        assert!(profile.slots.contains_key(&5));
+        assert!(profile.slots.contains_key(&19));
+        assert_eq!(profile.slots[&5].slot, 5);
+        assert_eq!(profile.slots[&19].label_line1, "Last");
+
+        // Column 4 (slot 8) and encoder slot 21 should be dropped on DP24 -> DP20 conversion
+        profile.slots.insert(
+            8,
+            DuckyKeySlot {
+                slot: 8,
+                label_line1: "DropMe".to_string(),
+                ..Default::default()
+            },
+        );
+        profile.slots.insert(
+            21,
+            DuckyKeySlot {
+                slot: 21,
+                label_line1: "Enc".to_string(),
+                ..Default::default()
+            },
+        );
+
+        convert_profile_slots_dp24_to_dp20(&mut profile);
+        assert_eq!(
+            profile.slots.get(&4).map(|s| s.label_line1.as_str()),
+            Some("Row2")
+        );
+        assert_eq!(
+            profile.slots.get(&15).map(|s| s.label_line1.as_str()),
+            Some("Last")
+        );
+        assert!(!profile.slots.contains_key(&21));
+        assert!(!profile.slots.values().any(|s| s.label_line1 == "DropMe"));
     }
 }

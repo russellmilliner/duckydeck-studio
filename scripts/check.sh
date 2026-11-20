@@ -27,7 +27,7 @@ while IFS= read -r path; do
     else
         echo "  OK: $path"
     fi
-done < <(grep -hoE 'src/[A-Za-z0-9_./-]+' docs/ARCHITECTURE.md docs/architecture.html | sed 's/[.,:;)]*$//' | sort -u)
+done < <(grep -hoE '(crates/[A-Za-z0-9_./-]+|src/[A-Za-z0-9_./-]+)' docs/ARCHITECTURE.md docs/architecture.html | sed 's/[.,:;)]*$//' | sort -u)
 
 if [[ "$missing" -ne 0 ]]; then
     exit 1

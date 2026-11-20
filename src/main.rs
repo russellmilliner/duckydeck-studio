@@ -5,11 +5,19 @@ pub mod actions {
     pub mod web_api;
 }
 pub mod bridge {
+    pub mod action_ops;
+    pub mod autoswitch_ops;
     pub mod device_controller;
+    pub mod device_ops;
     pub mod event_log;
+    pub mod firmware_ha_ops;
+    pub mod hotplug_loop;
+    pub mod profile_ops;
     pub mod rest_routes;
+    pub mod sd_ops;
     pub mod serialize;
     pub mod showcase;
+    pub mod wizard_ai_ops;
 }
 pub mod hardware {
     pub mod firmware;
@@ -26,11 +34,10 @@ pub mod ai {
     pub mod web_shortcuts;
 }
 pub mod api_server;
-pub mod paths;
 pub mod updater;
-pub mod vm;
 
-use duckydeck_core as _;
+pub use duckydeck_core::paths;
+pub use duckydeck_core::vm;
 
 use std::collections::BTreeSet;
 use std::env;

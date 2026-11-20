@@ -120,6 +120,14 @@ Window {
 
     function openWizard() {
         resetWizard()
+        if (controller && controller.discoveredShortcutsJson) {
+            try {
+                const arr = JSON.parse(controller.discoveredShortcutsJson || "[]")
+                wizardDialog.discoveredShortcutsList = Array.isArray(arr) ? arr : []
+            } catch (e) {
+                wizardDialog.discoveredShortcutsList = []
+            }
+        }
         wizardDialog.show()
         wizardDialog.raise()
         wizardDialog.requestActivate()
@@ -128,6 +136,7 @@ Window {
     // Refresh shortcuts list when controller property updates
     Connections {
         target: controller
+        enabled: wizardDialog.visible
         function onDiscoveredShortcutsJsonChanged() {
             if (!controller) return
             try {

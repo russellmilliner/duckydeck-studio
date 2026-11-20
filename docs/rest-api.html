@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>HTTP REST API Reference (/api/v1/*) — DuckyDeck Studio v0.1.23</title>
+  <title>HTTP REST API Reference (/api/v1/*) — DuckyDeck Studio v0.1.24</title>
   <style>
     :root[data-theme="dark"] {
       --bg-primary: #0f1116;
@@ -245,7 +245,7 @@
           <rect x="86" y="72" width="24" height="34" rx="3" fill="#000000" stroke="#94a3b8" stroke-width="2"/>
         </svg>
       <span>DuckyDeck Studio</span>
-      <span class="brand-badge">v0.1.23</span>
+      <span class="brand-badge">v0.1.24</span>
     </a>
     <nav class="top-nav">
       <a class="top-link" href="index.html">🏠 Home</a>
@@ -255,7 +255,7 @@
       <a class="top-link" href="architecture.html">🏗️ Architecture</a>
     </nav>
     <div class="top-actions">
-      <a class="top-link" href="https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.23" target="_blank" rel="noopener noreferrer">⬇ Releases</a>
+      <a class="top-link" href="https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.24" target="_blank" rel="noopener noreferrer">⬇ Releases</a>
       <button class="theme-btn" style="padding:5px 10px;font-size:0.8rem;" onclick="toggleTheme()">🌓 Theme</button>
     </div>
   </header>
@@ -280,7 +280,7 @@
     <section id="overview">
       <h1>🔌 HTTP REST API &amp; Webhook Reference (<code>/api/v1/*</code>)</h1>
       <p>
-        DuckyDeck Studio (<code>v0.1.23</code> for <strong>Windows 10/11</strong> &amp; <strong>Linux</strong>) includes an embedded, low-latency HTTP/1.1 REST API server
+        DuckyDeck Studio (<code>v0.1.24</code> for <strong>Windows 10/11</strong> &amp; <strong>Linux</strong>) includes an embedded, low-latency HTTP/1.1 REST API server
         (<code>src/api_server.rs</code>) that exposes full programmatic control over your duckyPad Pro, profiles, keys, DuckyScript 3 compiler,
         Persistent Global Variables (<code>_GV0.._GV31</code>), live RGB LEDs, and microSD card sync.
       </p>
@@ -306,6 +306,9 @@ X-API-Token: ddk_0123456789abcdef0123456789abcdef01234567</code></pre>
         <strong>Credential Storage:</strong> Stored in the OS secret store (KDE Wallet / libsecret on Linux; <strong>Windows Credential Manager</strong> on Windows 10/11) with fallback to
         <code>~/.config/duckydeck-studio/kwin_rules.json</code> (Linux) or <code>%APPDATA%\duckydeck-studio\kwin_rules.json</code> (Windows).
       </p>
+      <p>
+        <strong>Defense-in-Depth Guards:</strong> Token comparison uses constant-time byte matching (<code>paths::constant_time_str_eq()</code>). Untrusted <code>Host</code> headers and cross-origin browser requests are rejected with <code>403 Forbidden</code> (no wildcard <code>Access-Control-Allow-Origin: *</code>), and slot/PGV/SD/ESP32-HA mutations plus App Launch JSON payloads unconditionally enforce authentication.
+      </p>
     </section>
 
     <section id="endpoints">
@@ -319,7 +322,7 @@ X-API-Token: ddk_0123456789abcdef0123456789abcdef01234567</code></pre>
             </tr>
           </thead>
           <tbody>
-            <tr><td><code>GET /api/v1/health</code></td><td>Unauthenticated liveness probe (<code>{"ok":true,"service":"duckydeck-studio","version":"0.1.23"}</code>).</td></tr>
+            <tr><td><code>GET /api/v1/health</code></td><td>Unauthenticated liveness probe (<code>{"ok":true,"service":"duckydeck-studio","version":"0.1.24"}</code>).</td></tr>
             <tr><td><code>GET /api/v1/openapi.json</code> | <code>/swagger.json</code> | <code>/openapi.yaml</code></td><td>Unauthenticated OpenAPI 3.0.3 / Swagger specification.</td></tr>
             <tr><td><code>GET /api/v1/status</code></td><td>Full device connection, firmware (<code>v1.1.2</code>), active profile, SD sync, and auto-switcher state.</td></tr>
             <tr><td><code>GET /api/v1/devices</code> | <code>POST /api/v1/devices/select</code> | <code>/rename</code></td><td>List discovered duckyPads, select active device, or assign a custom friendly name (<code>{"serial":"...","customName":"Left Pad"}</code>).</td></tr>

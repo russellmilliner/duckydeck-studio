@@ -232,17 +232,6 @@ fn set_rest_api_status(status: impl Into<String>) {
     }
 }
 
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() || a.is_empty() {
-        return false;
-    }
-    let mut diff = 0u8;
-    for (&x, &y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
-}
-
 pub fn stop_rest_api_server() {
     let prev = server_mutex().lock().ok().and_then(|mut g| g.take());
     if let Some(mut handle) = prev {
@@ -640,19 +629,57 @@ pub fn is_allowed_local_origin(origin: &str, bind_ip: &str) -> bool {
     is_valid_host_header_for_bind(Some(host_port), bind_ip)
 }
 
-/// Returns `true` for high-privilege routes that can execute host commands (`appLaunch` / `/trigger`)
-/// or write to the filesystem (`/api/v1/sd/sync`). These routes always require a valid API token
-/// even if unauthenticated mode is toggled on for read-only/profile-switch endpoints.
+fn json_contains_app_launch_payload(val: &serde_json::Value) -> bool {
+    match val {
+        serde_json::Value::String(s) => s.to_ascii_lowercase().contains("@duckydeck_app_launch"),
+        serde_json::Value::Array(arr) => arr.iter().any(json_contains_app_launch_payload),
+        serde_json::Value::Object(map) => map.iter().any(|(k, v)| {
+            let kl = k.to_ascii_lowercase();
+            kl == "applaunch" || kl == "app_launch" || json_contains_app_launch_payload(v)
+        }),
+        _ => false,
+    }
+}
+
+/// Returns `true` for high-privilege routes that can execute host commands (`appLaunch` / `/trigger` /
+/// `/pgv`), mutate slot scripts, start/stop local bridges, or access/sync the microSD filesystem.
+/// These routes always require a valid API token even if unauthenticated mode is toggled on.
 pub fn route_always_requires_auth(method: &str, path: &str, body: &str) -> bool {
     let m = method.trim().to_ascii_uppercase();
     let p = path.trim().trim_end_matches('/');
-    if m == "POST" && (p == "/api/v1/sd/sync" || p.ends_with("/trigger")) {
+    if m == "POST"
+        && (matches!(
+            p,
+            "/api/v1/sd/sync"
+                | "/api/v1/sd/mount"
+                | "/api/v1/sd/unmount"
+                | "/api/v1/sd/reload"
+                | "/api/v1/esp32-ha/start"
+                | "/api/v1/esp32-ha/stop"
+        ) || p.ends_with("/trigger"))
+    {
         return true;
     }
-    if matches!(m.as_str(), "PUT" | "PATCH" | "POST") && p.starts_with("/api/v1/profiles") {
-        let lower_body = body.to_ascii_lowercase();
-        if lower_body.contains("\"applaunch\"") || lower_body.contains("@duckydeck_app_launch") {
-            return true;
+    if matches!(m.as_str(), "PUT" | "POST" | "PATCH") && p == "/api/v1/pgv" {
+        return true;
+    }
+    if matches!(m.as_str(), "PUT" | "PATCH" | "POST" | "DELETE") {
+        if let Some(rest) = p.strip_prefix("/api/v1/profiles/") {
+            let mut parts = rest.split('/');
+            let _prof_num = parts.next();
+            if parts.next() == Some("slots") && parts.next().is_some() {
+                return true;
+            }
+        }
+        if p.starts_with("/api/v1/profiles") && !body.trim().is_empty() {
+            match serde_json::from_str::<serde_json::Value>(body) {
+                Ok(parsed) => {
+                    if json_contains_app_launch_payload(&parsed) {
+                        return true;
+                    }
+                }
+                Err(_) => return true,
+            }
         }
     }
     false
@@ -820,9 +847,9 @@ fn handle_client_connection(
 
     // Enforce Bearer token authentication when enabled, or unconditionally on high-privilege routes
     if cfg.require_auth || route_always_requires_auth(&req.method, &req.path, &req.body) {
-        let expected = cfg.token.trim().as_bytes();
+        let expected = cfg.token.trim();
         let provided = extract_bearer_token(&req).unwrap_or_default();
-        if !constant_time_eq(provided.as_bytes(), expected) {
+        if !crate::paths::constant_time_str_eq(&provided, expected) {
             let err_json = serde_json::json!({
                 "ok": false,
                 "error": "Unauthorized: valid API token required via 'Authorization: Bearer <token>' or 'X-API-Token: <token>' header."
@@ -1046,8 +1073,35 @@ mod tests {
         assert!(route_always_requires_auth("POST", "/api/v1/sd/sync", "{}"));
         assert!(route_always_requires_auth(
             "PUT",
+            "/api/v1/pgv",
+            r#"{"index":31,"value":0}"#
+        ));
+        assert!(route_always_requires_auth(
+            "POST",
+            "/api/v1/esp32-ha/start",
+            "{}"
+        ));
+        assert!(route_always_requires_auth(
+            "PUT",
+            "/api/v1/profiles/1/slots/1",
+            r#"{"onPressScript":"GUI r\n"}"#
+        ));
+        assert!(route_always_requires_auth(
+            "PUT",
             "/api/v1/profiles/1/slots/1",
             r#"{"appLaunch":{"enabled":true,"command":"id"}}"#
+        ));
+        // JSON Unicode escape bypass must still require auth on any profile mutation route
+        assert!(route_always_requires_auth(
+            "PUT",
+            "/api/v1/profiles/1",
+            r#"{"\u0061ppLaunch":{"enabled":true,"command":"id"}}"#
+        ));
+        // Malformed JSON must fail closed
+        assert!(route_always_requires_auth(
+            "PUT",
+            "/api/v1/profiles/1",
+            "{invalid json"
         ));
         assert!(!route_always_requires_auth(
             "POST",
