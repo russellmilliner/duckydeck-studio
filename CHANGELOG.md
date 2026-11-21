@@ -2,6 +2,21 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.24-deps](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.24-deps) — 2026-11-21
+
+### 📦 Bumped Dependencies (8 packages)
+
+| Package | Previous | Updated | Scope |
+| :--- | :--- | :--- | :--- |
+| `cc` | `1.11.2` | **`1.11.3`** | Lockfile (`Cargo.lock`) |
+| `clap` | `4.6.8` | **`4.6.9`** | Lockfile (`Cargo.lock`) |
+| `form_urlencoded` | `1.2.2` | **`1.2.3`** | Lockfile (`Cargo.lock`) |
+| `pin-project-lite` | `0.2.17` | **`0.2.18`** | Lockfile (`Cargo.lock`) |
+| `toml_edit` | `0.25.19+spec-1.1.0` | **`0.25.20+spec-1.1.0`** | Lockfile (`Cargo.lock`) |
+| `toml_parser` | `1.1.5+spec-1.1.0` | **`1.1.6+spec-1.1.0`** | Lockfile (`Cargo.lock`) |
+| `url` | `2.5.8` | **`2.5.9`** | Lockfile (`Cargo.lock`) |
+| `zcheapstr` | `1.2.0` | **`1.4.0`** | Lockfile (`Cargo.lock`) |
+
 ## [v0.1.24](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.24) — 2026-11-19
 
 ### Highlights
