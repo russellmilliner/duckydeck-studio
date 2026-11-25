@@ -762,8 +762,6 @@ Window {
                                     Layout.alignment: Qt.AlignVCenter
                                     implicitWidth: 26
                                     implicitHeight: 26
-                                    width: 26
-                                    height: 26
                                     padding: 0
                                     text: drawerRoot.enableSectionExpanded ? "▾" : "▸"
                                     font.bold: true
@@ -840,7 +838,7 @@ Window {
 
                                 Rectangle {
                                     Layout.fillWidth: true
-                                    height: 1
+                                    Layout.preferredHeight: 1
                                     color: drawerRoot.subtleBorder
                                 }
 
@@ -899,7 +897,7 @@ Window {
 
                                 Rectangle {
                                     Layout.fillWidth: true
-                                    height: 1
+                                    Layout.preferredHeight: 1
                                     color: drawerRoot.subtleBorder
                                 }
 
@@ -1156,8 +1154,6 @@ Window {
                                     Layout.alignment: Qt.AlignVCenter
                                     implicitWidth: 26
                                     implicitHeight: 26
-                                    width: 26
-                                    height: 26
                                     padding: 0
                                     text: drawerRoot.modifierSectionExpanded ? "▾" : "▸"
                                     font.bold: true
@@ -1897,8 +1893,6 @@ Window {
                                     Layout.alignment: Qt.AlignVCenter
                                     implicitWidth: 26
                                     implicitHeight: 26
-                                    width: 26
-                                    height: 26
                                     padding: 0
                                     text: drawerRoot.ruleEditorSectionExpanded ? "▾" : "▸"
                                     font.bold: true

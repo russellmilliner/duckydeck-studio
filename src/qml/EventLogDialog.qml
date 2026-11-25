@@ -354,7 +354,9 @@ Window {
         source: Qt.resolvedUrl("UiTestHarness.qml")
         onLoaded: {
             if (item) {
+                // qmllint disable missing-property
                 item.host = eventLogDialog
+                // qmllint enable missing-property
             }
         }
     }

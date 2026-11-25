@@ -2,6 +2,34 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.25](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.25) — 2026-11-25
+
+### Highlights
+- Multi-language linting & CI: added .qmllint.ini, rustfmt.toml, workspace Clippy lints, an 8-stage scripts/check.sh, GitHub Actions CI (.github/workflows/ci.yml), and a repo-managed .githooks/pre-commit hook.
+- QML bug & layout fixes: fixed macro recording stop call, drag-and-drop format checks, Kirigami separator color, UiTestHarness theme lookup & block-scoped var->let, SlotInspectorPane binding, duplicate PgvInspectorDrawer scrollbar, and Quick layout positioning across 17 QML files.
+- Cross-platform & dependency updates: gated Linux/Flatpak-only Rust helpers for zero-warning Windows builds and updated 11 lockfile crate dependencies (clap 4.6.10, hyper 1.13.0, toml_edit 0.25.21, hashbrown 0.17.2, url 2.5.9, zcheapstr 1.4.0, etc.).
+
+### Commits
+- chore(deps): update dependencies (clap 4.6.10, clap_builder 4.6.10, hyper 1.13.0, toml_edit 0.25.21+spec-1.1.0, toml_parser 1.1.7+spec-1.1.0) (8efe1d9)
+- chore(deps): update dependencies (hashbrown 0.17.2) (549f7ab)
+- chore(deps): update dependencies (cc 1.11.3, clap 4.6.9, form_urlencoded 1.2.3, pin-project-lite 0.2.18, toml_edit 0.25.20+spec-1.1.0, toml_parser 1.1.6+spec-1.1.0 (+2 more)) (eb66ffd)
+
+### 📦 Bumped Dependencies (11 packages)
+
+| Package | Previous | Updated | Scope |
+| :--- | :--- | :--- | :--- |
+| `cc` | `1.11.2` | **`1.11.3`** | Lockfile (`Cargo.lock`) |
+| `clap` | `4.6.8` | **`4.6.10`** | Lockfile (`Cargo.lock`) |
+| `clap_builder` | `4.6.7` | **`4.6.10`** | Lockfile (`Cargo.lock`) |
+| `form_urlencoded` | `1.2.2` | **`1.2.3`** | Lockfile (`Cargo.lock`) |
+| `hashbrown` | `0.17.1` | **`0.17.2`** | Lockfile (`Cargo.lock`) |
+| `hyper` | `1.12.0` | **`1.13.0`** | Lockfile (`Cargo.lock`) |
+| `pin-project-lite` | `0.2.17` | **`0.2.18`** | Lockfile (`Cargo.lock`) |
+| `toml_edit` | `0.25.19+spec-1.1.0` | **`0.25.21+spec-1.1.0`** | Lockfile (`Cargo.lock`) |
+| `toml_parser` | `1.1.5+spec-1.1.0` | **`1.1.7+spec-1.1.0`** | Lockfile (`Cargo.lock`) |
+| `url` | `2.5.8` | **`2.5.9`** | Lockfile (`Cargo.lock`) |
+| `zcheapstr` | `1.2.0` | **`1.4.0`** | Lockfile (`Cargo.lock`) |
+
 ## [v0.1.24-deps](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.24-deps) — 2026-11-25
 
 ### 📦 Bumped Dependencies (5 packages)

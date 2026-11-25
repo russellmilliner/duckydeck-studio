@@ -316,6 +316,7 @@ Window {
         return rowIdx * pCols + colIdx + 1
     }
 
+    // qmllint disable missing-property
     function cellSlotForIndex(idx) {
         const item = keyCellRepeater.itemAt(idx)
         return item ? item.slotNum : 0
@@ -330,6 +331,7 @@ Window {
         const item = keyCellRepeater.itemAt(idx)
         return item && item.labelRotation !== undefined ? Number(item.labelRotation) : 0
     }
+    // qmllint enable missing-property
 
     onProfileOledRotationChanged: {
         oledWidgetWindow.dataRevision += 1
@@ -608,14 +610,12 @@ Window {
                 // DuckyDeck Studio Application Icon
                 Image {
                     id: appIcon
-                    width: Math.max(15, Math.round(16 * headerRowLayout.btnScale))
-                    height: width
-                    Layout.preferredWidth: width
-                    Layout.preferredHeight: height
+                    Layout.preferredWidth: Math.max(15, Math.round(16 * headerRowLayout.btnScale))
+                    Layout.preferredHeight: Layout.preferredWidth
                     Layout.alignment: Qt.AlignVCenter
                     source: "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/duckydeck-studio.svg"
-                    sourceSize.width: width * 2
-                    sourceSize.height: height * 2
+                    sourceSize.width: Layout.preferredWidth * 2
+                    sourceSize.height: Layout.preferredHeight * 2
                     fillMode: Image.PreserveAspectFit
                     smooth: true
                     mipmap: true
@@ -639,9 +639,7 @@ Window {
                     Layout.preferredWidth: Math.max(7, Math.round(8 * headerRowLayout.btnScale))
                     Layout.preferredHeight: Layout.preferredWidth
                     Layout.alignment: Qt.AlignVCenter
-                    width: Layout.preferredWidth
-                    height: Layout.preferredHeight
-                    radius: width / 2
+                    radius: Layout.preferredWidth / 2
                     color: (oledWidgetWindow.controller && oledWidgetWindow.controller.connected)
                         ? Kirigami.Theme.positiveTextColor
                         : Kirigami.Theme.highlightColor
@@ -1642,12 +1640,12 @@ Window {
 
                     // Rotary Knob 1 Icon
                     Rectangle {
-                        width: bottomFooterBar.knobDiameter
-                        height: bottomFooterBar.knobDiameter
-                        radius: width / 2
+                        Layout.preferredWidth: bottomFooterBar.knobDiameter
+                        Layout.preferredHeight: bottomFooterBar.knobDiameter
+                        radius: Layout.preferredWidth / 2
                         color: Kirigami.Theme.backgroundColor
                         border.color: Kirigami.Theme.highlightColor
-                        border.width: Math.max(1.5, width * 0.09)
+                        border.width: Math.max(1.5, bottomFooterBar.knobDiameter * 0.09)
 
                         // Top indicator notch on rotary dial
                         Rectangle {
@@ -1690,12 +1688,12 @@ Window {
 
                     // Rotary Knob 2 Icon
                     Rectangle {
-                        width: bottomFooterBar.knobDiameter
-                        height: bottomFooterBar.knobDiameter
-                        radius: width / 2
+                        Layout.preferredWidth: bottomFooterBar.knobDiameter
+                        Layout.preferredHeight: bottomFooterBar.knobDiameter
+                        radius: Layout.preferredWidth / 2
                         color: Kirigami.Theme.backgroundColor
                         border.color: Kirigami.Theme.highlightColor
-                        border.width: Math.max(1.5, width * 0.09)
+                        border.width: Math.max(1.5, bottomFooterBar.knobDiameter * 0.09)
 
                         // Top indicator notch on rotary dial
                         Rectangle {
@@ -1851,8 +1849,8 @@ Window {
 
                     // Bottom-Right Resize Grip
                     Rectangle {
-                        width: Math.max(18, Math.round(20 * oledWidgetWindow.uiScale))
-                        height: bottomFooterBar.profileBtnHeight
+                        Layout.preferredWidth: Math.max(18, Math.round(20 * oledWidgetWindow.uiScale))
+                        Layout.preferredHeight: bottomFooterBar.profileBtnHeight
                         radius: 4
                         color: resizeMouse.containsMouse
                             ? Qt.alpha(Kirigami.Theme.highlightColor, 0.12)

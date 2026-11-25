@@ -906,8 +906,8 @@ Window {
             spacing: 10
 
             Rectangle {
-                width: 34
-                height: 34
+                Layout.preferredWidth: 34
+                Layout.preferredHeight: 34
                 radius: 8
                 color: Qt.alpha(Kirigami.Theme.highlightColor, 0.2)
                 border.color: Kirigami.Theme.highlightColor

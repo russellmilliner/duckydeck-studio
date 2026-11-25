@@ -2665,8 +2665,10 @@ Kirigami.ApplicationWindow {
         source: Qt.resolvedUrl("ProfileWizardDialog.qml")
         onLoaded: {
             if (item) {
+                // qmllint disable missing-property
                 item.root = root
                 item.controller = deviceController
+                // qmllint enable missing-property
             }
         }
     }
@@ -2676,9 +2678,11 @@ Kirigami.ApplicationWindow {
             profileWizardLoader.active = true
         }
         if (profileWizardLoader.item) {
+            // qmllint disable missing-property
             profileWizardLoader.item.root = root
             profileWizardLoader.item.controller = deviceController
             profileWizardLoader.item.openWizard()
+            // qmllint enable missing-property
         }
     }
 
@@ -2688,8 +2692,10 @@ Kirigami.ApplicationWindow {
         source: Qt.resolvedUrl("TutorialsDialog.qml")
         onLoaded: {
             if (item) {
+                // qmllint disable missing-property
                 item.root = root
                 item.controller = deviceController
+                // qmllint enable missing-property
             }
         }
     }
@@ -2700,9 +2706,11 @@ Kirigami.ApplicationWindow {
             tutorialsDialogLoader.active = true
         }
         if (tutorialsDialogLoader.item) {
+            // qmllint disable missing-property
             tutorialsDialogLoader.item.root = root
             tutorialsDialogLoader.item.controller = deviceController
             tutorialsDialogLoader.item.openTopic(topicId || "oled_vm")
+            // qmllint enable missing-property
         }
     }
 
@@ -2761,8 +2769,8 @@ Kirigami.ApplicationWindow {
 
                         Rectangle {
                             id: headerProfColorSwatch
-                            width: 12
-                            height: 12
+                            Layout.preferredWidth: 12
+                            Layout.preferredHeight: 12
                             radius: 6
                             color: deviceController.activeProfileBgColor.length > 0
                                 ? deviceController.activeProfileBgColor

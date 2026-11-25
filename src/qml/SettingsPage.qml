@@ -602,8 +602,8 @@ Window {
                                 spacing: 8
 
                                 Rectangle {
-                                    width: 14
-                                    height: 14
+                                    Layout.preferredWidth: 14
+                                    Layout.preferredHeight: 14
                                     radius: 3
                                     color: modelData.bgColor || "#38bdf8"
                                     border.color: "#ffffff66"
@@ -960,8 +960,8 @@ Window {
 
                         // Application Icon matching data/icons/io.github.duckydeck.Studio.svg
                         Rectangle {
-                            width: 32
-                            height: 32
+                            Layout.preferredWidth: 32
+                            Layout.preferredHeight: 32
                             radius: 6
                             color: "#16181d"
                             border.color: "#38bdf8"
@@ -1659,8 +1659,8 @@ Window {
                 spacing: 10
 
                 Rectangle {
-                    width: 34
-                    height: 34
+                    Layout.preferredWidth: 34
+                    Layout.preferredHeight: 34
                     radius: 8
                     color: profilePropertiesWindow.profBgColor
                     border.color: "#ffffff66"
@@ -2514,8 +2514,8 @@ Window {
                 spacing: 10
 
                 Rectangle {
-                    width: 34
-                    height: 34
+                    Layout.preferredWidth: 34
+                    Layout.preferredHeight: 34
                     radius: 8
                     color: keyPropertiesWindow.slotColor
                     border.color: "#ffffff66"
@@ -2781,8 +2781,8 @@ Window {
                                 visible: keyPropertiesWindow.slotNum <= 20
 
                                 Rectangle {
-                                    width: 24
-                                    height: 24
+                                    Layout.preferredWidth: 24
+                                    Layout.preferredHeight: 24
                                     radius: 4
                                     color: /^#[0-9A-Fa-f]{6}$/.test(keyPropColorField.text.trim())
                                         ? keyPropColorField.text.trim()
@@ -3283,8 +3283,8 @@ Window {
                                         spacing: 8
 
                                         Rectangle {
-                                            width: 10
-                                            height: 10
+                                            Layout.preferredWidth: 10
+                                            Layout.preferredHeight: 10
                                             radius: 5
                                             color: modelData.usbConnected
                                                 ? Kirigami.Theme.positiveTextColor
@@ -3768,7 +3768,7 @@ Window {
 
                         Rectangle {
                             Layout.fillWidth: true
-                            height: 1
+                            Layout.preferredHeight: 1
                             color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
                         }
 

@@ -205,6 +205,7 @@ pub fn check_for_app_updates_blocking(
     crate::actions::web_api::block_on_shared_async(check_for_app_updates_async(current_version))?
 }
 
+#[cfg(not(target_os = "windows"))]
 fn is_system_flatpak_install() -> bool {
     if let Ok(info) = fs::read_to_string("/.flatpak-info") {
         if info.contains("/var/lib/flatpak/") {

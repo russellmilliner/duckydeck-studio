@@ -1,0 +1,88 @@
+name: CI Lint & Test
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-core:
+    name: Rust Fmt, Core Crates, Shell, HTML/JS & Doc Links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Rust formatting check
+        run: cargo fmt --all -- --check
+
+      - name: Lint and test pure-Rust workspace crates
+        run: |
+          cargo clippy -p duckydeck-paths -p duckydeck-vm --all-targets -- -D warnings
+          cargo test -p duckydeck-paths -p duckydeck-vm
+
+      - name: Shell script lint (bash -n + shellcheck)
+        run: |
+          for f in scripts/*.sh data/udev/*.sh; do bash -n "$f"; done
+          shellcheck -S warning scripts/*.sh data/udev/*.sh
+
+      - name: Embedded HTML/JS syntax check
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, subprocess, tempfile
+          html = pathlib.Path("data/esp32_ha_web_ui.html").read_text(encoding="utf-8")
+          for i, body in enumerate(re.findall(r"<script[^>]*>(.*?)</script>", html, re.S)):
+              with tempfile.NamedTemporaryFile("w", suffix=".js", delete=True) as tf:
+                  tf.write(body)
+                  tf.flush()
+                  subprocess.run(["node", "--check", tf.name], check=True)
+          PY
+
+      - name: Verify architecture doc file paths
+        run: |
+          missing=0
+          while IFS= read -r path; do
+            [[ -z "$path" ]] && continue
+            [[ "$path" == *"*"* ]] && continue
+            if [[ ! -e "$path" ]]; then
+              echo "Missing path in docs: $path" >&2
+              missing=1
+            fi
+          done < <(grep -hoE '(crates/[A-Za-z0-9_./-]+|src/[A-Za-z0-9_./-]+)' docs/ARCHITECTURE.md docs/architecture.html | sed 's/[.,:;)]*$//' | sort -u)
+          exit "$missing"
+
+  lint-and-test-linux:
+    name: Full Linux Lint & Test Suite (Qt6 + KF6)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt 6 & KF6 build/lint dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            g++ clang pkg-config libudev-dev shellcheck nodejs \
+            qt6-base-dev qt6-declarative-dev qt6-declarative-dev-tools qt6-svg-dev \
+            qml6-module-org-kde-kirigami qml6-module-org-kde-syntaxhighlighting \
+            libkf6colorscheme-dev libkf6config-dev libkf6iconthemes-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run scripts/check.sh
+        run: bash scripts/check.sh

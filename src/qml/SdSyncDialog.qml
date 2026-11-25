@@ -686,8 +686,8 @@ Window {
                                     source: root.effectiveThemeMode === "light"
                                         ? "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-light.svg"
                                         : "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-dark.svg"
-                                    width: 13
-                                    height: 13
+                                    Layout.preferredWidth: 13
+                                    Layout.preferredHeight: 13
                                     sourceSize.width: 26
                                     sourceSize.height: 26
                                     fillMode: Image.PreserveAspectFit
@@ -1001,8 +1001,8 @@ Window {
                                                 source: root.effectiveThemeMode === "light"
                                                     ? "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-light.svg"
                                                     : "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-dark.svg"
-                                                width: 12
-                                                height: 12
+                                                Layout.preferredWidth: 12
+                                                Layout.preferredHeight: 12
                                                 sourceSize.width: 24
                                                 sourceSize.height: 24
                                                 fillMode: Image.PreserveAspectFit
@@ -1515,8 +1515,8 @@ Window {
 
                     Rectangle {
                         Layout.fillWidth: true
-                        height: 1
-                        color: Kirigami.Theme.separatorColor
+                        Layout.preferredHeight: 1
+                        color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
                     }
 
                     ColumnLayout {

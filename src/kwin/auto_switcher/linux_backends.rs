@@ -1,11 +1,14 @@
+#[cfg(not(target_os = "windows"))]
 use std::sync::Mutex;
 
 #[cfg(not(target_os = "windows"))]
 use super::kwin_dbus::build_uncached_proxy;
 
+#[cfg(not(target_os = "windows"))]
 static LAST_BRIDGE_WINDOW: std::sync::OnceLock<Mutex<(String, String, String, u64)>> =
     std::sync::OnceLock::new();
 
+#[cfg(not(target_os = "windows"))]
 pub(super) fn record_last_bridge_window(resource_class: &str, resource_name: &str, caption: &str) {
     let lock = LAST_BRIDGE_WINDOW
         .get_or_init(|| Mutex::new((String::new(), String::new(), String::new(), 0)));

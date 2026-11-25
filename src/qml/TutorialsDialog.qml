@@ -993,7 +993,7 @@ Window {
         // Footer Bar with Quick Feedback & Open Web Guide / Close Buttons
         Rectangle {
             Layout.fillWidth: true
-            height: 1
+            Layout.preferredHeight: 1
             color: Qt.alpha(Kirigami.Theme.textColor, 0.18)
         }
 

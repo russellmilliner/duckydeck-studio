@@ -34,6 +34,13 @@
   <url type="bugtracker">https://github.com/russellmilliner/duckydeck-studio/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.1.25" date="2026-11-25">
+      <description>
+        <p>Multi-language linting &amp; CI: added .qmllint.ini, rustfmt.toml, workspace Clippy lints, an 8-stage scripts/check.sh, GitHub Actions CI (.github/workflows/ci.yml), and a repo-managed .githooks/pre-commit hook.
+QML bug &amp; layout fixes: fixed macro recording stop call, drag-and-drop format checks, Kirigami separator color, UiTestHarness theme lookup &amp; block-scoped var-&gt;let, SlotInspectorPane binding, duplicate PgvInspectorDrawer scrollbar, and Quick layout positioning across 17 QML files.
+Cross-platform &amp; dependency updates: gated Linux/Flatpak-only Rust helpers for zero-warning Windows builds and updated 11 lockfile crate dependencies (clap 4.6.10, hyper 1.13.0, toml_edit 0.25.21, hashbrown 0.17.2, url 2.5.9, zcheapstr 1.4.0, etc.).</p>
+      </description>
+    </release>
     <release version="0.1.24" date="2026-11-19">
       <description>
         <p>Security hardening: OS CSPRNG, Win32 ShellExecuteW/MessageBoxW FFI, HMAC-SHA256 v2 App Launch trust, strict REST API auth, ESP32-HA XSS/token hardening, firmware/updater origin &amp; manifest validation, and parser/SSRF bounds.

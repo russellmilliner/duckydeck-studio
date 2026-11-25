@@ -606,8 +606,8 @@ Window {
                 spacing: 10
 
                 Rectangle {
-                    width: 34
-                    height: 34
+                    Layout.preferredWidth: 34
+                    Layout.preferredHeight: 34
                     radius: 8
                     color: Qt.alpha("#a855f7", 0.2)
                     border.color: "#c084fc"
@@ -985,8 +985,8 @@ Window {
                                 }
 
                                 Rectangle {
-                                    width: 24
-                                    height: 24
+                                    Layout.preferredWidth: 24
+                                    Layout.preferredHeight: 24
                                     radius: 4
                                     color: lightingAnimatorDialog.animColor1
                                     border.color: "#ffffff66"
@@ -1042,8 +1042,8 @@ Window {
                                 }
 
                                 Rectangle {
-                                    width: 24
-                                    height: 24
+                                    Layout.preferredWidth: 24
+                                    Layout.preferredHeight: 24
                                     radius: 4
                                     color: lightingAnimatorDialog.animColor2
                                     border.color: "#ffffff66"
@@ -1908,8 +1908,8 @@ Window {
                             contentItem: RowLayout {
                                 spacing: 8
                                 Rectangle {
-                                    width: 14
-                                    height: 14
+                                    Layout.preferredWidth: 14
+                                    Layout.preferredHeight: 14
                                     radius: 2
                                     color: modelData.hex
                                     border.width: 1
@@ -1988,7 +1988,7 @@ Window {
         // Divider
         Rectangle {
             Layout.fillWidth: true
-            height: 1
+            Layout.preferredHeight: 1
             color: Qt.alpha(Kirigami.Theme.textColor, 0.15)
         }
 
@@ -2301,8 +2301,8 @@ Window {
             contentItem: RowLayout {
                 spacing: 8
                 Rectangle {
-                    width: 16
-                    height: 16
+                    Layout.preferredWidth: 16
+                    Layout.preferredHeight: 16
                     radius: 3
                     color: savedSwatchContextMenu.targetHex.length > 0 ? savedSwatchContextMenu.targetHex : "transparent"
                     border.width: 1
@@ -2365,8 +2365,8 @@ Window {
             RowLayout {
                 spacing: 8
                 Rectangle {
-                    width: 24
-                    height: 24
+                    Layout.preferredWidth: 24
+                    Layout.preferredHeight: 24
                     radius: 4
                     color: colorNameInputDialog.targetHex.length > 0 ? colorNameInputDialog.targetHex : "transparent"
                     border.width: 1

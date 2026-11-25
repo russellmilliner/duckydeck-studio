@@ -520,7 +520,7 @@ Window {
             sequence: "Escape"
             context: Qt.WindowShortcut
             enabled: macroRecorderDialog.visible
-            onActivated: { if (macroRecorderDialog.isRecording) macroRecorderDialog.stopRecording(); macroRecorderDialog.close() }
+            onActivated: { if (macroRecorderDialog.isRecording) macroRecorderDialog.stopRecordingSession(); macroRecorderDialog.close() }
         }
         title: qsTr("Live Macro Recorder (DuckyScript 3) — DuckyDeck Studio")
         visible: false
@@ -803,8 +803,8 @@ Window {
                 spacing: 10
 
                 Rectangle {
-                    width: 34
-                    height: 34
+                    Layout.preferredWidth: 34
+                    Layout.preferredHeight: 34
                     radius: 8
                     color: macroRecorderDialog.isRecording ? Qt.alpha("#ef4444", 0.25) : Qt.alpha("#38bdf8", 0.18)
                     border.color: macroRecorderDialog.isRecording ? "#ef4444" : "#38bdf8"
@@ -2166,8 +2166,8 @@ Window {
             spacing: 10
 
             Rectangle {
-                width: 34
-                height: 34
+                Layout.preferredWidth: 34
+                Layout.preferredHeight: 34
                 radius: 8
                 color: Qt.alpha(Kirigami.Theme.highlightColor, 0.2)
                 border.color: Kirigami.Theme.highlightColor

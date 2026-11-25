@@ -373,8 +373,8 @@ Rectangle {
 
                             // Profile Default Button Color Swatch (Click to change BG_COLOR)
                             Rectangle {
-                                width: 6
-                                height: Math.round(24 * root.sidebarScale)
+                                Layout.preferredWidth: 6
+                                Layout.preferredHeight: Math.round(24 * root.sidebarScale)
                                 radius: 3
                                 color: profDelegate.profColor
                                 border.width: profSwatchMouse.containsMouse ? 1 : 0
@@ -675,7 +675,7 @@ Rectangle {
         // Divider
         Rectangle {
             Layout.fillWidth: true
-            height: 1
+            Layout.preferredHeight: 1
             color: profilesSidebar.frameBorder
         }
 

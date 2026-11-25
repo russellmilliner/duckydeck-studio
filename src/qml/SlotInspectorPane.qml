@@ -108,8 +108,8 @@ Rectangle {
 
                     // Interactive Mini Keycap Badge (click to pick key color on slots 1..20)
                     Rectangle {
-                        width: Math.round(32 * root.inspectorScale)
-                        height: Math.round(32 * root.inspectorScale)
+                        Layout.preferredWidth: Math.round(32 * root.inspectorScale)
+                        Layout.preferredHeight: Math.round(32 * root.inspectorScale)
                         radius: 6
                         color: inspectorBadgeSwatchMouse.containsMouse && inspectorCard.isMechanicalKey
                             ? Qt.lighter(Kirigami.Theme.backgroundColor, 1.2)
@@ -218,6 +218,7 @@ Rectangle {
 
                     // Interactive Key RGB FX Animation Pill (Slots 1..20)
                     Rectangle {
+                        id: keyFxPill
                         visible: inspectorCard.isMechanicalKey
                         readonly property bool hasKeyFx: {
                             const _cfgs = hardwareCanvas.keyAnimationConfigs
@@ -240,10 +241,10 @@ Rectangle {
                             spacing: 3
 
                             QQC2.Label {
-                                text: parent.parent.hasKeyFx ? qsTr("✨ Key FX ●") : qsTr("✨ Key FX")
+                                text: keyFxPill.hasKeyFx ? qsTr("✨ Key FX ●") : qsTr("✨ Key FX")
                                 font.bold: true
                                 font.pointSize: 10 * root.fontScale
-                                color: parent.parent.hasKeyFx
+                                color: keyFxPill.hasKeyFx
                                     ? (root.isLightTheme ? "#6d28d9" : "#e9d5ff")
                                     : Kirigami.Theme.textColor
                             }
@@ -284,8 +285,8 @@ Rectangle {
                             spacing: 5
 
                             Rectangle {
-                                width: Math.round(12 * root.inspectorScale)
-                                height: Math.round(12 * root.inspectorScale)
+                                Layout.preferredWidth: Math.round(12 * root.inspectorScale)
+                                Layout.preferredHeight: Math.round(12 * root.inspectorScale)
                                 radius: 3
                                 color: root.selectedSlotColor
                                 border.color: "#ffffff44"
@@ -328,7 +329,7 @@ Rectangle {
 
                 Rectangle {
                     Layout.fillWidth: true
-                    height: 1
+                    Layout.preferredHeight: 1
                     color: Qt.alpha(Kirigami.Theme.textColor, 0.08)
                 }
 
@@ -2256,7 +2257,7 @@ Rectangle {
 
                     Rectangle {
                         Layout.fillWidth: true
-                        height: 1
+                        Layout.preferredHeight: 1
                         color: Qt.alpha(Kirigami.Theme.textColor, 0.1)
                     }
 

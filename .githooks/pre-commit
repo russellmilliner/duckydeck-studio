@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+STAGED="$(git diff --cached --name-only --diff-filter=ACM)"
+[[ -z "$STAGED" ]] && exit 0
+
+if echo "$STAGED" | grep -qE '(^Cargo\.(toml|lock)$|\.rs$)'; then
+    echo "[pre-commit] Checking Rust formatting and workspace clippy..."
+    cargo fmt --all -- --check
+    cargo clippy --workspace --all-targets -- -D warnings
+fi
+
+STAGED_QML="$(echo "$STAGED" | grep -E '^src/qml/[^/]+\.qml$' || true)"
+if [[ -n "$STAGED_QML" ]]; then
+    QMLLINT_BIN=""
+    for cand in /usr/lib/qt6/bin/qmllint "$(command -v qmllint6 2>/dev/null || true)" "$(command -v qmllint 2>/dev/null || true)"; do
+        [[ -z "$cand" || ! -x "$cand" ]] && continue
+        if "$cand" --version 2>/dev/null | grep -qE '^qmllint 6\.'; then
+            QMLLINT_BIN="$cand"
+            break
+        fi
+    done
+    if [[ -n "$QMLLINT_BIN" ]]; then
+        QML_IMPORT_DIR=""
+        for d in /usr/lib/qt6/qml /usr/lib/x86_64-linux-gnu/qt6/qml; do
+            [[ -d "$d" ]] && QML_IMPORT_DIR="$d" && break
+        done
+        echo "[pre-commit] Running Qt 6 qmllint on staged QML files..."
+        # shellcheck disable=SC2086
+        if [[ -n "$QML_IMPORT_DIR" ]]; then
+            "$QMLLINT_BIN" -I "$QML_IMPORT_DIR" $STAGED_QML
+        else
+            "$QMLLINT_BIN" $STAGED_QML
+        fi
+    fi
+fi
+
+STAGED_SH="$(echo "$STAGED" | grep -E '\.sh$' || true)"
+if [[ -n "$STAGED_SH" ]]; then
+    echo "[pre-commit] Checking staged shell scripts..."
+    while IFS= read -r shf; do
+        [[ -z "$shf" ]] && continue
+        bash -n "$shf"
+        if command -v shellcheck >/dev/null 2>&1; then
+            shellcheck -S warning "$shf"
+        fi
+    done <<< "$STAGED_SH"
+fi
+
+if echo "$STAGED" | grep -qx 'data/esp32_ha_web_ui.html' && command -v node >/dev/null 2>&1; then
+    echo "[pre-commit] Checking embedded JS in data/esp32_ha_web_ui.html..."
+    python3 - <<'PY'
+import pathlib, re, subprocess, tempfile
+html = pathlib.Path("data/esp32_ha_web_ui.html").read_text(encoding="utf-8")
+for i, body in enumerate(re.findall(r"<script[^>]*>(.*?)</script>", html, re.S)):
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=True) as tf:
+        tf.write(body)
+        tf.flush()
+        subprocess.run(["node", "--check", tf.name], check=True)
+PY
+fi

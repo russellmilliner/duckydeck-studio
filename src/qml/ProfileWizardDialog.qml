@@ -436,7 +436,7 @@ Window {
         // Top Stepper Header
         Rectangle {
             Layout.fillWidth: true
-            height: 50
+            Layout.preferredHeight: 50
             radius: 8
             color: Qt.alpha(Kirigami.Theme.alternateBackgroundColor, 0.75)
             border.width: 1
@@ -465,8 +465,8 @@ Window {
                             spacing: 8
 
                             Rectangle {
-                                width: 24
-                                height: 24
+                                Layout.preferredWidth: 24
+                                Layout.preferredHeight: 24
                                 radius: 12
                                 color: wizardDialog.currentStep === modelData.step
                                     ? Kirigami.Theme.highlightColor
@@ -534,7 +534,7 @@ Window {
 
                     Rectangle {
                         Layout.fillWidth: true
-                        height: 1
+                        Layout.preferredHeight: 1
                         color: wizardDialog.frameBorderColor
                     }
 
@@ -910,8 +910,8 @@ Window {
                             }
 
                             Rectangle {
-                                width: 32
-                                height: 32
+                                Layout.preferredWidth: 32
+                                Layout.preferredHeight: 32
                                 radius: 6
                                 color: wizardDialog.profileBgColor
                                 border.width: 2
@@ -1294,7 +1294,7 @@ Window {
                                             keys: ["application/x-ducky-shortcut"]
                                             onEntered: (drag) => drag.acceptProposedAction()
                                             onDropped: (drop) => {
-                                                if (drop.hasFormat("application/x-ducky-shortcut")) {
+                                                if (drop.formats && drop.formats.indexOf("application/x-ducky-shortcut") !== -1) {
                                                     try {
                                                         const data = JSON.parse(drop.getDataAsString("application/x-ducky-shortcut"))
                                                         wizardDialog.assignShortcutToSlot(wizKeycapItem.slot, data)

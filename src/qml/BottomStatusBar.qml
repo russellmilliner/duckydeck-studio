@@ -73,8 +73,8 @@ Rectangle {
                     spacing: 6
 
                     Rectangle {
-                        width: 9
-                        height: 9
+                        Layout.preferredWidth: 9
+                        Layout.preferredHeight: 9
                         radius: 5
                         color: deviceController.connected
                             ? Kirigami.Theme.positiveTextColor
@@ -150,8 +150,8 @@ Rectangle {
                     spacing: 6
 
                     Rectangle {
-                        width: 9
-                        height: 9
+                        Layout.preferredWidth: 9
+                        Layout.preferredHeight: 9
                         radius: 5
                         color: deviceController.sdSyncBusy
                             ? Kirigami.Theme.highlightColor
@@ -201,8 +201,8 @@ Rectangle {
             }
 
             Rectangle {
-                width: 1
-                height: Math.round(18 * root.statusBarScale)
+                Layout.preferredWidth: 1
+                Layout.preferredHeight: Math.round(18 * root.statusBarScale)
                 color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
             }
 
@@ -262,7 +262,7 @@ Rectangle {
 
         Rectangle {
             Layout.fillWidth: true
-            height: 1
+            Layout.preferredHeight: 1
             color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast * 0.65)
         }
 
@@ -300,8 +300,8 @@ Rectangle {
                         source: root.effectiveThemeMode === "light"
                             ? "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-light.svg"
                             : "qrc:/qt/qml/io/github/duckydeck/src/qml/icons/tray-icon-dark.svg"
-                        width: Math.round(14 * root.statusBarScale)
-                        height: Math.round(14 * root.statusBarScale)
+                        Layout.preferredWidth: Math.round(14 * root.statusBarScale)
+                        Layout.preferredHeight: Math.round(14 * root.statusBarScale)
                         sourceSize.width: 28
                         sourceSize.height: 28
                         fillMode: Image.PreserveAspectFit
@@ -421,8 +421,8 @@ Rectangle {
                     spacing: 6
 
                     Rectangle {
-                        width: 9
-                        height: 9
+                        Layout.preferredWidth: 9
+                        Layout.preferredHeight: 9
                         radius: 5
                         color: oledWidgetStatusBtn.activeWidgetCount > 0
                             ? Kirigami.Theme.positiveTextColor
@@ -474,7 +474,7 @@ Rectangle {
         Rectangle {
             visible: bottomStatusBar.hasMultiWidgetOrEsp32Row
             Layout.fillWidth: true
-            height: 1
+            Layout.preferredHeight: 1
             color: Qt.alpha(Kirigami.Theme.textColor, Kirigami.Theme.frameContrast * 0.65)
         }
 
@@ -529,8 +529,8 @@ Rectangle {
                         spacing: 5
 
                         Rectangle {
-                            width: 8
-                            height: 8
+                            Layout.preferredWidth: 8
+                            Layout.preferredHeight: 8
                             radius: 4
                             color: perDevWidgetStatusBtn.widgetOpen
                                 ? Kirigami.Theme.positiveTextColor
@@ -627,8 +627,8 @@ Rectangle {
                     spacing: 6
 
                     Rectangle {
-                        width: 8
-                        height: 8
+                        Layout.preferredWidth: 8
+                        Layout.preferredHeight: 8
                         radius: 4
                         color: deviceController && deviceController.esp32HaServerRunning
                             ? Kirigami.Theme.positiveTextColor

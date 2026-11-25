@@ -78,12 +78,12 @@ Item {
         var stack = [rootNode]
         var guard = 0
         while (stack.length > 0 && guard < 256) {
-            var n = stack.pop()
+            let n = stack.pop()
             guard++
             if (!n) continue
             if (n.objectName === targetName) return n
             if (n.children) {
-                for (var i = n.children.length - 1; i >= 0; i--) {
+                for (let i = n.children.length - 1; i >= 0; i--) {
                     stack.push(n.children[i])
                 }
             }
@@ -187,7 +187,7 @@ Item {
             guard++
             // 1. Check if cur itself is a Rectangle with a visible fill
             if (isRectangleNode(cur) && cur.color !== undefined && cur.color.a !== undefined && cur.color.a > 0.01) {
-                var rectAlpha = cur.color.a * (cur.opacity !== undefined ? cur.opacity : 1.0)
+                let rectAlpha = cur.color.a * (cur.opacity !== undefined ? cur.opacity : 1.0)
                 layers.push({
                     r: cur.color.r,
                     g: cur.color.g,
@@ -199,7 +199,7 @@ Item {
             // 2. Check if cur is a Control with a background item
             if (cur.background && cur.background.visible !== false && (cur.background.opacity === undefined || cur.background.opacity > 0.05)) {
                 if (isRectangleNode(cur.background) && cur.background.color !== undefined && cur.background.color.a !== undefined && cur.background.color.a > 0.01) {
-                    var bgAlpha = cur.background.color.a * (cur.background.opacity !== undefined ? cur.background.opacity : 1.0)
+                    let bgAlpha = cur.background.color.a * (cur.background.opacity !== undefined ? cur.background.opacity : 1.0)
                     layers.push({
                         r: cur.background.color.r,
                         g: cur.background.color.g,
@@ -209,16 +209,18 @@ Item {
                     if (bgAlpha >= 0.98) break
                 } else {
                     // Native Breeze QQC2 style background (Button, ComboBox, TextField, SpinBox, etc.)
-                    var curType = cur.toString()
-                    var isFlatUnpressed = (cur.flat === true && !cur.down && !cur.checked && !cur.highlighted)
+                    let curType = cur.toString()
+                    let isFlatUnpressed = (cur.flat === true && !cur.down && !cur.checked && !cur.highlighted)
                     if (!isFlatUnpressed && (curType.indexOf("Button") !== -1
                             || curType.indexOf("TextField") !== -1
                             || curType.indexOf("TextArea") !== -1
                             || curType.indexOf("ComboBox") !== -1
                             || curType.indexOf("SpinBox") !== -1)) {
-                        var themeBg = (cur.Kirigami && cur.Kirigami.Theme && cur.Kirigami.Theme.backgroundColor && cur.Kirigami.Theme.backgroundColor.a > 0.01)
-                            ? cur.Kirigami.Theme.backgroundColor
-                            : root.color
+                        let themeBg = (cur.palette && cur.palette.window && cur.palette.window.a > 0.01)
+                            ? cur.palette.window
+                            : ((Kirigami.Theme.backgroundColor && Kirigami.Theme.backgroundColor.a > 0.01)
+                                ? Kirigami.Theme.backgroundColor
+                                : root.color)
                         if (themeBg && themeBg.a > 0.01) {
                             layers.push({
                                 r: themeBg.r,
@@ -250,7 +252,7 @@ Item {
                 ? { r: 0.937, g: 0.941, b: 0.945, a: 1.0 }
                 : { r: 0.125, g: 0.137, b: 0.149, a: 1.0 })
 
-        for (var i = layers.length - 1; i >= 0; i--) {
+        for (let i = layers.length - 1; i >= 0; i--) {
             base = blendColors(layers[i], base, 1.0)
         }
         return base
@@ -287,7 +289,7 @@ Item {
         var guard = 0
         while (cur && cur !== rootItem && guard < 64) {
             guard++
-            var tName = cur.toString()
+            let tName = cur.toString()
             if (cur.contentWidth !== undefined && cur.contentItem !== undefined) {
                 if (cur.contentWidth > cur.width + 2) return true
             }
@@ -413,21 +415,21 @@ Item {
         var guard = 0
 
         while (stack.length > 0 && guard < 10000) {
-            var entry = stack.pop()
-            var node = entry.node
-            var depth = entry.depth
+            let entry = stack.pop()
+            let node = entry.node
+            let depth = entry.depth
             if (!node || visited.indexOf(node) !== -1) continue
             visited.push(node)
             guard++
 
-            var tStr = node.toString()
+            let tStr = node.toString()
             if (tStr.indexOf("ScrollBar") !== -1 || node.isProfileBoxStyleScrollBar === true) {
                 count++
                 validateScrollBarStyle(windowName, node)
             }
 
             if (node.children && node.children.length > 0 && depth < 42) {
-                for (var i = node.children.length - 1; i >= 0; i--) {
+                for (let i = node.children.length - 1; i >= 0; i--) {
                     stack.push({ node: node.children[i], depth: depth + 1 })
                 }
             }
@@ -456,9 +458,9 @@ Item {
         var visitedCount = 0
 
         while (stack.length > 0 && visitedCount < 8000) {
-            var entry = stack.pop()
-            var item = entry.node
-            var depth = entry.depth
+            let entry = stack.pop()
+            let item = entry.node
+            let depth = entry.depth
             if (!item) continue
             visitedCount++
             uiTestSuiteRunner.totalElementsInspected++
@@ -474,15 +476,15 @@ Item {
                 auditKeycapOptionCLayout(windowName, item)
             }
 
-            var typeStr = item.toString()
-            var isButton = typeStr.indexOf("Button") !== -1 && typeStr.indexOf("ButtonGroup") === -1
-            var isControl = isButton
+            let typeStr = item.toString()
+            let isButton = typeStr.indexOf("Button") !== -1 && typeStr.indexOf("ButtonGroup") === -1
+            let isControl = isButton
                 || typeStr.indexOf("CheckBox") !== -1
                 || typeStr.indexOf("Switch") !== -1
                 || typeStr.indexOf("ComboBox") !== -1
                 || typeStr.indexOf("TextField") !== -1
                 || typeStr.indexOf("SpinBox") !== -1
-            var isTextNode = (typeStr.indexOf("QQuickText") !== -1
+            let isTextNode = (typeStr.indexOf("QQuickText") !== -1
                 || typeStr.indexOf("Label") !== -1
                 || (item.text !== undefined && item.font !== undefined && item.elide !== undefined))
                 && typeStr.indexOf("TextField") === -1
@@ -492,10 +494,10 @@ Item {
             // 1. Check Control / Button Overflow
             if (isControl && item.width > 1 && item.height > 1) {
                 uiTestSuiteRunner.totalControlsInspected++
-                var flick = findEnclosingFlickable(item, rootItem)
+                let flick = findEnclosingFlickable(item, rootItem)
                 if (!flick) {
-                    var tl = item.mapToItem(rootItem, 0, 0)
-                    var br = item.mapToItem(rootItem, item.width, item.height)
+                    let tl = item.mapToItem(rootItem, 0, 0)
+                    let br = item.mapToItem(rootItem, item.width, item.height)
                     if (tl && br) {
                         if (br.x > winWidth + 4 || tl.x < -4 || br.y > winHeight + 4 || tl.y < -4) {
                             uiTestSuiteRunner.overflowViolations.push({
@@ -516,8 +518,8 @@ Item {
                     }
                 } else if (flick.width > 10 && (!flick.contentWidth || flick.contentWidth <= flick.width + 4)) {
                     // Inside a vertical-only Flickable/ScrollView: verify horizontal bounds inside flickable
-                    var ftl = item.mapToItem(flick, 0, 0)
-                    var fbr = item.mapToItem(flick, item.width, item.height)
+                    let ftl = item.mapToItem(flick, 0, 0)
+                    let fbr = item.mapToItem(flick, item.width, item.height)
                     if (ftl && fbr && (fbr.x > flick.width + 6 || ftl.x < -6)) {
                         uiTestSuiteRunner.overflowViolations.push({
                             theme: passThemeLabel,
@@ -535,19 +537,19 @@ Item {
             }
 
             // 1B. Check Input Field (TextField) Internal Clipping & Content Capacity across Zoom Levels
-            var isTextField = (typeStr.indexOf("TextField") !== -1 || typeStr.indexOf("TextArea") !== -1)
+            let isTextField = (typeStr.indexOf("TextField") !== -1 || typeStr.indexOf("TextArea") !== -1)
             if (isTextField && item.width > 1 && item.height > 1) {
                 uiTestSuiteRunner.totalInputFieldsInspected = (uiTestSuiteRunner.totalInputFieldsInspected || 0) + 1
-                var topPad = item.topPadding !== undefined ? item.topPadding : 0
-                var botPad = item.bottomPadding !== undefined ? item.bottomPadding : 0
-                var leftPad = item.leftPadding !== undefined ? item.leftPadding : 0
-                var rightPad = item.rightPadding !== undefined ? item.rightPadding : 0
-                var availH = item.height - topPad - botPad
-                var availW = item.width - leftPad - rightPad
-                var contentH = item.contentHeight || (item.font ? (item.font.pixelSize || Math.round(item.font.pointSize * 1.33)) : 14)
+                let topPad = item.topPadding !== undefined ? item.topPadding : 0
+                let botPad = item.bottomPadding !== undefined ? item.bottomPadding : 0
+                let leftPad = item.leftPadding !== undefined ? item.leftPadding : 0
+                let rightPad = item.rightPadding !== undefined ? item.rightPadding : 0
+                let availH = item.height - topPad - botPad
+                let availW = item.width - leftPad - rightPad
+                let contentH = item.contentHeight || (item.font ? (item.font.pixelSize || Math.round(item.font.pointSize * 1.33)) : 14)
 
                 // Vertical clipping: TextField must have enough height for its text line height plus padding
-                var effectiveVertPad = Math.min(topPad + botPad, 8)
+                let effectiveVertPad = Math.min(topPad + botPad, 8)
                 if (item.height < contentH + effectiveVertPad - 1.5) {
                     uiTestSuiteRunner.overflowViolations.push({
                         theme: passThemeLabel,
@@ -564,11 +566,11 @@ Item {
                 }
 
                 // Horizontal clipping on 5-character OLED label fields
-                var isOledLabelField = (item.id === "label1Input" || item.id === "label2Input"
+                let isOledLabelField = (item.id === "label1Input" || item.id === "label2Input"
                     || item.id === "keyPropLabel1Field" || item.id === "keyPropLabel2Field")
                 if (isOledLabelField) {
-                    var charWidth = item.font ? (item.font.pixelSize || Math.round(item.font.pointSize * 1.33)) * 0.65 : 8
-                    var required5ChWidth = Math.ceil(5 * charWidth)
+                    let charWidth = item.font ? (item.font.pixelSize || Math.round(item.font.pointSize * 1.33)) * 0.65 : 8
+                    let required5ChWidth = Math.ceil(5 * charWidth)
                     if (availW < required5ChWidth) {
                         uiTestSuiteRunner.overflowViolations.push({
                             theme: passThemeLabel,
@@ -590,10 +592,10 @@ Item {
             if (isTextNode && hasAlphanumericText(item.text)) {
                 uiTestSuiteRunner.totalTextNodesInspected++
 
-                var isFixedGeometryCanvas = (windowName.indexOf("OledDesktopWidget") === 0)
+                let isFixedGeometryCanvas = (windowName.indexOf("OledDesktopWidget") === 0)
                 if (!isFixedGeometryCanvas) {
-                    var pWalk = item.parent
-                    var pGuard = 0
+                    let pWalk = item.parent
+                    let pGuard = 0
                     while (pWalk && pGuard < 32) {
                         if (pWalk.objectName === "pcbChassis") {
                             isFixedGeometryCanvas = true
@@ -606,7 +608,7 @@ Item {
 
                 // Check minimum 10pt font size (scaled by root.fontScale) on standard UI controls/labels
                 if (!isFixedGeometryCanvas && item.font && item.font.pointSize !== undefined && item.font.pointSize > 0) {
-                    var minExpectedPt = 9.95 * root.fontScale
+                    let minExpectedPt = 9.95 * root.fontScale
                     if (item.font.pointSize < minExpectedPt) {
                         uiTestSuiteRunner.minFontPointSizeViolations.push({
                             theme: passThemeLabel,
@@ -619,12 +621,12 @@ Item {
                 }
 
                 // Check if un-elided single-line text overflows its parent container or window
-                var textWrap = item.wrapMode !== undefined ? item.wrapMode : Text.NoWrap
-                var textElide = item.elide !== undefined ? item.elide : Text.ElideNone
+                let textWrap = item.wrapMode !== undefined ? item.wrapMode : Text.NoWrap
+                let textElide = item.elide !== undefined ? item.elide : Text.ElideNone
                 if (textWrap === Text.NoWrap && textElide === Text.ElideNone && item.implicitWidth > item.width + 8) {
-                    var parentClip = item.parent && item.parent.clip === true
-                    var ttl = item.mapToItem(rootItem, 0, 0)
-                    var tbr = item.mapToItem(rootItem, item.implicitWidth, item.height)
+                    let parentClip = item.parent && item.parent.clip === true
+                    let ttl = item.mapToItem(rootItem, 0, 0)
+                    let tbr = item.mapToItem(rootItem, item.implicitWidth, item.height)
                     if (parentClip || (tbr && tbr.x > winWidth + 6 && !isInsideScrollableHorizontal(item, rootItem))) {
                         uiTestSuiteRunner.overflowViolations.push({
                             theme: passThemeLabel,
@@ -643,13 +645,13 @@ Item {
 
                 // Check WCAG Color Contrast for enabled text nodes (excluding empty-input placeholder hints)
                 if (isEffectivelyEnabled(item) && !isPlaceholderTextNode(item) && item.color !== undefined) {
-                    var bg = resolveEffectiveBackground(item, fallbackBgColor)
-                    var fg = blendColors(item.color, bg, item.opacity !== undefined ? item.opacity : 1.0)
-                    var ratio = contrastRatio(fg, bg)
-                    var fontPt = (item.font && item.font.pointSize > 0) ? item.font.pointSize : (10 * root.fontScale)
-                    var isBold = (item.font && item.font.bold) ? true : false
+                    let bg = resolveEffectiveBackground(item, fallbackBgColor)
+                    let fg = blendColors(item.color, bg, item.opacity !== undefined ? item.opacity : 1.0)
+                    let ratio = contrastRatio(fg, bg)
+                    let fontPt = (item.font && item.font.pointSize > 0) ? item.font.pointSize : (10 * root.fontScale)
+                    let isBold = (item.font && item.font.bold) ? true : false
                     // Minimum contrast threshold: 3.0:1 across all UI controls, badges, headers, captions, and labels
-                    var minRatio = 3.0
+                    let minRatio = 3.0
                     if (ratio < minRatio) {
                         uiTestSuiteRunner.contrastViolations.push({
                             theme: passThemeLabel,
@@ -668,15 +670,15 @@ Item {
 
             // Traverse visible children
             if (item.children && item.children.length > 0 && depth < 42) {
-                for (var c = item.children.length - 1; c >= 0; c--) {
+                for (let c = item.children.length - 1; c >= 0; c--) {
                     stack.push({ node: item.children[c], depth: depth + 1 })
                 }
             }
             // Also traverse contentItem if present and not already in children
             if (item.contentItem && item.contentItem !== item && depth < 42) {
-                var alreadyChild = false
+                let alreadyChild = false
                 if (item.children) {
-                    for (var k = 0; k < item.children.length; k++) {
+                    for (let k = 0; k < item.children.length; k++) {
                         if (item.children[k] === item.contentItem) {
                             alreadyChild = true
                             break
@@ -853,9 +855,9 @@ Item {
         ]
         var missingScrollBarWindows = []
         var totalResizableBarsChecked = 0
-        for (var wIdx = 0; wIdx < resizableWindowsWithScrollBars.length; wIdx++) {
-            var wEntry = resizableWindowsWithScrollBars[wIdx]
-            var c = auditWindowScrollBars(wEntry.name + "_BehavioralCheck", wEntry.root)
+        for (let wIdx = 0; wIdx < resizableWindowsWithScrollBars.length; wIdx++) {
+            let wEntry = resizableWindowsWithScrollBars[wIdx]
+            let c = auditWindowScrollBars(wEntry.name + "_BehavioralCheck", wEntry.root)
             totalResizableBarsChecked += c
             if (c === 0) {
                 missingScrollBarWindows.push(wEntry.name)
@@ -882,7 +884,7 @@ Item {
         var savedScriptText = scriptEditor.text
         root.loadingSlotData = true
         var longLines = []
-        for (var ln = 1; ln <= 60; ln++) {
+        for (let ln = 1; ln <= 60; ln++) {
             longLines.push("STRING Line " + ln + " — DuckyScript 3 Scrollbar Test")
         }
         scriptEditor.text = longLines.join("\n")
@@ -929,19 +931,19 @@ Item {
         var sStack = [settingsDialog.contentItem]
         var sVisited = []
         while (sStack.length > 0 && sVisited.length < 4000) {
-            var sNode = sStack.pop()
+            let sNode = sStack.pop()
             if (!sNode || sVisited.indexOf(sNode) !== -1) continue
             sVisited.push(sNode)
             if (sNode.text !== undefined) {
-                var sTxt = String(sNode.text)
-                for (var fIdx = 0; fIdx < forbiddenAreaStrings.length; fIdx++) {
+                let sTxt = String(sNode.text)
+                for (let fIdx = 0; fIdx < forbiddenAreaStrings.length; fIdx++) {
                     if (sTxt.indexOf(forbiddenAreaStrings[fIdx]) !== -1) {
                         foundForbiddenSettingsTexts.push(forbiddenAreaStrings[fIdx])
                     }
                 }
             }
             if (sNode.children) {
-                for (var sc = 0; sc < sNode.children.length; sc++) {
+                for (let sc = 0; sc < sNode.children.length; sc++) {
                     sStack.push(sNode.children[sc])
                 }
             }
@@ -1005,18 +1007,18 @@ Item {
         var escFailedPopups = []
         var escVerifiedCount = 0
         // Ensure clean state before testing popups
-        for (var pClean = 0; pClean < popupEntries.length; pClean++) {
+        for (let pClean = 0; pClean < popupEntries.length; pClean++) {
             if (popupEntries[pClean].win && popupEntries[pClean].win.visible) {
                 popupEntries[pClean].win.close()
             }
         }
-        for (var pIdx = 0; pIdx < popupEntries.length; pIdx++) {
-            var pEntry = popupEntries[pIdx]
-            var pWin = pEntry.win
+        for (let pIdx = 0; pIdx < popupEntries.length; pIdx++) {
+            let pEntry = popupEntries[pIdx]
+            let pWin = pEntry.win
             pEntry.openFn()
-            var openedOk = Boolean(pWin && pWin.visible === true && pWin.closableWithEscape === true)
+            let openedOk = Boolean(pWin && pWin.visible === true && pWin.closableWithEscape === true)
             deviceController.sendKeyToActiveWindow(Qt.Key_Escape, 0, "")
-            var closedByEscOk = Boolean(pWin && pWin.visible === false)
+            let closedByEscOk = Boolean(pWin && pWin.visible === false)
             if (!openedOk || !closedByEscOk) {
                 escFailedPopups.push(pEntry.name + "(opened=" + openedOk + ",closed=" + closedByEscOk + ")")
                 if (pWin && pWin.visible) {
@@ -1262,7 +1264,7 @@ Item {
         var scannedJson = deviceController.scanAvailableDevices()
         var scannedParsedOk = false
         try {
-            var scannedArr = JSON.parse(scannedJson || "[]")
+            let scannedArr = JSON.parse(scannedJson || "[]")
             scannedParsedOk = Array.isArray(scannedArr)
         } catch (e) {}
         recordBehavior(
@@ -1592,7 +1594,7 @@ Item {
             },
             audit: function() {
                 if (tutorialsDialog) {
-                    for (var t = 0; t < 7; ++t) {
+                    for (let t = 0; t < 7; ++t) {
                         tutorialsDialog.currentTopicIndex = t
                         auditItemTree("TutorialsDialog_Tab" + t, tutorialsDialog.contentItem, tutorialsDialog.width, tutorialsDialog.height, Kirigami.Theme.backgroundColor)
                     }
@@ -1625,7 +1627,7 @@ Item {
         running: uiTestSuiteRunner.host !== null && uiTestSuiteRunner.deviceController !== null && uiTestSuiteRunner.deviceController.isUiTestSuiteMode()
         onTriggered: {
             try {
-                var totalStepsPerPass = uiTestSuiteRunner.windowSteps.length
+                let totalStepsPerPass = uiTestSuiteRunner.windowSteps.length
                 if (uiTestSuiteRunner.phase === 0) {
                     uiTestSuiteRunner.phase = 1
                     uiTestSuiteRunner.passIndex = 0
@@ -1635,7 +1637,7 @@ Item {
                     } catch (errBehavior) {
                         uiTestSuiteRunner.recordBehavior("behavioral_suite_exception", false, String(errBehavior))
                     }
-                    var firstCfg = uiTestSuiteRunner.auditPassConfigs[0]
+                    let firstCfg = uiTestSuiteRunner.auditPassConfigs[0]
                     uiTestSuiteRunner.currentTheme = firstCfg.theme
                     uiTestSuiteRunner.currentZoom = firstCfg.zoom
                     deviceController.applyAppThemeMode(firstCfg.theme)
@@ -1647,7 +1649,7 @@ Item {
                 if (uiTestSuiteRunner.stepIndex >= totalStepsPerPass) {
                     if (uiTestSuiteRunner.passIndex + 1 < uiTestSuiteRunner.auditPassConfigs.length) {
                         uiTestSuiteRunner.passIndex++
-                        var nextCfg = uiTestSuiteRunner.auditPassConfigs[uiTestSuiteRunner.passIndex]
+                        let nextCfg = uiTestSuiteRunner.auditPassConfigs[uiTestSuiteRunner.passIndex]
                         uiTestSuiteRunner.currentTheme = nextCfg.theme
                         uiTestSuiteRunner.currentZoom = nextCfg.zoom
                         deviceController.applyAppThemeMode(nextCfg.theme)
@@ -1679,19 +1681,19 @@ Item {
                                 + " overflowViolations=" + uiTestSuiteRunner.overflowViolations.length
                         )
 
-                        var failedBehaviors = []
-                        for (var b = 0; b < uiTestSuiteRunner.behavioralResults.length; b++) {
+                        let failedBehaviors = []
+                        for (let b = 0; b < uiTestSuiteRunner.behavioralResults.length; b++) {
                             if (!uiTestSuiteRunner.behavioralResults[b].passed) {
                                 failedBehaviors.push(uiTestSuiteRunner.behavioralResults[b])
                             }
                         }
-                        var totalFailures = failedBehaviors.length
+                        let totalFailures = failedBehaviors.length
                             + uiTestSuiteRunner.overflowViolations.length
                             + uiTestSuiteRunner.contrastViolations.length
                             + uiTestSuiteRunner.scrollBarStyleViolations.length
                             + uiTestSuiteRunner.minFontPointSizeViolations.length
 
-                        var report = {
+                        let report = {
                             passed: totalFailures === 0,
                             summary: {
                                 themesTested: ["dark", "light"],
@@ -1723,8 +1725,8 @@ Item {
                     }
                 }
 
-                var currentStep = uiTestSuiteRunner.windowSteps[uiTestSuiteRunner.stepIndex]
-                var passTag = uiTestSuiteRunner.currentTheme + "@" + uiTestSuiteRunner.currentZoom + "%"
+                let currentStep = uiTestSuiteRunner.windowSteps[uiTestSuiteRunner.stepIndex]
+                let passTag = uiTestSuiteRunner.currentTheme + "@" + uiTestSuiteRunner.currentZoom + "%"
                 if (uiTestSuiteRunner.phase === 1) {
                     try {
                         currentStep.open()
@@ -1746,7 +1748,7 @@ Item {
                 }
             } catch (fatalErr) {
                 uiTestStepTimer.stop()
-                var fatalReport = {
+                let fatalReport = {
                     passed: false,
                     summary: {
                         fatalError: String(fatalErr),

@@ -1607,7 +1607,7 @@ Item {
                                     drag.acceptProposedAction()
                                 }
                                 onDropped: (drop) => {
-                                    if (drop.hasFormat("application/x-ducky-shortcut")) {
+                                    if (drop.formats && drop.formats.indexOf("application/x-ducky-shortcut") !== -1) {
                                         try {
                                             const sc = JSON.parse(drop.getDataAsString("application/x-ducky-shortcut"))
                                             if (sc && canvasRoot.controller) {

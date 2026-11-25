@@ -1573,6 +1573,7 @@ if (workspace.windowAdded) {
 "#
 }
 
+#[cfg(not(target_os = "windows"))]
 fn load_saved_main_window_geometry_tuple() -> Option<(i32, i32, i32, i32)> {
     let path = crate::paths::config_dir().join("main_window_geometry.json");
     let raw = fs::read_to_string(path).ok()?;
