@@ -135,7 +135,7 @@ mkdir -p "$STAGE_DIR/qml"
 for qmod in QtQuick QtQml QtCore; do
     if [[ -d "$WIN_QT/qml/$qmod" ]]; then
         cp -r "$WIN_QT/qml/$qmod" "$STAGE_DIR/qml/"
-        find "$STAGE_DIR/qml/$qmod" -name "*d.dll" -o -name "*.pdb" | xargs -r rm -f
+        find "$STAGE_DIR/qml/$qmod" \( -name "*d.dll" -o -name "*.pdb" \) -delete
     fi
 done
 

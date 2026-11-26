@@ -34,9 +34,9 @@ if [[ -n "$QMLLINT_BIN" ]]; then
         done
     fi
     if [[ -n "$QML_IMPORT_DIR" ]]; then
-        "$QMLLINT_BIN" -I "$QML_IMPORT_DIR" src/qml/*.qml
+        "$QMLLINT_BIN" -I "$QML_IMPORT_DIR" -I src/qml src/qml/*.qml
     else
-        "$QMLLINT_BIN" src/qml/*.qml
+        "$QMLLINT_BIN" -I src/qml src/qml/*.qml
     fi
 else
     echo "  SKIP: Qt 6 qmllint not installed"
@@ -45,11 +45,13 @@ fi
 echo "==> 5. Checking C++ headers with -Wall -Wextra -Werror..."
 if command -v g++ >/dev/null 2>&1 && pkg-config --exists Qt6Core Qt6Gui Qt6Widgets Qt6Quick Qt6Qml Qt6Svg Qt6Network 2>/dev/null; then
     QT_CFLAGS="$(pkg-config --cflags Qt6Core Qt6Gui Qt6Widgets Qt6Quick Qt6Qml Qt6Svg Qt6Network)"
-    KF6_CFLAGS=""
+    KF6_CFLAGS="$(pkg-config --cflags KF6ColorScheme KF6ConfigCore KF6IconThemes 2>/dev/null || true)"
     for base in "${KF6_INCLUDE_DIR:-}" /usr/include/KF6 /usr/local/include/KF6 /usr/include/x86_64-linux-gnu/KF6; do
         [[ -z "$base" || ! -d "$base" ]] && continue
         for mod in KColorScheme KConfig KConfigCore KIconThemes; do
-            [[ -d "$base/$mod" ]] && KF6_CFLAGS="$KF6_CFLAGS -I$base/$mod"
+            if [[ -d "$base/$mod" && "$KF6_CFLAGS" != *"-I$base/$mod"* ]]; then
+                KF6_CFLAGS="$KF6_CFLAGS -I$base/$mod"
+            fi
         done
     done
     if [[ -n "$KF6_CFLAGS" ]]; then

@@ -11,9 +11,11 @@ permissions:
 jobs:
   lint-core:
     name: Rust Fmt, Core Crates, Shell, HTML/JS & Doc Links
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -63,18 +65,24 @@ jobs:
 
   lint-and-test-linux:
     name: Full Linux Lint & Test Suite (Qt6 + KF6)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Install Qt 6 & KF6 build/lint dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            g++ clang pkg-config libudev-dev shellcheck nodejs \
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libudev-dev shellcheck nodejs \
             qt6-base-dev qt6-declarative-dev qt6-declarative-dev-tools qt6-svg-dev \
+            libkf6colorscheme-dev libkf6config-dev libkf6iconthemes-dev \
             qml6-module-org-kde-kirigami qml6-module-org-kde-syntaxhighlighting \
-            libkf6colorscheme-dev libkf6config-dev libkf6iconthemes-dev
+            qml6-module-org-kde-desktop qml6-module-org-kde-breeze \
+            qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-templates \
+            qml6-module-qtquick-layouts qml6-module-qtquick-window qml6-module-qtquick-dialogs \
+            breeze-icon-theme fonts-noto-core
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -85,4 +93,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run scripts/check.sh
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: bash scripts/check.sh
