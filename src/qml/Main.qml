@@ -7,6 +7,10 @@ import QtQuick.Dialogs
 import org.kde.kirigami as Kirigami
 import io.github.duckydeck 1.0
 
+// Qt <= 6.10 qmllint cascades [missing-property] onto every member access of
+// compiled CXX-Qt DeviceController (and Window.screen) in Main.qml.
+// MissingProperty remains enforced across all other src/qml/*.qml files via .qmllint.ini.
+// qmllint disable missing-property
 Kirigami.ApplicationWindow {
     id: root
     objectName: "duckydeckMainWindow"
@@ -2665,10 +2669,8 @@ Kirigami.ApplicationWindow {
         source: Qt.resolvedUrl("ProfileWizardDialog.qml")
         onLoaded: {
             if (item) {
-                // qmllint disable missing-property
                 item.root = root
                 item.controller = deviceController
-                // qmllint enable missing-property
             }
         }
     }
@@ -2678,11 +2680,9 @@ Kirigami.ApplicationWindow {
             profileWizardLoader.active = true
         }
         if (profileWizardLoader.item) {
-            // qmllint disable missing-property
             profileWizardLoader.item.root = root
             profileWizardLoader.item.controller = deviceController
             profileWizardLoader.item.openWizard()
-            // qmllint enable missing-property
         }
     }
 
@@ -2692,10 +2692,8 @@ Kirigami.ApplicationWindow {
         source: Qt.resolvedUrl("TutorialsDialog.qml")
         onLoaded: {
             if (item) {
-                // qmllint disable missing-property
                 item.root = root
                 item.controller = deviceController
-                // qmllint enable missing-property
             }
         }
     }
@@ -2706,11 +2704,9 @@ Kirigami.ApplicationWindow {
             tutorialsDialogLoader.active = true
         }
         if (tutorialsDialogLoader.item) {
-            // qmllint disable missing-property
             tutorialsDialogLoader.item.root = root
             tutorialsDialogLoader.item.controller = deviceController
             tutorialsDialogLoader.item.openTopic(topicId || "oled_vm")
-            // qmllint enable missing-property
         }
     }
 
