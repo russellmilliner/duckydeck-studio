@@ -2,6 +2,15 @@
 
 All notable changes and bumped dependencies for `russellmilliner/duckydeck-studio` are documented in this file.
 
+## [v0.1.25-deps](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.25-deps) — 2026-11-27
+
+### 📦 Bumped Dependencies (2 packages)
+
+| Package | Previous | Updated | Scope |
+| :--- | :--- | :--- | :--- |
+| `cc` | `1.11.3` | **`1.12.0`** | Lockfile (`Cargo.lock`) |
+| `find-msvc-tools` | `0.1.15` | **`0.1.16`** | Lockfile (`Cargo.lock`) |
+
 ## [v0.1.25](https://github.com/russellmilliner/duckydeck-studio/releases/tag/v0.1.25) — 2026-11-25
 
 ### Highlights
